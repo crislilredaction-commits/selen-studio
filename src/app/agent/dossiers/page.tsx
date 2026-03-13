@@ -1,15 +1,190 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import SelenBadge from "@/components/ui/SelenBadge";
+import SelenButton from "@/components/ui/SelenButton";
+
+type DossierType =
+  | "nda"
+  | "review"
+  | "prepa"
+  | "daily"
+  | "non_conformite"
+  | "audit_blanc"
+  | "mise_en_conformite"
+  | "audit_reel";
+
+type DossierStatus =
+  | "draft"
+  | "waiting_client"
+  | "assignable"
+  | "assigned"
+  | "in_progress"
+  | "generated"
+  | "collecting_documents"
+  | "under_review"
+  | "to_complete"
+  | "compliant"
+  | "archived";
+
+type AssignmentProfile =
+  | {
+      full_name: string | null;
+      email: string | null;
+    }
+  | {
+      full_name: string | null;
+      email: string | null;
+    }[]
+  | null;
+
+type AssignmentRow = {
+  is_primary: boolean;
+  profiles: AssignmentProfile;
+};
+
+type OrganisationRelation =
+  | {
+      name: string;
+    }
+  | {
+      name: string;
+    }[]
+  | null;
 
 type DossierRow = {
   id: string;
   title: string;
-  type: string;
-  status: string;
+  type: DossierType;
+  status: DossierStatus;
   created_at: string;
-  organisations: {
-    name: string;
-  } | null;
+  organisations: OrganisationRelation;
+  dossier_assignments: AssignmentRow[] | null;
 };
+
+function getOrganisationName(organisation: OrganisationRelation): string {
+  if (!organisation) return "—";
+  if (Array.isArray(organisation)) {
+    return organisation[0]?.name ?? "—";
+  }
+  return organisation.name ?? "—";
+}
+
+function getAssignedAgentName(assignments: AssignmentRow[] | null): string {
+  if (!assignments || assignments.length === 0) return "—";
+
+  const primaryAssignment =
+    assignments.find((assignment) => assignment.is_primary) ?? assignments[0];
+
+  const profile = primaryAssignment.profiles;
+
+  if (!profile) return "—";
+
+  if (Array.isArray(profile)) {
+    return profile[0]?.full_name ?? profile[0]?.email ?? "—";
+  }
+
+  return profile.full_name ?? profile.email ?? "—";
+}
+
+function getTypeLabel(type: DossierType): string {
+  switch (type) {
+    case "nda":
+      return "NDA";
+    case "review":
+      return "Review";
+    case "prepa":
+      return "Prépa";
+    case "daily":
+      return "Daily";
+    case "non_conformite":
+      return "Non-conformité";
+    case "audit_blanc":
+      return "Review";
+    case "mise_en_conformite":
+      return "Prépa";
+    case "audit_reel":
+      return "Prépa";
+    default:
+      return type;
+  }
+}
+
+function getTypeBadgeVariant(type: DossierType) {
+  switch (type) {
+    case "nda":
+      return "type";
+    case "review":
+      return "info";
+    case "prepa":
+      return "warn";
+    case "daily":
+      return "success";
+    case "non_conformite":
+      return "danger";
+    case "audit_blanc":
+      return "info";
+    case "mise_en_conformite":
+      return "warn";
+    case "audit_reel":
+      return "warn";
+    default:
+      return "neutral";
+  }
+}
+
+function getStatusLabel(status: DossierStatus): string {
+  switch (status) {
+    case "draft":
+      return "Brouillon";
+    case "waiting_client":
+      return "En attente client";
+    case "assignable":
+      return "À assigner";
+    case "assigned":
+      return "Assigné";
+    case "in_progress":
+      return "En cours";
+    case "generated":
+      return "Généré";
+    case "collecting_documents":
+      return "Collecte documents";
+    case "under_review":
+      return "En vérification";
+    case "to_complete":
+      return "À compléter";
+    case "compliant":
+      return "Conforme";
+    case "archived":
+      return "Archivé";
+    default:
+      return status;
+  }
+}
+
+function getStatusBadgeVariant(status: DossierStatus) {
+  switch (status) {
+    case "compliant":
+    case "generated":
+      return "success";
+    case "waiting_client":
+    case "to_complete":
+      return "warn";
+    case "in_progress":
+    case "collecting_documents":
+    case "under_review":
+      return "info";
+    case "archived":
+      return "neutral";
+    case "assignable":
+    case "assigned":
+      return "status";
+    case "draft":
+      return "neutral";
+    default:
+      return "status";
+  }
+}
 
 export default async function AgentDossiersPage() {
   const supabase = await createClient();
@@ -25,6 +200,13 @@ export default async function AgentDossiersPage() {
         created_at,
         organisations (
           name
+        ),
+        dossier_assignments (
+          is_primary,
+          profiles:agent_id (
+            full_name,
+            email
+          )
         )
       `,
     )
@@ -32,10 +214,17 @@ export default async function AgentDossiersPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-stone-950 p-8 text-stone-100">
-        <div className="mx-auto max-w-6xl rounded-3xl border border-red-900 bg-stone-900 p-6">
-          <h1 className="text-2xl font-semibold">Dossiers</h1>
-          <p className="mt-4 text-red-300">Erreur : {error.message}</p>
+      <main style={{ padding: "24px 28px" }}>
+        <div
+          style={{
+            color: "var(--selen-danger)",
+            background: "var(--selen-card)",
+            border: "1px solid var(--selen-border)",
+            borderRadius: "var(--radius-lg)",
+            padding: 16,
+          }}
+        >
+          <pre>{JSON.stringify(error, null, 2)}</pre>
         </div>
       </main>
     );
@@ -44,55 +233,191 @@ export default async function AgentDossiersPage() {
   const dossiers = (data ?? []) as DossierRow[];
 
   return (
-    <main className="min-h-screen bg-stone-950 text-stone-100">
-      <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="mb-8">
-          <p className="text-sm uppercase tracking-[0.2em] text-amber-300/80">
+    <main
+      style={{
+        padding: "24px 28px",
+        maxWidth: 1120,
+        margin: "0 auto",
+        color: "var(--selen-text)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          marginBottom: 20,
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <p
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 9,
+              letterSpacing: "0.3em",
+              textTransform: "uppercase",
+              color: "var(--selen-gold)",
+              opacity: 0.8,
+            }}
+          >
             Studio agent
           </p>
-          <h1 className="mt-2 text-3xl font-semibold">Dossiers</h1>
-          <p className="mt-2 text-stone-400">
-            Première vue de pilotage des dossiers clients.
+
+          <h1
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 28,
+              fontWeight: 600,
+              letterSpacing: "0.02em",
+              color: "var(--selen-text)",
+              marginTop: 8,
+              lineHeight: 1.2,
+            }}
+          >
+            Dossiers
+          </h1>
+
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: "var(--selen-text2)",
+            }}
+          >
+            Vue de pilotage des dossiers clients.
           </p>
         </div>
 
-        <div className="overflow-hidden rounded-3xl border border-stone-800 bg-stone-900 shadow-2xl">
-          <table className="min-w-full divide-y divide-stone-800">
-            <thead className="bg-stone-900/80">
-              <tr className="text-left text-sm text-stone-400">
-                <th className="px-6 py-4">Titre</th>
-                <th className="px-6 py-4">Organisation</th>
-                <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4">Statut</th>
-                <th className="px-6 py-4">Créé le</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-800">
-              {dossiers.map((dossier) => (
-                <tr key={dossier.id} className="hover:bg-stone-800/60">
-                  <td className="px-6 py-4 font-medium text-stone-100">
-                    {dossier.title}
-                  </td>
-                  <td className="px-6 py-4 text-stone-300">
-                    {dossier.organisations?.name ?? "—"}
-                  </td>
-                  <td className="px-6 py-4 text-stone-300">{dossier.type}</td>
-                  <td className="px-6 py-4 text-stone-300">{dossier.status}</td>
-                  <td className="px-6 py-4 text-stone-400">
-                    {new Date(dossier.created_at).toLocaleDateString("fr-FR")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {dossiers.length === 0 ? (
-            <div className="px-6 py-10 text-stone-400">
-              Aucun dossier pour le moment.
-            </div>
-          ) : null}
-        </div>
+        <Link href="/agent/dossiers/new" style={{ textDecoration: "none" }}>
+          <SelenButton variant="primary">+ Nouveau dossier</SelenButton>
+        </Link>
       </div>
+
+      <SelenCard>
+        <SelenCardTitle>Dossiers en cours</SelenCardTitle>
+
+        {dossiers.length === 0 ? (
+          <div
+            style={{
+              padding: "8px 2px 2px",
+              fontSize: 13,
+              color: "var(--selen-text3)",
+            }}
+          >
+            Aucun dossier pour le moment.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            {dossiers.map((dossier) => (
+              <Link
+                key={dossier.id}
+                href={`/agent/dossiers/${dossier.id}`}
+                style={{
+                  textDecoration: "none",
+                  color: "inherit",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.7fr 1.1fr 0.8fr 1fr 1.1fr 0.8fr",
+                    gap: 12,
+                    alignItems: "center",
+                    padding: "14px 16px",
+                    borderRadius: "var(--radius-md)",
+                    background: "var(--selen-bg3)",
+                    border: "1px solid var(--selen-border)",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "var(--selen-text)",
+                        marginBottom: 4,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {dossier.title}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "var(--selen-text3)",
+                      }}
+                    >
+                      Créé le{" "}
+                      {new Date(dossier.created_at).toLocaleDateString("fr-FR")}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--selen-text2)",
+                      minWidth: 0,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {getOrganisationName(dossier.organisations)}
+                  </div>
+
+                  <div>
+                    <SelenBadge variant={getTypeBadgeVariant(dossier.type)} dot>
+                      {getTypeLabel(dossier.type)}
+                    </SelenBadge>
+                  </div>
+
+                  <div>
+                    <SelenBadge
+                      variant={getStatusBadgeVariant(dossier.status)}
+                      dot
+                    >
+                      {getStatusLabel(dossier.status)}
+                    </SelenBadge>
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--selen-text2)",
+                      minWidth: 0,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {getAssignedAgentName(dossier.dossier_assignments)}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--selen-gold2)",
+                      textAlign: "right",
+                    }}
+                  >
+                    Ouvrir →
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </SelenCard>
     </main>
   );
 }

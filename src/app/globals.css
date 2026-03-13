@@ -1,3 +1,4 @@
+@import "../styles/selen-tokens.css";
 @import "tailwindcss";
 
 html,
@@ -8,5 +9,46 @@ body {
 }
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--selen-bg);
+  color: var(--selen-text);
+  font-family: var(--font-body);
+}
+
+/* Sélection */
+::selection {
+  background: rgba(201, 148, 58, 0.28);
+  color: var(--selen-text);
+}
+
+/* Scrollbar Selen */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--selen-gold) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--selen-gold), var(--selen-copper));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+a {
+  color: inherit;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
 }
