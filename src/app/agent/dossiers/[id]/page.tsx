@@ -17,6 +17,8 @@ import DossierHistorique, {
 import NdaChecklist from "@/components/nda/NdaChecklist";
 import { NDA_CHECKLIST } from "@/lib/ndaChecklist";
 import SubmitButton from "@/components/ui/SubmitButton";
+import NdaVariablesCard from "@/components/nda/NdaVariablesCard";
+import OpenDocumentButton from "@/components/ui/OpenDocumentButton";
 
 type PageProps = {
   params: Promise<{
@@ -147,6 +149,128 @@ function mapDbDocumentToItem(doc: DbDocumentRow): DocumentItem {
   };
 }
 
+function extractPostalCodeAndCity(address?: string | null) {
+  if (!address) {
+    return { code_postal: "", ville: "" };
+  }
+
+  const match = address.match(/\b(\d{5})\b\s*-?\s*([A-Za-zÀ-ÿ' -]+)$/);
+
+  if (!match) {
+    return { code_postal: "", ville: "" };
+  }
+
+  return {
+    code_postal: match[1] ?? "",
+    ville: match[2]?.trim() ?? "",
+  };
+}
+
+function getRegionFromPostalCode(codePostal?: string | null) {
+  if (!codePostal || codePostal.length < 2) return "";
+
+  const dept = codePostal.slice(0, 2);
+
+  const regionMap: Record<string, string> = {
+    "01": "Auvergne-Rhône-Alpes",
+    "02": "Hauts-de-France",
+    "03": "Auvergne-Rhône-Alpes",
+    "04": "Provence-Alpes-Côte d’Azur",
+    "05": "Provence-Alpes-Côte d’Azur",
+    "06": "Provence-Alpes-Côte d’Azur",
+    "07": "Auvergne-Rhône-Alpes",
+    "08": "Grand Est",
+    "09": "Occitanie",
+    "10": "Grand Est",
+    "11": "Occitanie",
+    "12": "Occitanie",
+    "13": "Provence-Alpes-Côte d’Azur",
+    "14": "Normandie",
+    "15": "Auvergne-Rhône-Alpes",
+    "16": "Nouvelle-Aquitaine",
+    "17": "Nouvelle-Aquitaine",
+    "18": "Centre-Val de Loire",
+    "19": "Nouvelle-Aquitaine",
+    "21": "Bourgogne-Franche-Comté",
+    "22": "Bretagne",
+    "23": "Nouvelle-Aquitaine",
+    "24": "Nouvelle-Aquitaine",
+    "25": "Bourgogne-Franche-Comté",
+    "26": "Auvergne-Rhône-Alpes",
+    "27": "Normandie",
+    "28": "Centre-Val de Loire",
+    "29": "Bretagne",
+    "30": "Occitanie",
+    "31": "Occitanie",
+    "32": "Occitanie",
+    "33": "Nouvelle-Aquitaine",
+    "34": "Occitanie",
+    "35": "Bretagne",
+    "36": "Centre-Val de Loire",
+    "37": "Centre-Val de Loire",
+    "38": "Auvergne-Rhône-Alpes",
+    "39": "Bourgogne-Franche-Comté",
+    "40": "Nouvelle-Aquitaine",
+    "41": "Centre-Val de Loire",
+    "42": "Auvergne-Rhône-Alpes",
+    "43": "Auvergne-Rhône-Alpes",
+    "44": "Pays de la Loire",
+    "45": "Centre-Val de Loire",
+    "46": "Occitanie",
+    "47": "Nouvelle-Aquitaine",
+    "48": "Occitanie",
+    "49": "Pays de la Loire",
+    "50": "Normandie",
+    "51": "Grand Est",
+    "52": "Grand Est",
+    "53": "Pays de la Loire",
+    "54": "Grand Est",
+    "55": "Grand Est",
+    "56": "Bretagne",
+    "57": "Grand Est",
+    "58": "Bourgogne-Franche-Comté",
+    "59": "Hauts-de-France",
+    "60": "Hauts-de-France",
+    "61": "Normandie",
+    "62": "Hauts-de-France",
+    "63": "Auvergne-Rhône-Alpes",
+    "64": "Nouvelle-Aquitaine",
+    "65": "Occitanie",
+    "66": "Occitanie",
+    "67": "Grand Est",
+    "68": "Grand Est",
+    "69": "Auvergne-Rhône-Alpes",
+    "70": "Bourgogne-Franche-Comté",
+    "71": "Bourgogne-Franche-Comté",
+    "72": "Pays de la Loire",
+    "73": "Auvergne-Rhône-Alpes",
+    "74": "Auvergne-Rhône-Alpes",
+    "75": "Île-de-France",
+    "76": "Normandie",
+    "77": "Île-de-France",
+    "78": "Île-de-France",
+    "79": "Nouvelle-Aquitaine",
+    "80": "Hauts-de-France",
+    "81": "Occitanie",
+    "82": "Occitanie",
+    "83": "Provence-Alpes-Côte d’Azur",
+    "84": "Provence-Alpes-Côte d’Azur",
+    "85": "Pays de la Loire",
+    "86": "Nouvelle-Aquitaine",
+    "87": "Nouvelle-Aquitaine",
+    "88": "Grand Est",
+    "89": "Bourgogne-Franche-Comté",
+    "90": "Bourgogne-Franche-Comté",
+    "91": "Île-de-France",
+    "92": "Île-de-France",
+    "93": "Île-de-France",
+    "94": "Île-de-France",
+    "95": "Île-de-France",
+  };
+
+  return regionMap[dept] ?? "";
+}
+
 const MOCK_HISTORY: HistoryEntry[] = [
   {
     id: "h1",
@@ -273,6 +397,28 @@ export default async function DossierPage({ params }: PageProps) {
     redirect(`/agent/dossiers/${dossierId}`);
   }
 
+  async function updateDocumentType(formData: FormData) {
+    "use server";
+
+    const docId = formData.get("doc_id") as string;
+    const documentType = formData.get("document_type") as string;
+    const dossierId = formData.get("dossier_id") as string;
+
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from("documents")
+      .update({ document_type: documentType })
+      .eq("id", docId);
+
+    if (error) {
+      console.error(error);
+      throw new Error("Impossible de modifier le type du document.");
+    }
+
+    redirect(`/agent/dossiers/${dossierId}`);
+  }
+
   const { data: dossier, error } = await supabase
     .from("dossiers")
     .select(
@@ -307,13 +453,6 @@ export default async function DossierPage({ params }: PageProps) {
     .eq("id", id)
     .maybeSingle();
 
-  const { data: clientDocuments } = await supabase
-    .from("documents")
-    .select("*")
-    .eq("organisation_id", dossier?.organisation_id)
-    .is("dossier_id", null)
-    .order("created_at", { ascending: false });
-
   if (error) {
     return (
       <main className="p-10" style={{ color: "var(--selen-danger)" }}>
@@ -329,6 +468,13 @@ export default async function DossierPage({ params }: PageProps) {
       </main>
     );
   }
+
+  const { data: clientDocuments } = await supabase
+    .from("documents")
+    .select("*")
+    .eq("organisation_id", dossier?.organisation_id)
+    .is("dossier_id", null)
+    .order("created_at", { ascending: false });
 
   const { data: agents, error: agentsError } = await supabase
     .from("profiles")
@@ -365,10 +511,29 @@ export default async function DossierPage({ params }: PageProps) {
     .eq("dossier_id", dossier.id)
     .order("created_at", { ascending: true });
 
+  const { data: ndaVariablesData, error: ndaVariablesError } = await supabase
+    .from("nda_variables")
+    .select("*")
+    .eq("dossier_id", dossier.id)
+    .maybeSingle();
+
+  if (ndaVariablesError) {
+    return (
+      <main className="p-10" style={{ color: "var(--selen-danger)" }}>
+        <pre>{JSON.stringify(ndaVariablesError, null, 2)}</pre>
+      </main>
+    );
+  }
+
   const receivedKeys = [
     ...(documentsData ?? []).map((d) => d.document_type),
     ...((clientDocuments ?? []) as DbDocumentRow[]).map((d) => d.document_type),
   ].filter(Boolean);
+
+  const canRunAutoAnalysis =
+    receivedKeys.includes("cv_formateur") &&
+    receivedKeys.includes("programme_formation") &&
+    (receivedKeys.includes("avis_insee") || receivedKeys.includes("kbis"));
 
   if (documentsError) {
     return (
@@ -402,6 +567,22 @@ export default async function DossierPage({ params }: PageProps) {
     uniqueReceivedKeys.includes(item.key),
   ).length;
   const docsTotal = NDA_CHECKLIST.length;
+
+  const extractedAddress = extractPostalCodeAndCity(organisation?.address);
+
+  const ndaVariablesInitialValues = {
+    ...ndaVariablesData,
+    siret: ndaVariablesData?.siret ?? organisation?.siret ?? "",
+    code_postal:
+      ndaVariablesData?.code_postal ?? extractedAddress.code_postal ?? "",
+    ville: ndaVariablesData?.ville ?? extractedAddress.ville ?? "",
+    region:
+      ndaVariablesData?.region ??
+      getRegionFromPostalCode(
+        ndaVariablesData?.code_postal ?? extractedAddress.code_postal,
+      ) ??
+      "",
+  };
 
   return (
     <main
@@ -585,16 +766,118 @@ export default async function DossierPage({ params }: PageProps) {
 
               <NdaChecklist receivedKeys={receivedKeys} />
 
-              {documents.length > 0 ? (
-                <DocumentsList documents={documents} />
-              ) : null}
+              {documentsData?.map((doc) => (
+                <form
+                  key={doc.id}
+                  action={updateDocumentType}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 0",
+                    borderBottom: "1px solid var(--selen-border)",
+                  }}
+                >
+                  <input type="hidden" name="doc_id" value={doc.id} />
+                  <input type="hidden" name="dossier_id" value={dossier.id} />
+
+                  <div style={{ flex: 1, fontSize: 12 }}>{doc.name}</div>
+
+                  <select
+                    name="document_type"
+                    defaultValue={doc.document_type}
+                    style={{
+                      fontSize: 11,
+                      background: "var(--selen-bg3)",
+                      border: "1px solid var(--selen-border)",
+                      borderRadius: 6,
+                      padding: "4px 6px",
+                      color: "var(--selen-text)",
+                      fontFamily: "var(--font-body)",
+                    }}
+                  >
+                    <option value="document_libre">Libre</option>
+                    <option value="cv_formateur">CV formateur</option>
+                    <option value="programme_formation">Programme</option>
+                    <option value="avis_insee">Avis INSEE</option>
+                    <option value="diplome_formateur">Diplôme</option>
+                    <option value="kbis">KBis</option>
+                    <option value="casier_judiciaire">Casier judiciaire</option>
+                    <option value="convention_signee">Convention signée</option>
+                  </select>
+
+                  <SubmitButton label="OK" pendingLabel="..." />
+                </form>
+              ))}
             </SelenCard>
 
             <SelenCard>
               <SelenCardTitle>Documents client</SelenCardTitle>
               <DocumentUpload organisationId={organisation?.id} />
-              {clientDocumentsItems.length > 0 ? (
-                <DocumentsList documents={clientDocumentsItems} />
+              {clientDocuments?.length ? (
+                clientDocuments.map((doc) => (
+                  <form
+                    key={doc.id}
+                    action={updateDocumentType}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 0",
+                      borderBottom: "1px solid var(--selen-border)",
+                    }}
+                  >
+                    <input type="hidden" name="doc_id" value={doc.id} />
+                    <input type="hidden" name="dossier_id" value={dossier.id} />
+
+                    <OpenDocumentButton docId={doc.id} />
+
+                    <div
+                      style={{
+                        flex: 1,
+                        fontSize: 12,
+                        color: "var(--selen-text)",
+                      }}
+                    >
+                      {doc.name}
+                    </div>
+
+                    <select
+                      name="document_type"
+                      defaultValue={doc.document_type}
+                      style={{
+                        fontSize: 11,
+                        background: "var(--selen-bg3)",
+                        border: "1px solid var(--selen-border)",
+                        borderRadius: 6,
+                        padding: "4px 6px",
+                        color: "var(--selen-text)",
+                        fontFamily: "var(--font-body)",
+                      }}
+                    >
+                      <option value="document_libre">Libre</option>
+                      <option value="cv_formateur">CV formateur</option>
+                      <option value="programme_formation">Programme</option>
+                      <option value="avis_insee">Avis INSEE</option>
+                      <option value="diplome_formateur">Diplôme</option>
+                      <option value="questionnaire_nda">
+                        Questionnaire NDA
+                      </option>
+                      <option value="kbis">KBis</option>
+                      <option value="casier_judiciaire">
+                        Casier judiciaire
+                      </option>
+                      <option value="convention_signee">
+                        Convention signée
+                      </option>
+                      <option value="liste_formateurs_signee">
+                        Liste des formateurs signée
+                      </option>
+                    </select>
+
+                    <SubmitButton label="OK" pendingLabel="..." />
+                  </form>
+                ))
               ) : (
                 <div
                   style={{
@@ -810,11 +1093,40 @@ export default async function DossierPage({ params }: PageProps) {
                   ))}
                 </select>
 
-                <SelenButton variant="ghost" size="sm">
-                  Enregistrer l’assignation
-                </SelenButton>
+                <SubmitButton
+                  label="Enregistrer l’assignation"
+                  pendingLabel="Enregistrement..."
+                />
               </form>
             </SelenCard>
+
+            <NdaVariablesCard
+              dossierId={dossier.id}
+              initialValues={ndaVariablesInitialValues}
+            />
+
+            {canRunAutoAnalysis && (
+              <form action={`/agent/api/analyse-nda`} method="post">
+                <input type="hidden" name="dossier_id" value={dossier.id} />
+
+                <button
+                  type="submit"
+                  style={{
+                    marginTop: 12,
+                    background: "var(--selen-gold)",
+                    color: "#1a120b",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "8px 14px",
+                    fontSize: 12,
+                    cursor: "pointer",
+                    fontFamily: "var(--font-body)",
+                  }}
+                >
+                  🧠 Analyser automatiquement le dossier
+                </button>
+              </form>
+            )}
 
             <SelenCard>
               <SelenCardTitle>Historique</SelenCardTitle>
