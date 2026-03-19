@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import Selion from "@/components/ui/Selion";
+import AgentSidebarMessaging from "@/components/layout/AgentSidebarMessaging";
 
 const links = [
   {
@@ -68,8 +68,9 @@ export default function AgentSidebar() {
 
   return (
     <aside
-      className="flex h-screen w-64 flex-col"
+      className="flex h-screen flex-col"
       style={{
+        width: 320,
         background: "var(--selen-sidebar)",
         borderRight: "1px solid var(--selen-border)",
         minHeight: "100vh",
@@ -183,7 +184,7 @@ export default function AgentSidebar() {
       </nav>
 
       <div style={{ padding: "0 14px 14px" }}>
-        <Selion message="Je veille sur les dossiers en cours ✨" />
+        <AgentSidebarMessaging />
       </div>
 
       <div

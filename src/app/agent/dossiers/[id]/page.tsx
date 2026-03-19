@@ -19,6 +19,9 @@ import { NDA_CHECKLIST } from "@/lib/ndaChecklist";
 import SubmitButton from "@/components/ui/SubmitButton";
 import NdaVariablesCard from "@/components/nda/NdaVariablesCard";
 import OpenDocumentButton from "@/components/ui/OpenDocumentButton";
+import DeleteDocumentButton from "@/components/ui/DeleteDocumentButton";
+import AnalyzeNdaButton from "@/components/nda/AnalyzeNdaButton";
+import AgentMessagingDrawer from "@/components/AgentMessagingDrawer";
 
 type PageProps = {
   params: Promise<{
@@ -69,6 +72,13 @@ type DbDocumentRow = {
     | "signed"
     | "archived";
   source: "agent_upload" | "client_upload" | "generated";
+  created_at: string;
+};
+
+type MessageRow = {
+  id: string;
+  content: string;
+  sender_type: "agent" | "client";
   created_at: string;
 };
 
@@ -306,6 +316,8 @@ export default async function DossierPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
 
+  const clientUrl = `${process.env.NEXT_PUBLIC_APP_URL}/client/dossier/${id}`;
+
   async function updateStatus(formData: FormData) {
     "use server";
 
@@ -469,6 +481,16 @@ export default async function DossierPage({ params }: PageProps) {
     );
   }
 
+  const { data: dossierMessages, error: dossierMessagesError } = await supabase
+    .from("messages")
+    .select("id, content, sender_type, created_at")
+    .eq("dossier_id", dossier.id)
+    .order("created_at", { ascending: true });
+
+  if (dossierMessagesError) {
+    console.error(dossierMessagesError);
+  }
+
   const { data: clientDocuments } = await supabase
     .from("documents")
     .select("*")
@@ -583,6 +605,15 @@ export default async function DossierPage({ params }: PageProps) {
       ) ??
       "",
   };
+
+  const { data: unreadMessages } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("dossier_id", dossier.id)
+    .eq("sender_type", "client")
+    .is("read_by_agent_at", null);
+
+  const hasUnread = (unreadMessages ?? []).length > 0;
 
   return (
     <main
@@ -806,14 +837,25 @@ export default async function DossierPage({ params }: PageProps) {
                     <option value="convention_signee">Convention signée</option>
                   </select>
 
-                  <SubmitButton label="OK" pendingLabel="..." />
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <SubmitButton label="OK" pendingLabel="..." />
+                    <DeleteDocumentButton
+                      documentId={doc.id}
+                      documentName={doc.name}
+                    />
+                  </div>
                 </form>
               ))}
             </SelenCard>
 
             <SelenCard>
               <SelenCardTitle>Documents client</SelenCardTitle>
-              <DocumentUpload organisationId={organisation?.id} />
+              <DocumentUpload
+                dossierId={dossier.id}
+                organisationId={organisation?.id}
+              />
               {clientDocuments?.length ? (
                 clientDocuments.map((doc) => (
                   <form
@@ -875,7 +917,15 @@ export default async function DossierPage({ params }: PageProps) {
                       </option>
                     </select>
 
-                    <SubmitButton label="OK" pendingLabel="..." />
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 8 }}
+                    >
+                      <SubmitButton label="OK" pendingLabel="..." />
+                      <DeleteDocumentButton
+                        documentId={doc.id}
+                        documentName={doc.name}
+                      />
+                    </div>
                   </form>
                 ))
               ) : (
@@ -931,6 +981,12 @@ export default async function DossierPage({ params }: PageProps) {
                 />
               </form>
             </SelenCard>
+
+            <AgentMessagingDrawer
+              dossierId={dossier.id}
+              initialMessages={(dossierMessages ?? []) as MessageRow[]}
+              hasUnread={hasUnread}
+            />
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1100,33 +1156,52 @@ export default async function DossierPage({ params }: PageProps) {
               </form>
             </SelenCard>
 
+            <SelenCard>
+              <SelenCardTitle>Lien client</SelenCardTitle>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "var(--selen-text3)",
+                    lineHeight: 1.5,
+                    margin: 0,
+                  }}
+                >
+                  Envoyez ce lien au client pour qu’il puisse compléter ses
+                  informations essentielles et déposer ses documents.
+                </p>
+
+                <input
+                  value={clientUrl}
+                  readOnly
+                  style={{
+                    width: "100%",
+                    background: "var(--selen-bg3)",
+                    border: "1px solid var(--selen-border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "8px 10px",
+                    color: "var(--selen-text)",
+                    fontSize: 12,
+                    fontFamily: "var(--font-body)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+            </SelenCard>
+
             <NdaVariablesCard
               dossierId={dossier.id}
               initialValues={ndaVariablesInitialValues}
             />
 
-            {canRunAutoAnalysis && (
-              <form action={`/agent/api/analyse-nda`} method="post">
-                <input type="hidden" name="dossier_id" value={dossier.id} />
-
-                <button
-                  type="submit"
-                  style={{
-                    marginTop: 12,
-                    background: "var(--selen-gold)",
-                    color: "#1a120b",
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "8px 14px",
-                    fontSize: 12,
-                    cursor: "pointer",
-                    fontFamily: "var(--font-body)",
-                  }}
-                >
-                  🧠 Analyser automatiquement le dossier
-                </button>
-              </form>
-            )}
+            {canRunAutoAnalysis && <AnalyzeNdaButton dossierId={dossier.id} />}
 
             <SelenCard>
               <SelenCardTitle>Historique</SelenCardTitle>

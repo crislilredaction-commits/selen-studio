@@ -60,7 +60,31 @@ type DossierRow = {
   created_at: string;
   organisations: OrganisationRelation;
   dossier_assignments: AssignmentRow[] | null;
+  messages?:
+    | {
+        id: string;
+        sender_type: "agent" | "client";
+        read_by_agent_at: string | null;
+      }[]
+    | null;
 };
+
+function getUnreadClientMessagesCount(
+  messages?:
+    | {
+        id: string;
+        sender_type: "agent" | "client";
+        read_by_agent_at: string | null;
+      }[]
+    | null,
+): number {
+  if (!messages || messages.length === 0) return 0;
+
+  return messages.filter(
+    (message) =>
+      message.sender_type === "client" && message.read_by_agent_at === null,
+  ).length;
+}
 
 function getOrganisationName(organisation: OrganisationRelation): string {
   if (!organisation) return "—";
@@ -193,22 +217,27 @@ export default async function AgentDossiersPage() {
     .from("dossiers")
     .select(
       `
-        id,
-        title,
-        type,
-        status,
-        created_at,
-        organisations (
-          name
-        ),
-        dossier_assignments (
-          is_primary,
-          profiles:agent_id (
-            full_name,
-            email
-          )
+      id,
+      title,
+      type,
+      status,
+      created_at,
+      organisations (
+        name
+      ),
+      dossier_assignments (
+        is_primary,
+        profiles:agent_id (
+          full_name,
+          email
         )
-      `,
+      ),
+      messages (
+        id,
+        sender_type,
+        read_by_agent_at
+      )
+    `,
     )
     .order("created_at", { ascending: false });
 
@@ -316,105 +345,165 @@ export default async function AgentDossiersPage() {
               gap: 10,
             }}
           >
-            {dossiers.map((dossier) => (
-              <Link
-                key={dossier.id}
-                href={`/agent/dossiers/${dossier.id}`}
-                style={{
-                  textDecoration: "none",
-                  color: "inherit",
-                }}
-              >
-                <div
+            {dossiers.map((dossier) => {
+              const unreadCount = getUnreadClientMessagesCount(
+                dossier.messages,
+              );
+              const hasUnread = unreadCount > 0;
+
+              return (
+                <Link
+                  key={dossier.id}
+                  href={`/agent/dossiers/${dossier.id}`}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.7fr 1.1fr 0.8fr 1fr 1.1fr 0.8fr",
-                    gap: 12,
-                    alignItems: "center",
-                    padding: "14px 16px",
-                    borderRadius: "var(--radius-md)",
-                    background: "var(--selen-bg3)",
-                    border: "1px solid var(--selen-border)",
+                    textDecoration: "none",
+                    color: "inherit",
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.7fr 1.1fr 0.8fr 1fr 1.1fr 0.8fr",
+                      gap: 12,
+                      alignItems: "center",
+                      padding: "14px 16px",
+                      borderRadius: "var(--radius-md)",
+                      background: "var(--selen-bg3)",
+                      border: "1px solid var(--selen-border)",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "var(--selen-text)",
+                          marginBottom: 4,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {dossier.title}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "var(--selen-text3)",
+                          }}
+                        >
+                          Créé le{" "}
+                          {new Date(dossier.created_at).toLocaleDateString(
+                            "fr-FR",
+                          )}
+                        </div>
+
+                        {hasUnread && (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              background: "rgba(212, 159, 63, 0.16)",
+                              border: "1px solid rgba(212, 159, 63, 0.35)",
+                              color: "var(--selen-gold2)",
+                              borderRadius: 999,
+                              padding: "3px 8px",
+                              fontSize: 10,
+                              fontWeight: 700,
+                              letterSpacing: "0.08em",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Nouveau message
+                            <span
+                              style={{
+                                minWidth: 18,
+                                height: 18,
+                                borderRadius: 999,
+                                background: "var(--selen-gold)",
+                                color: "#1a120b",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: 10,
+                                fontWeight: 700,
+                                padding: "0 5px",
+                              }}
+                            >
+                              {unreadCount}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
                     <div
                       style={{
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "var(--selen-text)",
-                        marginBottom: 4,
+                        fontSize: 13,
+                        color: "var(--selen-text2)",
+                        minWidth: 0,
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                       }}
                     >
-                      {dossier.title}
+                      {getOrganisationName(dossier.organisations)}
                     </div>
+
+                    <div>
+                      <SelenBadge
+                        variant={getTypeBadgeVariant(dossier.type)}
+                        dot
+                      >
+                        {getTypeLabel(dossier.type)}
+                      </SelenBadge>
+                    </div>
+
+                    <div>
+                      <SelenBadge
+                        variant={getStatusBadgeVariant(dossier.status)}
+                        dot
+                      >
+                        {getStatusLabel(dossier.status)}
+                      </SelenBadge>
+                    </div>
+
                     <div
                       style={{
-                        fontSize: 11,
-                        color: "var(--selen-text3)",
+                        fontSize: 13,
+                        color: "var(--selen-text2)",
+                        minWidth: 0,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
                       }}
                     >
-                      Créé le{" "}
-                      {new Date(dossier.created_at).toLocaleDateString("fr-FR")}
+                      {getAssignedAgentName(dossier.dossier_assignments)}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--selen-gold2)",
+                        textAlign: "right",
+                      }}
+                    >
+                      Ouvrir →
                     </div>
                   </div>
-
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "var(--selen-text2)",
-                      minWidth: 0,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {getOrganisationName(dossier.organisations)}
-                  </div>
-
-                  <div>
-                    <SelenBadge variant={getTypeBadgeVariant(dossier.type)} dot>
-                      {getTypeLabel(dossier.type)}
-                    </SelenBadge>
-                  </div>
-
-                  <div>
-                    <SelenBadge
-                      variant={getStatusBadgeVariant(dossier.status)}
-                      dot
-                    >
-                      {getStatusLabel(dossier.status)}
-                    </SelenBadge>
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "var(--selen-text2)",
-                      minWidth: 0,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {getAssignedAgentName(dossier.dossier_assignments)}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--selen-gold2)",
-                      textAlign: "right",
-                    }}
-                  >
-                    Ouvrir →
-                  </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
       </SelenCard>

@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     );
 
     const body = await req.json();
-    const { dossierId, ...values } = body;
+    const { dossierId, ...rawValues } = body;
 
     if (!dossierId) {
       return NextResponse.json(
@@ -38,30 +38,35 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: existing } = await supabase
+    const payload = {
+      dossier_id: dossierId,
+      representant_prenom: rawValues.representant_prenom ?? null,
+      representant_nom: rawValues.representant_nom ?? null,
+      formateur_nom: rawValues.formateur_nom ?? null,
+      formateur_prenom: rawValues.formateur_prenom ?? null,
+      formateur_email: rawValues.formateur_email ?? null,
+      intitule_formation: rawValues.intitule_formation ?? null,
+      duree_formation: rawValues.duree_formation ?? null,
+      tarif_formation: rawValues.tarif_formation ?? null,
+      modalite: rawValues.modalite ?? null,
+      nb_formateurs:
+        typeof rawValues.nb_formateurs === "number"
+          ? rawValues.nb_formateurs
+          : rawValues.nb_formateurs
+            ? Number(rawValues.nb_formateurs)
+            : null,
+      ville: rawValues.ville ?? null,
+      code_postal: rawValues.code_postal ?? null,
+      region: rawValues.region ?? null,
+      siret: rawValues.siret ?? null,
+    };
+
+    const { error } = await supabase
       .from("nda_variables")
-      .select("id")
-      .eq("dossier_id", dossierId)
-      .maybeSingle();
+      .upsert(payload, { onConflict: "dossier_id" });
 
-    if (existing?.id) {
-      const { error } = await supabase
-        .from("nda_variables")
-        .update(values)
-        .eq("id", existing.id);
-
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-    } else {
-      const { error } = await supabase.from("nda_variables").insert({
-        dossier_id: dossierId,
-        ...values,
-      });
-
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });

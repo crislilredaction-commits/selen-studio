@@ -35,19 +35,24 @@ export async function POST(req: Request) {
     const rawOrganisationId = formData.get("organisation_id");
     const rawDocumentType = formData.get("document_type");
 
+    const cleanDossierId =
+      typeof rawDossierId === "string" ? rawDossierId.trim() : "";
+
     const dossier_id =
-      typeof rawDossierId === "string" && rawDossierId.trim() !== ""
-        ? rawDossierId
+      cleanDossierId &&
+      cleanDossierId !== "undefined" &&
+      cleanDossierId !== "null"
+        ? cleanDossierId
         : null;
 
     const organisation_id =
       typeof rawOrganisationId === "string" && rawOrganisationId.trim() !== ""
-        ? rawOrganisationId
+        ? rawOrganisationId.trim()
         : null;
 
     const document_type =
       typeof rawDocumentType === "string" && rawDocumentType.trim() !== ""
-        ? rawDocumentType
+        ? rawDocumentType.trim()
         : "document_libre";
 
     if (!file || !organisation_id) {
@@ -62,12 +67,35 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const fileBuffer = new Uint8Array(arrayBuffer);
 
-    const { error: uploadError } = await supabase.storage
+    console.log("UPLOAD DOCUMENT:", {
+      fileName: file.name,
+      dossier_id,
+      organisation_id,
+      document_type,
+      filePath,
+    });
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from("documents")
       .upload(filePath, fileBuffer, {
         contentType: file.type || "application/octet-stream",
         upsert: false,
       });
+
+    console.log("UPLOAD RESULT:", {
+      filePath,
+      uploadData,
+      uploadError: uploadError?.message ?? null,
+    });
+
+    const { data: testDownloadData, error: testDownloadError } =
+      await supabase.storage.from("documents").download(filePath);
+
+    console.log("UPLOAD READBACK TEST:", {
+      filePath,
+      readable: !!testDownloadData,
+      error: testDownloadError?.message ?? null,
+    });
 
     if (uploadError) {
       console.error("STORAGE ERROR:", uploadError);
@@ -96,9 +124,10 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, filePath });
   } catch (error) {
     console.error("UPLOAD ROUTE FATAL:", error);
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erreur inconnue." },
       { status: 500 },

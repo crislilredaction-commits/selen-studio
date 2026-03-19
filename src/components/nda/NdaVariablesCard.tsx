@@ -5,11 +5,14 @@ import { useEffect, useState } from "react";
 type Props = {
   dossierId: string;
   initialValues: {
+    representant_prenom?: string | null;
+    representant_nom?: string | null;
     formateur_nom?: string | null;
     formateur_prenom?: string | null;
     formateur_email?: string | null;
     intitule_formation?: string | null;
     duree_formation?: string | null;
+    tarif_formation?: string | null;
     modalite?: string | null;
     nb_formateurs?: number | null;
     ville?: string | null;
@@ -21,11 +24,14 @@ type Props = {
 
 function buildState(initialValues: Props["initialValues"]) {
   return {
+    representant_prenom: initialValues?.representant_prenom ?? "",
+    representant_nom: initialValues?.representant_nom ?? "",
     formateur_nom: initialValues?.formateur_nom ?? "",
     formateur_prenom: initialValues?.formateur_prenom ?? "",
     formateur_email: initialValues?.formateur_email ?? "",
     intitule_formation: initialValues?.intitule_formation ?? "",
     duree_formation: initialValues?.duree_formation ?? "",
+    tarif_formation: initialValues?.tarif_formation ?? "",
     modalite: initialValues?.modalite ?? "",
     nb_formateurs: initialValues?.nb_formateurs?.toString() ?? "",
     ville: initialValues?.ville ?? "",
@@ -37,7 +43,6 @@ function buildState(initialValues: Props["initialValues"]) {
 
 export default function NdaVariablesCard({ dossierId, initialValues }: Props) {
   const [values, setValues] = useState(buildState(initialValues));
-
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -69,7 +74,7 @@ export default function NdaVariablesCard({ dossierId, initialValues }: Props) {
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      alert(data?.error ?? "Erreur sauvegarde variables NDA");
+      alert(data?.error ?? "Erreur sauvegarde variables");
       return;
     }
 
@@ -107,7 +112,7 @@ export default function NdaVariablesCard({ dossierId, initialValues }: Props) {
           color: "var(--selen-text)",
         }}
       >
-        Variables NDA
+        Variables
       </h3>
 
       <div
@@ -117,6 +122,19 @@ export default function NdaVariablesCard({ dossierId, initialValues }: Props) {
           gap: 12,
         }}
       >
+        <input
+          placeholder="Prénom représentant"
+          value={values.representant_prenom}
+          onChange={(e) => updateField("representant_prenom", e.target.value)}
+          style={inputStyle}
+        />
+        <input
+          placeholder="Nom représentant"
+          value={values.representant_nom}
+          onChange={(e) => updateField("representant_nom", e.target.value)}
+          style={inputStyle}
+        />
+
         <input
           placeholder="Nom formateur"
           value={values.formateur_nom}
@@ -129,6 +147,7 @@ export default function NdaVariablesCard({ dossierId, initialValues }: Props) {
           onChange={(e) => updateField("formateur_prenom", e.target.value)}
           style={inputStyle}
         />
+
         <input
           placeholder="Email formateur"
           value={values.formateur_email}
@@ -141,12 +160,20 @@ export default function NdaVariablesCard({ dossierId, initialValues }: Props) {
           onChange={(e) => updateField("intitule_formation", e.target.value)}
           style={inputStyle}
         />
+
         <input
           placeholder="Durée formation"
           value={values.duree_formation}
           onChange={(e) => updateField("duree_formation", e.target.value)}
           style={inputStyle}
         />
+        <input
+          placeholder="Tarif formation"
+          value={values.tarif_formation}
+          onChange={(e) => updateField("tarif_formation", e.target.value)}
+          style={inputStyle}
+        />
+
         <input
           placeholder="Modalité"
           value={values.modalite}
@@ -159,6 +186,7 @@ export default function NdaVariablesCard({ dossierId, initialValues }: Props) {
           onChange={(e) => updateField("nb_formateurs", e.target.value)}
           style={inputStyle}
         />
+
         <input
           placeholder="Ville"
           value={values.ville}
@@ -171,6 +199,7 @@ export default function NdaVariablesCard({ dossierId, initialValues }: Props) {
           onChange={(e) => updateField("code_postal", e.target.value)}
           style={inputStyle}
         />
+
         <input
           placeholder="Région"
           value={values.region}
