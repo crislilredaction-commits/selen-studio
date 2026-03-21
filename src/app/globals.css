@@ -52,3 +52,28 @@ textarea,
 button {
   font: inherit;
 }
+
+.sparkle-magic {
+  display: inline-block;
+  animation: sparkleFloat 1.2s ease-in-out infinite;
+}
+
+.sparkle-delay-1 {
+  animation-delay: 0.2s;
+}
+
+.sparkle-delay-2 {
+  animation-delay: 0.4s;
+}
+
+@keyframes sparkleFloat {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.65;
+  }
+  50% {
+    transform: translateY(-4px) scale(1.12);
+    opacity: 1;
+  }
+}

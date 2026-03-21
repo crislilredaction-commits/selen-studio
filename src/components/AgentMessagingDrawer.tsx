@@ -13,10 +13,12 @@ export default function AgentMessagingDrawer({
   dossierId,
   initialMessages = [],
   hasUnread = false,
+  unreadCount = 0,
 }: {
   dossierId: string;
   initialMessages?: MessageItem[];
   hasUnread?: boolean;
+  unreadCount?: number;
 }) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -143,9 +145,11 @@ export default function AgentMessagingDrawer({
               marginTop: 4,
             }}
           >
-            {messages.length > 0
-              ? `${messages.length} message${messages.length > 1 ? "s" : ""}`
-              : "Ouvrir la conversation"}
+            {unreadCount > 0
+              ? `${unreadCount} message${unreadCount > 1 ? "s" : ""} non lu${unreadCount > 1 ? "s" : ""}`
+              : messages.length > 0
+                ? "Conversation ouverte"
+                : "Ouvrir la conversation"}
           </div>
         </div>
 
@@ -173,7 +177,7 @@ export default function AgentMessagingDrawer({
             </span>
           )}
 
-          {messages.length > 0 && (
+          {unreadCount > 0 && (
             <span
               style={{
                 minWidth: 22,
@@ -189,7 +193,7 @@ export default function AgentMessagingDrawer({
                 padding: "0 6px",
               }}
             >
-              {messages.length}
+              {unreadCount}
             </span>
           )}
 

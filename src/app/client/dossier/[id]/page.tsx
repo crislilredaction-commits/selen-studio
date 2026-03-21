@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ClientMessagingPanel from "@/components/ClientMessagingPanel";
+import ClientProgramProposal from "@/components/ClientProgramProposal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,6 +61,9 @@ export default function ClientNdaPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isMessagingOpen, setIsMessagingOpen] = useState(false);
+  const [programProposal, setProgramProposal] = useState<any | null>(null);
+  const [step1Submitted, setStep1Submitted] = useState(false);
+  const [showStep1Details, setShowStep1Details] = useState(false);
 
   function updateForm<K extends keyof typeof form>(
     key: K,
@@ -71,6 +75,76 @@ export default function ClientNdaPage() {
   function handleFileDrop(key: DocKey, file: File) {
     setDocs((prev) => ({ ...prev, [key]: { file, uploading: false } }));
   }
+
+  useEffect(() => {
+    async function loadClientState() {
+      try {
+        if (!dossierId) return;
+
+        const [programRes, messagesRes] = await Promise.all([
+          fetch(
+            `/agent/api/program/client-latest?dossierId=${encodeURIComponent(dossierId)}`,
+            {
+              cache: "no-store",
+            },
+          ),
+          fetch(
+            `/agent/api/messages/list?dossierId=${encodeURIComponent(dossierId)}`,
+            {
+              cache: "no-store",
+            },
+          ),
+        ]);
+
+        const programData = await programRes.json().catch(() => null);
+        const messagesData = await messagesRes.json().catch(() => null);
+
+        if (programRes.ok) {
+          setProgramProposal(programData?.version ?? null);
+        }
+
+        if (messagesRes.ok) {
+          const items = Array.isArray(messagesData?.items)
+            ? messagesData.items
+            : [];
+
+          const hasAnyExchange = items.length > 0;
+          if (hasAnyExchange) {
+            setStep1Submitted(true);
+          }
+        }
+      } catch {
+        // silencieux
+      }
+    }
+
+    loadClientState();
+  }, [dossierId]);
+
+  useEffect(() => {
+    async function loadProgramProposal() {
+      try {
+        if (!dossierId) return;
+
+        const res = await fetch(
+          `/agent/api/program/client-latest?dossierId=${encodeURIComponent(dossierId)}`,
+          {
+            cache: "no-store",
+          },
+        );
+
+        const data = await res.json().catch(() => null);
+
+        if (res.ok) {
+          setProgramProposal(data?.version ?? null);
+        }
+      } catch {
+        // silencieux
+      }
+    }
+
+    loadProgramProposal();
+  }, [dossierId]);
 
   async function saveStep1() {
     if (!dossierId) {
@@ -120,6 +194,7 @@ export default function ClientNdaPage() {
       setSaving(true);
       setErrorMessage(null);
       setSuccessMessage(null);
+      setStep1Submitted(true);
 
       await saveStep1();
 
@@ -137,6 +212,7 @@ export default function ClientNdaPage() {
       }
 
       setSuccessMessage("Vos informations essentielles ont bien été envoyées.");
+      setStep1Submitted(true);
       router.refresh();
     } catch (error) {
       setErrorMessage(
@@ -511,331 +587,470 @@ export default function ClientNdaPage() {
       >
         {/* ====================== COLONNE GAUCHE ========================= */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          {/* --- Intro étape --- */}
-          <Card>
-            <Badge>Étape 1</Badge>
-            <h2 style={styles.cardTitle}>Avant de commencer</h2>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-                marginTop: 16,
-              }}
-            >
-              <p style={styles.body}>
-                Ici, nous recueillons les informations indispensables pour
-                lancer votre accompagnement et préparer vos documents.
-              </p>
-              <p style={styles.body}>
-                Nous ne vous demandons pas tout d'un coup : l'objectif est de
-                vous faire avancer étape par étape, sans surcharge.
-              </p>
-              <p
+          {!step1Submitted ? (
+            <>
+              <Card>
+                <Badge>Étape 1</Badge>
+                <h2 style={styles.cardTitle}>Avant de commencer</h2>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                    marginTop: 16,
+                  }}
+                >
+                  <p style={styles.body}>
+                    Ici, nous recueillons les informations indispensables pour
+                    lancer votre accompagnement et préparer vos documents.
+                  </p>
+                  <p style={styles.body}>
+                    Nous ne vous demandons pas tout d&apos;un coup :
+                    l&apos;objectif est de vous faire avancer étape par étape,
+                    sans surcharge.
+                  </p>
+                  <p
+                    style={{
+                      ...styles.body,
+                      fontStyle: "italic",
+                      color: "#7f6b58",
+                    }}
+                  >
+                    Étape suivante : lorsque vous aurez trouvé votre client ou
+                    votre session, vous nous transmettrez les coordonnées
+                    utiles, les dates et le lieu de formation.
+                  </p>
+                </div>
+              </Card>
+
+              <SimpleFormCard
+                badge="Indispensable"
+                title="Organisme de formation"
+                intro="Ces informations nous servent à ouvrir correctement votre accompagnement et à préparer les futurs documents au nom de votre organisme."
+              >
+                <Field
+                  label="Raison sociale"
+                  placeholder="Ex. Nom organisme"
+                  value={form.organisation_name}
+                  onChange={(value) => updateForm("organisation_name", value)}
+                />
+                <Field
+                  label="Email"
+                  placeholder="contact@exemple.fr"
+                  type="email"
+                  value={form.organisation_email}
+                  onChange={(value) => updateForm("organisation_email", value)}
+                />
+                <Field
+                  label="Téléphone"
+                  placeholder="06 00 00 00 00"
+                  value={form.organisation_phone}
+                  onChange={(value) => updateForm("organisation_phone", value)}
+                />
+              </SimpleFormCard>
+
+              <SimpleFormCard
+                badge="Indispensable"
+                title="Représentant de l'organisme"
+                intro="Nous utiliserons ces informations pour compléter les documents administratifs liés à votre organisme."
+              >
+                <Field
+                  label="Prénom"
+                  placeholder="Prénom"
+                  value={form.representant_prenom}
+                  onChange={(value) => updateForm("representant_prenom", value)}
+                />
+                <Field
+                  label="Nom"
+                  placeholder="Nom"
+                  value={form.representant_nom}
+                  onChange={(value) => updateForm("representant_nom", value)}
+                />
+              </SimpleFormCard>
+
+              <SimpleFormCard
+                badge="Indispensable"
+                title="Formateur principal"
+                intro="Ces informations nous permettent d'identifier correctement le formateur principal et de préparer les documents associés."
+              >
+                <Field
+                  label="Prénom"
+                  placeholder="Prénom"
+                  value={form.formateur_prenom}
+                  onChange={(value) => updateForm("formateur_prenom", value)}
+                />
+                <Field
+                  label="Nom"
+                  placeholder="Nom"
+                  value={form.formateur_nom}
+                  onChange={(value) => updateForm("formateur_nom", value)}
+                />
+                <Field
+                  label="Email"
+                  placeholder="formateur@exemple.fr"
+                  type="email"
+                  full
+                  value={form.formateur_email}
+                  onChange={(value) => updateForm("formateur_email", value)}
+                />
+              </SimpleFormCard>
+
+              <Card>
+                <Badge>Indispensable</Badge>
+                <h2 style={styles.cardTitle}>Formation</h2>
+                <p style={{ ...styles.body, marginTop: 12, marginBottom: 20 }}>
+                  Nous avons besoin ici de l'intitulé exact, de la durée, du
+                  tarif et de la modalité. Les dates, le lieu précis et les
+                  informations stagiaire seront demandés à l'étape suivante.
+                </p>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 16,
+                  }}
+                >
+                  <Field
+                    label="Intitulé exact de la formation"
+                    placeholder="Ex. Création et gestion d'entreprise"
+                    full
+                    value={form.formation_intitule}
+                    onChange={(value) =>
+                      updateForm("formation_intitule", value)
+                    }
+                  />
+                  <Field
+                    label="Durée"
+                    placeholder="35 heures"
+                    value={form.formation_duree}
+                    onChange={(value) => updateForm("formation_duree", value)}
+                  />
+                  <Field
+                    label="Tarif"
+                    placeholder="Ex. 1 200 € TTC"
+                    value={form.formation_tarif}
+                    onChange={(value) => updateForm("formation_tarif", value)}
+                  />
+                  <SelectField
+                    label="Modalité"
+                    options={["Présentiel", "Distanciel", "Mixte"]}
+                    value={form.formation_modalite}
+                    onChange={(value) =>
+                      updateForm("formation_modalite", value)
+                    }
+                  />
+                </div>
+                <Notice style={{ marginTop: 16 }}>
+                  Le programme doit être cohérent avec les diplômes et la
+                  qualification du formateur. En cas d'écart, un ajustement
+                  pourra être nécessaire avant validation.
+                </Notice>
+              </Card>
+
+              <Card>
+                <Badge>Documents</Badge>
+                <h2 style={styles.cardTitle}>Pièces à déposer</h2>
+                <p style={{ ...styles.body, marginTop: 12, marginBottom: 20 }}>
+                  Ces pièces nous permettent de vérifier la cohérence de votre
+                  activité et de préparer le traitement administratif dans de
+                  bonnes conditions.
+                </p>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 16,
+                  }}
+                >
+                  <DocDropZone
+                    docKey="cv"
+                    name="CV formateur"
+                    status="Obligatoire"
+                    statusColor="required"
+                    description="Le CV doit mentionner les formations dispensées, les diplômes obtenus et l'expérience professionnelle du formateur."
+                    notice="Format accepté : PDF, DOCX. Assurez-vous que le CV est à jour et reflète les compétences liées à la formation."
+                    state={docs.cv}
+                    onDrop={(f) => handleFileDrop("cv", f)}
+                  />
+                  <DocDropZone
+                    docKey="programme"
+                    name="Programme de formation"
+                    status="Obligatoire"
+                    statusColor="required"
+                    description="Le programme doit être en rapport avec les diplômes du formateur. Si votre programme n'est pas conforme ou risque d'être refusé, une reformulation vous sera proposée."
+                    notice="Format accepté : PDF, DOCX. Nous vous proposons un modèle à télécharger si vous n'en avez pas encore."
+                    state={docs.programme}
+                    onDrop={(f) => handleFileDrop("programme", f)}
+                    downloadLabel="Télécharger le modèle de programme de formation"
+                    downloadHref="/templates/modele-programme-formation-selen.docx"
+                  />
+                  <DocDropZone
+                    docKey="insee"
+                    name="Avis INSEE"
+                    status="Obligatoire"
+                    statusColor="required"
+                    description="L'avis de situation SIRENE (INSEE) permet de vérifier l'existence légale de votre organisme et votre code APE."
+                    notice={
+                      <>
+                        Téléchargeable gratuitement sur{" "}
+                        <a
+                          href="https://avis-situation-sirene.insee.fr/"
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            color: "#9c5a2e",
+                            fontWeight: 600,
+                            textDecoration: "underline",
+                            textUnderlineOffset: 2,
+                          }}
+                        >
+                          le site de l’INSEE
+                        </a>
+                        . Doit dater de moins de 3 mois.
+                      </>
+                    }
+                    state={docs.insee}
+                    onDrop={(f) => handleFileDrop("insee", f)}
+                  />
+                  <DocDropZone
+                    docKey="kbis"
+                    name="Extrait KBIS"
+                    status="Si concerné"
+                    statusColor="optional"
+                    description="Le KBIS est requis pour les sociétés commerciales. Il n’est pas attendu pour les micro-entreprises."
+                    notice={
+                      <>
+                        À récupérer sur{" "}
+                        <a
+                          href="https://www.infogreffe.fr/kbis-documents/extrait-kbis?gad_source=1&gad_campaignid=23156315645&gbraid=0AAAAA90djejbDaanrl7BHHLn2O3kybwqB&gclid=Cj0KCQjwmunNBhDbARIsAOndKpm7ss8JfBpadw7vJdKBPyRo3mOxmvFG3a1cMhvucrhq4MNQLetqRWwaAuX1EALw_wcB"
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            color: "#9c5a2e",
+                            fontWeight: 600,
+                            textDecoration: "underline",
+                            textUnderlineOffset: 2,
+                          }}
+                        >
+                          Infogreffe
+                        </a>
+                        . Pas de KBIS pour les micro-entreprises.
+                      </>
+                    }
+                    state={docs.kbis}
+                    onDrop={(f) => handleFileDrop("kbis", f)}
+                  />
+                </div>
+
+                <Notice style={{ marginTop: 20 }}>
+                  Vous avez un document ou une image et vous souhaitez le
+                  transformer en PDF ? Le site{" "}
+                  <a
+                    href="https://www.ilovepdf.com/fr/"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      color: "#9c5a2e",
+                      fontWeight: 600,
+                      textDecoration: "underline",
+                      textUnderlineOffset: 2,
+                    }}
+                  >
+                    iLovePDF
+                  </a>{" "}
+                  permet de convertir gratuitement vos documents en PDF.
+                </Notice>
+              </Card>
+
+              <div
                 style={{
-                  ...styles.body,
-                  fontStyle: "italic",
-                  color: "#7f6b58",
+                  display: "flex",
+                  gap: 12,
+                  justifyContent: "flex-end",
+                  paddingTop: 8,
+                  flexWrap: "wrap",
                 }}
               >
-                Étape suivante : lorsque vous aurez trouvé votre client ou votre
-                session, vous nous transmettrez les coordonnées utiles, les
-                dates et le lieu de formation.
-              </p>
-            </div>
-          </Card>
+                <Btn variant="ghost" onClick={handleSaveDraft}>
+                  {saving
+                    ? "Enregistrement..."
+                    : "Enregistrer mes informations"}
+                </Btn>
+                <Btn variant="primary" onClick={handleSubmitEssentialInfos}>
+                  {saving
+                    ? "Envoi en cours..."
+                    : "Envoyer mes informations essentielles →"}
+                </Btn>
 
-          {/* --- Organisme --- */}
-          <SimpleFormCard
-            badge="Indispensable"
-            title="Organisme de formation"
-            intro="Ces informations nous servent à ouvrir correctement votre accompagnement et à préparer les futurs documents au nom de votre organisme."
-          >
-            <Field
-              label="Raison sociale"
-              placeholder="Ex. Nom organisme"
-              value={form.organisation_name}
-              onChange={(value) => updateForm("organisation_name", value)}
-            />
-            <Field
-              label="Email"
-              placeholder="contact@exemple.fr"
-              type="email"
-              value={form.organisation_email}
-              onChange={(value) => updateForm("organisation_email", value)}
-            />
+                {errorMessage && (
+                  <Notice
+                    style={{
+                      marginTop: 8,
+                      border: "1px solid #e7b8b8",
+                      background: "#fff1f1",
+                      color: "#8a2f2f",
+                      width: "100%",
+                    }}
+                  >
+                    {errorMessage}
+                  </Notice>
+                )}
 
-            <Field
-              label="Téléphone"
-              placeholder="06 00 00 00 00"
-              value={form.organisation_phone}
-              onChange={(value) => updateForm("organisation_phone", value)}
-            />
-          </SimpleFormCard>
+                {successMessage && (
+                  <Notice
+                    style={{
+                      marginTop: 8,
+                      border: "1px solid #cfe3c3",
+                      background: "#f4fbef",
+                      color: "#446236",
+                      width: "100%",
+                    }}
+                  >
+                    {successMessage}
+                  </Notice>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <Card>
+                <Badge>Étape 1 terminée</Badge>
+                <h2 style={styles.cardTitle}>
+                  Merci, votre dossier a bien été transmis
+                </h2>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                    marginTop: 16,
+                  }}
+                >
+                  <p style={styles.body}>
+                    Un agent va maintenant prendre en charge votre dossier. Il
+                    pourra vous contacter si certains éléments doivent être
+                    précisés ou complétés.
+                  </p>
+                  <p style={styles.body}>
+                    La prochaine étape consiste à vérifier et, si nécessaire, à
+                    retravailler votre programme afin qu’il soit cohérent avec
+                    les diplômes du formateur et les attentes de l’instruction
+                    du dossier.
+                  </p>
+                  <Notice>
+                    Notre objectif est de vous proposer un programme conforme,
+                    cohérent et défendable, afin d’optimiser les chances
+                    d’acceptation de votre demande.
+                  </Notice>
+                </div>
+              </Card>
 
-          {/* --- Représentant --- */}
-          <SimpleFormCard
-            badge="Indispensable"
-            title="Représentant de l'organisme"
-            intro="Nous utiliserons ces informations pour compléter les documents administratifs liés à votre organisme."
-          >
-            <Field
-              label="Prénom"
-              placeholder="Prénom"
-              value={form.representant_prenom}
-              onChange={(value) => updateForm("representant_prenom", value)}
-            />
+              <Card>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <Badge>Vos informations</Badge>
+                    <h2 style={{ ...styles.cardTitle, marginTop: 6 }}>
+                      Informations déjà transmises
+                    </h2>
+                  </div>
 
-            <Field
-              label="Nom"
-              placeholder="Nom"
-              value={form.representant_nom}
-              onChange={(value) => updateForm("representant_nom", value)}
-            />
-          </SimpleFormCard>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowStep1Details((prev) => !prev)}
+                  >
+                    {showStep1Details ? "Masquer" : "Afficher"}
+                  </Btn>
+                </div>
 
-          {/* --- Formateur --- */}
-          <SimpleFormCard
-            badge="Indispensable"
-            title="Formateur principal"
-            intro="Ces informations nous permettent d'identifier correctement le formateur principal et de préparer les documents associés."
-          >
-            <Field
-              label="Prénom"
-              placeholder="Prénom"
-              value={form.formateur_prenom}
-              onChange={(value) => updateForm("formateur_prenom", value)}
-            />
+                {showStep1Details ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                      marginTop: 16,
+                    }}
+                  >
+                    <Notice>
+                      Vous pouvez consulter les éléments transmis. Si une
+                      correction est nécessaire, votre agent vous l’indiquera
+                      directement dans la messagerie.
+                    </Notice>
 
-            <Field
-              label="Nom"
-              placeholder="Nom"
-              value={form.formateur_nom}
-              onChange={(value) => updateForm("formateur_nom", value)}
-            />
+                    <div style={{ ...styles.body }}>
+                      <strong>Organisme :</strong>{" "}
+                      {form.organisation_name || "—"}
+                    </div>
+                    <div style={{ ...styles.body }}>
+                      <strong>Email :</strong> {form.organisation_email || "—"}
+                    </div>
+                    <div style={{ ...styles.body }}>
+                      <strong>Téléphone :</strong>{" "}
+                      {form.organisation_phone || "—"}
+                    </div>
+                    <div style={{ ...styles.body }}>
+                      <strong>Formateur :</strong>{" "}
+                      {form.formateur_prenom || "—"} {form.formateur_nom || ""}
+                    </div>
+                    <div style={{ ...styles.body }}>
+                      <strong>Formation :</strong>{" "}
+                      {form.formation_intitule || "—"}
+                    </div>
+                    <div style={{ ...styles.body }}>
+                      <strong>Durée :</strong> {form.formation_duree || "—"}
+                    </div>
+                    <div style={{ ...styles.body }}>
+                      <strong>Modalité :</strong>{" "}
+                      {form.formation_modalite || "—"}
+                    </div>
+                  </div>
+                ) : null}
+              </Card>
 
-            <Field
-              label="Email"
-              placeholder="formateur@exemple.fr"
-              type="email"
-              full
-              value={form.formateur_email}
-              onChange={(value) => updateForm("formateur_email", value)}
-            />
-          </SimpleFormCard>
+              <Card>
+                <Badge>Travail du programme</Badge>
+                <h2 style={styles.cardTitle}>
+                  Prochaine étape : votre programme
+                </h2>
+                <p style={{ ...styles.body, marginTop: 12 }}>
+                  Un agent va analyser les éléments transmis et vous proposer,
+                  si nécessaire, une version conforme de votre programme, en
+                  accord avec les diplômes du formateur et les exigences du
+                  dossier.
+                </p>
+                <p style={{ ...styles.body, marginTop: 12 }}>
+                  Cette proposition apparaîtra ici dès qu’elle sera prête.
+                </p>
+              </Card>
 
-          {/* --- Formation --- */}
-          <Card>
-            <Badge>Indispensable</Badge>
-            <h2 style={styles.cardTitle}>Formation</h2>
-            <p style={{ ...styles.body, marginTop: 12, marginBottom: 20 }}>
-              Nous avons besoin ici de l'intitulé exact, de la durée, du tarif
-              et de la modalité. Les dates, le lieu précis et les informations
-              stagiaire seront demandés à l'étape suivante.
-            </p>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 16,
-              }}
-            >
-              <Field
-                label="Intitulé exact de la formation"
-                placeholder="Ex. Création et gestion d'entreprise"
-                full
-                value={form.formation_intitule}
-                onChange={(value) => updateForm("formation_intitule", value)}
-              />
-
-              <Field
-                label="Durée"
-                placeholder="35 heures"
-                value={form.formation_duree}
-                onChange={(value) => updateForm("formation_duree", value)}
-              />
-
-              <Field
-                label="Tarif"
-                placeholder="Ex. 1 200 € TTC"
-                value={form.formation_tarif}
-                onChange={(value) => updateForm("formation_tarif", value)}
-              />
-
-              <SelectField
-                label="Modalité"
-                options={["Présentiel", "Distanciel", "Mixte"]}
-                value={form.formation_modalite}
-                onChange={(value) => updateForm("formation_modalite", value)}
-              />
-            </div>
-            <Notice style={{ marginTop: 16 }}>
-              Le programme doit être cohérent avec les diplômes et la
-              qualification du formateur. En cas d'écart, un ajustement pourra
-              être nécessaire avant validation.
-            </Notice>
-          </Card>
-
-          {/* --- Pièces à déposer --- */}
-          <Card>
-            <Badge>Documents</Badge>
-            <h2 style={styles.cardTitle}>Pièces à déposer</h2>
-            <p style={{ ...styles.body, marginTop: 12, marginBottom: 20 }}>
-              Ces pièces nous permettent de vérifier la cohérence de votre
-              activité et de préparer le traitement administratif dans de bonnes
-              conditions.
-            </p>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 16,
-              }}
-            >
-              <DocDropZone
-                docKey="cv"
-                name="CV formateur"
-                status="Obligatoire"
-                statusColor="required"
-                description="Le CV doit mentionner les formations dispensées, les diplômes obtenus et l'expérience professionnelle du formateur."
-                notice="Format accepté : PDF, DOCX. Assurez-vous que le CV est à jour et reflète les compétences liées à la formation."
-                state={docs.cv}
-                onDrop={(f) => handleFileDrop("cv", f)}
-              />
-              <DocDropZone
-                docKey="programme"
-                name="Programme de formation"
-                status="Obligatoire"
-                statusColor="required"
-                description="Le programme doit être en rapport avec les diplômes du formateur. Si votre programme n'est pas conforme ou risque d'être refusé, une reformulation vous sera proposée."
-                notice="Format accepté : PDF, DOCX. Nous vous proposons un modèle à télécharger si vous n'en avez pas encore."
-                state={docs.programme}
-                onDrop={(f) => handleFileDrop("programme", f)}
-                downloadLabel="Télécharger le modèle de programme de formation"
-                downloadHref="/templates/modele-programme-formation-selen.docx"
-              />
-              <DocDropZone
-                docKey="insee"
-                name="Avis INSEE"
-                status="Obligatoire"
-                statusColor="required"
-                description="L'avis de situation SIRENE (INSEE) permet de vérifier l'existence légale de votre organisme et votre code APE."
-                notice={
-                  <>
-                    Téléchargeable gratuitement sur{" "}
-                    <a
-                      href="https://avis-situation-sirene.insee.fr/"
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        color: "#9c5a2e",
-                        fontWeight: 600,
-                        textDecoration: "underline",
-                        textUnderlineOffset: 2,
-                      }}
-                    >
-                      le site de l’INSEE
-                    </a>
-                    . Doit dater de moins de 3 mois.
-                  </>
-                }
-                state={docs.insee}
-                onDrop={(f) => handleFileDrop("insee", f)}
-              />
-              <DocDropZone
-                docKey="kbis"
-                name="Extrait KBIS"
-                status="Si concerné"
-                statusColor="optional"
-                description="Le KBIS est requis pour les sociétés commerciales. Il n’est pas attendu pour les micro-entreprises."
-                notice={
-                  <>
-                    À récupérer sur{" "}
-                    <a
-                      href="https://www.infogreffe.fr/kbis-documents/extrait-kbis?gad_source=1&gad_campaignid=23156315645&gbraid=0AAAAA90djejbDaanrl7BHHLn2O3kybwqB&gclid=Cj0KCQjwmunNBhDbARIsAOndKpm7ss8JfBpadw7vJdKBPyRo3mOxmvFG3a1cMhvucrhq4MNQLetqRWwaAuX1EALw_wcB"
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        color: "#9c5a2e",
-                        fontWeight: 600,
-                        textDecoration: "underline",
-                        textUnderlineOffset: 2,
-                      }}
-                    >
-                      Infogreffe
-                    </a>
-                    . Pas de KBIS pour les micro-entreprises.
-                  </>
-                }
-                state={docs.kbis}
-                onDrop={(f) => handleFileDrop("kbis", f)}
-              />
-            </div>
-
-            <Notice style={{ marginTop: 20 }}>
-              Vous avez un document ou une image et vous souhaitez le
-              transformer en PDF ? Le site{" "}
-              <a
-                href="https://www.ilovepdf.com/fr/"
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  color: "#9c5a2e",
-                  fontWeight: 600,
-                  textDecoration: "underline",
-                  textUnderlineOffset: 2,
-                }}
-              >
-                iLovePDF
-              </a>{" "}
-              permet de convertir gratuitement vos documents en PDF.
-            </Notice>
-          </Card>
-
-          {/* --- Boutons bas de page --- */}
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              justifyContent: "flex-end",
-              paddingTop: 8,
-            }}
-          >
-            <Btn variant="ghost" onClick={handleSaveDraft}>
-              {saving ? "Enregistrement..." : "Enregistrer mes informations"}
-            </Btn>
-            <Btn variant="primary" onClick={handleSubmitEssentialInfos}>
-              {saving
-                ? "Envoi en cours..."
-                : "Envoyer mes informations essentielles →"}
-            </Btn>
-            {errorMessage && (
-              <Notice
-                style={{
-                  marginTop: 8,
-                  border: "1px solid #e7b8b8",
-                  background: "#fff1f1",
-                  color: "#8a2f2f",
-                }}
-              >
-                {errorMessage}
-              </Notice>
-            )}
-
-            {successMessage && (
-              <Notice
-                style={{
-                  marginTop: 8,
-                  border: "1px solid #cfe3c3",
-                  background: "#f4fbef",
-                  color: "#446236",
-                }}
-              >
-                {successMessage}
-              </Notice>
-            )}
-          </div>
+              {programProposal ? (
+                <ClientProgramProposal
+                  dossierId={dossierId}
+                  program={programProposal}
+                />
+              ) : (
+                <Card>
+                  <Badge>En attente</Badge>
+                  <h2 style={styles.cardTitle}>Programme en cours d’étude</h2>
+                  <p style={{ ...styles.body, marginTop: 12 }}>
+                    Votre dossier est actuellement en cours d’analyse. Dès qu’un
+                    agent aura préparé une proposition de programme, elle
+                    s’affichera dans cet espace.
+                  </p>
+                </Card>
+              )}
+            </>
+          )}
         </div>
 
         {/* ====================== COLONNE DROITE ========================= */}

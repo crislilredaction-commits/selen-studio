@@ -5,7 +5,7 @@ const STEPS = [
   { label: "Vérification\nconformité" },
   { label: "Génération\nNDA" },
   { label: "Signature\nclient" },
-  { label: "Dépôt\nQualiopi" },
+  { label: "Dépôt\nNDA" },
 ];
 
 // Map your dossier status to a step index (0-based)

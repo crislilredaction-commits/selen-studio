@@ -22,6 +22,8 @@ import OpenDocumentButton from "@/components/ui/OpenDocumentButton";
 import DeleteDocumentButton from "@/components/ui/DeleteDocumentButton";
 import AnalyzeNdaButton from "@/components/nda/AnalyzeNdaButton";
 import AgentMessagingDrawer from "@/components/AgentMessagingDrawer";
+import AnalyzeProgramButton from "@/components/program/AnalyzeProgramButton";
+import AgentProgramEditor from "@/components/program/AgentProgramEditor";
 
 type PageProps = {
   params: Promise<{
@@ -547,6 +549,41 @@ export default async function DossierPage({ params }: PageProps) {
     );
   }
 
+  const { data: latestProgramAnalysis, error: latestProgramAnalysisError } =
+    await supabase
+      .from("program_ai_analyses")
+      .select("*")
+      .eq("dossier_id", dossier.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+  if (latestProgramAnalysisError) {
+    return (
+      <main className="p-10" style={{ color: "var(--selen-danger)" }}>
+        <pre>{JSON.stringify(latestProgramAnalysisError, null, 2)}</pre>
+      </main>
+    );
+  }
+
+  const { data: latestProgramVersion, error: latestProgramVersionError } =
+    await supabase
+      .from("dossier_program_versions")
+      .select("*")
+      .eq("dossier_id", dossier.id)
+      .eq("version_type", "agent_draft")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+  if (latestProgramVersionError) {
+    return (
+      <main className="p-10" style={{ color: "var(--selen-danger)" }}>
+        <pre>{JSON.stringify(latestProgramVersionError, null, 2)}</pre>
+      </main>
+    );
+  }
+
   const receivedKeys = [
     ...(documentsData ?? []).map((d) => d.document_type),
     ...((clientDocuments ?? []) as DbDocumentRow[]).map((d) => d.document_type),
@@ -614,6 +651,7 @@ export default async function DossierPage({ params }: PageProps) {
     .is("read_by_agent_at", null);
 
   const hasUnread = (unreadMessages ?? []).length > 0;
+  const unreadCount = (unreadMessages ?? []).length;
 
   return (
     <main
@@ -986,6 +1024,18 @@ export default async function DossierPage({ params }: PageProps) {
               dossierId={dossier.id}
               initialMessages={(dossierMessages ?? []) as MessageRow[]}
               hasUnread={hasUnread}
+              unreadCount={unreadCount}
+            />
+
+            <AnalyzeProgramButton
+              dossierId={dossier.id}
+              initialAnalysis={latestProgramAnalysis}
+            />
+
+            <AgentProgramEditor
+              dossierId={dossier.id}
+              initialAnalysis={latestProgramAnalysis}
+              initialVersion={latestProgramVersion}
             />
           </div>
 
@@ -1200,7 +1250,6 @@ export default async function DossierPage({ params }: PageProps) {
               dossierId={dossier.id}
               initialValues={ndaVariablesInitialValues}
             />
-
             {canRunAutoAnalysis && <AnalyzeNdaButton dossierId={dossier.id} />}
 
             <SelenCard>

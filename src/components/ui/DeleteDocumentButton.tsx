@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 
 type Props = {
   documentId: string;
@@ -33,7 +34,7 @@ export default function DeleteDocumentButton({
         body: JSON.stringify({ documentId }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
 
       if (!res.ok) {
         alert(data?.error || "Impossible de supprimer le document.");
@@ -54,20 +55,30 @@ export default function DeleteDocumentButton({
       type="button"
       onClick={handleDelete}
       disabled={isDeleting}
-      style={{
-        background: isDeleting ? "var(--selen-bg3)" : "transparent",
-        color: isDeleting ? "var(--selen-text3)" : "var(--selen-danger)",
-        border: "1px solid var(--selen-border)",
-        borderRadius: 6,
-        padding: "4px 8px",
-        fontSize: 11,
-        cursor: isDeleting ? "not-allowed" : "pointer",
-        fontFamily: "var(--font-body)",
-        opacity: isDeleting ? 0.7 : 1,
-      }}
       title="Supprimer le document"
+      style={{
+        background: "transparent",
+        border: "1px solid var(--selen-danger)",
+        color: "var(--selen-danger)",
+        borderRadius: "var(--radius-sm)",
+        width: 36,
+        height: 36,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: isDeleting ? "not-allowed" : "pointer",
+        opacity: isDeleting ? 0.6 : 1,
+      }}
+      onMouseEnter={(e) => {
+        if (!isDeleting) {
+          e.currentTarget.style.background = "rgba(185, 78, 72, 0.12)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent";
+      }}
     >
-      {isDeleting ? "Suppression..." : "Supprimer"}
+      <Trash2 size={16} />
     </button>
   );
 }
