@@ -60,10 +60,27 @@ export default function ClientNdaPage() {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [isMessagingOpen, setIsMessagingOpen] = useState(false);
   const [programProposal, setProgramProposal] = useState<any | null>(null);
+  const [programDecision, setProgramDecision] = useState<string | null>(null);
   const [step1Submitted, setStep1Submitted] = useState(false);
   const [showStep1Details, setShowStep1Details] = useState(false);
+  const [step2Form, setStep2Form] = useState({
+    stagiaire_prenom: "",
+    stagiaire_nom: "",
+    stagiaire_adresse: "",
+    stagiaire_email: "",
+    stagiaire_telephone: "",
+    client_siret: "",
+    date_formation_prevue: "",
+    lieu_formation: "",
+  });
+
+  function updateStep2Form<K extends keyof typeof step2Form>(
+    key: K,
+    value: (typeof step2Form)[K],
+  ) {
+    setStep2Form((prev) => ({ ...prev, [key]: value }));
+  }
 
   function updateForm<K extends keyof typeof form>(
     key: K,
@@ -81,7 +98,7 @@ export default function ClientNdaPage() {
       try {
         if (!dossierId) return;
 
-        const [programRes, messagesRes] = await Promise.all([
+        const [programRes, stateRes] = await Promise.all([
           fetch(
             `/agent/api/program/client-latest?dossierId=${encodeURIComponent(dossierId)}`,
             {
@@ -89,7 +106,7 @@ export default function ClientNdaPage() {
             },
           ),
           fetch(
-            `/agent/api/messages/list?dossierId=${encodeURIComponent(dossierId)}`,
+            `/agent/api/client/dossier/state?dossierId=${encodeURIComponent(dossierId)}`,
             {
               cache: "no-store",
             },
@@ -97,20 +114,28 @@ export default function ClientNdaPage() {
         ]);
 
         const programData = await programRes.json().catch(() => null);
-        const messagesData = await messagesRes.json().catch(() => null);
+        const stateData = await stateRes.json().catch(() => null);
 
         if (programRes.ok) {
           setProgramProposal(programData?.version ?? null);
         }
 
-        if (messagesRes.ok) {
-          const items = Array.isArray(messagesData?.items)
-            ? messagesData.items
-            : [];
+        if (stateRes.ok) {
+          setStep1Submitted(Boolean(stateData?.step1Submitted));
+          setProgramDecision(stateData?.programDecision ?? null);
 
-          const hasAnyExchange = items.length > 0;
-          if (hasAnyExchange) {
-            setStep1Submitted(true);
+          if (stateData?.step2) {
+            setStep2Form({
+              stagiaire_prenom: stateData.step2.stagiaire_prenom ?? "",
+              stagiaire_nom: stateData.step2.stagiaire_nom ?? "",
+              stagiaire_adresse: stateData.step2.stagiaire_adresse ?? "",
+              stagiaire_email: stateData.step2.stagiaire_email ?? "",
+              stagiaire_telephone: stateData.step2.stagiaire_telephone ?? "",
+              client_siret: stateData.step2.client_siret ?? "",
+              date_formation_prevue:
+                stateData.step2.date_formation_prevue ?? "",
+              lieu_formation: stateData.step2.lieu_formation ?? "",
+            });
           }
         }
       } catch {
@@ -119,31 +144,6 @@ export default function ClientNdaPage() {
     }
 
     loadClientState();
-  }, [dossierId]);
-
-  useEffect(() => {
-    async function loadProgramProposal() {
-      try {
-        if (!dossierId) return;
-
-        const res = await fetch(
-          `/agent/api/program/client-latest?dossierId=${encodeURIComponent(dossierId)}`,
-          {
-            cache: "no-store",
-          },
-        );
-
-        const data = await res.json().catch(() => null);
-
-        if (res.ok) {
-          setProgramProposal(data?.version ?? null);
-        }
-      } catch {
-        // silencieux
-      }
-    }
-
-    loadProgramProposal();
   }, [dossierId]);
 
   async function saveStep1() {
@@ -241,11 +241,72 @@ export default function ClientNdaPage() {
     }
   }
 
+  async function handleSaveStep2() {
+    try {
+      setSaving(true);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+
+      const res = await fetch("/agent/api/client/dossier/step-2", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          dossierId,
+          ...step2Form,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(
+          data?.error ??
+            "Erreur lors de l’enregistrement des coordonnées client.",
+        );
+      }
+
+      setSuccessMessage("Les coordonnées du client ont bien été enregistrées.");
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Une erreur est survenue.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const clientDecision =
+    programDecision ?? programProposal?.client_decision ?? null;
+  const hasProgramProposal = Boolean(programProposal);
+  const isProgramValidated = clientDecision === "validated";
+  const showStep2 = step1Submitted && isProgramValidated;
+  const isProgramRefused = clientDecision === "refused";
+  const isProgramPendingDecision = hasProgramProposal && !clientDecision;
+
   const steps = [
-    { number: 1, label: "Informations essentielles", active: true },
-    { number: 2, label: "Informations client", active: false },
-    { number: 3, label: "Documents à utiliser", active: false },
-    { number: 4, label: "Dépôt final", active: false },
+    {
+      number: 1,
+      label: "Informations essentielles",
+      active: !showStep2,
+    },
+    {
+      number: 2,
+      label: "Informations client",
+      active: showStep2,
+    },
+    {
+      number: 3,
+      label: "Documents à utiliser",
+      active: false,
+    },
+    {
+      number: 4,
+      label: "Dépôt final",
+      active: false,
+    },
   ];
 
   return (
@@ -333,43 +394,10 @@ export default function ClientNdaPage() {
             <Btn variant="ghost" size="sm">
               Réserver un appel
             </Btn>
-            <Btn
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                setIsMessagingOpen((prev) => !prev);
-
-                setTimeout(() => {
-                  const input = document.getElementById(
-                    "client-message-input",
-                  ) as HTMLTextAreaElement | null;
-                  input?.focus();
-                }, 150);
-              }}
-            >
-              Poser une question à mon agent
-            </Btn>
           </div>
         </div>
       </header>
-      {isMessagingOpen && (
-        <div
-          style={{
-            borderBottom: "1px solid #ddd0bd",
-            background: "#f8f1e8",
-          }}
-        >
-          <div
-            style={{
-              maxWidth: 1200,
-              margin: "0 auto",
-              padding: "1rem 2.5rem 1.25rem",
-            }}
-          >
-            <ClientMessagingPanel dossierId={dossierId} initialMessages={[]} />
-          </div>
-        </div>
-      )}
+
       {/* ------------------------------------------------------------------ */}
       {/* BANDEAU PROGRESSION — ÉTAPE 1/4                                     */}
       {/* ------------------------------------------------------------------ */}
@@ -516,7 +544,9 @@ export default function ClientNdaPage() {
                 fontFamily: "sans-serif",
               }}
             >
-              Accompagnement NDA · Étape 1 sur 4
+              {showStep2
+                ? "Accompagnement NDA · Étape 2 sur 4"
+                : "Accompagnement NDA · Étape 1 sur 4"}
             </p>
             <h1
               style={{
@@ -528,10 +558,21 @@ export default function ClientNdaPage() {
                 color: "#3a261a",
               }}
             >
-              Vos premières{" "}
-              <span style={{ color: "#9c5a2e" }}>informations</span>,
-              <br />
-              pas à pas
+              {showStep2 ? (
+                <>
+                  Coordonnées du{" "}
+                  <span style={{ color: "#9c5a2e" }}>client à former</span>,
+                  <br />
+                  pas à pas
+                </>
+              ) : (
+                <>
+                  Vos premières{" "}
+                  <span style={{ color: "#9c5a2e" }}>informations</span>,
+                  <br />
+                  pas à pas
+                </>
+              )}
             </h1>
             <p
               style={{
@@ -542,9 +583,9 @@ export default function ClientNdaPage() {
                 margin: 0,
               }}
             >
-              Cette première étape nous permet de lancer votre accompagnement,
-              de préparer vos futurs documents et de vous guider sans vous
-              demander d'informations inutiles.
+              {showStep2
+                ? "Cette étape nous permet de préparer les documents contractuels et administratifs liés à votre future action de formation."
+                : "Cette première étape nous permet de lancer votre accompagnement, de préparer vos futurs documents et de vous guider sans vous demander d'informations inutiles."}
             </p>
           </div>
 
@@ -1017,28 +1058,58 @@ export default function ClientNdaPage() {
                 ) : null}
               </Card>
 
-              <Card>
-                <Badge>Travail du programme</Badge>
-                <h2 style={styles.cardTitle}>
-                  Prochaine étape : votre programme
-                </h2>
-                <p style={{ ...styles.body, marginTop: 12 }}>
-                  Un agent va analyser les éléments transmis et vous proposer,
-                  si nécessaire, une version conforme de votre programme, en
-                  accord avec les diplômes du formateur et les exigences du
-                  dossier.
-                </p>
-                <p style={{ ...styles.body, marginTop: 12 }}>
-                  Cette proposition apparaîtra ici dès qu’elle sera prête.
-                </p>
-              </Card>
+              {!hasProgramProposal ? (
+                <Card>
+                  <Badge>Travail du programme</Badge>
+                  <h2 style={styles.cardTitle}>
+                    Prochaine étape : votre programme
+                  </h2>
+                  <p style={{ ...styles.body, marginTop: 12 }}>
+                    Un agent va analyser les éléments transmis et vous proposer,
+                    si nécessaire, une version conforme de votre programme, en
+                    accord avec les diplômes du formateur et les exigences du
+                    dossier.
+                  </p>
+                  <p style={{ ...styles.body, marginTop: 12 }}>
+                    Cette proposition apparaîtra ici dès qu’elle sera prête.
+                  </p>
+                </Card>
+              ) : isProgramPendingDecision ? (
+                <Card>
+                  <Badge>Travail du programme</Badge>
+                  <h2 style={styles.cardTitle}>Votre programme est prêt</h2>
+                  <p style={{ ...styles.body, marginTop: 12 }}>
+                    Votre conseiller a préparé une proposition de programme.
+                    Vous pouvez maintenant la consulter, la valider ou demander
+                    une modification.
+                  </p>
+                </Card>
+              ) : isProgramRefused ? (
+                <Card>
+                  <Badge>En attente</Badge>
+                  <h2 style={styles.cardTitle}>
+                    Votre retour a bien été transmis
+                  </h2>
+                  <p style={{ ...styles.body, marginTop: 12 }}>
+                    Votre conseiller va reprendre votre demande et revenir vers
+                    vous avec une nouvelle proposition de programme.
+                  </p>
+                </Card>
+              ) : isProgramValidated ? (
+                <Card>
+                  <Badge>Étape 2</Badge>
+                  <h2 style={styles.cardTitle}>
+                    Prochaine étape : les coordonnées du client à former
+                  </h2>
+                  <p style={{ ...styles.body, marginTop: 12 }}>
+                    Votre programme a bien été validé. Vous pouvez maintenant
+                    renseigner les coordonnées du client à qui vous allez
+                    dispenser cette formation.
+                  </p>
+                </Card>
+              ) : null}
 
-              {programProposal ? (
-                <ClientProgramProposal
-                  dossierId={dossierId}
-                  program={programProposal}
-                />
-              ) : (
+              {!hasProgramProposal ? (
                 <Card>
                   <Badge>En attente</Badge>
                   <h2 style={styles.cardTitle}>Programme en cours d’étude</h2>
@@ -1048,7 +1119,220 @@ export default function ClientNdaPage() {
                     s’affichera dans cet espace.
                   </p>
                 </Card>
-              )}
+              ) : isProgramPendingDecision ? (
+                <ClientProgramProposal
+                  dossierId={dossierId}
+                  program={programProposal}
+                />
+              ) : isProgramRefused ? (
+                <Card>
+                  <Badge>En attente</Badge>
+                  <h2 style={styles.cardTitle}>
+                    Votre demande de modification a bien été transmise
+                  </h2>
+                  <p style={{ ...styles.body, marginTop: 12 }}>
+                    Votre conseiller va relire votre retour et revenir vers vous
+                    avec une nouvelle proposition de programme.
+                  </p>
+                </Card>
+              ) : isProgramValidated ? (
+                <>
+                  <Card>
+                    <Badge>Étape 2</Badge>
+                    <h2 style={styles.cardTitle}>
+                      Avant de renseigner votre client
+                    </h2>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 12,
+                        marginTop: 16,
+                      }}
+                    >
+                      <p style={styles.body}>
+                        Maintenant que votre programme est validé, vous devez
+                        renseigner les coordonnées du client à qui vous allez
+                        dispenser cette formation.
+                      </p>
+
+                      <Notice>
+                        Le client doit être un <strong>professionnel</strong>{" "}
+                        disposant d’un
+                        <strong> numéro SIRET</strong>.
+                      </Notice>
+
+                      <Notice>
+                        Le client ne doit pas être un proche : évitez la famille
+                        et les amis proches.
+                      </Notice>
+
+                      <Notice>
+                        Les dates de formation doivent être prévues entre
+                        <strong> 1 mois minimum</strong> et
+                        <strong> 3 mois maximum</strong>.
+                      </Notice>
+
+                      <Notice>
+                        La formation peut avoir lieu{" "}
+                        <strong>en présentiel</strong> ou
+                        <strong> en visioconférence</strong>.
+                      </Notice>
+
+                      <Notice>
+                        Des contrôles de la DREETS sont possibles : contrôle sur
+                        place, contrôle à distance via votre lien de
+                        visioconférence, ou contrôle administratif avec demande
+                        de preuves de réalisation (émargements, évaluations,
+                        supports, etc.).
+                      </Notice>
+
+                      <Notice>
+                        Il est donc important d’indiquer une adresse précise ou
+                        un vrai lien de connexion utilisable.
+                      </Notice>
+
+                      <Notice>
+                        <strong>
+                          En cas de doute, réservez un appel afin d’échanger
+                          avec un conseiller expert.
+                        </strong>
+                      </Notice>
+                    </div>
+                  </Card>
+
+                  <Card>
+                    <Badge>Étape 2</Badge>
+                    <h2 style={styles.cardTitle}>
+                      Coordonnées du client à former
+                    </h2>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 16,
+                        marginTop: 20,
+                      }}
+                    >
+                      <Field
+                        label="Prénom du stagiaire"
+                        placeholder="Prénom"
+                        value={step2Form.stagiaire_prenom}
+                        onChange={(value) =>
+                          updateStep2Form("stagiaire_prenom", value)
+                        }
+                      />
+
+                      <Field
+                        label="Nom du stagiaire"
+                        placeholder="Nom"
+                        value={step2Form.stagiaire_nom}
+                        onChange={(value) =>
+                          updateStep2Form("stagiaire_nom", value)
+                        }
+                      />
+
+                      <Field
+                        label="Adresse postale"
+                        placeholder="Adresse complète"
+                        full
+                        value={step2Form.stagiaire_adresse}
+                        onChange={(value) =>
+                          updateStep2Form("stagiaire_adresse", value)
+                        }
+                      />
+
+                      <Field
+                        label="Email"
+                        placeholder="email@exemple.fr"
+                        type="email"
+                        value={step2Form.stagiaire_email}
+                        onChange={(value) =>
+                          updateStep2Form("stagiaire_email", value)
+                        }
+                      />
+
+                      <Field
+                        label="Téléphone"
+                        placeholder="06 00 00 00 00"
+                        value={step2Form.stagiaire_telephone}
+                        onChange={(value) =>
+                          updateStep2Form("stagiaire_telephone", value)
+                        }
+                      />
+
+                      <Field
+                        label="N° SIRET"
+                        placeholder="123 456 789 00012"
+                        value={step2Form.client_siret}
+                        onChange={(value) =>
+                          updateStep2Form("client_siret", value)
+                        }
+                      />
+
+                      <Field
+                        label="Date souhaitée de la formation"
+                        type="date"
+                        value={step2Form.formation_lieu}
+                        onChange={(value) =>
+                          updateStep2Form("formation_lieu", value)
+                        }
+                      />
+
+                      <Field
+                        label="Lieu ou lien de la formation"
+                        placeholder="Adresse précise ou lien Zoom / Meet / Teams"
+                        full
+                        value={step2Form.lieu_formation}
+                        onChange={(value) =>
+                          updateStep2Form("lieu_formation", value)
+                        }
+                      />
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        marginTop: 20,
+                      }}
+                    >
+                      <Btn variant="primary" onClick={handleSaveStep2}>
+                        {saving
+                          ? "Enregistrement..."
+                          : "Enregistrer les coordonnées du client →"}
+                      </Btn>
+                      {errorMessage && (
+                        <Notice
+                          style={{
+                            marginTop: 12,
+                            border: "1px solid #e7b8b8",
+                            background: "#fff1f1",
+                            color: "#8a2f2f",
+                          }}
+                        >
+                          {errorMessage}
+                        </Notice>
+                      )}
+
+                      {successMessage && (
+                        <Notice
+                          style={{
+                            marginTop: 12,
+                            border: "1px solid #cfe3c3",
+                            background: "#f4fbef",
+                            color: "#446236",
+                          }}
+                        >
+                          {successMessage}
+                        </Notice>
+                      )}
+                    </div>
+                  </Card>
+                </>
+              ) : null}
             </>
           )}
         </div>
@@ -1115,105 +1399,13 @@ export default function ClientNdaPage() {
             </div>
           </Card>
 
-          {/* Ce que nous faisons maintenant */}
           <Card>
-            <p style={styles.label}>Ce que nous faisons maintenant</p>
-            <ul
-              style={{
-                marginTop: 14,
-                padding: 0,
-                listStyle: "none",
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-              }}
-            >
-              {[
-                "Informations de votre organisme",
-                "Représentant de l'organisme",
-                "Formateur principal",
-                "Informations de base sur la formation",
-                "Pièces essentielles à déposer",
-              ].map((item) => (
-                <li
-                  key={item}
-                  style={{ display: "flex", alignItems: "flex-start", gap: 10 }}
-                >
-                  <span
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: "#c98b49",
-                      flexShrink: 0,
-                      marginTop: 5,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: 13,
-                      color: "#5f4d3d",
-                      fontFamily: "sans-serif",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {item}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <Notice style={{ marginTop: 14 }}>
-              Nous vous demandons uniquement les éléments essentiels pour lancer
-              le travail. Vous pourrez compléter le reste ensuite.
-            </Notice>
-          </Card>
-
-          {/* Ce qui se passe ensuite */}
-          <Card>
-            <p style={styles.label}>Ce qui se passe ensuite</p>
-            <div
-              style={{
-                marginTop: 14,
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-              }}
-            >
-              {[
-                "Notre équipe lance votre accompagnement et prépare la prochaine étape.",
-                "Vous recevrez un accès pour compléter les informations client.",
-                "Vous accéderez aux documents générés à compléter et renvoyer.",
-                "Vous récupérerez les documents vérifiés et un tutoriel de dépôt final.",
-              ].map((text, i) => (
-                <div
-                  key={i}
-                  style={{ display: "flex", gap: 10, alignItems: "flex-start" }}
-                >
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: "#9c5a2e",
-                      fontFamily: "sans-serif",
-                      minWidth: 16,
-                      paddingTop: 2,
-                    }}
-                  >
-                    {i + 2}
-                  </span>
-                  <p
-                    style={{
-                      fontSize: 13,
-                      color: "#5f4d3d",
-                      margin: 0,
-                      lineHeight: 1.55,
-                      fontFamily: "sans-serif",
-                    }}
-                  >
-                    {text}
-                  </p>
-                </div>
-              ))}
+            <p style={styles.label}>Messagerie</p>
+            <div style={{ marginTop: 14 }}>
+              <ClientMessagingPanel
+                dossierId={dossierId}
+                initialMessages={[]}
+              />
             </div>
           </Card>
         </div>

@@ -35,10 +35,20 @@ function getResendClient() {
   return new Resend(process.env.RESEND_API_KEY);
 }
 
+type OrganisationRow = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  representant_prenom?: string | null;
+  representant_nom?: string | null;
+};
+
 export async function POST(req: Request) {
   try {
     const supabase = getAdminSupabase();
     const body = await req.json();
+
+    console.log("SEND TO CLIENT BODY =", body);
 
     const {
       dossierId,
@@ -53,9 +63,11 @@ export async function POST(req: Request) {
       modules = [],
     } = body ?? {};
 
-    if (!dossierId) {
+    console.log("SEND TO CLIENT dossierId =", dossierId);
+
+    if (!dossierId || typeof dossierId !== "string") {
       return NextResponse.json(
-        { error: "dossierId manquant." },
+        { error: "dossierId manquant ou invalide." },
         { status: 400 },
       );
     }
@@ -64,25 +76,36 @@ export async function POST(req: Request) {
       .from("dossiers")
       .select(
         `
+      id,
+      title,
+      status,
+      organisation_id,
+      organisations:organisation_id (
         id,
-        title,
-        status,
-        organisation_id,
-        organisations:organisation_id (
-          id,
-          name,
-          email,
-          representant_prenom,
-          representant_nom
-        )
-      `,
+        name,
+        email
+      )
+    `,
       )
       .eq("id", dossierId)
       .maybeSingle();
 
-    if (dossierError || !dossier) {
+    console.log("SEND TO CLIENT dossier query result =", {
+      dossierId,
+      dossier,
+      dossierError,
+    });
+
+    if (dossierError) {
       return NextResponse.json(
-        { error: "Dossier introuvable." },
+        { error: `Erreur dossier query: ${dossierError.message}` },
+        { status: 500 },
+      );
+    }
+
+    if (!dossier) {
+      return NextResponse.json(
+        { error: `Aucun dossier trouvé pour id ${dossierId}` },
         { status: 404 },
       );
     }
@@ -91,7 +114,7 @@ export async function POST(req: Request) {
       ? dossier.organisations[0]
       : dossier.organisations;
 
-    const organisation = organisationRaw ?? null;
+    const organisation = (organisationRaw ?? null) as OrganisationRow | null;
     const clientEmail = organisation?.email ?? null;
 
     const payload = {
@@ -109,6 +132,8 @@ export async function POST(req: Request) {
       modules: Array.isArray(modules) ? modules : [],
     };
 
+    console.log("SEND TO CLIENT version payload =", payload);
+
     const { data: version, error: versionError } = await supabase
       .from("dossier_program_versions")
       .insert(payload)
@@ -117,7 +142,7 @@ export async function POST(req: Request) {
 
     if (versionError) {
       return NextResponse.json(
-        { error: versionError.message },
+        { error: `Erreur insertion version: ${versionError.message}` },
         { status: 500 },
       );
     }
@@ -125,13 +150,13 @@ export async function POST(req: Request) {
     const { error: dossierUpdateError } = await supabase
       .from("dossiers")
       .update({
-        status: "program_sent_to_client",
+        status: "under_review",
       })
       .eq("id", dossierId);
 
     if (dossierUpdateError) {
       return NextResponse.json(
-        { error: dossierUpdateError.message },
+        { error: `Erreur update dossier: ${dossierUpdateError.message}` },
         { status: 500 },
       );
     }
@@ -140,13 +165,9 @@ export async function POST(req: Request) {
       const resend = getResendClient();
       const clientUrl = `${getAppUrl()}/client/dossier/${dossierId}`;
 
-      const recipientName =
-        organisation?.representant_prenom ||
-        organisation?.representant_nom ||
-        organisation?.name ||
-        "bonjour";
+      const recipientName = organisation?.name || "bonjour";
 
-      await resend.emails.send({
+      const emailResult = await resend.emails.send({
         from: "Selen ✨ <hello@selen-editions.fr>",
         to: clientEmail,
         subject: "Votre proposition de programme est disponible ✨",
@@ -163,9 +184,7 @@ export async function POST(req: Request) {
             avec le profil du formateur et optimiser les chances d’acceptation du dossier.
           </p>
 
-          <p>
-            Vous pouvez maintenant :
-          </p>
+          <p>Vous pouvez maintenant :</p>
 
           <ul>
             <li>consulter la proposition,</li>
@@ -186,6 +205,8 @@ export async function POST(req: Request) {
           </p>
         `,
       });
+
+      console.log("SEND TO CLIENT email result =", emailResult);
     }
 
     return NextResponse.json({
@@ -194,6 +215,8 @@ export async function POST(req: Request) {
       emailed: Boolean(clientEmail),
     });
   } catch (error) {
+    console.error("SEND TO CLIENT fatal error =", error);
+
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Erreur inconnue.",

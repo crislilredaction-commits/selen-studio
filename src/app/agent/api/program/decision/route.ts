@@ -81,7 +81,6 @@ export async function POST(req: Request) {
         status: nextStatus,
         client_decision: decision,
         client_comment: comment,
-        client_uploaded_document_name: uploadedDocumentName,
         client_decision_at: new Date().toISOString(),
       })
       .eq("id", latestVersion.id)
@@ -93,7 +92,7 @@ export async function POST(req: Request) {
     }
 
     const dossierStatus =
-      decision === "validated" ? "program_validated" : "program_to_update";
+      decision === "validated" ? "in_progress" : "to_complete";
 
     const { error: dossierError } = await supabase
       .from("dossiers")
@@ -120,7 +119,7 @@ export async function POST(req: Request) {
       content:
         decision === "validated"
           ? "Le client a validé la proposition de programme."
-          : `Le client a refusé la proposition de programme.${comment ? ` Commentaire : ${comment}` : ""}${uploadedDocumentName ? ` Document joint : ${uploadedDocumentName}` : ""}`,
+          : `Le client a refusé la proposition de programme.${comment ? ` Commentaire : ${comment}` : ""}`,
     });
 
     return NextResponse.json({

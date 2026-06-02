@@ -60,7 +60,7 @@ function toPrettyModules(modules: ProgramModule[] | null | undefined): string {
         ? module.chapters
             .map(
               (chapter, chapterIndex) =>
-                `    ${chapterIndex + 1}. ${chapter.title}\n       Objectif : ${chapter.objective}`,
+                `    ${chapterIndex + 1}. ${chapter.title}`,
             )
             .join("\n")
         : "    Aucun chapitre";
@@ -279,6 +279,8 @@ export default function AgentProgramEditor({
       setSendingToClient(true);
       setSuccessMessage(null);
       setErrorMessage(null);
+
+      console.log("DOSSIER ID envoyé =", dossierId);
 
       const res = await fetch("/agent/api/program/send-to-client", {
         method: "POST",

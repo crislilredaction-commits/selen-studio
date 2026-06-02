@@ -58,17 +58,22 @@ export default function ClientProgramProposal({
         );
       }
 
-      const res = await fetch("/agent/api/program/decision", {
+      const formData = new FormData();
+      formData.append("dossierId", dossierId);
+      formData.append("programVersionId", program.id);
+      formData.append("decision", nextDecision);
+
+      if (clientComment.trim()) {
+        formData.append("comment", clientComment.trim());
+      }
+
+      if (replacementFile) {
+        formData.append("file", replacementFile);
+      }
+
+      const res = await fetch("/agent/api/client/program/decision", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          dossierId,
-          decision: nextDecision,
-          comment: clientComment.trim() || null,
-          uploadedDocumentName: replacementFile?.name ?? null,
-        }),
+        body: formData,
       });
 
       const data = await res.json().catch(() => null);
@@ -96,6 +101,8 @@ export default function ClientProgramProposal({
     }
   }
 
+  const downloadUrl = `/agent/api/client/program/download?programVersionId=${encodeURIComponent(program.id)}&dossierId=${encodeURIComponent(dossierId)}`;
+
   return (
     <div
       style={{
@@ -107,21 +114,55 @@ export default function ClientProgramProposal({
     >
       <div
         style={{
-          display: "inline-flex",
-          border: "1px solid #d8c3a8",
-          background: "#f7eee2",
-          padding: "3px 10px",
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: "0.18em",
-          textTransform: "uppercase",
-          color: "#9c5a2e",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
           marginBottom: 10,
-          fontFamily: "sans-serif",
-          borderRadius: 2,
         }}
       >
-        Programme proposé
+        <div
+          style={{
+            display: "inline-flex",
+            border: "1px solid #d8c3a8",
+            background: "#f7eee2",
+            padding: "3px 10px",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: "#9c5a2e",
+            fontFamily: "sans-serif",
+            borderRadius: 2,
+          }}
+        >
+          Programme proposé
+        </div>
+
+        <a
+          href={downloadUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            background: "transparent",
+            color: "#4b2e1e",
+            border: "1px solid #c9b79c",
+            borderRadius: 3,
+            padding: "10px 14px",
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: "sans-serif",
+            letterSpacing: "0.08em",
+            textDecoration: "none",
+          }}
+        >
+          Télécharger en Word
+        </a>
       </div>
 
       <h2
@@ -149,26 +190,6 @@ export default function ClientProgramProposal({
         Nous vous proposons cette reformulation afin de renforcer la cohérence
         pédagogique et administrative du programme transmis.
       </p>
-
-      {program.agent_comment ? (
-        <div
-          style={{
-            marginTop: 16,
-            borderRadius: 3,
-            border: "1px solid #ead9bf",
-            background: "#fbf3e4",
-            padding: "12px 14px",
-            fontSize: 13,
-            lineHeight: 1.65,
-            color: "#6f5a45",
-            fontFamily: "sans-serif",
-          }}
-        >
-          <strong>Commentaire de votre agent :</strong>
-          <br />
-          {program.agent_comment}
-        </div>
-      ) : null}
 
       {program.target_audience ? (
         <div style={{ marginTop: 18 }}>
@@ -345,6 +366,7 @@ export default function ClientProgramProposal({
                   color: "#7e6e5d",
                   fontFamily: "sans-serif",
                   marginBottom: 10,
+                  lineHeight: 1.6,
                 }}
               >
                 {module.duration} · {module.objective}
@@ -363,7 +385,7 @@ export default function ClientProgramProposal({
                 >
                   {module.chapters.map((chapter, chapterIndex) => (
                     <li key={`${chapterIndex}-${chapter.title}`}>
-                      <strong>{chapter.title}</strong> — {chapter.objective}
+                      <strong>{chapter.title}</strong>
                     </li>
                   ))}
                 </ul>
@@ -372,6 +394,79 @@ export default function ClientProgramProposal({
           ))}
         </div>
       ) : null}
+
+      {program.agent_comment ? (
+        <div
+          style={{
+            marginTop: 22,
+            borderRadius: 3,
+            border: "1px solid #ead9bf",
+            background: "#fbf3e4",
+            padding: "12px 14px",
+            fontSize: 13,
+            lineHeight: 1.65,
+            color: "#6f5a45",
+            fontFamily: "sans-serif",
+          }}
+        >
+          <strong>Commentaire de votre conseiller :</strong>
+          <br />
+          {program.agent_comment}
+        </div>
+      ) : null}
+
+      <div
+        style={{
+          marginTop: 22,
+          borderRadius: 3,
+          border: "1px solid #ead9bf",
+          background: "#fbf3e4",
+          padding: "12px 14px",
+          fontSize: 13,
+          lineHeight: 1.7,
+          color: "#6f5a45",
+          fontFamily: "sans-serif",
+        }}
+      >
+        Si cette proposition vous convient, vous pouvez la valider.
+        <br />
+        Si vous souhaitez une correction, merci d’expliquer ce qui doit être
+        ajusté et, si possible, de joindre votre version modifiée afin que votre
+        conseiller puisse retravailler le plan.
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          marginTop: 20,
+        }}
+      >
+        <a
+          href={`/agent/api/program/download?programVersionId=${program.id}&dossierId=${dossierId}`}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#4b2e1e",
+            color: "white",
+            border: "1px solid #4b2e1e",
+            borderRadius: 3,
+            padding: "12px 20px",
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: "sans-serif",
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            textDecoration: "none",
+            minWidth: 260,
+          }}
+        >
+          Télécharger la proposition Word
+        </a>
+      </div>
 
       <div style={{ marginTop: 22 }}>
         <div
@@ -409,6 +504,25 @@ export default function ClientProgramProposal({
         />
       </div>
 
+      <div
+        style={{
+          marginTop: 18,
+          borderRadius: 3,
+          border: "1px solid #ead9bf",
+          background: "#fbf3e4",
+          padding: "12px 14px",
+          fontSize: 13,
+          lineHeight: 1.65,
+          color: "#6f5a45",
+          fontFamily: "sans-serif",
+        }}
+      >
+        Si cette proposition ne vous convient pas, vous pouvez télécharger le
+        document, le corriger, puis nous renvoyer votre version modifiée avec un
+        commentaire expliquant les ajustements souhaités. Votre conseiller
+        pourra alors reprendre le plan et vous faire une nouvelle proposition.
+      </div>
+
       <div style={{ marginTop: 18 }}>
         <div
           style={{
@@ -420,23 +534,72 @@ export default function ClientProgramProposal({
             marginBottom: 8,
           }}
         >
-          Version modifiée (optionnel)
+          Ajouter une version corrigée
         </div>
 
-        <input
-          type="file"
-          accept=".doc,.docx,.pdf"
-          onChange={(e) => {
-            const file = e.target.files?.[0] ?? null;
-            setReplacementFile(file);
-          }}
+        <label
           style={{
-            width: "100%",
-            fontSize: 13,
-            color: "#5f4d3d",
-            fontFamily: "sans-serif",
+            display: "block",
+            border: "1px dashed #c9b79c",
+            background: "#fffdfa",
+            borderRadius: 4,
+            padding: "14px 16px",
+            cursor: "pointer",
           }}
-        />
+        >
+          <div
+            style={{
+              fontSize: 13,
+              color: "#3a261a",
+              fontFamily: "sans-serif",
+              fontWeight: 600,
+              marginBottom: 4,
+            }}
+          >
+            Cliquer pour joindre votre fichier modifié
+          </div>
+
+          <div
+            style={{
+              fontSize: 12,
+              color: "#7e6e5d",
+              fontFamily: "sans-serif",
+              lineHeight: 1.6,
+            }}
+          >
+            Formats acceptés : DOC, DOCX ou PDF.
+          </div>
+
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#fffdfa",
+              color: "#4b2e1e",
+              border: "1px solid #c9b79c",
+              borderRadius: 3,
+              padding: "12px 18px",
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "sans-serif",
+              letterSpacing: "0.08em",
+              cursor: "pointer",
+              textTransform: "uppercase",
+            }}
+          >
+            Ajouter mon fichier corrigé
+            <input
+              type="file"
+              accept=".doc,.docx,.pdf"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setReplacementFile(file);
+              }}
+              style={{ display: "none" }}
+            />
+          </label>
+        </label>
 
         {replacementFile ? (
           <div

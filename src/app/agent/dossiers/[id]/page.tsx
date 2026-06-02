@@ -584,6 +584,25 @@ export default async function DossierPage({ params }: PageProps) {
     );
   }
 
+  const { data: latestClientDecision, error: latestClientDecisionError } =
+    await supabase
+      .from("dossier_program_versions")
+      .select("*")
+      .eq("dossier_id", dossier.id)
+      .eq("version_type", "client_sent")
+      .not("client_decision", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+  if (latestClientDecisionError) {
+    return (
+      <main className="p-10" style={{ color: "var(--selen-danger)" }}>
+        <pre>{JSON.stringify(latestClientDecisionError, null, 2)}</pre>
+      </main>
+    );
+  }
+
   const receivedKeys = [
     ...(documentsData ?? []).map((d) => d.document_type),
     ...((clientDocuments ?? []) as DbDocumentRow[]).map((d) => d.document_type),
@@ -1031,6 +1050,21 @@ export default async function DossierPage({ params }: PageProps) {
               dossierId={dossier.id}
               initialAnalysis={latestProgramAnalysis}
             />
+
+            {latestClientDecision ? (
+              <SelenCard>
+                <SelenCardTitle>
+                  Retour du client sur le programme
+                </SelenCardTitle>
+
+                <div style={{ fontSize: 13, color: "var(--selen-text)" }}>
+                  <strong>Décision :</strong>{" "}
+                  {latestClientDecision.client_decision === "validated"
+                    ? "Programme validé"
+                    : "Programme refusé / à corriger"}
+                </div>
+              </SelenCard>
+            ) : null}
 
             <AgentProgramEditor
               dossierId={dossier.id}
