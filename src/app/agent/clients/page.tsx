@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenButton from "@/components/ui/SelenButton";
+import ClientAccessManager from "./ClientAccessManager";
 
 type DossierLite = {
   id: string;
@@ -238,7 +239,9 @@ export default async function AgentClientsPage() {
           <SelenButton variant="primary">+ Nouveau client</SelenButton>
         </Link>
       </div>
-
+      <div style={{ marginBottom: 18 }}>
+        <ClientAccessManager />
+      </div>
       <SelenCard>
         <SelenCardTitle>Portefeuille clients</SelenCardTitle>
 
