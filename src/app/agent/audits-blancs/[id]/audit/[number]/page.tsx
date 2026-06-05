@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type Answer = "yes" | "partial" | "no" | "unknown";
 type Diagnostic = "a_verifier" | "majeure" | "mineure" | "conforme";
@@ -40,6 +43,8 @@ type AgentProfile = {
   role: "agent" | "admin";
 };
 
+// ─── Logic (unchanged) ───────────────────────────────────────────────────────
+
 function computeDiagnostic(
   indicatorNumber: number,
   questions: Question[],
@@ -51,16 +56,12 @@ function computeDiagnostic(
 
   questions.forEach((q) => {
     const answer = answers[q.id];
-
     if (!answer) return;
-
     answered++;
-
     if (answer === "no") {
       if (q.affects_major) hasMajor = true;
       else if (q.affects_minor) hasMinor = true;
     }
-
     if (answer === "partial") {
       if (
         [10, 11, 12, 14, 15, 16, 20, 21, 22, 26, 27, 28, 29, 31, 32].includes(
@@ -82,26 +83,17 @@ function computeDiagnostic(
 }
 
 function getIssues(questions: Question[], answers: Record<string, Answer>) {
-  const issues: string[] = [];
-
+  const issues: { text: string; level: "major" | "minor" }[] = [];
   questions.forEach((q) => {
     const answer = answers[q.id];
-
     if (!answer) return;
-
-    if (answer === "no" && q.affects_major) {
-      issues.push(`❌ ${q.question}`);
-    }
-
-    if (answer === "partial" && q.affects_major) {
-      issues.push(`⚠️ ${q.question}`);
-    }
-
-    if (answer === "no" && q.affects_minor) {
-      issues.push(`⚠️ ${q.question}`);
-    }
+    if (answer === "no" && q.affects_major)
+      issues.push({ text: q.question, level: "major" });
+    if (answer === "partial" && q.affects_major)
+      issues.push({ text: q.question, level: "major" });
+    if (answer === "no" && q.affects_minor)
+      issues.push({ text: q.question, level: "minor" });
   });
-
   return issues;
 }
 
@@ -115,7 +107,6 @@ function parseDisplayCondition(
   condition: DisplayCondition | DisplayCondition[] | string | null,
 ): DisplayCondition | DisplayCondition[] | null {
   if (!condition) return null;
-
   if (typeof condition === "string") {
     try {
       return JSON.parse(condition) as DisplayCondition | DisplayCondition[];
@@ -123,7 +114,6 @@ function parseDisplayCondition(
       return null;
     }
   }
-
   return condition;
 }
 
@@ -132,54 +122,36 @@ function matchSingleCondition(
   profileData: Record<string, unknown> | null,
 ) {
   const key = condition.profile_question_key;
-
   if (!key) return true;
-
   const profileValue = profileData?.[key];
   const expectedValue = condition.value;
   const operator = condition.operator ?? "equals";
-
-  if (operator === "equals") {
+  if (operator === "equals")
     return (
       normalizeBooleanLike(profileValue) === normalizeBooleanLike(expectedValue)
     );
-  }
-
-  if (operator === "not_equals") {
+  if (operator === "not_equals")
     return (
       normalizeBooleanLike(profileValue) !== normalizeBooleanLike(expectedValue)
     );
-  }
-
   if (operator === "contains") {
-    if (Array.isArray(profileValue)) {
+    if (Array.isArray(profileValue))
       return profileValue.map(String).includes(String(expectedValue));
-    }
-
-    if (typeof profileValue === "string") {
+    if (typeof profileValue === "string")
       return profileValue.includes(String(expectedValue));
-    }
-
     return false;
   }
-
   if (operator === "not_contains") {
-    if (Array.isArray(profileValue)) {
+    if (Array.isArray(profileValue))
       return !profileValue.map(String).includes(String(expectedValue));
-    }
-
-    if (typeof profileValue === "string") {
+    if (typeof profileValue === "string")
       return !profileValue.includes(String(expectedValue));
-    }
-
     return true;
   }
-
   if (operator === "in") {
     const values = condition.values ?? [];
     return values.map(String).includes(String(profileValue));
   }
-
   return true;
 }
 
@@ -188,31 +160,66 @@ function questionMatchesProfile(
   profileData: Record<string, unknown> | null,
 ) {
   const parsedCondition = parseDisplayCondition(question.display_condition);
-
   if (!parsedCondition) return true;
-
-  if (Array.isArray(parsedCondition)) {
-    return parsedCondition.every((condition) =>
-      matchSingleCondition(condition, profileData),
-    );
-  }
-
+  if (Array.isArray(parsedCondition))
+    return parsedCondition.every((c) => matchSingleCondition(c, profileData));
   return matchSingleCondition(parsedCondition, profileData);
 }
 
-function diagnosticLabel(diagnostic: Diagnostic) {
-  if (diagnostic === "majeure") return "⚠️ Non-conformité majeure probable";
-  if (diagnostic === "mineure") return "⚠️ Non-conformité mineure probable";
-  if (diagnostic === "conforme") return "✅ Conforme";
-  return "… En cours d’analyse";
+// ─── Diagnostic helpers ───────────────────────────────────────────────────────
+
+function diagnosticConfig(diagnostic: Diagnostic) {
+  if (diagnostic === "majeure")
+    return {
+      label: "Non-conformité majeure probable",
+      color: "#c97a7a",
+      bg: "rgba(201,122,122,0.1)",
+      border: "rgba(201,122,122,0.3)",
+      icon: "✕",
+    };
+  if (diagnostic === "mineure")
+    return {
+      label: "Non-conformité mineure probable",
+      color: "#d4a843",
+      bg: "rgba(212,168,67,0.1)",
+      border: "rgba(212,168,67,0.3)",
+      icon: "△",
+    };
+  if (diagnostic === "conforme")
+    return {
+      label: "Conforme",
+      color: "#7ec97e",
+      bg: "rgba(126,201,126,0.1)",
+      border: "rgba(126,201,126,0.3)",
+      icon: "✓",
+    };
+  return {
+    label: "En cours d'analyse…",
+    color: "rgba(255,255,255,0.3)",
+    bg: "rgba(255,255,255,0.04)",
+    border: "rgba(255,255,255,0.1)",
+    icon: "…",
+  };
 }
 
-function diagnosticColor(diagnostic: Diagnostic) {
-  if (diagnostic === "majeure") return "var(--rust)";
-  if (diagnostic === "mineure") return "var(--ocre-gold)";
-  if (diagnostic === "conforme") return "#6a8a4a";
-  return "var(--ink-faint)";
-}
+const ANSWER_CONFIG = [
+  { value: "yes", label: "Oui", color: "#7ec97e", activeText: "#0e2010" },
+  {
+    value: "partial",
+    label: "Partiellement",
+    color: "#d4a843",
+    activeText: "#1a1000",
+  },
+  { value: "no", label: "Non", color: "#c97a7a", activeText: "#200a0a" },
+  {
+    value: "unknown",
+    label: "Ne sais pas",
+    color: "rgba(255,255,255,0.3)",
+    activeText: "#1a1510",
+  },
+] as const;
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function AgentAuditToolPage() {
   const router = useRouter();
@@ -225,28 +232,24 @@ export default function AgentAuditToolPage() {
   const [loading, setLoading] = useState(true);
   const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
   const [savingNote, setSavingNote] = useState(false);
-
   const [agent, setAgent] = useState<AgentProfile | null>(null);
   const [auditCase, setAuditCase] = useState<AuditBlancCase | null>(null);
   const [title, setTitle] = useState(`Indicateur ${indicatorNumber}`);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [note, setNote] = useState("");
-
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   const diagnostic = computeDiagnostic(indicatorNumber, questions, answers);
   const issues = getIssues(questions, answers);
-
   const answeredCount = questions.filter((q) => answers[q.id]).length;
   const totalQuestions = questions.length;
   const progress =
     totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
-
-  const previousIndicatorNumber =
-    indicatorNumber > 1 ? indicatorNumber - 1 : null;
-  const nextIndicatorNumber = indicatorNumber < 32 ? indicatorNumber + 1 : null;
+  const prevNum = indicatorNumber > 1 ? indicatorNumber - 1 : null;
+  const nextNum = indicatorNumber < 32 ? indicatorNumber + 1 : null;
+  const dc = diagnosticConfig(diagnostic);
 
   async function loadPage() {
     setLoading(true);
@@ -254,26 +257,23 @@ export default function AgentAuditToolPage() {
     setSuccess("");
 
     if (!indicatorNumber || Number.isNaN(indicatorNumber)) {
-      setError("Numéro d’indicateur invalide.");
+      setError("Numéro d'indicateur invalide.");
       setLoading(false);
       return;
     }
 
     const { data: authData, error: authError } = await supabase.auth.getUser();
-
     if (authError) {
       setError(authError.message);
       setLoading(false);
       return;
     }
-
     if (!authData.user) {
-      router.replace("/client/login");
+      router.replace("/login");
       return;
     }
 
     const userEmail = authData.user.email ?? "";
-
     const { data: agentData, error: agentError } = await supabase
       .from("agent_profiles")
       .select("email, role")
@@ -282,17 +282,15 @@ export default function AgentAuditToolPage() {
       .maybeSingle();
 
     if (agentError) {
-      setError(`Impossible de vérifier l’accès agent. ${agentError.message}`);
+      setError(`Impossible de vérifier l'accès agent. ${agentError.message}`);
       setLoading(false);
       return;
     }
-
     if (!agentData) {
       setError("Accès agent non autorisé pour ce compte.");
       setLoading(false);
       return;
     }
-
     setAgent(agentData as AgentProfile);
 
     const { data: caseData, error: caseError } = await supabase
@@ -306,13 +304,11 @@ export default function AgentAuditToolPage() {
       setLoading(false);
       return;
     }
-
     if (!caseData) {
       setError("Dossier audit blanc introuvable.");
       setLoading(false);
       return;
     }
-
     setAuditCase(caseData as AuditBlancCase);
 
     const { data: indicatorData } = await supabase
@@ -341,14 +337,12 @@ export default function AgentAuditToolPage() {
       return;
     }
 
-    const loadedQuestions = ((questionData ?? []) as Question[]).filter(
-      (question) =>
-        questionMatchesProfile(
-          question,
-          (caseData.profile_data as Record<string, unknown> | null) ?? null,
-        ),
+    const loadedQuestions = ((questionData ?? []) as Question[]).filter((q) =>
+      questionMatchesProfile(
+        q,
+        (caseData.profile_data as Record<string, unknown> | null) ?? null,
+      ),
     );
-
     setQuestions(loadedQuestions);
 
     const { data: answerData, error: answerError } = await supabase
@@ -363,7 +357,6 @@ export default function AgentAuditToolPage() {
     }
 
     const initialAnswers: Record<string, Answer> = {};
-
     (answerData ?? []).forEach(
       (row: { question_id: string; answer: string }) => {
         if (["yes", "partial", "no", "unknown"].includes(row.answer)) {
@@ -371,7 +364,6 @@ export default function AgentAuditToolPage() {
         }
       },
     );
-
     setAnswers(initialAnswers);
 
     const { data: noteData, error: noteError } = await supabase
@@ -386,9 +378,7 @@ export default function AgentAuditToolPage() {
       setLoading(false);
       return;
     }
-
     setNote(noteData?.user_notes ?? "");
-
     setLoading(false);
   }
 
@@ -399,15 +389,10 @@ export default function AgentAuditToolPage() {
 
   async function saveAnswer(questionId: string, answer: Answer) {
     if (!agent) return;
-
     setSavingAnswerId(questionId);
     setError("");
     setSuccess("");
-
-    setAnswers((prev) => ({
-      ...prev,
-      [questionId]: answer,
-    }));
+    setAnswers((prev) => ({ ...prev, [questionId]: answer }));
 
     const { error: saveError } = await supabase
       .from("audit_blanc_indicator_answers")
@@ -419,17 +404,12 @@ export default function AgentAuditToolPage() {
           answered_by_email: agent.email,
           updated_at: new Date().toISOString(),
         },
-        {
-          onConflict: "case_id,question_id",
-        },
+        { onConflict: "case_id,question_id" },
       );
 
     if (saveError) {
       setError(saveError.message);
-      setSavingAnswerId(null);
-      return;
     }
-
     setSavingAnswerId(null);
   }
 
@@ -448,9 +428,7 @@ export default function AgentAuditToolPage() {
           agent_diagnostic: diagnostic,
           updated_at: new Date().toISOString(),
         },
-        {
-          onConflict: "case_id,indicator_number",
-        },
+        { onConflict: "case_id,indicator_number" },
       );
 
     if (saveError) {
@@ -458,8 +436,7 @@ export default function AgentAuditToolPage() {
       setSavingNote(false);
       return;
     }
-
-    setSuccess("Note indicateur sauvegardée.");
+    setSuccess("Note sauvegardée.");
     setSavingNote(false);
   }
 
@@ -468,366 +445,840 @@ export default function AgentAuditToolPage() {
     router.push(`/agent/audits-blancs/${caseId}/audit/${targetNumber}`);
   }
 
+  // ── Loading ──
   if (loading) {
     return (
-      <main className="gazette-paper" style={{ minHeight: "100vh" }}>        <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-          <p style={{ color: "var(--ink-faint)" }}>
-            Chargement de l’outil d’audit…
-          </p>
-        </div>      </main>
+      <div style={s.page}>
+        <style>{css}</style>
+        <div style={s.loadingWrap}>
+          <div className="sel-spinner" />
+          <p style={s.loadingText}>Chargement de l'outil d'audit…</p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-      <div
-        style={{
-          maxWidth: 1180,
-          margin: "0 auto",
-          padding: "2rem 1.5rem 4rem",
-        }}
-      >
-        <header
-          className="gazette-cta"
-          style={{ padding: "2rem", marginBottom: "1.5rem" }}
-        >
-          <div style={{ position: "relative", zIndex: 1 }}>
-            <p className="gazette-label">Audit blanc · outil agent</p>
+    <div style={s.page}>
+      <style>{css}</style>
 
-            <h1
-              className="gazette-hero-title"
-              style={{ color: "var(--parchment)", marginBottom: "0.5rem" }}
+      <div style={s.container}>
+        {/* ── Header ── */}
+        <header style={s.header}>
+          <div style={s.breadcrumb}>
+            <Link
+              href="/agent/audits-blancs"
+              style={s.breadcrumbLink}
+              className="sel-breadcrumb"
             >
-              {title}
-            </h1>
+              Dossiers
+            </Link>
+            <span style={s.breadcrumbSep}>›</span>
+            <Link
+              href={`/agent/audits-blancs/${caseId}`}
+              style={s.breadcrumbLink}
+              className="sel-breadcrumb"
+            >
+              Fiche dossier
+            </Link>
+            <span style={s.breadcrumbSep}>›</span>
+            <span style={s.breadcrumbCurrent}>
+              Indicateur {indicatorNumber}
+            </span>
+          </div>
 
-            <p style={{ color: "var(--sepia-mid)", lineHeight: 1.65 }}>
-              Indicateur {indicatorNumber} · {answeredCount}/{totalQuestions}{" "}
-              réponses · {progress} %
-            </p>
+          <div style={s.headerBody}>
+            <div style={s.headerLeft}>
+              <p style={s.eyebrow}>Selen Studio · Outil audit</p>
+              <h1 style={s.title}>{title}</h1>
+              {auditCase && (
+                <p style={s.clientLine}>
+                  <span style={s.clientDot} />
+                  {auditCase.client_email}
+                </p>
+              )}
+            </div>
 
-            {auditCase && (
-              <p
-                style={{
-                  color: "rgba(240,220,190,0.75)",
-                  fontSize: "0.9rem",
-                  marginTop: "0.8rem",
-                }}
-              >
-                Client : {auditCase.client_email}
+            {/* Progress ring */}
+            <div style={s.progressWrap}>
+              <svg width="72" height="72" viewBox="0 0 72 72">
+                <circle
+                  cx="36"
+                  cy="36"
+                  r="30"
+                  fill="none"
+                  stroke="rgba(196,169,106,0.12)"
+                  strokeWidth="5"
+                />
+                <circle
+                  cx="36"
+                  cy="36"
+                  r="30"
+                  fill="none"
+                  stroke={progress === 100 ? "#7ec97e" : "#c4a96a"}
+                  strokeWidth="5"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 30}`}
+                  strokeDashoffset={`${2 * Math.PI * 30 * (1 - progress / 100)}`}
+                  transform="rotate(-90 36 36)"
+                  style={{ transition: "stroke-dashoffset 0.4s ease" }}
+                />
+                <text
+                  x="36"
+                  y="40"
+                  textAnchor="middle"
+                  fill="rgba(255,255,255,0.85)"
+                  fontSize="14"
+                  fontWeight="700"
+                  fontFamily="Georgia, serif"
+                >
+                  {progress}%
+                </text>
+              </svg>
+              <p style={s.progressSub}>
+                {answeredCount}/{totalQuestions}
               </p>
-            )}
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div style={s.progressBar}>
+            <div
+              style={{
+                ...s.progressFill,
+                width: `${progress}%`,
+                background: progress === 100 ? "#7ec97e" : "#c4a96a",
+              }}
+            />
           </div>
         </header>
 
-        {error && (
-          <div
-            style={{
-              border: "1px solid var(--rust)",
-              borderLeft: "4px solid var(--rust)",
-              background: "rgba(138,75,36,0.06)",
-              padding: "1rem",
-              marginBottom: "1rem",
-              color: "var(--rust)",
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div
-            style={{
-              border: "1px solid #6a8a4a",
-              borderLeft: "4px solid #6a8a4a",
-              background: "rgba(106,138,74,0.08)",
-              padding: "1rem",
-              marginBottom: "1rem",
-              color: "#4f6f36",
-            }}
-          >
-            {success}
-          </div>
-        )}
+        {/* ── Alerts ── */}
+        {error && <Alert type="error" message={error} />}
+        {success && <Alert type="success" message={success} />}
 
         {!agent || !auditCase ? (
-          <section
-            style={{
-              background: "var(--paper)",
-              border: "1px solid var(--sepia-mid)",
-              padding: "1.4rem",
-            }}
-          >
-            <p className="gazette-label">Accès impossible</p>
-            <p style={{ color: "var(--ink-soft)", lineHeight: 1.6 }}>
-              Le dossier est introuvable ou votre accès agent n’est pas
+          <div style={s.card}>
+            <p style={s.cardLabel}>Accès impossible</p>
+            <p style={s.cardBody}>
+              Le dossier est introuvable ou votre accès agent n'est pas
               autorisé.
             </p>
-          </section>
+          </div>
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) 340px",
-              gap: "1.25rem",
-              alignItems: "start",
-            }}
-            className="preaudit-grid"
-          >
-            <section style={{ display: "grid", gap: "1rem" }}>
+          <div style={s.layout} className="sel-layout">
+            {/* ── Questions ── */}
+            <section style={s.questionsList}>
               {questions.length === 0 ? (
-                <article
-                  style={{
-                    background: "var(--paper)",
-                    border: "1px solid var(--sepia-mid)",
-                    padding: "1.4rem",
-                  }}
-                >
-                  <p className="gazette-label">Aucune question</p>
-                  <p style={{ color: "var(--ink-soft)" }}>
-                    Aucune question n’est enregistrée pour cet indicateur.
+                <div style={s.card}>
+                  <p style={s.cardLabel}>Aucune question</p>
+                  <p style={s.cardBody}>
+                    Aucune question n'est enregistrée pour cet indicateur.
                   </p>
-                </article>
+                </div>
               ) : (
-                questions.map((q) => (
-                  <article
-                    key={q.id}
-                    style={{
-                      background: "var(--paper)",
-                      border: "1px solid var(--sepia-mid)",
-                      padding: "1rem",
-                    }}
-                  >
-                    <p
+                questions.map((q, i) => {
+                  const isSaving = savingAnswerId === q.id;
+                  const currentAnswer = answers[q.id];
+                  return (
+                    <article
+                      key={q.id}
                       style={{
-                        fontFamily: "var(--font-cinzel, serif)",
-                        fontSize: "0.65rem",
-                        letterSpacing: "0.18em",
-                        textTransform: "uppercase",
-                        color: "var(--ocre-dark)",
+                        ...s.questionCard,
+                        animationDelay: `${i * 35}ms`,
                       }}
+                      className="sel-question-card"
                     >
-                      Question {q.question_order}
-                    </p>
-
-                    <h2
-                      style={{
-                        fontSize: "1rem",
-                        color: "var(--ink)",
-                        marginBottom: "0.5rem",
-                      }}
-                    >
-                      {q.question}
-                    </h2>
-
-                    {q.help_text && (
-                      <p
-                        style={{
-                          fontSize: "0.85rem",
-                          color: "var(--ink-faint)",
-                          fontStyle: "italic",
-                          marginBottom: "0.75rem",
-                        }}
-                      >
-                        {q.help_text}
-                      </p>
-                    )}
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "0.5rem",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {[
-                        ["yes", "Oui"],
-                        ["partial", "Partiellement"],
-                        ["no", "Non"],
-                        ["unknown", "Je ne sais pas"],
-                      ].map(([value, label]) => {
-                        const selected = answers[q.id] === value;
-
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => saveAnswer(q.id, value as Answer)}
-                            disabled={savingAnswerId === q.id}
+                      {/* Card top row */}
+                      <div style={s.questionMeta}>
+                        <span style={s.questionNum}>Q{q.question_order}</span>
+                        {q.is_critical && (
+                          <span style={s.criticalBadge}>Critique</span>
+                        )}
+                        {q.affects_major && !q.is_critical && (
+                          <span style={s.majorBadge}>Majeur</span>
+                        )}
+                        {isSaving && (
+                          <span style={s.savingBadge}>Sauvegarde…</span>
+                        )}
+                        {currentAnswer && !isSaving && (
+                          <span
                             style={{
-                              padding: "0.45rem 0.85rem",
-                              border: "1px solid var(--sepia-mid)",
-                              background: selected
-                                ? "var(--ocre-gold)"
-                                : "transparent",
-                              color: selected ? "#1a1410" : "var(--ink-soft)",
-                              cursor:
-                                savingAnswerId === q.id
-                                  ? "not-allowed"
-                                  : "pointer",
-                              opacity: savingAnswerId === q.id ? 0.6 : 1,
+                              ...s.answeredBadge,
+                              color:
+                                ANSWER_CONFIG.find(
+                                  (a) => a.value === currentAnswer,
+                                )?.color ?? C.gold,
                             }}
                           >
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </article>
-                ))
+                            ✓{" "}
+                            {
+                              ANSWER_CONFIG.find(
+                                (a) => a.value === currentAnswer,
+                              )?.label
+                            }
+                          </span>
+                        )}
+                      </div>
+
+                      <h2 style={s.questionText}>{q.question}</h2>
+
+                      {q.help_text && <p style={s.helpText}>{q.help_text}</p>}
+
+                      {/* Answer buttons */}
+                      <div style={s.answerRow}>
+                        {ANSWER_CONFIG.map(
+                          ({ value, label, color, activeText }) => {
+                            const selected = currentAnswer === value;
+                            return (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() =>
+                                  saveAnswer(q.id, value as Answer)
+                                }
+                                disabled={isSaving}
+                                style={{
+                                  ...s.answerBtn,
+                                  border: `1px solid ${selected ? color : "rgba(196,169,106,0.18)"}`,
+                                  background: selected
+                                    ? color
+                                    : "rgba(255,255,255,0.03)",
+                                  color: selected
+                                    ? activeText
+                                    : "rgba(255,255,255,0.5)",
+                                  opacity: isSaving ? 0.5 : 1,
+                                  cursor: isSaving ? "not-allowed" : "pointer",
+                                  fontWeight: selected ? 700 : 400,
+                                  boxShadow: selected
+                                    ? `0 0 12px ${color}33`
+                                    : "none",
+                                }}
+                                className={selected ? "" : "sel-answer-btn"}
+                              >
+                                {label}
+                              </button>
+                            );
+                          },
+                        )}
+                      </div>
+                    </article>
+                  );
+                })
               )}
             </section>
 
-            <aside
-              style={{
-                position: "sticky",
-                top: "1.5rem",
-                display: "grid",
-                gap: "0.9rem",
-              }}
-            >
-              <article
+            {/* ── Sidebar ── */}
+            <aside style={s.sidebar}>
+              {/* Diagnostic */}
+              <div
                 style={{
-                  border: "1px solid var(--sepia-mid)",
-                  borderLeft: `4px solid ${diagnosticColor(diagnostic)}`,
-                  background: "var(--paper)",
-                  padding: "1rem",
+                  ...s.diagnosticCard,
+                  background: dc.bg,
+                  border: `1px solid ${dc.border}`,
                 }}
               >
-                <p className="gazette-label">Diagnostic agent</p>
+                <div style={diagnosticIconStyle(dc.color)}>{dc.icon}</div>
+                <div>
+                  <p style={s.cardLabel}>Diagnostic agent</p>
+                  <p style={{ ...s.diagnosticLabel, color: dc.color }}>
+                    {dc.label}
+                  </p>
+                </div>
+              </div>
 
-                <p
-                  style={{
-                    fontWeight: 700,
-                    color: diagnosticColor(diagnostic),
-                    marginTop: "0.5rem",
-                  }}
-                >
-                  {diagnosticLabel(diagnostic)}
-                </p>
-              </article>
-
-              <article
-                style={{
-                  background: "var(--paper)",
-                  border: "1px solid var(--sepia-mid)",
-                  padding: "1rem",
-                }}
-              >
-                <p className="gazette-label">Points à corriger</p>
-
+              {/* Issues */}
+              <div style={s.card}>
+                <p style={s.cardLabel}>Points à corriger</p>
                 {issues.length > 0 ? (
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: "0.4rem",
-                      marginTop: "0.7rem",
-                      color: "var(--ink-soft)",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    {issues.slice(0, 6).map((issue, index) => (
-                      <p key={index}>{issue}</p>
+                  <div style={s.issuesList}>
+                    {issues.slice(0, 6).map((issue, i) => (
+                      <div key={i} style={s.issueItem}>
+                        <span
+                          style={{
+                            ...s.issueDot,
+                            background:
+                              issue.level === "major" ? "#c97a7a" : "#d4a843",
+                          }}
+                        />
+                        <span style={s.issueText}>{issue.text}</span>
+                      </div>
                     ))}
                   </div>
                 ) : (
-                  <p
-                    style={{
-                      color: "var(--ink-faint)",
-                      fontSize: "0.92rem",
-                      marginTop: "0.7rem",
-                    }}
-                  >
-                    Aucun point bloquant détecté pour l’instant.
-                  </p>
+                  <p style={s.cardBody}>Aucun point bloquant détecté.</p>
                 )}
-              </article>
+              </div>
 
-              <article
-                style={{
-                  background: "var(--paper)",
-                  border: "1px solid var(--sepia-mid)",
-                  padding: "1rem",
-                }}
-              >
-                <p className="gazette-label">Note indicateur</p>
-
+              {/* Note */}
+              <div style={s.card}>
+                <p style={s.cardLabel}>Note indicateur</p>
                 <textarea
                   value={note}
-                  onChange={(event) => setNote(event.target.value)}
+                  onChange={(e) => setNote(e.target.value)}
                   onBlur={() => saveIndicatorNote()}
-                  placeholder="Note agent : preuves observées, écarts, correction à demander..."
-                  style={{
-                    width: "100%",
-                    minHeight: "140px",
-                    marginTop: "0.7rem",
-                    padding: "0.7rem",
-                    border: "1px solid var(--sepia-mid)",
-                    background: "rgba(255,255,255,0.55)",
-                    resize: "vertical",
-                  }}
+                  placeholder="Preuves observées, écarts, corrections à demander…"
+                  style={s.textarea}
+                  className="sel-textarea"
                 />
-
                 <button
                   type="button"
-                  className="btn-ink"
                   onClick={saveIndicatorNote}
                   disabled={savingNote}
                   style={{
-                    marginTop: "0.7rem",
-                    width: "100%",
+                    ...s.btnPrimary,
                     opacity: savingNote ? 0.55 : 1,
                     cursor: savingNote ? "not-allowed" : "pointer",
                   }}
+                  className="sel-btn-primary"
                 >
-                  <span>
-                    {savingNote ? "Sauvegarde…" : "Sauvegarder la note"}
-                  </span>
+                  {savingNote ? "Sauvegarde…" : "Sauvegarder la note"}
                 </button>
-              </article>
+              </div>
 
-              <div style={{ display: "grid", gap: "0.5rem" }}>
-                {previousIndicatorNumber && (
-                  <button
-                    type="button"
-                    className="btn-ink"
-                    onClick={() => goToIndicator(previousIndicatorNumber)}
-                  >
-                    <span>← Indicateur {previousIndicatorNumber}</span>
-                  </button>
-                )}
+              {/* Navigation */}
+              <div style={s.navGroup}>
+                <p style={s.navGroupLabel}>Navigation</p>
+                <div style={s.navBtns}>
+                  {prevNum && (
+                    <button
+                      type="button"
+                      onClick={() => goToIndicator(prevNum)}
+                      style={s.btnGhost}
+                      className="sel-btn-ghost"
+                    >
+                      ← Indicateur {prevNum}
+                    </button>
+                  )}
+                  {nextNum ? (
+                    <button
+                      type="button"
+                      onClick={() => goToIndicator(nextNum)}
+                      style={s.btnPrimary}
+                      className="sel-btn-primary"
+                    >
+                      Indicateur {nextNum} →
+                    </button>
+                  ) : (
+                    <Link
+                      href={`/agent/audits-blancs/${caseId}`}
+                      style={s.btnPrimary}
+                      className="sel-btn-primary"
+                    >
+                      Terminer l'audit ✓
+                    </Link>
+                  )}
+                </div>
 
-                {nextIndicatorNumber ? (
-                  <button
-                    type="button"
-                    className="btn-ink"
-                    onClick={() => goToIndicator(nextIndicatorNumber)}
-                  >
-                    <span>Indicateur {nextIndicatorNumber} →</span>
-                  </button>
-                ) : (
+                <div style={s.navLinks}>
                   <Link
                     href={`/agent/audits-blancs/${caseId}`}
-                    className="btn-ink"
+                    style={s.navLink}
+                    className="sel-nav-link"
                   >
-                    <span>Terminer l’audit</span>
+                    ← Retour fiche dossier
                   </Link>
-                )}
-
-                <Link
-                  href={`/agent/audits-blancs/${caseId}`}
-                  className="btn-ink"
-                >
-                  <span>Retour fiche dossier</span>
-                </Link>
-
-                <Link href="/agent/audits-blancs" className="btn-ink">
-                  <span>Retour liste dossiers</span>
-                </Link>
+                  <Link
+                    href="/agent/audits-blancs"
+                    style={s.navLink}
+                    className="sel-nav-link"
+                  >
+                    ← Retour liste dossiers
+                  </Link>
+                </div>
               </div>
             </aside>
           </div>
         )}
-      </div>    </main>
+      </div>
+    </div>
   );
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function Alert({
+  type,
+  message,
+}: {
+  type: "error" | "success";
+  message: string;
+}) {
+  const isError = type === "error";
+  return (
+    <div
+      style={{
+        ...s.alert,
+        borderLeftColor: isError ? "#c97a7a" : "#7ec97e",
+        color: isError ? "#c97a7a" : "#7ec97e",
+        background: isError
+          ? "rgba(201,122,122,0.07)"
+          : "rgba(126,201,126,0.07)",
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+
+const C = {
+  bg: "#1a1510",
+  surface: "#221c14",
+  surfaceDeep: "#1d1810",
+  border: "rgba(196,169,106,0.15)",
+  borderStrong: "rgba(196,169,106,0.28)",
+  gold: "#c4a96a",
+  text: "rgba(255,255,255,0.88)",
+  textSoft: "rgba(255,255,255,0.5)",
+  textFaint: "rgba(255,255,255,0.22)",
+};
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+function diagnosticIconStyle(color: string): CSSProperties {
+  return {
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    background: `${color}18`,
+    border: `1px solid ${color}44`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "1rem",
+    color,
+    flexShrink: 0,
+  };
+}
+const s: Record<string, CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: C.bg,
+    color: C.text,
+    fontFamily: "Georgia, 'Times New Roman', serif",
+  } as React.CSSProperties,
+  container: {
+    maxWidth: 1280,
+    margin: "0 auto",
+    padding: "0 2rem 5rem",
+  } as React.CSSProperties,
+
+  loadingWrap: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "70vh",
+    gap: "1.2rem",
+  } as React.CSSProperties,
+  loadingText: {
+    color: C.textFaint,
+    fontSize: "0.88rem",
+    letterSpacing: "0.06em",
+  } as React.CSSProperties,
+
+  // Header
+  header: { paddingTop: "2rem", marginBottom: "2rem" } as React.CSSProperties,
+  breadcrumb: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.4rem",
+    fontSize: "0.75rem",
+    marginBottom: "1.4rem",
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+  breadcrumbLink: {
+    color: C.gold,
+    textDecoration: "none",
+    opacity: 0.7,
+  } as React.CSSProperties,
+  breadcrumbSep: { color: C.textFaint } as React.CSSProperties,
+  breadcrumbCurrent: { color: C.textSoft } as React.CSSProperties,
+  headerBody: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: "1.5rem",
+    marginBottom: "1.2rem",
+  } as React.CSSProperties,
+  headerLeft: { flex: 1 } as React.CSSProperties,
+  eyebrow: {
+    fontSize: "0.68rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.18em",
+    color: C.gold,
+    marginBottom: "0.5rem",
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+  title: {
+    fontSize: "clamp(1.5rem, 3vw, 2.2rem)",
+    fontWeight: 700,
+    color: C.text,
+    lineHeight: 1.15,
+    margin: "0 0 0.6rem",
+    fontFamily: "Georgia, serif",
+  } as React.CSSProperties,
+  clientLine: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    fontSize: "0.82rem",
+    color: C.textSoft,
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+  clientDot: {
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    background: "#7ec97e",
+    flexShrink: 0,
+    boxShadow: "0 0 0 2.5px rgba(126,201,126,0.2)",
+  } as React.CSSProperties,
+  progressWrap: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "0.3rem",
+    flexShrink: 0,
+  } as React.CSSProperties,
+  progressSub: {
+    fontSize: "0.7rem",
+    color: C.textFaint,
+    fontFamily: "sans-serif",
+    letterSpacing: "0.04em",
+  } as React.CSSProperties,
+  progressBar: {
+    height: 3,
+    background: "rgba(196,169,106,0.1)",
+    borderRadius: 99,
+  } as React.CSSProperties,
+  progressFill: {
+    height: "100%",
+    borderRadius: 99,
+    transition: "width 0.4s ease",
+  } as React.CSSProperties,
+
+  // Layout
+  layout: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0,1fr) 300px",
+    gap: "1.25rem",
+    alignItems: "start",
+  } as React.CSSProperties,
+  questionsList: { display: "grid", gap: "0.8rem" } as React.CSSProperties,
+
+  // Question card
+  questionCard: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: "1.2rem 1.3rem",
+    animation: "selFadeIn 0.25s ease both",
+  } as React.CSSProperties,
+  questionMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    marginBottom: "0.7rem",
+    flexWrap: "wrap" as const,
+  } as React.CSSProperties,
+  questionNum: {
+    fontSize: "0.66rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.12em",
+    color: C.gold,
+    fontFamily: "sans-serif",
+    fontWeight: 600,
+  } as React.CSSProperties,
+  criticalBadge: {
+    fontSize: "0.65rem",
+    padding: "0.15rem 0.5rem",
+    background: "rgba(201,122,122,0.15)",
+    border: "1px solid rgba(201,122,122,0.3)",
+    borderRadius: 4,
+    color: "#c97a7a",
+    fontFamily: "sans-serif",
+    fontWeight: 700,
+  } as React.CSSProperties,
+  majorBadge: {
+    fontSize: "0.65rem",
+    padding: "0.15rem 0.5rem",
+    background: "rgba(212,168,67,0.12)",
+    border: "1px solid rgba(212,168,67,0.28)",
+    borderRadius: 4,
+    color: "#d4a843",
+    fontFamily: "sans-serif",
+    fontWeight: 700,
+  } as React.CSSProperties,
+  savingBadge: {
+    marginLeft: "auto",
+    fontSize: "0.72rem",
+    color: C.textFaint,
+    fontFamily: "sans-serif",
+    fontStyle: "italic",
+  } as React.CSSProperties,
+  answeredBadge: {
+    marginLeft: "auto",
+    fontSize: "0.72rem",
+    fontFamily: "sans-serif",
+    fontWeight: 600,
+  } as React.CSSProperties,
+  questionText: {
+    fontSize: "0.97rem",
+    color: "rgba(255,255,255,0.82)",
+    lineHeight: 1.55,
+    fontWeight: 400,
+    margin: "0 0 0.55rem",
+  } as React.CSSProperties,
+  helpText: {
+    fontSize: "0.8rem",
+    color: C.textFaint,
+    fontStyle: "italic",
+    lineHeight: 1.55,
+    margin: "0 0 0.85rem",
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+  answerRow: {
+    display: "flex",
+    gap: "0.45rem",
+    flexWrap: "wrap" as const,
+  } as React.CSSProperties,
+  answerBtn: {
+    padding: "0.42rem 0.9rem",
+    borderRadius: 6,
+    fontSize: "0.8rem",
+    fontFamily: "sans-serif",
+    transition: "all 0.15s ease",
+    letterSpacing: "0.01em",
+  } as React.CSSProperties,
+
+  // Sidebar
+  sidebar: {
+    position: "sticky",
+    top: "1.5rem",
+    display: "grid",
+    gap: "0.85rem",
+  } as React.CSSProperties,
+  card: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: "1.1rem",
+  } as React.CSSProperties,
+  cardLabel: {
+    fontSize: "0.66rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.12em",
+    color: C.gold,
+    marginBottom: "0.6rem",
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+  cardBody: {
+    color: C.textFaint,
+    fontSize: "0.85rem",
+    lineHeight: 1.55,
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+
+  // Diagnostic
+  diagnosticCard: {
+    borderRadius: 10,
+    padding: "1rem 1.1rem",
+    display: "flex",
+    alignItems: "center",
+    gap: "0.85rem",
+  } as React.CSSProperties,
+
+  diagnosticLabel: {
+    fontSize: "0.88rem",
+    fontWeight: 700,
+    marginTop: "0.2rem",
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+
+  // Issues
+  issuesList: {
+    display: "grid",
+    gap: "0.55rem",
+    marginTop: "0.3rem",
+  } as React.CSSProperties,
+  issueItem: {
+    display: "flex",
+    gap: "0.55rem",
+    alignItems: "flex-start",
+  } as React.CSSProperties,
+  issueDot: {
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+    flexShrink: 0,
+    marginTop: "0.35rem",
+  } as React.CSSProperties,
+  issueText: {
+    fontSize: "0.79rem",
+    color: C.textSoft,
+    lineHeight: 1.5,
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+
+  // Textarea
+  textarea: {
+    width: "100%",
+    minHeight: 120,
+    marginTop: "0.2rem",
+    marginBottom: "0.7rem",
+    padding: "0.75rem",
+    background: "rgba(255,255,255,0.03)",
+    border: `1px solid ${C.border}`,
+    borderRadius: 6,
+    color: C.text,
+    fontSize: "0.83rem",
+    lineHeight: 1.55,
+    resize: "vertical" as const,
+    fontFamily: "sans-serif",
+    outline: "none",
+    boxSizing: "border-box" as const,
+  } as React.CSSProperties,
+
+  // Buttons
+  btnPrimary: {
+    display: "block",
+    width: "100%",
+    padding: "0.6rem 1rem",
+    background: C.gold,
+    color: "#1a1510",
+    border: "none",
+    borderRadius: 6,
+    fontSize: "0.82rem",
+    fontWeight: 700,
+    fontFamily: "sans-serif",
+    letterSpacing: "0.02em",
+    textAlign: "center" as const,
+    textDecoration: "none",
+    cursor: "pointer",
+    transition: "background 0.15s ease",
+    boxSizing: "border-box" as const,
+  } as React.CSSProperties,
+  btnGhost: {
+    display: "block",
+    width: "100%",
+    padding: "0.6rem 1rem",
+    background: "transparent",
+    color: C.gold,
+    border: `1px solid rgba(196,169,106,0.3)`,
+    borderRadius: 6,
+    fontSize: "0.82rem",
+    fontFamily: "sans-serif",
+    letterSpacing: "0.02em",
+    textAlign: "center" as const,
+    cursor: "pointer",
+    transition: "background 0.15s ease, border-color 0.15s ease",
+    boxSizing: "border-box" as const,
+  } as React.CSSProperties,
+
+  // Nav
+  navGroup: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: "1.1rem",
+  } as React.CSSProperties,
+  navGroupLabel: {
+    fontSize: "0.66rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.12em",
+    color: C.gold,
+    marginBottom: "0.8rem",
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+  navBtns: {
+    display: "grid",
+    gap: "0.45rem",
+    marginBottom: "0.8rem",
+  } as React.CSSProperties,
+  navLinks: {
+    display: "grid",
+    gap: "0.3rem",
+    borderTop: `1px solid ${C.border}`,
+    paddingTop: "0.7rem",
+    marginTop: "0.1rem",
+  } as React.CSSProperties,
+  navLink: {
+    fontSize: "0.78rem",
+    color: C.textFaint,
+    textDecoration: "none",
+    fontFamily: "sans-serif",
+    padding: "0.25rem 0",
+  } as React.CSSProperties,
+
+  // Alert
+  alert: {
+    borderLeft: "3px solid",
+    padding: "0.85rem 1rem",
+    marginBottom: "1rem",
+    fontSize: "0.85rem",
+    lineHeight: 1.5,
+    borderRadius: "0 6px 6px 0",
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+};
+
+// ─── CSS ─────────────────────────────────────────────────────────────────────
+
+const css = `
+  @keyframes selFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes selSpin {
+    to { transform: rotate(360deg); }
+  }
+
+  .sel-spinner {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: 2px solid rgba(196,169,106,0.15);
+    border-top-color: #c4a96a;
+    animation: selSpin 0.75s linear infinite;
+  }
+
+  .sel-question-card:hover {
+    border-color: rgba(196,169,106,0.28) !important;
+  }
+
+  .sel-answer-btn:hover {
+    border-color: rgba(196,169,106,0.45) !important;
+    background: rgba(196,169,106,0.07) !important;
+    color: rgba(255,255,255,0.75) !important;
+  }
+
+  .sel-btn-primary:hover {
+    background: #d4a843 !important;
+  }
+
+  .sel-btn-ghost:hover {
+    background: rgba(196,169,106,0.09) !important;
+    border-color: rgba(196,169,106,0.5) !important;
+  }
+
+  .sel-textarea:focus {
+    border-color: rgba(196,169,106,0.45) !important;
+    background: rgba(255,255,255,0.05) !important;
+    box-shadow: 0 0 0 3px rgba(196,169,106,0.07);
+  }
+
+  .sel-breadcrumb:hover {
+    opacity: 1 !important;
+  }
+
+  .sel-nav-link:hover {
+    color: rgba(196,169,106,0.7) !important;
+  }
+
+  @media (max-width: 860px) {
+    .sel-layout {
+      grid-template-columns: 1fr !important;
+    }
+  }
+`;
