@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type BrandAnswer = "yes" | "no" | "";
-
 type Diagnostic = "a_verifier" | "conforme" | "mineure" | "majeure";
 
 type AgentProfile = {
@@ -228,18 +228,44 @@ function computeDiagnostic(
   return "conforme";
 }
 
-function diagnosticLabel(diagnostic: Diagnostic) {
-  if (diagnostic === "conforme") return "✅ Usage des marques conforme";
-  if (diagnostic === "mineure") return "⚠️ Point de vigilance mineur";
-  if (diagnostic === "majeure") return "🚨 Risque de non-conformité majeure";
-  return "… À vérifier";
-}
+function diagnosticConfig(diagnostic: Diagnostic) {
+  if (diagnostic === "conforme") {
+    return {
+      label: "Usage des marques conforme",
+      color: "#7ec97e",
+      bg: "rgba(126,201,126,0.1)",
+      border: "rgba(126,201,126,0.3)",
+      icon: "✓",
+    };
+  }
 
-function diagnosticColor(diagnostic: Diagnostic) {
-  if (diagnostic === "conforme") return "#6a8a4a";
-  if (diagnostic === "mineure") return "var(--ocre-gold)";
-  if (diagnostic === "majeure") return "var(--rust)";
-  return "var(--ink-faint)";
+  if (diagnostic === "mineure") {
+    return {
+      label: "Point de vigilance mineur",
+      color: "#d4a843",
+      bg: "rgba(212,168,67,0.1)",
+      border: "rgba(212,168,67,0.3)",
+      icon: "△",
+    };
+  }
+
+  if (diagnostic === "majeure") {
+    return {
+      label: "Risque de non-conformité majeure",
+      color: "#c97a7a",
+      bg: "rgba(201,122,122,0.1)",
+      border: "rgba(201,122,122,0.3)",
+      icon: "!",
+    };
+  }
+
+  return {
+    label: "À vérifier",
+    color: C.textFaint,
+    bg: "rgba(255,255,255,0.04)",
+    border: "rgba(255,255,255,0.1)",
+    icon: "…",
+  };
 }
 
 function getIssues(
@@ -280,6 +306,33 @@ function formatCategories(profileData?: Record<string, unknown> | null) {
   return categories.join(", ");
 }
 
+function answerLabel(answer: BrandAnswer) {
+  if (answer === "yes") return "Oui";
+  if (answer === "no") return "Non";
+  return "Sans réponse";
+}
+
+function expectedLabel(answer: "yes" | "no") {
+  return answer === "yes" ? "Réponse attendue : oui" : "Réponse attendue : non";
+}
+
+function diagnosticIconStyle(color: string): CSSProperties {
+  return {
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    background: `${color}18`,
+    border: `1px solid ${color}44`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "1rem",
+    color,
+    flexShrink: 0,
+    fontWeight: 800,
+  };
+}
+
 export default function AgentAuditMarquesPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -306,6 +359,7 @@ export default function AgentAuditMarquesPage() {
   const diagnostic = computeDiagnostic(brandQuestions, answers);
   const visibleQuestions = getVisibleQuestions(brandQuestions, answers);
   const issues = getIssues(brandQuestions, answers);
+  const dc = diagnosticConfig(diagnostic);
 
   const answeredCount = visibleQuestions.filter((question) =>
     Boolean(answers[question.key]),
@@ -332,7 +386,7 @@ export default function AgentAuditMarquesPage() {
       }
 
       if (!authData.user) {
-        router.replace("/client/login");
+        router.replace("/login");
         return;
       }
 
@@ -468,206 +522,183 @@ export default function AgentAuditMarquesPage() {
 
   if (loading) {
     return (
-      <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-        <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-          <p style={{ color: "var(--ink-faint)" }}>
-            Chargement de l’usage des marques…
-          </p>
-        </div>      </main>
+      <div style={s.page}>
+        <style>{css}</style>
+
+        <div style={s.loadingWrap}>
+          <div className="sel-spinner" />
+          <p style={s.loadingText}>Chargement de l’usage des marques…</p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-      <div
-        style={{
-          maxWidth: 1180,
-          margin: "0 auto",
-          padding: "2rem 1.5rem 4rem",
-        }}
-      >
-        <header
-          className="gazette-cta"
-          style={{ padding: "2rem", marginBottom: "1.5rem" }}
-        >
-          <div style={{ position: "relative", zIndex: 1 }}>
-            <p className="gazette-label">Audit blanc · marques Qualiopi</p>
+    <div style={s.page}>
+      <style>{css}</style>
 
-            <h1
-              className="gazette-hero-title"
-              style={{ color: "var(--parchment)", marginBottom: "0.5rem" }}
+      <div style={s.container}>
+        <header style={s.header}>
+          <div style={s.breadcrumb}>
+            <Link
+              href="/agent/audits-blancs"
+              style={s.breadcrumbLink}
+              className="sel-breadcrumb"
             >
-              Usage des marques
-            </h1>
-
-            <p
-              style={{
-                color: "var(--sepia-mid)",
-                lineHeight: 1.65,
-                maxWidth: 760,
-              }}
+              Dossiers
+            </Link>
+            <span style={s.breadcrumbSep}>›</span>
+            <Link
+              href={`/agent/audits-blancs/${caseId}`}
+              style={s.breadcrumbLink}
+              className="sel-breadcrumb"
             >
-              Vérifiez la diffusion du certificat Qualiopi et l’usage éventuel
-              du logo avant de commencer les indicateurs.
-            </p>
+              Fiche dossier
+            </Link>
+            <span style={s.breadcrumbSep}>›</span>
+            <Link
+              href={`/agent/audits-blancs/${caseId}/audit/profil`}
+              style={s.breadcrumbLink}
+              className="sel-breadcrumb"
+            >
+              Profil
+            </Link>
+            <span style={s.breadcrumbSep}>›</span>
+            <span style={s.breadcrumbCurrent}>Usage des marques</span>
+          </div>
 
-            {auditCase && (
-              <p
-                style={{
-                  color: "rgba(240,220,190,0.75)",
-                  fontSize: "0.9rem",
-                  marginTop: "0.8rem",
-                }}
-              >
-                Client : {auditCase.client_email} ·{" "}
-                {formatAuditType(auditCase.profile_data)} · Catégories :{" "}
-                {formatCategories(auditCase.profile_data)}
+          <div style={s.headerBody}>
+            <div style={s.headerLeft}>
+              <p style={s.eyebrow}>Selen Studio · Audit blanc</p>
+
+              <h1 style={s.title}>Usage des marques</h1>
+
+              <p style={s.subtitle}>
+                Vérifiez la diffusion du certificat Qualiopi, les mentions
+                commerciales et l’usage éventuel du logo avant de démarrer les
+                indicateurs.
               </p>
-            )}
 
-            <div style={{ marginTop: "1.2rem" }}>
-              <div
-                style={{
-                  height: "6px",
-                  width: "100%",
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(178,138,98,0.2)",
-                }}
-              >
+              {auditCase && (
+                <p style={s.clientLine}>
+                  <span style={s.clientDot} />
+                  {auditCase.client_email} ·{" "}
+                  {formatAuditType(auditCase.profile_data)} · Catégories :{" "}
+                  {formatCategories(auditCase.profile_data)}
+                </p>
+              )}
+            </div>
+
+            <div style={s.progressCard}>
+              <p style={s.progressLabel}>Contrôle complété</p>
+              <p style={s.progressValue}>{progress}%</p>
+              <div style={s.progressBar}>
                 <div
                   style={{
-                    height: "100%",
+                    ...s.progressFill,
                     width: `${progress}%`,
-                    background:
-                      "linear-gradient(90deg, var(--ocre-dark), var(--ocre-gold))",
-                    transition: "width 0.4s ease",
+                    background: progress === 100 ? "#7ec97e" : C.gold,
                   }}
                 />
               </div>
-
-              <p
-                style={{
-                  marginTop: "0.4rem",
-                  color: "rgba(240,220,190,0.72)",
-                  fontSize: "0.82rem",
-                }}
-              >
-                {answeredCount} / {visibleQuestions.length} réponses ·{" "}
-                {progress} %
+              <p style={s.progressSub}>
+                {answeredCount} / {visibleQuestions.length} réponses
               </p>
             </div>
           </div>
         </header>
 
-        {error && (
-          <div
-            style={{
-              border: "1px solid var(--rust)",
-              borderLeft: "4px solid var(--rust)",
-              background: "rgba(138,75,36,0.06)",
-              padding: "1rem",
-              marginBottom: "1rem",
-              color: "var(--rust)",
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div
-            style={{
-              border: "1px solid #6a8a4a",
-              borderLeft: "4px solid #6a8a4a",
-              background: "rgba(106,138,74,0.08)",
-              padding: "1rem",
-              marginBottom: "1rem",
-              color: "#4f6f36",
-            }}
-          >
-            {success}
-          </div>
-        )}
+        {error && <Alert type="error" message={error} />}
+        {success && <Alert type="success" message={success} />}
 
         {!agent || !auditCase ? (
-          <section
-            style={{
-              background: "var(--paper)",
-              border: "1px solid var(--sepia-mid)",
-              padding: "1.4rem",
-            }}
-          >
-            <p className="gazette-label">Accès impossible</p>
-
-            <p style={{ color: "var(--ink-soft)", lineHeight: 1.6 }}>
-              Le dossier est introuvable ou votre accès agent n’est pas
-              autorisé.
-            </p>
-
-            <Link href="/agent/audits-blancs" className="btn-ink">
-              <span>Retour aux dossiers</span>
-            </Link>
-          </section>
+          <EmptyState
+            label="Accès impossible"
+            title="Le dossier est introuvable ou votre accès agent n’est pas autorisé."
+            body="Revenez à la liste des audits blancs pour vérifier le dossier."
+            href="/agent/audits-blancs"
+            action="Retour aux dossiers"
+          />
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) 340px",
-              gap: "1.25rem",
-              alignItems: "start",
-            }}
-            className="preaudit-grid"
-          >
-            <section style={{ display: "grid", gap: "0.9rem" }}>
-              {visibleQuestions.map((question) => {
+          <div style={s.layout} className="sel-layout">
+            <section style={s.questionsList}>
+              {visibleQuestions.map((question, index) => {
                 const value = answers[question.key] ?? "";
+                const answered = Boolean(value);
+                const isMismatch =
+                  answered &&
+                  !question.skipConformityCheck &&
+                  value !== question.expectedAnswer;
 
                 return (
                   <article
                     key={question.key}
                     style={{
-                      background: "var(--paper)",
-                      border: "1px solid var(--sepia-mid)",
-                      padding: "1rem",
+                      ...s.questionCard,
+                      animationDelay: `${index * 35}ms`,
+                      borderColor: isMismatch
+                        ? question.severity === "major"
+                          ? "rgba(201,122,122,0.38)"
+                          : "rgba(212,168,67,0.38)"
+                        : answered
+                          ? "rgba(126,201,126,0.24)"
+                          : C.border,
                     }}
+                    className="sel-question-card"
                   >
-                    <p className="gazette-label">
-                      {question.severity === "major"
-                        ? "Point sensible"
-                        : "Point de contrôle"}
+                    <div style={s.questionTop}>
+                      <div>
+                        <p style={s.cardLabel}>
+                          {question.severity === "major"
+                            ? "Point sensible"
+                            : "Point de contrôle"}
+                        </p>
+
+                        <h2 style={s.questionTitle}>{question.question}</h2>
+                      </div>
+
+                      <span
+                        style={{
+                          ...s.answerState,
+                          color: answered
+                            ? isMismatch
+                              ? question.severity === "major"
+                                ? "#c97a7a"
+                                : "#d4a843"
+                              : "#7ec97e"
+                            : C.textFaint,
+                          borderColor: answered
+                            ? isMismatch
+                              ? question.severity === "major"
+                                ? "rgba(201,122,122,0.35)"
+                                : "rgba(212,168,67,0.35)"
+                              : "rgba(126,201,126,0.32)"
+                            : C.border,
+                          background: answered
+                            ? isMismatch
+                              ? question.severity === "major"
+                                ? "rgba(201,122,122,0.08)"
+                                : "rgba(212,168,67,0.08)"
+                              : "rgba(126,201,126,0.08)"
+                            : "rgba(255,255,255,0.03)",
+                        }}
+                      >
+                        {answered ? answerLabel(value) : "À renseigner"}
+                      </span>
+                    </div>
+
+                    <p style={s.helpText}>{question.help}</p>
+
+                    <p style={s.expectedText}>
+                      {question.skipConformityCheck
+                        ? "Question de contexte : elle permet d’afficher les contrôles associés."
+                        : expectedLabel(question.expectedAnswer)}
                     </p>
 
-                    <h2
-                      style={{
-                        color: "var(--ink)",
-                        fontSize: "1rem",
-                        marginBottom: "0.35rem",
-                      }}
-                    >
-                      {question.question}
-                    </h2>
-
-                    <p
-                      style={{
-                        color: "var(--ink-faint)",
-                        fontSize: "0.86rem",
-                        lineHeight: 1.5,
-                        marginBottom: "0.8rem",
-                      }}
-                    >
-                      {question.help}
-                    </p>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "0.5rem",
-                        flexWrap: "wrap",
-                      }}
-                    >
+                    <div style={s.answerRow}>
                       {[
-                        { label: "Oui", value: "yes" },
-                        { label: "Non", value: "no" },
+                        { label: "Oui", value: "yes" as BrandAnswer },
+                        { label: "Non", value: "no" as BrandAnswer },
                       ].map((option) => {
                         const selected = value === option.value;
 
@@ -676,20 +707,20 @@ export default function AgentAuditMarquesPage() {
                             key={option.value}
                             type="button"
                             onClick={() =>
-                              updateAnswer(
-                                question.key,
-                                option.value as BrandAnswer,
-                              )
+                              updateAnswer(question.key, option.value)
                             }
                             style={{
-                              padding: "0.45rem 0.9rem",
-                              border: "1px solid var(--sepia-mid)",
+                              ...s.answerButton,
                               background: selected
-                                ? "var(--ocre-gold)"
-                                : "transparent",
-                              color: selected ? "#1a1410" : "var(--ink-soft)",
-                              cursor: "pointer",
+                                ? C.gold
+                                : "rgba(255,255,255,0.03)",
+                              borderColor: selected
+                                ? C.gold
+                                : "rgba(196,169,106,0.18)",
+                              color: selected ? "#1a1510" : C.textSoft,
+                              fontWeight: selected ? 700 : 400,
                             }}
+                            className={selected ? "" : "sel-answer"}
                           >
                             {option.label}
                           </button>
@@ -700,146 +731,695 @@ export default function AgentAuditMarquesPage() {
                 );
               })}
 
-              <article
-                style={{
-                  background: "var(--paper)",
-                  border: "1px solid var(--sepia-mid)",
-                  padding: "1rem",
-                }}
-              >
-                <p className="gazette-label">Notes agent</p>
+              <article style={s.notesCard}>
+                <p style={s.cardLabel}>Notes agent</p>
+
+                <h2 style={s.notesTitle}>Constats sur l’usage des marques</h2>
+
+                <p style={s.helpText}>
+                  Notez ici les preuves observées, les captures à demander, les
+                  mentions à corriger ou les points à confirmer avec le client.
+                </p>
 
                 <textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   onBlur={saveOnly}
-                  placeholder="Notes sur l’usage des marques, preuves observées, corrections à demander..."
-                  style={{
-                    width: "100%",
-                    minHeight: "130px",
-                    padding: "0.7rem",
-                    border: "1px solid var(--sepia-mid)",
-                    background: "rgba(255,255,255,0.55)",
-                    resize: "vertical",
-                  }}
+                  placeholder="Ex : certificat présent sur le site, logo non utilisé, mention à corriger sur la page d’accueil..."
+                  style={s.textarea}
+                  className="sel-textarea"
                 />
               </article>
             </section>
 
-            <aside
-              style={{
-                position: "sticky",
-                top: "1.5rem",
-                display: "grid",
-                gap: "0.9rem",
-              }}
-            >
-              <article
+            <aside style={s.sidebar}>
+              <div
                 style={{
-                  border: "1px solid var(--sepia-mid)",
-                  borderLeft: `4px solid ${diagnosticColor(diagnostic)}`,
-                  background: "var(--paper)",
-                  padding: "1rem",
+                  ...s.diagnosticCard,
+                  background: dc.bg,
+                  border: `1px solid ${dc.border}`,
                 }}
               >
-                <p className="gazette-label">Diagnostic marques</p>
+                <div style={diagnosticIconStyle(dc.color)}>{dc.icon}</div>
 
-                <p
-                  style={{
-                    fontWeight: 700,
-                    color: diagnosticColor(diagnostic),
-                    marginTop: "0.5rem",
-                  }}
-                >
-                  {diagnosticLabel(diagnostic)}
-                </p>
-              </article>
+                <div>
+                  <p style={s.cardLabel}>Diagnostic marques</p>
+                  <p style={{ ...s.diagnosticLabel, color: dc.color }}>
+                    {dc.label}
+                  </p>
+                </div>
+              </div>
 
-              <article
-                style={{
-                  background: "var(--paper)",
-                  border: "1px solid var(--sepia-mid)",
-                  padding: "1rem",
-                }}
-              >
-                <p className="gazette-label">Points à corriger</p>
+              <div style={s.sideCard}>
+                <p style={s.cardLabel}>Points à corriger</p>
 
                 {issues.length > 0 ? (
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: "0.4rem",
-                      marginTop: "0.7rem",
-                      color: "var(--ink-soft)",
-                      fontSize: "0.9rem",
-                    }}
-                  >
+                  <div style={s.issuesList}>
                     {issues.map((issue, index) => (
-                      <p key={index}>
-                        {issue.severity === "major" ? "🚨" : "⚠️"}{" "}
-                        {issue.question}
-                      </p>
+                      <div key={index} style={s.issueItem}>
+                        <span
+                          style={{
+                            ...s.issueDot,
+                            background:
+                              issue.severity === "major"
+                                ? "#c97a7a"
+                                : "#d4a843",
+                          }}
+                        />
+                        <span style={s.issueText}>{issue.question}</span>
+                      </div>
                     ))}
                   </div>
                 ) : (
-                  <p
-                    style={{
-                      color: "var(--ink-faint)",
-                      fontSize: "0.92rem",
-                      marginTop: "0.7rem",
-                    }}
-                  >
+                  <p style={s.cardBody}>
                     Aucun point bloquant détecté pour l’instant.
                   </p>
                 )}
-              </article>
+              </div>
 
-              <div style={{ display: "grid", gap: "0.5rem" }}>
+              <div style={s.sideCard}>
+                <p style={s.cardLabel}>Parcours audit blanc</p>
+
+                <div style={s.steps}>
+                  <StepItem done label="1. Profil audité" />
+                  <StepItem active done label="2. Usage des marques" />
+                  <StepItem label="3. Indicateurs" />
+                  <StepItem label="4. Synthèse & rapport" />
+                </div>
+              </div>
+
+              <div style={s.navCard}>
                 <button
                   type="button"
-                  className="btn-ink"
                   onClick={saveMarquesAndGoNext}
                   disabled={saving}
                   style={{
+                    ...s.btnPrimary,
                     opacity: saving ? 0.55 : 1,
                     cursor: saving ? "not-allowed" : "pointer",
                   }}
+                  className="sel-btn-primary"
                 >
-                  <span>
-                    {saving ? "Sauvegarde…" : "Continuer vers indicateur 1 →"}
-                  </span>
+                  {saving ? "Sauvegarde…" : "Continuer vers indicateur 1 →"}
                 </button>
 
                 <button
                   type="button"
-                  className="btn-ink"
                   onClick={saveOnly}
                   disabled={saving}
                   style={{
+                    ...s.btnGhost,
                     opacity: saving ? 0.55 : 1,
                     cursor: saving ? "not-allowed" : "pointer",
                   }}
+                  className="sel-btn-ghost"
                 >
-                  <span>Sauvegarder</span>
+                  Sauvegarder
                 </button>
 
                 <Link
                   href={`/agent/audits-blancs/${auditCase.id}/audit/profil`}
-                  className="btn-ink"
+                  style={s.btnGhost}
+                  className="sel-btn-ghost"
                 >
-                  <span>← Retour profil</span>
+                  ← Retour profil
                 </Link>
 
                 <Link
                   href={`/agent/audits-blancs/${auditCase.id}`}
-                  className="btn-ink"
+                  style={s.navLink}
+                  className="sel-nav-link"
                 >
-                  <span>Retour fiche dossier</span>
+                  ← Retour fiche dossier
                 </Link>
               </div>
             </aside>
           </div>
         )}
-      </div>    </main>
+      </div>
+    </div>
   );
 }
+
+function Alert({
+  type,
+  message,
+}: {
+  type: "error" | "success";
+  message: string;
+}) {
+  const isError = type === "error";
+
+  return (
+    <div
+      style={{
+        ...s.alert,
+        borderLeftColor: isError ? "#c97a7a" : "#7ec97e",
+        color: isError ? "#c97a7a" : "#7ec97e",
+        background: isError
+          ? "rgba(201,122,122,0.07)"
+          : "rgba(126,201,126,0.07)",
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
+function EmptyState({
+  label,
+  title,
+  body,
+  href,
+  action,
+}: {
+  label: string;
+  title: string;
+  body: string;
+  href: string;
+  action: string;
+}) {
+  return (
+    <div style={s.emptyState}>
+      <div style={s.emptyOrnament}>✦</div>
+      <p style={s.emptyLabel}>{label}</p>
+      <h2 style={s.emptyTitle}>{title}</h2>
+      <p style={s.emptyBody}>{body}</p>
+
+      <Link href={href} style={s.btnPrimary} className="sel-btn-primary">
+        {action}
+      </Link>
+    </div>
+  );
+}
+
+function StepItem({
+  label,
+  active,
+  done,
+}: {
+  label: string;
+  active?: boolean;
+  done?: boolean;
+}) {
+  return (
+    <div style={s.stepItem}>
+      <span
+        style={{
+          ...s.stepDot,
+          background: done ? "#7ec97e" : active ? C.gold : "transparent",
+          borderColor: done || active ? "transparent" : C.borderStrong,
+        }}
+      />
+      <span
+        style={{
+          ...s.stepLabel,
+          color: active || done ? C.text : C.textFaint,
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+const C = {
+  bg: "#1a1510",
+  surface: "#221c14",
+  surfaceDeep: "#1d1810",
+  border: "rgba(196,169,106,0.15)",
+  borderStrong: "rgba(196,169,106,0.28)",
+  gold: "#c4a96a",
+  text: "rgba(255,255,255,0.88)",
+  textSoft: "rgba(255,255,255,0.55)",
+  textFaint: "rgba(255,255,255,0.25)",
+};
+
+const s: Record<string, CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: C.bg,
+    color: C.text,
+    fontFamily: "Georgia, 'Times New Roman', serif",
+  },
+  container: {
+    maxWidth: 1280,
+    margin: "0 auto",
+    padding: "0 2rem 5rem",
+  },
+  loadingWrap: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "70vh",
+    gap: "1.2rem",
+  },
+  loadingText: {
+    color: C.textFaint,
+    fontSize: "0.88rem",
+    letterSpacing: "0.06em",
+  },
+  header: {
+    paddingTop: "2rem",
+    marginBottom: "2rem",
+  },
+  breadcrumb: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.4rem",
+    fontSize: "0.75rem",
+    marginBottom: "1.4rem",
+    fontFamily: "sans-serif",
+  },
+  breadcrumbLink: {
+    color: C.gold,
+    textDecoration: "none",
+    opacity: 0.7,
+  },
+  breadcrumbSep: {
+    color: C.textFaint,
+  },
+  breadcrumbCurrent: {
+    color: C.textSoft,
+  },
+  headerBody: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 220px",
+    gap: "1.5rem",
+    alignItems: "start",
+  },
+  headerLeft: {
+    minWidth: 0,
+  },
+  eyebrow: {
+    fontSize: "0.68rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.18em",
+    color: C.gold,
+    marginBottom: "0.5rem",
+    fontFamily: "sans-serif",
+  },
+  title: {
+    fontSize: "clamp(1.7rem, 3.4vw, 2.5rem)",
+    fontWeight: 700,
+    color: C.text,
+    lineHeight: 1.1,
+    margin: "0 0 0.7rem",
+    fontFamily: "Georgia, serif",
+  },
+  subtitle: {
+    color: C.textSoft,
+    lineHeight: 1.65,
+    maxWidth: 720,
+    fontSize: "0.92rem",
+    margin: "0 0 0.8rem",
+    fontFamily: "sans-serif",
+  },
+  clientLine: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    fontSize: "0.82rem",
+    color: C.textSoft,
+    fontFamily: "sans-serif",
+    flexWrap: "wrap",
+  },
+  clientDot: {
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    background: "#7ec97e",
+    flexShrink: 0,
+    boxShadow: "0 0 0 2.5px rgba(126,201,126,0.2)",
+  },
+  progressCard: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: "1rem",
+  },
+  progressLabel: {
+    fontSize: "0.66rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.12em",
+    color: C.textFaint,
+    marginBottom: "0.4rem",
+    fontFamily: "sans-serif",
+  },
+  progressValue: {
+    fontSize: "2rem",
+    color: C.text,
+    fontWeight: 800,
+    lineHeight: 1,
+    marginBottom: "0.7rem",
+  },
+  progressBar: {
+    height: 4,
+    background: "rgba(196,169,106,0.1)",
+    borderRadius: 99,
+    overflow: "hidden",
+    marginBottom: "0.5rem",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 99,
+    transition: "width 0.4s ease",
+  },
+  progressSub: {
+    color: C.textFaint,
+    fontSize: "0.73rem",
+    fontFamily: "sans-serif",
+  },
+  layout: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 320px",
+    gap: "1.25rem",
+    alignItems: "start",
+  },
+  questionsList: {
+    display: "grid",
+    gap: "0.85rem",
+  },
+  questionCard: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: "1.2rem",
+    animation: "selFadeIn 0.25s ease both",
+  },
+  questionTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "1rem",
+    alignItems: "flex-start",
+    marginBottom: "0.55rem",
+  },
+  cardLabel: {
+    fontSize: "0.66rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.12em",
+    color: C.gold,
+    marginBottom: "0.35rem",
+    fontFamily: "sans-serif",
+  },
+  questionTitle: {
+    color: C.text,
+    fontSize: "1rem",
+    lineHeight: 1.35,
+    margin: 0,
+    fontFamily: "Georgia, serif",
+  },
+  answerState: {
+    flexShrink: 0,
+    border: "1px solid",
+    borderRadius: 999,
+    padding: "0.18rem 0.55rem",
+    fontSize: "0.68rem",
+    fontFamily: "sans-serif",
+    fontWeight: 700,
+  },
+  helpText: {
+    color: C.textFaint,
+    fontSize: "0.82rem",
+    lineHeight: 1.55,
+    marginBottom: "0.75rem",
+    fontFamily: "sans-serif",
+  },
+  expectedText: {
+    color: C.gold,
+    fontSize: "0.75rem",
+    lineHeight: 1.45,
+    marginBottom: "0.9rem",
+    fontFamily: "sans-serif",
+  },
+  answerRow: {
+    display: "flex",
+    gap: "0.45rem",
+    flexWrap: "wrap",
+  },
+  answerButton: {
+    padding: "0.45rem 0.85rem",
+    border: "1px solid",
+    borderRadius: 6,
+    cursor: "pointer",
+    fontSize: "0.8rem",
+    fontFamily: "sans-serif",
+    transition: "all 0.15s ease",
+  },
+  notesCard: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: "1.2rem",
+  },
+  notesTitle: {
+    color: C.text,
+    fontSize: "1rem",
+    lineHeight: 1.35,
+    margin: "0 0 0.55rem",
+    fontFamily: "Georgia, serif",
+  },
+  textarea: {
+    width: "100%",
+    minHeight: 140,
+    padding: "0.75rem",
+    background: "rgba(255,255,255,0.03)",
+    border: `1px solid ${C.border}`,
+    borderRadius: 6,
+    color: C.text,
+    fontSize: "0.83rem",
+    lineHeight: 1.55,
+    resize: "vertical",
+    fontFamily: "sans-serif",
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  sidebar: {
+    position: "sticky",
+    top: "1.5rem",
+    display: "grid",
+    gap: "0.85rem",
+  },
+  diagnosticCard: {
+    borderRadius: 10,
+    padding: "1rem 1.1rem",
+    display: "flex",
+    alignItems: "center",
+    gap: "0.85rem",
+  },
+  diagnosticLabel: {
+    fontSize: "0.88rem",
+    fontWeight: 700,
+    marginTop: "0.2rem",
+    fontFamily: "sans-serif",
+  },
+  sideCard: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: "1.1rem",
+  },
+  cardBody: {
+    color: C.textFaint,
+    fontSize: "0.85rem",
+    lineHeight: 1.55,
+    fontFamily: "sans-serif",
+  },
+  issuesList: {
+    display: "grid",
+    gap: "0.55rem",
+    marginTop: "0.3rem",
+  },
+  issueItem: {
+    display: "flex",
+    gap: "0.55rem",
+    alignItems: "flex-start",
+  },
+  issueDot: {
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+    flexShrink: 0,
+    marginTop: "0.35rem",
+  },
+  issueText: {
+    fontSize: "0.79rem",
+    color: C.textSoft,
+    lineHeight: 1.5,
+    fontFamily: "sans-serif",
+  },
+  steps: {
+    display: "grid",
+    gap: "0.65rem",
+  },
+  stepItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.55rem",
+  },
+  stepDot: {
+    width: 9,
+    height: 9,
+    borderRadius: "50%",
+    border: "1px solid",
+    flexShrink: 0,
+  },
+  stepLabel: {
+    fontSize: "0.82rem",
+    fontFamily: "sans-serif",
+  },
+  navCard: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: "1.1rem",
+    display: "grid",
+    gap: "0.55rem",
+  },
+  btnPrimary: {
+    display: "block",
+    width: "100%",
+    padding: "0.65rem 1rem",
+    background: C.gold,
+    color: "#1a1510",
+    border: "none",
+    borderRadius: 6,
+    fontSize: "0.82rem",
+    fontWeight: 700,
+    fontFamily: "sans-serif",
+    letterSpacing: "0.02em",
+    textAlign: "center",
+    textDecoration: "none",
+    cursor: "pointer",
+    transition: "background 0.15s ease",
+    boxSizing: "border-box",
+  },
+  btnGhost: {
+    display: "block",
+    width: "100%",
+    padding: "0.65rem 1rem",
+    background: "transparent",
+    color: C.gold,
+    border: `1px solid rgba(196,169,106,0.3)`,
+    borderRadius: 6,
+    fontSize: "0.82rem",
+    fontFamily: "sans-serif",
+    letterSpacing: "0.02em",
+    textAlign: "center",
+    textDecoration: "none",
+    cursor: "pointer",
+    transition: "background 0.15s ease, border-color 0.15s ease",
+    boxSizing: "border-box",
+  },
+  navLink: {
+    fontSize: "0.78rem",
+    color: C.textFaint,
+    textDecoration: "none",
+    fontFamily: "sans-serif",
+    padding: "0.25rem 0",
+    textAlign: "center",
+  },
+  alert: {
+    borderLeft: "3px solid",
+    padding: "0.85rem 1rem",
+    marginBottom: "1rem",
+    fontSize: "0.85rem",
+    lineHeight: 1.5,
+    borderRadius: "0 6px 6px 0",
+    fontFamily: "sans-serif",
+  },
+  emptyState: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: "4rem 2rem",
+    textAlign: "center",
+  },
+  emptyOrnament: {
+    fontSize: "1.5rem",
+    color: "rgba(196,169,106,0.25)",
+    marginBottom: "1.2rem",
+  },
+  emptyLabel: {
+    fontSize: "0.68rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.14em",
+    color: C.gold,
+    marginBottom: "0.6rem",
+    fontFamily: "sans-serif",
+  },
+  emptyTitle: {
+    color: C.text,
+    marginBottom: "0.5rem",
+    fontSize: "1.1rem",
+    fontFamily: "Georgia, serif",
+  },
+  emptyBody: {
+    color: C.textFaint,
+    lineHeight: 1.65,
+    maxWidth: 420,
+    margin: "0 auto 1rem",
+    fontSize: "0.88rem",
+    fontFamily: "sans-serif",
+  },
+};
+
+const css = `
+  @keyframes selFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .sel-question-card:hover {
+    border-color: rgba(196,169,106,0.3) !important;
+  }
+
+  .sel-answer:hover {
+    border-color: rgba(196,169,106,0.45) !important;
+    background: rgba(196,169,106,0.08) !important;
+    color: rgba(255,255,255,0.75) !important;
+  }
+
+  .sel-textarea:focus {
+    border-color: rgba(196,169,106,0.45) !important;
+    background: rgba(255,255,255,0.05) !important;
+    box-shadow: 0 0 0 3px rgba(196,169,106,0.07);
+  }
+
+  .sel-btn-primary:hover {
+    background: #d4a843 !important;
+  }
+
+  .sel-btn-ghost:hover {
+    background: rgba(196,169,106,0.09) !important;
+    border-color: rgba(196,169,106,0.5) !important;
+  }
+
+  .sel-breadcrumb:hover {
+    opacity: 1 !important;
+  }
+
+  .sel-nav-link:hover {
+    color: rgba(196,169,106,0.7) !important;
+  }
+
+  .sel-spinner {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 2px solid rgba(196,169,106,0.15);
+    border-top-color: #c4a96a;
+    animation: selSpin 0.75s linear infinite;
+  }
+
+  @keyframes selSpin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (max-width: 900px) {
+    .sel-layout {
+      grid-template-columns: 1fr !important;
+    }
+  }
+`;
