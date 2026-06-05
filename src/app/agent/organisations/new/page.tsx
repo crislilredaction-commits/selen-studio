@@ -27,16 +27,6 @@ export default async function NewOrganisationPage() {
       nda_number,
     });
 
-    if (type === "nda") {
-      const { error: ndaError } = await supabase.from("nda_variables").insert({
-        dossier_id: dossier.id,
-      });
-
-      if (ndaError) {
-        console.error("Erreur création variables NDA", ndaError);
-      }
-    }
-
     if (error) {
       console.error(error);
       throw new Error("Impossible de créer l’organisation.");

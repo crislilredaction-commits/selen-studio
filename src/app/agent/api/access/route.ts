@@ -105,7 +105,10 @@ function generateTemporaryPassword() {
   return `Selen-${random}!`;
 }
 
-async function findAuthUserByEmail(admin: AdminClient, email: string) {
+async function findAuthUserByEmail(
+  admin: ReturnType<typeof getAdminClient>,
+  email: string,
+) {
   const normalizedEmail = email.trim().toLowerCase();
 
   let page = 1;

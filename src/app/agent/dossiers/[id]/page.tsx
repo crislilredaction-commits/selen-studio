@@ -286,31 +286,23 @@ function getRegionFromPostalCode(codePostal?: string | null) {
 const MOCK_HISTORY: HistoryEntry[] = [
   {
     id: "h1",
-    action: "Dossier ouvert",
-    author: "Agent",
+    label: "Dossier ouvert",
     date: "01/03",
-    variant: "gold",
   },
   {
     id: "h2",
-    action: "Programme et CV reçus",
-    author: "Upload client",
+    label: "Programme et CV reçus",
     date: "03/03",
-    variant: "blue",
   },
   {
     id: "h3",
-    action: "Relance envoyée au client",
-    author: "Agent",
+    label: "Relance envoyée au client",
     date: "08/03",
-    variant: "blue",
   },
   {
     id: "h4",
-    action: "Statut → Collecte documents",
-    author: "Agent",
+    label: "Statut → Collecte documents",
     date: "10/03",
-    variant: "gold",
   },
 ];
 

@@ -111,7 +111,10 @@ export async function POST(req: Request) {
     await createAgentNotification({
       supabase,
       dossierId,
-      type: decision === "validated" ? "program_validated" : "program_refused",
+      type:
+        decision === "validated"
+          ? "client_validated_reformulation"
+          : "client_message",
       title:
         decision === "validated"
           ? "Programme validé par le client"
