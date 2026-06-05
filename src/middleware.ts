@@ -28,7 +28,6 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isLoginPage = request.nextUrl.pathname.startsWith("/login");
   const isAgentPage = request.nextUrl.pathname.startsWith("/agent");
 
   if (isAgentPage && !user) {
@@ -43,5 +42,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/agent/:path*", "/login"],
+  matcher: ["/agent/:path*"],
 };
