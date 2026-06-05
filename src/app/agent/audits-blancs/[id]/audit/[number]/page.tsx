@@ -43,6 +43,26 @@ type AgentProfile = {
   role: "agent" | "admin";
 };
 
+type PreauditDocumentModel = {
+  id: string;
+  name: string;
+  description: string | null;
+  related_indicators: number[] | null;
+  file_url: string | null;
+};
+
+type AuditBlancDocument = {
+  id: string;
+  name: string;
+  document_type: string;
+  storage_path: string;
+  public_url: string | null;
+  is_visible_to_client: boolean;
+  uploaded_by_email: string | null;
+  created_at: string;
+  source_model_id: string | null;
+};
+
 // ─── Logic (unchanged) ───────────────────────────────────────────────────────
 
 function computeDiagnostic(
@@ -166,6 +186,19 @@ function questionMatchesProfile(
   return matchSingleCondition(parsedCondition, profileData);
 }
 
+function extractStoragePathFromPublicUrl(value?: string | null) {
+  if (!value) return "";
+
+  const marker = "/storage/v1/object/public/selen-documents/";
+  const markerIndex = value.indexOf(marker);
+
+  if (markerIndex >= 0) {
+    return decodeURIComponent(value.slice(markerIndex + marker.length));
+  }
+
+  return value;
+}
+
 // ─── Diagnostic helpers ───────────────────────────────────────────────────────
 
 function diagnosticConfig(diagnostic: Diagnostic) {
@@ -240,6 +273,15 @@ export default function AgentAuditToolPage() {
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [documentModels, setDocumentModels] = useState<PreauditDocumentModel[]>(
+    [],
+  );
+  const [publishedDocuments, setPublishedDocuments] = useState<
+    AuditBlancDocument[]
+  >([]);
+  const [publishingModelId, setPublishingModelId] = useState<string | null>(
+    null,
+  );
 
   const diagnostic = computeDiagnostic(indicatorNumber, questions, answers);
   const issues = getIssues(questions, answers);
@@ -250,6 +292,15 @@ export default function AgentAuditToolPage() {
   const prevNum = indicatorNumber > 1 ? indicatorNumber - 1 : null;
   const nextNum = indicatorNumber < 32 ? indicatorNumber + 1 : null;
   const dc = diagnosticConfig(diagnostic);
+  const indicatorDocumentModels = useMemo(() => {
+    return documentModels.filter((model) => {
+      if (!Array.isArray(model.related_indicators)) return false;
+
+      return model.related_indicators
+        .map((value) => Number(value))
+        .includes(indicatorNumber);
+    });
+  }, [documentModels, indicatorNumber]);
 
   async function loadPage() {
     setLoading(true);
@@ -379,6 +430,38 @@ export default function AgentAuditToolPage() {
       return;
     }
     setNote(noteData?.user_notes ?? "");
+
+    const { data: modelData, error: modelError } = await supabase
+      .from("preaudit_document_models")
+      .select("id, name, description, related_indicators, file_url")
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+
+    if (modelError) {
+      setError(
+        `Impossible de charger les modèles de documents. ${modelError.message}`,
+      );
+      setLoading(false);
+      return;
+    }
+
+    setDocumentModels((modelData ?? []) as PreauditDocumentModel[]);
+
+    const { data: documentData, error: documentError } = await supabase
+      .from("audit_blanc_documents")
+      .select(
+        "id, name, document_type, storage_path, public_url, is_visible_to_client, uploaded_by_email, created_at, source_model_id",
+      )
+      .eq("case_id", caseId);
+
+    if (documentError) {
+      setError(`Impossible de charger les documents. ${documentError.message}`);
+      setLoading(false);
+      return;
+    }
+
+    setPublishedDocuments((documentData ?? []) as AuditBlancDocument[]);
+
     setLoading(false);
   }
 
@@ -438,6 +521,74 @@ export default function AgentAuditToolPage() {
     }
     setSuccess("Note sauvegardée.");
     setSavingNote(false);
+  }
+
+  async function publishDocumentModelToClient(model: PreauditDocumentModel) {
+    if (!auditCase || !agent) {
+      setError("Dossier ou agent introuvable.");
+      return;
+    }
+
+    if (!model.file_url) {
+      setError("Ce modèle n’a pas de fichier associé.");
+      return;
+    }
+
+    const alreadyPublished = publishedDocuments.some(
+      (document) => document.source_model_id === model.id,
+    );
+
+    if (alreadyPublished) {
+      setError("Ce document est déjà visible dans l’espace client.");
+      return;
+    }
+
+    const storagePath = extractStoragePathFromPublicUrl(model.file_url);
+
+    if (!storagePath) {
+      setError("Impossible de retrouver le chemin du fichier modèle.");
+      return;
+    }
+
+    setPublishingModelId(model.id);
+    setError("");
+    setSuccess("");
+
+    const { data: publicUrlData } = supabase.storage
+      .from("selen-documents")
+      .getPublicUrl(storagePath);
+
+    const { data: documentData, error: insertError } = await supabase
+      .from("audit_blanc_documents")
+      .insert({
+        case_id: auditCase.id,
+        name: model.name,
+        document_type: "document_correctif",
+        storage_bucket: "selen-documents",
+        storage_path: storagePath,
+        public_url: publicUrlData.publicUrl,
+        uploaded_by_email: agent.email,
+        is_visible_to_client: true,
+        source_model_id: model.id,
+      })
+      .select(
+        "id, name, document_type, storage_path, public_url, is_visible_to_client, uploaded_by_email, created_at, source_model_id",
+      )
+      .single();
+
+    if (insertError) {
+      setError(`Impossible de publier le document : ${insertError.message}`);
+      setPublishingModelId(null);
+      return;
+    }
+
+    setPublishedDocuments((prev) => [
+      documentData as AuditBlancDocument,
+      ...prev,
+    ]);
+
+    setSuccess(`Document “${model.name}” rendu visible dans l’espace client.`);
+    setPublishingModelId(null);
   }
 
   function goToIndicator(targetNumber: number) {
@@ -707,6 +858,91 @@ export default function AgentAuditToolPage() {
                   </div>
                 ) : (
                   <p style={s.cardBody}>Aucun point bloquant détecté.</p>
+                )}
+              </div>
+
+              {/* Documents correctifs */}
+              <div style={s.card}>
+                <p style={s.cardLabel}>Documents correctifs</p>
+
+                {diagnostic === "conforme" ? (
+                  <p style={s.cardBody}>
+                    Aucun document correctif n’est proposé tant que l’indicateur
+                    est conforme.
+                  </p>
+                ) : indicatorDocumentModels.length === 0 ? (
+                  <p style={s.cardBody}>
+                    Aucun modèle actif n’est associé à cet indicateur pour le
+                    moment.
+                  </p>
+                ) : (
+                  <div style={s.documentList}>
+                    {indicatorDocumentModels.map((model) => {
+                      const alreadyPublished = publishedDocuments.some(
+                        (document) => document.source_model_id === model.id,
+                      );
+
+                      const isPublishing = publishingModelId === model.id;
+
+                      return (
+                        <div key={model.id} style={s.documentItem}>
+                          <div>
+                            <p style={s.documentTitle}>{model.name}</p>
+
+                            {model.description && (
+                              <p style={s.documentDescription}>
+                                {model.description}
+                              </p>
+                            )}
+
+                            {!model.file_url && (
+                              <p style={s.documentWarning}>
+                                Aucun fichier associé à ce modèle.
+                              </p>
+                            )}
+
+                            {alreadyPublished && (
+                              <p style={s.documentVisible}>
+                                Déjà visible dans l’espace client
+                              </p>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => publishDocumentModelToClient(model)}
+                            disabled={
+                              alreadyPublished ||
+                              !model.file_url ||
+                              isPublishing
+                            }
+                            style={{
+                              ...s.btnGhost,
+                              opacity:
+                                alreadyPublished ||
+                                !model.file_url ||
+                                isPublishing
+                                  ? 0.55
+                                  : 1,
+                              cursor:
+                                alreadyPublished ||
+                                !model.file_url ||
+                                isPublishing
+                                  ? "not-allowed"
+                                  : "pointer",
+                            }}
+                            className="sel-btn-ghost"
+                          >
+                            {isPublishing
+                              ? "Publication…"
+                              : alreadyPublished
+                                ? "Publié"
+                                : "Publier client"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 
@@ -1119,6 +1355,47 @@ const s: Record<string, CSSProperties> = {
     fontSize: "0.79rem",
     color: C.textSoft,
     lineHeight: 1.5,
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+
+  documentList: {
+    display: "grid",
+    gap: "0.65rem",
+    marginTop: "0.4rem",
+  } as React.CSSProperties,
+  documentItem: {
+    display: "grid",
+    gap: "0.55rem",
+    padding: "0.75rem",
+    border: `1px solid ${C.border}`,
+    borderRadius: 8,
+    background: "rgba(255,255,255,0.025)",
+  } as React.CSSProperties,
+  documentTitle: {
+    color: C.text,
+    fontSize: "0.82rem",
+    fontWeight: 700,
+    lineHeight: 1.35,
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+  documentDescription: {
+    color: C.textFaint,
+    fontSize: "0.76rem",
+    lineHeight: 1.45,
+    marginTop: "0.25rem",
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+  documentWarning: {
+    color: "#c97a7a",
+    fontSize: "0.74rem",
+    marginTop: "0.3rem",
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+  documentVisible: {
+    color: "#7ec97e",
+    fontSize: "0.74rem",
+    marginTop: "0.3rem",
+    fontWeight: 700,
     fontFamily: "sans-serif",
   } as React.CSSProperties,
 
