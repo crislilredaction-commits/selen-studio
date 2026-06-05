@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import AuditGrimoire from "@/components/agent/AuditGrimoire";
 
 type BrandAnswer = "yes" | "no" | "";
 type Diagnostic = "a_verifier" | "conforme" | "mineure" | "majeure";
@@ -536,6 +537,7 @@ export default function AgentAuditMarquesPage() {
   return (
     <div style={s.page}>
       <style>{css}</style>
+      <AuditGrimoire />
 
       <div style={s.container}>
         <header style={s.header}>

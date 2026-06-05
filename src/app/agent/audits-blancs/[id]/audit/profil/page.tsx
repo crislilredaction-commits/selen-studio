@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import AuditGrimoire from "@/components/agent/AuditGrimoire";
 
 type AgentProfile = {
   email: string;
@@ -363,7 +364,7 @@ export default function AgentAuditProfilePage() {
   return (
     <div style={s.page}>
       <style>{css}</style>
-
+      <AuditGrimoire />
       <div style={s.container}>
         <header style={s.header}>
           <div style={s.breadcrumb}>

@@ -37,6 +37,8 @@ type AuditBlancCase = {
   offer: string;
   report_status: string;
   profile_data: Record<string, unknown> | null;
+  applicable_indicators: number[] | null;
+  excluded_indicators: number[] | null;
 };
 
 type AgentProfile = {
@@ -255,6 +257,496 @@ const ANSWER_CONFIG = [
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
+function getIndicatorInfoBlocks(indicatorNumber: number) {
+  const blocks: Record<number, { title: string; text: string }[]> = {
+    1: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "Vos informations doivent être accessibles au public avant toute contractualisation, complètes, cohérentes et à jour sur l’ensemble de vos supports.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Site internet, fiche formation, plaquette commerciale, catalogue ou email envoyé avant signature.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Cet indicateur est souvent vérifié en premier. Un site incomplet peut influencer négativement l’ensemble de l’audit.",
+      },
+    ],
+    2: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que des indicateurs de résultats existent, qu’ils sont adaptés à la prestation et qu’ils sont diffusés au public.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Taux de satisfaction, taux de réussite ou d’atteinte des objectifs, taux d’abandon, indicateurs spécifiques selon la prestation.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Un taux seul ne suffit pas toujours : il est préférable d’indiquer aussi le volume concerné et la période de référence.",
+      },
+    ],
+    3: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "Pour les certifications, VAE ou apprentissages, l’auditeur vérifie que les informations obligatoires liées à la certification sont accessibles et actualisées.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Taux d’obtention, taux de présentation, blocs de compétences, passerelles, équivalences, débouchés, taux d’insertion si applicable.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Cet indicateur ne concerne pas les formations non certifiantes classiques.",
+      },
+    ],
+    4: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le besoin du bénéficiaire est analysé avant l’entrée en formation et que cette analyse est tracée.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Dossier d’inscription, fiche de renseignement, questionnaire d’analyse du besoin, validation des prérequis, positionnement amont.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "L’analyse du besoin doit servir à adapter la prestation si nécessaire, pas seulement à collecter des informations administratives.",
+      },
+    ],
+    5: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que les objectifs sont clairs, opérationnels, adaptés au public et cohérents avec les évaluations.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Programme de formation, objectifs rédigés avec des verbes d’action, évaluations permettant de vérifier l’atteinte des objectifs.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Un bon objectif décrit ce que l’apprenant sera capable de faire, pas seulement ce qu’il va comprendre.",
+      },
+    ],
+    6: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que les contenus, modalités et moyens pédagogiques sont cohérents avec les objectifs, le public bénéficiaire et les besoins identifiés.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Programme détaillé, analyse du besoin, positionnement amont, adaptations pédagogiques, supports, modalités de mise en œuvre, politique handicap.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "L’adaptation doit être justifiable : elle doit découler de l’analyse du besoin, du public visé, des objectifs et, si besoin, d’une situation de handicap.",
+      },
+    ],
+    7: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que les contenus de formation sont en adéquation avec les compétences, blocs et épreuves d’évaluation de la certification visée.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Référentiel RNCP/RS, programme de formation, tableau de correspondance contenus-compétences-évaluations, modalités de certification.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Cet indicateur concerne les formations certifiantes. Le programme doit démontrer clairement le lien avec le référentiel de certification.",
+      },
+    ],
+    8: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie qu’un positionnement ou une évaluation des acquis est réalisé avant l’entrée en formation, et que cette démarche est adaptée au public et aux modalités prévues.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Questionnaire de positionnement, test de connaissances, entretien amont, validation des prérequis, fiche d’analyse du besoin, trace des adaptations décidées.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Le positionnement doit servir concrètement : il permet de vérifier le niveau d’entrée, de valider les prérequis et d’adapter le parcours si nécessaire.",
+      },
+    ],
+
+    9: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le bénéficiaire reçoit, avant le démarrage, les informations nécessaires au bon déroulement de la prestation.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Convocation, livret d’accueil, email d’information, contrat ou convention, règlement intérieur si applicable, preuve de transmission.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Pour le bilan de compétences, l’information doit aussi couvrir les engagements déontologiques : consentement, confidentialité et respect du bénéficiaire.",
+      },
+    ],
+    10: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que la prestation, l’accompagnement et le suivi sont réellement mis en œuvre et adaptés aux profils des bénéficiaires lorsque le besoin l’exige.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Planning, emploi du temps, feuilles d’émargement, tableau de suivi, livret pédagogique, supports de formation (numériques et/ou papier) traces d’accompagnement, adaptations mises en place, échanges ou comptes rendus.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Cet indicateur vérifie le passage du prévu au réel : ce qui a été identifié en amont doit se retrouver dans la mise en œuvre et le suivi.",
+      },
+    ],
+    11: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que l’atteinte des objectifs est évaluée avec un processus formalisé, réellement mis en œuvre et cohérent avec les objectifs annoncés.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Grilles d’évaluation, résultats, bilans intermédiaires ou finaux, auto-évaluations, comptes rendus, livret de compétences, preuves d’évaluation en entreprise ou certification.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Cet indicateur ne vérifie pas seulement l’existence d’un quiz : il faut pouvoir montrer que chaque objectif est évalué et que le résultat est analysé.",
+      },
+    ],
+
+    12: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que des mesures existent pour maintenir l’engagement des bénéficiaires et prévenir les abandons ou ruptures de parcours.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Tableau de suivi, relances, comptes rendus d’entretien, preuves de présence ou d’activité, points d’étape, suivi à distance, échanges avec l’entreprise ou le tuteur si applicable.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Cet indicateur concerne les prestations de plus de deux jours. Il faut pouvoir montrer des mesures prévues, mais aussi des traces de leur mise en œuvre.",
+      },
+    ],
+
+    13: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que les apprentissages en centre et en entreprise sont coordonnés, progressifs et anticipés avec l’entreprise et l’apprenant.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Carnet ou livret de liaison, planning d’alternance, progression pédagogique, échanges avec le tuteur ou maître d’apprentissage, comptes rendus de suivi ou visites en entreprise.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Cet indicateur concerne l’alternance. Il faut montrer que l’entreprise n’est pas seulement un lieu d’accueil, mais un lieu d’apprentissage coordonné avec le centre.",
+      },
+    ],
+
+    14: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le CFA met en œuvre un accompagnement socio-professionnel, éducatif et citoyen des apprentis, au-delà du simple suivi pédagogique.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Livret de suivi de l’apprenti, règlement intérieur, droits et devoirs, actions citoyennes, ateliers CV ou insertion, prévention du harcèlement et des discriminations, feuilles d’émargement ou traces de participation.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Le livret apprenti peut devenir une preuve centrale s’il contient les informations transmises, les actions proposées et les traces de suivi ou de participation.",
+      },
+    ],
+
+    15: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que les apprentis sont informés de leurs droits et devoirs en tant qu’apprentis et salariés, ainsi que des règles de santé et de sécurité applicables.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Livret de suivi de l’apprenti, règlement intérieur, livret d’accueil, support d’information, preuve de remise ou d’émargement, email d’envoi, compte rendu de réunion d’information.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Pour cet indicateur, une information absente, incomplète ou non prouvée entraîne une non-conformité majeure. La preuve de transmission est donc aussi importante que le contenu.",
+      },
+    ],
+    16: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que les bénéficiaires sont présentés à la certification dans le respect des exigences formelles de l’autorité certificatrice.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Règlement ou guide du certificateur, checklist d’inscription, dossiers candidats, preuves de transmission, convocations, calendrier de certification, échanges avec l’autorité certificatrice.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Il ne suffit pas de préparer les bénéficiaires : il faut aussi prouver que les conditions administratives et formelles de présentation à la certification sont respectées.",
+      },
+    ],
+
+    17: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que les moyens humains, techniques, matériels et l’environnement sont adaptés aux objectifs, au public et aux modalités de la prestation.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "CV ou profils des intervenants, planning d’intervention, inventaire matériel, contrat de location, convention de mise à disposition, registre d’accessibilité, DUERP, captures de plateforme, supports ou photos des équipements.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Il ne faut pas seulement disposer de moyens : il faut montrer qu’ils sont adaptés à la prestation réellement auditée, y compris lorsque les locaux ou équipements sont fournis par un tiers.",
+      },
+    ],
+
+    18: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que les fonctions nécessaires à la prestation sont identifiées et que les intervenants internes ou externes sont mobilisés et coordonnés.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Planning d’intervention, organigramme fonctionnel, fiches de mission, emails de cadrage, comptes rendus, tableau de suivi, échanges avec les intervenants, contrats ou conventions si besoin.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Même un prestataire indépendant peut être concerné : il doit pouvoir expliquer comment il organise les différentes fonctions qu’il assure seul.",
+      },
+    ],
+
+    19: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que des ressources pédagogiques cohérentes avec les objectifs sont mises à disposition des bénéficiaires et que ceux-ci peuvent se les approprier.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Supports de cours, fiches pratiques, vidéos, ressources documentaires, plateforme, espace partagé, consignes d’accès, tutoriels, preuves de transmission, emails d’envoi, attestations de remise ou captures d’espace en ligne.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Avoir des supports ne suffit pas : il faut pouvoir prouver qu’ils ont bien été remis ou rendus accessibles aux bénéficiaires. Les preuves de remise sont donc indispensables : attestation de remise en main propre, email d’envoi, preuve de transmission via un espace en ligne, capture de dépôt, accusé de réception ou trace équivalente.",
+      },
+    ],
+
+    20: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le CFA dispose d’un personnel dédié à la mobilité nationale et internationale, d’un référent handicap identifié et d’un conseil de perfectionnement.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Liste des membres du conseil de perfectionnement, dernier compte rendu ou procès-verbal, noms et qualités des personnes dédiées à la mobilité, nom et contact du référent handicap, preuves des actions menées.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Cet indicateur ne se limite pas à nommer des personnes : il faut prouver que les rôles existent, qu’ils sont identifiés et que des actions sont mises en œuvre ou au minimum organisées.",
+      },
+    ],
+
+    21: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que les intervenants disposent de compétences adaptées aux prestations réalisées et que ces compétences sont justifiées par des preuves concrètes.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Diplômes, titres, certifications, attestations de formation, CV à jour, habilitations éventuelles, justificatifs d’expérience, dossier intervenant, preuves de formation continue ou de spécialisation.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Pour cet indicateur, les preuves les plus importantes sont les diplômes, certifications et attestations de formation. Un CV seul peut aider, mais il est préférable de conserver des justificatifs concrets permettant de prouver la compétence professionnelle et pédagogique de chaque intervenant.",
+      },
+    ],
+
+    22: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que les compétences du personnel, ou du prestataire lui-même lorsqu’il travaille seul, sont entretenues et développées en cohérence avec les prestations délivrées.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Plan de développement des compétences, attestations de formation, certificats, preuves de participation à des webinaires, veille métier, échanges de pratiques, entretiens professionnels, actions de professionnalisation ou justificatifs de formation continue.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Pour les indépendants, certains certificateurs demandent aussi un plan de développement des compétences personnel. Il est donc préférable de formaliser les formations suivies, les actions prévues, la veille réalisée et les compétences à maintenir ou développer.",
+      },
+    ],
+
+    23: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire réalise une veille légale et réglementaire sur le champ de la formation professionnelle, qu’il en garde une trace et qu’il en exploite les enseignements.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Tableau de veille, sources suivies, newsletters, liens institutionnels, notes d’analyse, exemples de mise à jour de documents ou procédures, preuve de diffusion aux personnes concernées.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "La veille doit être vivante : il faut montrer une information repérée, son analyse, la décision prise et, si nécessaire, la mise à jour réalisée. Un simple dossier de liens non exploités risque d’être insuffisant.",
+      },
+    ],
+
+    24: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire réalise une veille sur les évolutions des compétences, des métiers et des emplois dans ses secteurs d’intervention, puis qu’il exploite les informations utiles.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Tableau de veille, sources métiers, observatoires, OPCO, branches professionnelles, salons, conférences, réseaux professionnels, revues spécialisées, notes d’analyse et exemples d’adaptation des prestations.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "La veille métier doit servir à faire évoluer les prestations si nécessaire : contenu, exemples, compétences visées, supports, exercices, cas pratiques ou positionnement. Il faut pouvoir montrer au moins un exemple concret d’information repérée, analysée puis exploitée.",
+      },
+    ],
+
+    25: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire réalise une veille sur les innovations pédagogiques et technologiques, puis qu’il analyse et exploite les informations utiles pour faire évoluer ses prestations.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Tableau de veille, newsletters, webinaires, salons, conférences, groupes d’échange, tests d’outils, notes d’analyse, captures, exemples d’évolution des supports, modalités ou outils pédagogiques.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Il n’est pas nécessaire d’adopter toutes les innovations repérées. L’important est de montrer que vous les analysez : intérêt, faisabilité, coût, pertinence pour le public, accessibilité, puis décision d’intégration ou non.",
+      },
+    ],
+
+    26: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire a identifié un réseau handicap mobilisable pour accueillir, accompagner, former ou orienter les publics en situation de handicap.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Politique accessibilité handicap, coordonnées de partenaires handicap, référent handicap identifié, procédure de mobilisation du réseau, traces d’échanges, adaptations mises en place ou orientations proposées.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Il faut pouvoir présenter un réseau concret et mobilisable : Agefiph, Cap emploi, MDPH, FIPHFP, partenaires spécialisés et associations locales si pertinent. Une simple phrase d’intention ne suffit pas.",
+      },
+    ],
+    27: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire maîtrise sa sous-traitance ou le recours au portage salarial et s’assure que les intervenants respectent les exigences Qualiopi applicables.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Contrat ou convention de sous-traitance, charte d’engagement Qualiopi signée, CV, diplômes, attestations, consignes transmises, preuves d’intervention, émargements, évaluations, bilans et contrôles qualité.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Un simple contrat commercial ne suffit pas. Il faut montrer que le sous-traitant connaît les exigences qualité, transmet les preuves nécessaires et accepte que ses interventions soient contrôlées par l’organisme donneur d’ordre.",
+      },
+    ],
+
+    28: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire mobilise un réseau de partenaires socio-économiques pour co-construire l’ingénierie de formation et favoriser l’accueil en entreprise lorsque la prestation comprend des périodes en situation de travail.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Liste des entreprises partenaires, conventions de partenariat, conventions de formation, contacts du réseau socio-économique, comptes rendus de réunions, comités de pilotage, livret alternance, échanges avec les entreprises ou tuteurs.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Une simple liste de contacts ne suffit pas toujours : il faut montrer que le réseau est réellement mobilisé, avec des échanges, conventions, comptes rendus, retours entreprises ou actions concrètes liées à l’accueil en entreprise.",
+      },
+    ],
+
+    29: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le CFA développe des actions concrètes favorisant l’insertion professionnelle ou la poursuite d’études des apprentis.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Livret de suivi de l’apprenti, planning d’ateliers, feuilles d’émargement, supports CV ou entretien, informations sur les poursuites d’études, partenariats, enquêtes de sortie ou suivi des suites de parcours.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Il ne suffit pas de dire que les apprentis peuvent poursuivre leurs études ou chercher un emploi : il faut montrer les actions proposées, les preuves de participation ou de transmission, et si possible un suivi des suites de parcours.",
+      },
+    ],
+
+    30: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire recueille les appréciations des parties prenantes concernées : bénéficiaires, financeurs, équipes pédagogiques et entreprises lorsque cela s’applique.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Questionnaires de satisfaction, évaluations à chaud ou à froid, comptes rendus d’entretien, retours formateurs, retours entreprises, sollicitations financeurs, relances, exports de formulaires ou tableaux de synthèse.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Le recueil doit être organisé, tracé et permettre une expression libre. Il ne suffit pas d’avoir un questionnaire : il faut pouvoir prouver qu’il est envoyé, relancé si besoin, complété ou au moins sollicité auprès des parties prenantes concernées.",
+      },
+    ],
+
+    31: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire a défini et met en œuvre des modalités de traitement des difficultés, aléas et réclamations exprimés par les parties prenantes.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Procédure de traitement, tableau d’amélioration continue, registre des réclamations, emails, accusés de réception, réponses apportées, actions correctives, preuves de clôture et suivi des aléas.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Pour cet indicateur, il faut prouver le traitement réel : réception, analyse, réponse, action décidée, suivi et clôture. Une réclamation non tracée ou une difficulté traitée oralement sans preuve peut fragiliser l’audit.",
+      },
+    ],
+
+    32: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire met en œuvre des mesures d’amélioration à partir de l’analyse des appréciations, difficultés, aléas et réclamations.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Tableau d’amélioration continue, analyse des retours, causes identifiées, plan d’action, mesures mises en œuvre, preuves de réalisation, suivi d’efficacité, documents ou procédures mis à jour.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Le 32 ne valide pas seulement l’existence d’un tableau : il faut montrer le chemin complet entre le retour reçu, l’analyse, l’action décidée, la mise en œuvre réelle et la preuve de suivi. Un questionnaire sans exploitation ne suffit pas.",
+      },
+    ],
+  };
+
+  return (
+    blocks[indicatorNumber] ?? [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "Les exigences spécifiques de cet indicateur doivent être vérifiées à partir du référentiel Qualiopi.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Les preuves attendues dépendent de l’indicateur et de la catégorie d’action concernée.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Complétez progressivement cette aide au fur et à mesure de la construction des indicateurs.",
+      },
+    ]
+  );
+}
+
 export default function AgentAuditToolPage() {
   const router = useRouter();
   const params = useParams<{ id: string; number: string }>();
@@ -293,6 +785,11 @@ export default function AgentAuditToolPage() {
   const prevNum = indicatorNumber > 1 ? indicatorNumber - 1 : null;
   const nextNum = indicatorNumber < 32 ? indicatorNumber + 1 : null;
   const dc = diagnosticConfig(diagnostic);
+  const indicatorOptions =
+    auditCase?.applicable_indicators &&
+    auditCase.applicable_indicators.length > 0
+      ? auditCase.applicable_indicators
+      : Array.from({ length: 32 }, (_, index) => index + 1);
   const indicatorDocumentModels = useMemo(() => {
     return documentModels.filter((model) => {
       if (!Array.isArray(model.related_indicators)) return false;
@@ -347,7 +844,9 @@ export default function AgentAuditToolPage() {
 
     const { data: caseData, error: caseError } = await supabase
       .from("audit_blanc_cases")
-      .select("id, client_email, status, offer, report_status, profile_data")
+      .select(
+        "id, client_email, status, offer, report_status, profile_data, applicable_indicators, excluded_indicators",
+      )
       .eq("id", caseId)
       .maybeSingle();
 
@@ -722,6 +1221,18 @@ export default function AgentAuditToolPage() {
           <div style={s.layout} className="sel-layout">
             {/* ── Questions ── */}
             <section style={s.questionsList}>
+              <div style={s.infoGrid}>
+                {getIndicatorInfoBlocks(indicatorNumber).map((block) => (
+                  <article key={block.title} style={s.infoCard}>
+                    <div style={s.infoCardRail} />
+
+                    <p style={s.infoBlockLabel}>{block.title}</p>
+
+                    <p style={s.infoBlockText}>{block.text}</p>
+                  </article>
+                ))}
+              </div>
+
               {questions.length === 0 ? (
                 <div style={s.card}>
                   <p style={s.cardLabel}>Aucune question</p>
@@ -977,6 +1488,23 @@ export default function AgentAuditToolPage() {
               {/* Navigation */}
               <div style={s.navGroup}>
                 <p style={s.navGroupLabel}>Navigation</p>
+                <label style={s.fieldLabel}>
+                  Aller à un indicateur
+                  <select
+                    value={String(indicatorNumber)}
+                    onChange={(event) =>
+                      goToIndicator(Number(event.target.value))
+                    }
+                    style={s.selectInput}
+                    className="sel-select"
+                  >
+                    {indicatorOptions.map((number) => (
+                      <option key={number} value={String(number)}>
+                        Indicateur {number}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <div style={s.navBtns}>
                   {prevNum && (
                     <button
@@ -1095,12 +1623,12 @@ const s: Record<string, CSSProperties> = {
     background: C.bg,
     color: C.text,
     fontFamily: "Georgia, 'Times New Roman', serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   container: {
     maxWidth: 1280,
     margin: "0 auto",
     padding: "0 2rem 5rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
 
   loadingWrap: {
     display: "flex",
@@ -1109,15 +1637,15 @@ const s: Record<string, CSSProperties> = {
     justifyContent: "center",
     minHeight: "70vh",
     gap: "1.2rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
   loadingText: {
     color: C.textFaint,
     fontSize: "0.88rem",
     letterSpacing: "0.06em",
-  } as React.CSSProperties,
+  } as CSSProperties,
 
   // Header
-  header: { paddingTop: "2rem", marginBottom: "2rem" } as React.CSSProperties,
+  header: { paddingTop: "2rem", marginBottom: "2rem" } as CSSProperties,
   breadcrumb: {
     display: "flex",
     alignItems: "center",
@@ -1125,22 +1653,22 @@ const s: Record<string, CSSProperties> = {
     fontSize: "0.75rem",
     marginBottom: "1.4rem",
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   breadcrumbLink: {
     color: C.gold,
     textDecoration: "none",
     opacity: 0.7,
-  } as React.CSSProperties,
-  breadcrumbSep: { color: C.textFaint } as React.CSSProperties,
-  breadcrumbCurrent: { color: C.textSoft } as React.CSSProperties,
+  } as CSSProperties,
+  breadcrumbSep: { color: C.textFaint } as CSSProperties,
+  breadcrumbCurrent: { color: C.textSoft } as CSSProperties,
   headerBody: {
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: "1.5rem",
     marginBottom: "1.2rem",
-  } as React.CSSProperties,
-  headerLeft: { flex: 1 } as React.CSSProperties,
+  } as CSSProperties,
+  headerLeft: { flex: 1 } as CSSProperties,
   eyebrow: {
     fontSize: "0.68rem",
     textTransform: "uppercase" as const,
@@ -1148,7 +1676,7 @@ const s: Record<string, CSSProperties> = {
     color: C.gold,
     marginBottom: "0.5rem",
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   title: {
     fontSize: "clamp(1.5rem, 3vw, 2.2rem)",
     fontWeight: 700,
@@ -1156,7 +1684,7 @@ const s: Record<string, CSSProperties> = {
     lineHeight: 1.15,
     margin: "0 0 0.6rem",
     fontFamily: "Georgia, serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   clientLine: {
     display: "flex",
     alignItems: "center",
@@ -1164,7 +1692,7 @@ const s: Record<string, CSSProperties> = {
     fontSize: "0.82rem",
     color: C.textSoft,
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   clientDot: {
     width: 7,
     height: 7,
@@ -1172,30 +1700,30 @@ const s: Record<string, CSSProperties> = {
     background: "#7ec97e",
     flexShrink: 0,
     boxShadow: "0 0 0 2.5px rgba(126,201,126,0.2)",
-  } as React.CSSProperties,
+  } as CSSProperties,
   progressWrap: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     gap: "0.3rem",
     flexShrink: 0,
-  } as React.CSSProperties,
+  } as CSSProperties,
   progressSub: {
     fontSize: "0.7rem",
     color: C.textFaint,
     fontFamily: "sans-serif",
     letterSpacing: "0.04em",
-  } as React.CSSProperties,
+  } as CSSProperties,
   progressBar: {
     height: 3,
     background: "rgba(196,169,106,0.1)",
     borderRadius: 99,
-  } as React.CSSProperties,
+  } as CSSProperties,
   progressFill: {
     height: "100%",
     borderRadius: 99,
     transition: "width 0.4s ease",
-  } as React.CSSProperties,
+  } as CSSProperties,
 
   // Layout
   layout: {
@@ -1203,8 +1731,8 @@ const s: Record<string, CSSProperties> = {
     gridTemplateColumns: "minmax(0,1fr) 300px",
     gap: "1.25rem",
     alignItems: "start",
-  } as React.CSSProperties,
-  questionsList: { display: "grid", gap: "0.8rem" } as React.CSSProperties,
+  } as CSSProperties,
+  questionsList: { display: "grid", gap: "0.8rem" } as CSSProperties,
 
   // Question card
   questionCard: {
@@ -1213,14 +1741,14 @@ const s: Record<string, CSSProperties> = {
     borderRadius: 10,
     padding: "1.2rem 1.3rem",
     animation: "selFadeIn 0.25s ease both",
-  } as React.CSSProperties,
+  } as CSSProperties,
   questionMeta: {
     display: "flex",
     alignItems: "center",
     gap: "0.5rem",
     marginBottom: "0.7rem",
     flexWrap: "wrap" as const,
-  } as React.CSSProperties,
+  } as CSSProperties,
   questionNum: {
     fontSize: "0.66rem",
     textTransform: "uppercase" as const,
@@ -1228,7 +1756,7 @@ const s: Record<string, CSSProperties> = {
     color: C.gold,
     fontFamily: "sans-serif",
     fontWeight: 600,
-  } as React.CSSProperties,
+  } as CSSProperties,
   criticalBadge: {
     fontSize: "0.65rem",
     padding: "0.15rem 0.5rem",
@@ -1238,7 +1766,7 @@ const s: Record<string, CSSProperties> = {
     color: "#c97a7a",
     fontFamily: "sans-serif",
     fontWeight: 700,
-  } as React.CSSProperties,
+  } as CSSProperties,
   majorBadge: {
     fontSize: "0.65rem",
     padding: "0.15rem 0.5rem",
@@ -1248,27 +1776,27 @@ const s: Record<string, CSSProperties> = {
     color: "#d4a843",
     fontFamily: "sans-serif",
     fontWeight: 700,
-  } as React.CSSProperties,
+  } as CSSProperties,
   savingBadge: {
     marginLeft: "auto",
     fontSize: "0.72rem",
     color: C.textFaint,
     fontFamily: "sans-serif",
     fontStyle: "italic",
-  } as React.CSSProperties,
+  } as CSSProperties,
   answeredBadge: {
     marginLeft: "auto",
     fontSize: "0.72rem",
     fontFamily: "sans-serif",
     fontWeight: 600,
-  } as React.CSSProperties,
+  } as CSSProperties,
   questionText: {
     fontSize: "0.97rem",
     color: "rgba(255,255,255,0.82)",
     lineHeight: 1.55,
     fontWeight: 400,
     margin: "0 0 0.55rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
   helpText: {
     fontSize: "0.8rem",
     color: C.textFaint,
@@ -1276,12 +1804,12 @@ const s: Record<string, CSSProperties> = {
     lineHeight: 1.55,
     margin: "0 0 0.85rem",
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   answerRow: {
     display: "flex",
     gap: "0.45rem",
     flexWrap: "wrap" as const,
-  } as React.CSSProperties,
+  } as CSSProperties,
   answerBtn: {
     padding: "0.42rem 0.9rem",
     borderRadius: 6,
@@ -1289,7 +1817,82 @@ const s: Record<string, CSSProperties> = {
     fontFamily: "sans-serif",
     transition: "all 0.15s ease",
     letterSpacing: "0.01em",
-  } as React.CSSProperties,
+  } as CSSProperties,
+
+  infoGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: "0.75rem",
+    marginBottom: "0.9rem",
+  } as CSSProperties,
+
+  infoCard: {
+    position: "relative",
+    overflow: "hidden",
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: "1rem 1rem 1rem 1.15rem",
+  } as CSSProperties,
+
+  infoCardRail: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    background: "linear-gradient(to bottom, #8f6f3f, #c4a96a)",
+  } as CSSProperties,
+
+  infoBlockLabel: {
+    fontSize: "0.64rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.12em",
+    color: C.gold,
+    marginBottom: "0.45rem",
+    fontFamily: "sans-serif",
+    fontWeight: 800,
+  } as CSSProperties,
+
+  infoBlockText: {
+    color: C.textSoft,
+    fontSize: "0.82rem",
+    lineHeight: 1.55,
+    fontFamily: "sans-serif",
+  } as CSSProperties,
+
+  jumpBox: {
+    border: `1px solid ${C.border}`,
+    background: "rgba(255,255,255,0.03)",
+    borderRadius: 8,
+    padding: "0.75rem",
+    marginBottom: "0.8rem",
+  } as CSSProperties,
+
+  jumpLabel: {
+    display: "grid",
+    gap: "0.4rem",
+    color: C.textFaint,
+    fontSize: "0.72rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.08em",
+    fontFamily: "sans-serif",
+  } as CSSProperties,
+
+  jumpSelect: {
+    width: "100%",
+    padding: "0.55rem",
+    border: `1px solid ${C.border}`,
+    background: "rgba(255,255,255,0.04)",
+    color: C.text,
+    borderRadius: 6,
+    cursor: "pointer",
+    outline: "none",
+    fontSize: "0.82rem",
+    fontFamily: "sans-serif",
+    textTransform: "none" as const,
+    letterSpacing: 0,
+  } as CSSProperties,
 
   // Sidebar
   sidebar: {
@@ -1297,13 +1900,13 @@ const s: Record<string, CSSProperties> = {
     top: "1.5rem",
     display: "grid",
     gap: "0.85rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
   card: {
     background: C.surface,
     border: `1px solid ${C.border}`,
     borderRadius: 10,
     padding: "1.1rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
   cardLabel: {
     fontSize: "0.66rem",
     textTransform: "uppercase" as const,
@@ -1311,13 +1914,13 @@ const s: Record<string, CSSProperties> = {
     color: C.gold,
     marginBottom: "0.6rem",
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   cardBody: {
     color: C.textFaint,
     fontSize: "0.85rem",
     lineHeight: 1.55,
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
 
   // Diagnostic
   diagnosticCard: {
@@ -1326,45 +1929,45 @@ const s: Record<string, CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: "0.85rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
 
   diagnosticLabel: {
     fontSize: "0.88rem",
     fontWeight: 700,
     marginTop: "0.2rem",
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
 
   // Issues
   issuesList: {
     display: "grid",
     gap: "0.55rem",
     marginTop: "0.3rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
   issueItem: {
     display: "flex",
     gap: "0.55rem",
     alignItems: "flex-start",
-  } as React.CSSProperties,
+  } as CSSProperties,
   issueDot: {
     width: 6,
     height: 6,
     borderRadius: "50%",
     flexShrink: 0,
     marginTop: "0.35rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
   issueText: {
     fontSize: "0.79rem",
     color: C.textSoft,
     lineHeight: 1.5,
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
 
   documentList: {
     display: "grid",
     gap: "0.65rem",
     marginTop: "0.4rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
   documentItem: {
     display: "grid",
     gap: "0.55rem",
@@ -1372,34 +1975,34 @@ const s: Record<string, CSSProperties> = {
     border: `1px solid ${C.border}`,
     borderRadius: 8,
     background: "rgba(255,255,255,0.025)",
-  } as React.CSSProperties,
+  } as CSSProperties,
   documentTitle: {
     color: C.text,
     fontSize: "0.82rem",
     fontWeight: 700,
     lineHeight: 1.35,
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   documentDescription: {
     color: C.textFaint,
     fontSize: "0.76rem",
     lineHeight: 1.45,
     marginTop: "0.25rem",
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   documentWarning: {
     color: "#c97a7a",
     fontSize: "0.74rem",
     marginTop: "0.3rem",
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   documentVisible: {
     color: "#7ec97e",
     fontSize: "0.74rem",
     marginTop: "0.3rem",
     fontWeight: 700,
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
 
   // Textarea
   textarea: {
@@ -1418,7 +2021,7 @@ const s: Record<string, CSSProperties> = {
     fontFamily: "sans-serif",
     outline: "none",
     boxSizing: "border-box" as const,
-  } as React.CSSProperties,
+  } as CSSProperties,
 
   // Buttons
   btnPrimary: {
@@ -1438,7 +2041,7 @@ const s: Record<string, CSSProperties> = {
     cursor: "pointer",
     transition: "background 0.15s ease",
     boxSizing: "border-box" as const,
-  } as React.CSSProperties,
+  } as CSSProperties,
   btnGhost: {
     display: "block",
     width: "100%",
@@ -1454,7 +2057,29 @@ const s: Record<string, CSSProperties> = {
     cursor: "pointer",
     transition: "background 0.15s ease, border-color 0.15s ease",
     boxSizing: "border-box" as const,
-  } as React.CSSProperties,
+  } as CSSProperties,
+
+  fieldLabel: {
+    display: "grid",
+    gap: "0.35rem",
+    color: C.textSoft,
+    fontSize: "0.78rem",
+    fontFamily: "sans-serif",
+  } as CSSProperties,
+
+  selectInput: {
+    width: "100%",
+    padding: "0.6rem 0.7rem",
+    background: "rgba(255,255,255,0.04)",
+    border: `1px solid ${C.border}`,
+    borderRadius: 6,
+    color: C.text,
+    fontSize: "0.82rem",
+    outline: "none",
+    cursor: "pointer",
+    boxSizing: "border-box",
+    fontFamily: "sans-serif",
+  } as CSSProperties,
 
   // Nav
   navGroup: {
@@ -1462,7 +2087,7 @@ const s: Record<string, CSSProperties> = {
     border: `1px solid ${C.border}`,
     borderRadius: 10,
     padding: "1.1rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
   navGroupLabel: {
     fontSize: "0.66rem",
     textTransform: "uppercase" as const,
@@ -1470,26 +2095,26 @@ const s: Record<string, CSSProperties> = {
     color: C.gold,
     marginBottom: "0.8rem",
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
   navBtns: {
     display: "grid",
     gap: "0.45rem",
     marginBottom: "0.8rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
   navLinks: {
     display: "grid",
     gap: "0.3rem",
     borderTop: `1px solid ${C.border}`,
     paddingTop: "0.7rem",
     marginTop: "0.1rem",
-  } as React.CSSProperties,
+  } as CSSProperties,
   navLink: {
     fontSize: "0.78rem",
     color: C.textFaint,
     textDecoration: "none",
     fontFamily: "sans-serif",
     padding: "0.25rem 0",
-  } as React.CSSProperties,
+  } as CSSProperties,
 
   // Alert
   alert: {
@@ -1500,7 +2125,7 @@ const s: Record<string, CSSProperties> = {
     lineHeight: 1.5,
     borderRadius: "0 6px 6px 0",
     fontFamily: "sans-serif",
-  } as React.CSSProperties,
+  } as CSSProperties,
 };
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import AuditGrimoire from "@/components/agent/AuditGrimoire";
 
 type AuditBlancCase = {
   id: string;
@@ -997,6 +998,7 @@ export default function AgentAuditBlancDetailPage() {
   return (
     <div style={s.page}>
       <style>{css}</style>
+      <AuditGrimoire />
 
       <div style={s.container}>
         <header style={s.header}>
