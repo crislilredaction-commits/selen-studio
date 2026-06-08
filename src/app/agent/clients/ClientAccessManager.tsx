@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import SelenBadge from "@/components/ui/SelenBadge";
@@ -85,6 +85,11 @@ export default function ClientAccessManager() {
     return tools.filter((tool) => tool.is_active);
   }, [tools]);
 
+  useEffect(() => {
+    loadAccesses("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function loadAccesses(targetEmail = email) {
     const cleanEmail = targetEmail.trim().toLowerCase();
 
@@ -105,8 +110,10 @@ export default function ClientAccessManager() {
 
       setData(result);
 
-      if (!selectedToolSlug && result.tools?.[0]?.slug) {
-        setSelectedToolSlug(result.tools[0].slug);
+      const firstActiveTool = result.tools?.find((tool) => tool.is_active);
+
+      if (!selectedToolSlug && firstActiveTool?.slug) {
+        setSelectedToolSlug(firstActiveTool.slug);
       }
 
       if (result.message) {

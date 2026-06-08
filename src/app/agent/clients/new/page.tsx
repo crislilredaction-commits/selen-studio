@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
+import ClientAccessManager from "../ClientAccessManager";
 
 export default async function NewClientPage() {
   async function createClientAction(formData: FormData) {
@@ -322,6 +323,9 @@ export default async function NewClientPage() {
           </div>
         </form>
       </SelenCard>
+      <div style={{ marginTop: 18 }}>
+        <ClientAccessManager />
+      </div>
     </main>
   );
 }
