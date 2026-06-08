@@ -6,6 +6,33 @@ import AgentSidebarMessaging from "@/components/layout/AgentSidebarMessaging";
 
 const links = [
   {
+    href: "/agent",
+    label: "Tableau de bord",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
+        <path
+          d="M2 7.5 8 2.5l6 5"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M4 7v6h8V7"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M6.5 13V9.5h3V13"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
+  },
+  {
     href: "/agent/dossiers",
     label: "Dossiers",
     icon: (
@@ -54,6 +81,48 @@ const links = [
         <circle cx="7" cy="6" r="3.5" stroke="currentColor" strokeWidth="1.2" />
         <path
           d="M1.5 13.5c0-2.5 2.5-4.5 5.5-4.5s5.5 2 5.5 4.5"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+      </svg>
+    ),
+  },
+  {
+    href: "/agent/profil",
+    label: "Mon profil",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
+        <circle cx="8" cy="5" r="3" stroke="currentColor" strokeWidth="1.2" />
+        <path
+          d="M2.5 14c0-2.6 2.4-4.5 5.5-4.5s5.5 1.9 5.5 4.5"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+      </svg>
+    ),
+  },
+  {
+    href: "/agent/admin/agents",
+    label: "Accès agents",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
+        <circle cx="6" cy="5.5" r="3" stroke="currentColor" strokeWidth="1.2" />
+        <path
+          d="M1.5 14c0-2.4 2-4.2 4.5-4.2s4.5 1.8 4.5 4.2"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M11.5 3.5v4"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M9.5 5.5h4"
           stroke="currentColor"
           strokeWidth="1.2"
           strokeLinecap="round"
