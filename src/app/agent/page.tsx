@@ -382,14 +382,17 @@ async function getDashboardData(
 
   const assignedDossiers = assignedDossiersRaw.map(buildDossierItem);
 
-  const relevantDossierIds =
+  const relevantDossierIds: string[] =
     staff.role === "admin"
-      ? null
+      ? []
       : assignedDossiersRaw.map((dossier) => dossier.id);
 
   let unreadMessagesRaw: MessageRow[] = [];
 
-  if (staff.role === "admin" || relevantDossierIds.length > 0) {
+  const shouldLoadUnreadMessages =
+    staff.role === "admin" || relevantDossierIds.length > 0;
+
+  if (shouldLoadUnreadMessages) {
     let unreadMessagesQuery = supabase
       .from("messages")
       .select(
