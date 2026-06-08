@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -764,6 +764,11 @@ export default function AgentAuditToolPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [note, setNote] = useState("");
+  const [noteSaveStatus, setNoteSaveStatus] = useState<
+    "idle" | "dirty" | "saving" | "saved" | "error"
+  >("idle");
+  const noteSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedNoteRef = useRef("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [documentModels, setDocumentModels] = useState<PreauditDocumentModel[]>(
@@ -929,7 +934,10 @@ export default function AgentAuditToolPage() {
       setLoading(false);
       return;
     }
-    setNote(noteData?.user_notes ?? "");
+    const loadedNote = noteData?.user_notes ?? "";
+    setNote(loadedNote);
+    lastSavedNoteRef.current = loadedNote;
+    setNoteSaveStatus("idle");
 
     const { data: modelData, error: modelError } = await supabase
       .from("preaudit_document_models")
@@ -996,32 +1004,93 @@ export default function AgentAuditToolPage() {
     setSavingAnswerId(null);
   }
 
-  async function saveIndicatorNote() {
-    setSavingNote(true);
-    setError("");
-    setSuccess("");
+  const saveIndicatorNote = useCallback(
+    async (noteToSave = note, options?: { silent?: boolean }) => {
+      if (!auditCase) return;
 
-    const { error: saveError } = await supabase
-      .from("audit_blanc_indicator_notes")
-      .upsert(
-        {
-          case_id: caseId,
-          indicator_number: indicatorNumber,
-          user_notes: note,
-          agent_diagnostic: diagnostic,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "case_id,indicator_number" },
-      );
+      const normalizedNote = noteToSave ?? "";
 
-    if (saveError) {
-      setError(saveError.message);
+      if (
+        normalizedNote === lastSavedNoteRef.current &&
+        noteSaveStatus !== "dirty"
+      ) {
+        return;
+      }
+
+      setSavingNote(true);
+      setNoteSaveStatus("saving");
+      setError("");
+
+      if (!options?.silent) {
+        setSuccess("");
+      }
+
+      const { error: saveError } = await supabase
+        .from("audit_blanc_indicator_notes")
+        .upsert(
+          {
+            case_id: caseId,
+            indicator_number: indicatorNumber,
+            user_notes: normalizedNote,
+            agent_diagnostic: diagnostic,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "case_id,indicator_number" },
+        );
+
+      if (saveError) {
+        setError(saveError.message);
+        setNoteSaveStatus("error");
+        setSavingNote(false);
+        return;
+      }
+
+      lastSavedNoteRef.current = normalizedNote;
+      setNoteSaveStatus("saved");
+
+      if (!options?.silent) {
+        setSuccess("Note sauvegardée.");
+      }
+
       setSavingNote(false);
+    },
+    [
+      auditCase,
+      caseId,
+      diagnostic,
+      indicatorNumber,
+      note,
+      noteSaveStatus,
+      supabase,
+    ],
+  );
+
+  useEffect(() => {
+    if (loading || !auditCase) return;
+
+    if (note === lastSavedNoteRef.current) {
+      if (noteSaveStatus === "dirty") {
+        setNoteSaveStatus("idle");
+      }
       return;
     }
-    setSuccess("Note sauvegardée.");
-    setSavingNote(false);
-  }
+
+    setNoteSaveStatus("dirty");
+
+    if (noteSaveTimerRef.current) {
+      clearTimeout(noteSaveTimerRef.current);
+    }
+
+    noteSaveTimerRef.current = setTimeout(() => {
+      void saveIndicatorNote(note, { silent: true });
+    }, 800);
+
+    return () => {
+      if (noteSaveTimerRef.current) {
+        clearTimeout(noteSaveTimerRef.current);
+      }
+    };
+  }, [auditCase, loading, note, noteSaveStatus, saveIndicatorNote]);
 
   async function publishDocumentModelToClient(model: PreauditDocumentModel) {
     if (!auditCase || !agent) {
@@ -1091,8 +1160,13 @@ export default function AgentAuditToolPage() {
     setPublishingModelId(null);
   }
 
-  function goToIndicator(targetNumber: number) {
-    void saveIndicatorNote();
+  async function goToIndicator(targetNumber: number) {
+    if (noteSaveTimerRef.current) {
+      clearTimeout(noteSaveTimerRef.current);
+    }
+
+    await saveIndicatorNote(note, { silent: true });
+
     router.push(`/agent/audits-blancs/${caseId}/audit/${targetNumber}`);
   }
 
@@ -1464,15 +1538,40 @@ export default function AgentAuditToolPage() {
                 <p style={s.cardLabel}>Note indicateur</p>
                 <textarea
                   value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  onBlur={() => saveIndicatorNote()}
+                  onChange={(e) => {
+                    setNote(e.target.value);
+                    setNoteSaveStatus("dirty");
+                  }}
+                  onBlur={() => saveIndicatorNote(note, { silent: true })}
                   placeholder="Preuves observées, écarts, corrections à demander…"
                   style={s.textarea}
                   className="sel-textarea"
                 />
+
+                <p
+                  style={{
+                    fontSize: "0.74rem",
+                    color:
+                      noteSaveStatus === "error"
+                        ? "#c97a7a"
+                        : noteSaveStatus === "saved"
+                          ? "#7ec97e"
+                          : C.textFaint,
+                    fontFamily: "sans-serif",
+                    margin: "-0.35rem 0 0.65rem",
+                  }}
+                >
+                  {noteSaveStatus === "dirty" && "Modification en cours…"}
+                  {noteSaveStatus === "saving" && "Sauvegarde automatique…"}
+                  {noteSaveStatus === "saved" && "Sauvegardé automatiquement ✓"}
+                  {noteSaveStatus === "error" &&
+                    "Erreur de sauvegarde automatique"}
+                  {noteSaveStatus === "idle" &&
+                    "Sauvegarde automatique activée"}
+                </p>
                 <button
                   type="button"
-                  onClick={saveIndicatorNote}
+                  onClick={() => saveIndicatorNote(note)}
                   disabled={savingNote}
                   style={{
                     ...s.btnPrimary,
