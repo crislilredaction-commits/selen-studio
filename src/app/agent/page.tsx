@@ -42,16 +42,26 @@ const studioLinks = [
 
 const adminLinks = [
   {
+    title: "Créer un accès agent",
+    description:
+      "Inviter un nouvel agent ou auditeur à accéder à Selen Studio.",
+    href: "/agent/admin/agents",
+    icon: "🪪",
+    internal: true,
+  },
+  {
     title: "www.selen-editions.fr",
     description: "Ouvrir le site public et l’espace client Selen.",
     href: "https://www.selen-editions.fr",
     icon: "🌐",
+    internal: false,
   },
   {
     title: "selion.selen-editions.fr",
     description: "Ouvrir le robot de prospection et le suivi des prospects.",
     href: "https://selion.selen-editions.fr",
     icon: "🦁",
+    internal: false,
   },
 ];
 
@@ -300,59 +310,92 @@ export default async function AgentHomePage() {
                 gap: 12,
               }}
             >
-              {adminLinks.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    textDecoration: "none",
-                    color: "inherit",
-                    display: "block",
-                    border: "1px solid var(--selen-border)",
-                    borderRadius: "var(--radius-md)",
-                    padding: 14,
-                    background: "var(--selen-bg3)",
-                  }}
-                >
-                  <div style={{ fontSize: 22, marginBottom: 8 }}>
-                    {item.icon}
-                  </div>
-
+              {adminLinks.map((item) => {
+                const card = (
                   <div
                     style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      marginBottom: 6,
-                      color: "var(--selen-text)",
+                      textDecoration: "none",
+                      color: "inherit",
+                      display: "block",
+                      border: "1px solid var(--selen-border)",
+                      borderRadius: "var(--radius-md)",
+                      padding: 14,
+                      background: "var(--selen-bg3)",
+                      height: "100%",
                     }}
                   >
-                    {item.title}
+                    <div style={{ fontSize: 22, marginBottom: 8 }}>
+                      {item.icon}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        marginBottom: 6,
+                        color: "var(--selen-text)",
+                      }}
+                    >
+                      {item.title}
+                    </div>
+
+                    <p
+                      style={{
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                        color: "var(--selen-text2)",
+                      }}
+                    >
+                      {item.description}
+                    </p>
+
+                    <p
+                      style={{
+                        marginTop: 10,
+                        fontSize: 12,
+                        color: "var(--selen-gold2)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {item.internal
+                        ? "Ouvrir →"
+                        : "Ouvrir dans un nouvel onglet ↗"}
+                    </p>
                   </div>
+                );
 
-                  <p
+                if (item.internal) {
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      style={{
+                        textDecoration: "none",
+                        color: "inherit",
+                        display: "block",
+                      }}
+                    >
+                      {card}
+                    </Link>
+                  );
+                }
+
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
                     style={{
-                      fontSize: 12,
-                      lineHeight: 1.5,
-                      color: "var(--selen-text2)",
+                      textDecoration: "none",
+                      color: "inherit",
+                      display: "block",
                     }}
                   >
-                    {item.description}
-                  </p>
-
-                  <p
-                    style={{
-                      marginTop: 10,
-                      fontSize: 12,
-                      color: "var(--selen-gold2)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Ouvrir dans un nouvel onglet ↗
-                  </p>
-                </a>
-              ))}
+                    {card}
+                  </a>
+                );
+              })}
             </div>
           </SelenCard>
         </section>
