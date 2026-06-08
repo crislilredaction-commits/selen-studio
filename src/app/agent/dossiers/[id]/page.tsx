@@ -43,14 +43,16 @@ type OrganisationRow = {
 
 type AgentProfile = {
   id: string;
-  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   email: string | null;
+  role: "agent" | "admin" | string | null;
 };
 
 type AssignmentRow = {
   id: string;
+  agent_id: string | null;
   is_primary: boolean;
-  profiles: AgentProfile | AgentProfile[] | null;
 };
 
 type RelatedDossier = {
@@ -425,36 +427,57 @@ export default async function DossierPage({ params }: PageProps) {
     redirect(`/agent/dossiers/${dossierId}`);
   }
 
+  async function archiveDossier(formData: FormData) {
+    "use server";
+
+    const dossierId = formData.get("dossier_id") as string;
+    const confirmation = (formData.get("confirmation") as string)?.trim();
+
+    if (confirmation !== "ARCHIVER") {
+      throw new Error(
+        "Confirmation incorrecte. Pour archiver ce dossier, saisissez ARCHIVER.",
+      );
+    }
+
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from("dossiers")
+      .update({
+        status: "archived",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", dossierId);
+
+    if (error) {
+      console.error(error);
+      throw new Error("Impossible d’archiver ce dossier.");
+    }
+
+    redirect("/agent/dossiers");
+  }
+
   const { data: dossier, error } = await supabase
     .from("dossiers")
     .select(
       `
+      id,
+      title,
+      type,
+      status,
+      created_at,
+      updated_at,
+      organisation_id,
+      organisations:organisation_id (
         id,
-        title,
-        type,
-        status,
-        created_at,
-        updated_at,
-        organisation_id,
-        organisations:organisation_id (
-          id,
-          name,
-          email,
-          phone,
-          siret,
-          nda_number,
-          address
-        ),
-        dossier_assignments (
-          id,
-          is_primary,
-          profiles:agent_id (
-            id,
-            full_name,
-            email
-          )
-        )
-      `,
+        name,
+        email,
+        phone,
+        siret,
+        nda_number,
+        address
+      )
+    `,
     )
     .eq("id", id)
     .maybeSingle();
@@ -471,6 +494,19 @@ export default async function DossierPage({ params }: PageProps) {
     return (
       <main className="p-10" style={{ color: "var(--selen-text)" }}>
         Dossier introuvable.
+      </main>
+    );
+  }
+
+  const { data: assignments, error: assignmentsError } = await supabase
+    .from("dossier_assignments")
+    .select("id, agent_id, is_primary")
+    .eq("dossier_id", dossier.id);
+
+  if (assignmentsError) {
+    return (
+      <main className="p-10" style={{ color: "var(--selen-danger)" }}>
+        <pre>{JSON.stringify(assignmentsError, null, 2)}</pre>
       </main>
     );
   }
@@ -493,10 +529,11 @@ export default async function DossierPage({ params }: PageProps) {
     .order("created_at", { ascending: false });
 
   const { data: agents, error: agentsError } = await supabase
-    .from("profiles")
-    .select("id, full_name, email")
-    .in("app_role", ["agent", "admin"])
-    .order("full_name");
+    .from("agent_profiles")
+    .select("id, email, first_name, last_name, role")
+    .eq("is_active", true)
+    .in("role", ["agent", "admin"])
+    .order("first_name", { ascending: true });
 
   if (agentsError) {
     return (
@@ -621,14 +658,23 @@ export default async function DossierPage({ params }: PageProps) {
   );
 
   const primaryAssignment =
-    dossier.dossier_assignments?.find((a: AssignmentRow) => a.is_primary) ??
-    dossier.dossier_assignments?.[0] ??
+    ((assignments ?? []) as AssignmentRow[]).find((a) => a.is_primary) ??
+    ((assignments ?? []) as AssignmentRow[])[0] ??
     null;
 
-  const assignedProfile = primaryAssignment?.profiles;
-  const assignedAgent = Array.isArray(assignedProfile)
-    ? assignedProfile[0]
-    : assignedProfile;
+  const assignedAgent =
+    ((agents ?? []) as AgentProfile[]).find(
+      (agent) => agent.id === primaryAssignment?.agent_id,
+    ) ?? null;
+
+  const assignedAgentDisplayName = assignedAgent
+    ? [assignedAgent.first_name, assignedAgent.last_name]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
+      assignedAgent.email ||
+      "Agent sans nom"
+    : "";
 
   const currentStep = statusToStepIndex(dossier.status);
 
@@ -1099,7 +1145,7 @@ export default async function DossierPage({ params }: PageProps) {
                       flexShrink: 0,
                     }}
                   >
-                    {(assignedAgent.full_name ?? assignedAgent.email ?? "?")
+                    {assignedAgentDisplayName
                       .split(" ")
                       .map((n: string) => n[0])
                       .join("")
@@ -1115,7 +1161,7 @@ export default async function DossierPage({ params }: PageProps) {
                         color: "var(--selen-text)",
                       }}
                     >
-                      {assignedAgent.full_name ?? assignedAgent.email}
+                      {assignedAgentDisplayName}
                     </div>
                     <div
                       style={{
@@ -1124,7 +1170,9 @@ export default async function DossierPage({ params }: PageProps) {
                         marginTop: 1,
                       }}
                     >
-                      Agent Qualiopi
+                      {assignedAgent.role === "admin"
+                        ? "Admin · assignable"
+                        : "Agent Qualiopi"}
                     </div>
                   </div>
                 </div>
@@ -1218,11 +1266,22 @@ export default async function DossierPage({ params }: PageProps) {
                   }}
                 >
                   <option value="">Aucun agent</option>
-                  {agents?.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.full_name ?? agent.email}
-                    </option>
-                  ))}
+                  {agents?.map((agent) => {
+                    const displayName =
+                      [agent.first_name, agent.last_name]
+                        .filter(Boolean)
+                        .join(" ")
+                        .trim() ||
+                      agent.email ||
+                      "Agent sans nom";
+
+                    return (
+                      <option key={agent.id} value={agent.id}>
+                        {displayName} ·{" "}
+                        {agent.role === "admin" ? "Admin" : "Agent"}
+                      </option>
+                    );
+                  })}
                 </select>
 
                 <SubmitButton
@@ -1281,6 +1340,66 @@ export default async function DossierPage({ params }: PageProps) {
             <SelenCard>
               <SelenCardTitle>Historique</SelenCardTitle>
               <DossierHistorique entries={MOCK_HISTORY} />
+            </SelenCard>
+            <SelenCard>
+              <SelenCardTitle>Zone danger</SelenCardTitle>
+
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "var(--selen-text3)",
+                  lineHeight: 1.5,
+                  marginBottom: 12,
+                }}
+              >
+                Cette action archive le dossier. Il ne sera plus considéré comme
+                un dossier actif, mais les données restent conservées.
+              </p>
+
+              <form
+                action={archiveDossier}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <input type="hidden" name="dossier_id" value={dossier.id} />
+
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 11,
+                    color: "var(--selen-text3)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  Tapez ARCHIVER pour confirmer
+                </label>
+
+                <input
+                  name="confirmation"
+                  placeholder="ARCHIVER"
+                  style={{
+                    width: "100%",
+                    background: "var(--selen-bg3)",
+                    border: "1px solid var(--selen-border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "8px 12px",
+                    color: "var(--selen-text)",
+                    fontSize: 13,
+                    fontFamily: "var(--font-body)",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+
+                <SubmitButton
+                  label="Archiver ce dossier"
+                  pendingLabel="Archivage..."
+                />
+              </form>
             </SelenCard>
           </div>
         </div>

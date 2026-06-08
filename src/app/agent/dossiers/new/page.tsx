@@ -15,16 +15,27 @@ export default async function NewDossierPage({
   const { client } = await searchParams;
   const supabase = await createClient();
 
-  const { data: organisations } = await supabase
+  const { data: organisations, error: organisationsError } = await supabase
     .from("organisations")
     .select("id, name")
     .order("name");
 
-  const { data: agents } = await supabase
-    .from("profiles")
-    .select("id, full_name")
-    .order("full_name");
+  if (organisationsError) {
+    console.error(organisationsError);
+    throw new Error("Impossible de charger la liste des clients.");
+  }
 
+  const { data: agents, error: agentsError } = await supabase
+    .from("agent_profiles")
+    .select("id, email, first_name, last_name, role")
+    .eq("is_active", true)
+    .in("role", ["agent", "admin"])
+    .order("first_name", { ascending: true });
+
+  if (agentsError) {
+    console.error(agentsError);
+    throw new Error("Impossible de charger la liste des agents.");
+  }
   async function createDossier(formData: FormData) {
     "use server";
 
@@ -239,11 +250,22 @@ export default async function NewDossierPage({
                 }}
               >
                 <option value="">Non assigné</option>
-                {agents?.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.full_name}
-                  </option>
-                ))}
+                {agents?.map((agent) => {
+                  const displayName =
+                    [agent.first_name, agent.last_name]
+                      .filter(Boolean)
+                      .join(" ")
+                      .trim() ||
+                    agent.email ||
+                    "Agent sans nom";
+
+                  return (
+                    <option key={agent.id} value={agent.id}>
+                      {displayName} ·{" "}
+                      {agent.role === "admin" ? "Admin" : "Agent"}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>
@@ -294,7 +316,9 @@ export default async function NewDossierPage({
               marginTop: 6,
             }}
           >
-            <SelenButton variant="primary">Créer le dossier</SelenButton>
+            <SelenButton type="submit" variant="primary">
+              Créer le dossier
+            </SelenButton>
           </div>
         </form>
       </SelenCard>

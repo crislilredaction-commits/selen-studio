@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+
 import { createClient } from "@/lib/supabase/server";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenBadge from "@/components/ui/SelenBadge";
@@ -21,6 +23,7 @@ type DossierRow = {
 type ClientRow = {
   id: string;
   name: string;
+  status: string | null;
   email: string | null;
   phone: string | null;
   siret: string | null;
@@ -138,8 +141,8 @@ export default async function ClientPage({ params }: PageProps) {
       `
         id,
         name,
+        status,
         email,
-        phone,
         siret,
         nda_number,
         address,
@@ -182,7 +185,66 @@ export default async function ClientPage({ params }: PageProps) {
   }
 
   const typedClient = client as ClientRow;
-  const dossierCount = typedClient.dossiers?.length ?? 0;
+
+  const activeDossiers = (typedClient.dossiers ?? []).filter(
+    (dossier) => dossier.status !== "archived",
+  );
+
+  const archivedDossiers = (typedClient.dossiers ?? []).filter(
+    (dossier) => dossier.status === "archived",
+  );
+
+  const dossierCount = activeDossiers.length;
+  const archivedDossierCount = archivedDossiers.length;
+
+  const activeDossierCount = activeDossiers.length;
+
+  async function archiveClientAction(formData: FormData) {
+    "use server";
+
+    const clientId = formData.get("client_id") as string;
+    const confirmation = (formData.get("confirmation") as string)?.trim();
+
+    if (confirmation !== "ARCHIVER") {
+      throw new Error(
+        "Confirmation invalide. Pour archiver ce client, écrivez ARCHIVER.",
+      );
+    }
+
+    const supabase = await createClient();
+
+    const { data: dossiers, error: dossiersError } = await supabase
+      .from("dossiers")
+      .select("id, status")
+      .eq("organisation_id", clientId)
+      .neq("status", "archived");
+
+    if (dossiersError) {
+      console.error(dossiersError);
+      throw new Error("Impossible de vérifier les dossiers du client.");
+    }
+
+    if ((dossiers ?? []).length > 0) {
+      throw new Error(
+        "Impossible d’archiver ce client : il possède encore des dossiers actifs.",
+      );
+    }
+
+    const { error: archiveError } = await supabase
+      .from("organisations")
+      .update({
+        status: "archived",
+        archived_at: new Date().toISOString(),
+      })
+      .eq("id", clientId);
+
+    if (archiveError) {
+      console.error(archiveError);
+      throw new Error("Impossible d’archiver ce client.");
+    }
+
+    redirect("/agent/clients");
+  }
 
   return (
     <main
@@ -241,8 +303,16 @@ export default async function ClientPage({ params }: PageProps) {
             }}
           >
             <SelenBadge variant="neutral" dot>
-              {dossierCount} dossier{dossierCount > 1 ? "s" : ""}
+              {dossierCount} dossier{dossierCount > 1 ? "s" : ""} actif
+              {dossierCount > 1 ? "s" : ""}
             </SelenBadge>
+
+            {archivedDossierCount > 0 && (
+              <SelenBadge variant="neutral" dot>
+                {archivedDossierCount} archivé
+                {archivedDossierCount > 1 ? "s" : ""}
+              </SelenBadge>
+            )}
 
             {typedClient.nda_number ? (
               <SelenBadge variant="type" dot>
@@ -318,7 +388,7 @@ export default async function ClientPage({ params }: PageProps) {
         <SelenCard>
           <SelenCardTitle>Dossiers du client</SelenCardTitle>
 
-          {!typedClient.dossiers || typedClient.dossiers.length === 0 ? (
+          {activeDossiers.length === 0 ? (
             <div
               style={{
                 fontSize: 13,
@@ -335,7 +405,7 @@ export default async function ClientPage({ params }: PageProps) {
                 gap: 10,
               }}
             >
-              {typedClient.dossiers
+              {activeDossiers
                 .sort(
                   (a, b) =>
                     new Date(b.created_at).getTime() -
@@ -421,6 +491,99 @@ export default async function ClientPage({ params }: PageProps) {
                   </Link>
                 ))}
             </div>
+          )}
+        </SelenCard>
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <SelenCard>
+          <SelenCardTitle>Zone danger</SelenCardTitle>
+
+          <p
+            style={{
+              fontSize: 13,
+              lineHeight: 1.6,
+              color: "var(--selen-text2)",
+              marginBottom: 12,
+            }}
+          >
+            L’archivage retire ce client des listes actives, sans supprimer ses
+            données historiques. Pour éviter les erreurs, un client ne peut être
+            archivé que si tous ses dossiers sont déjà archivés.
+          </p>
+
+          {activeDossierCount > 0 ? (
+            <div
+              style={{
+                border: "1px solid rgba(201, 122, 122, 0.35)",
+                background: "rgba(201, 122, 122, 0.08)",
+                borderRadius: "var(--radius-md)",
+                padding: 14,
+                color: "var(--selen-danger)",
+                fontSize: 13,
+                lineHeight: 1.55,
+              }}
+            >
+              Ce client ne peut pas être archivé pour le moment :{" "}
+              {activeDossierCount} dossier
+              {activeDossierCount > 1
+                ? "s actifs sont encore ouverts"
+                : " actif est encore ouvert"}
+              . Archive d’abord les dossiers concernés.
+            </div>
+          ) : (
+            <form
+              action={archiveClientAction}
+              style={{
+                display: "grid",
+                gap: 12,
+              }}
+            >
+              <input type="hidden" name="client_id" value={typedClient.id} />
+
+              <label
+                style={{
+                  display: "grid",
+                  gap: 6,
+                  fontSize: 12,
+                  color: "var(--selen-text2)",
+                }}
+              >
+                Pour confirmer, écris ARCHIVER
+                <input
+                  name="confirmation"
+                  placeholder="ARCHIVER"
+                  style={{
+                    width: "100%",
+                    background: "var(--selen-bg3)",
+                    border: "1px solid var(--selen-border)",
+                    borderRadius: "var(--radius-md)",
+                    padding: "10px 12px",
+                    color: "var(--selen-text)",
+                    fontSize: 13,
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </label>
+
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="submit"
+                  style={{
+                    border: "1px solid rgba(201, 122, 122, 0.45)",
+                    background: "rgba(201, 122, 122, 0.12)",
+                    color: "var(--selen-danger)",
+                    borderRadius: "var(--radius-md)",
+                    padding: "10px 14px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Archiver ce client
+                </button>
+              </div>
+            </form>
           )}
         </SelenCard>
       </div>

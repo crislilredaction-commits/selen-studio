@@ -9,12 +9,26 @@ import { createClient } from "@/lib/supabase/client";
 type AgentRole = "agent" | "admin";
 
 type AgentProfile = {
+  id: string;
+  user_id: string | null;
   email: string;
   role: AgentRole;
   is_active: boolean;
   created_at: string | null;
   updated_at: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  company_name: string | null;
+  billing_email: string | null;
 };
+
+function getAgentDisplayName(agent: AgentProfile) {
+  return (
+    [agent.first_name, agent.last_name].filter(Boolean).join(" ").trim() ||
+    agent.email
+  );
+}
 
 export default function AgentAdminAgentsPage() {
   const router = useRouter();
@@ -54,7 +68,9 @@ export default function AgentAdminAgentsPage() {
 
     const { data: profileData, error: profileError } = await supabase
       .from("agent_profiles")
-      .select("email, role, is_active, created_at, updated_at")
+      .select(
+        "id, user_id, email, role, is_active, created_at, updated_at, first_name, last_name, phone, company_name, billing_email",
+      )
       .eq("email", userEmail)
       .eq("is_active", true)
       .maybeSingle();
@@ -75,7 +91,9 @@ export default function AgentAdminAgentsPage() {
 
     const { data: agentData, error: agentError } = await supabase
       .from("agent_profiles")
-      .select("email, role, is_active, created_at, updated_at")
+      .select(
+        "id, user_id, email, role, is_active, created_at, updated_at, first_name, last_name, phone, company_name, billing_email",
+      )
       .order("email", { ascending: true });
 
     if (agentError) {
@@ -271,32 +289,62 @@ export default function AgentAdminAgentsPage() {
                   <p style={s.emptyInline}>Aucun agent enregistré.</p>
                 ) : (
                   <div style={s.agentList}>
-                    {agents.map((agent) => (
-                      <div key={agent.email} style={s.agentRow}>
-                        <div>
-                          <p style={s.agentEmail}>{agent.email}</p>
+                    {agents.map((agent) => {
+                      const displayName = getAgentDisplayName(agent);
 
-                          <p style={s.mutedSmall}>
-                            Rôle : {agent.role} ·{" "}
-                            {agent.is_active ? "actif" : "désactivé"}
-                          </p>
+                      return (
+                        <div key={agent.id} style={s.agentRow}>
+                          <div>
+                            <p style={s.agentEmail}>{displayName}</p>
+
+                            <p style={s.mutedSmall}>
+                              {agent.email} · rôle : {agent.role} ·{" "}
+                              {agent.is_active ? "actif" : "désactivé"}
+                            </p>
+
+                            {(agent.company_name ||
+                              agent.billing_email ||
+                              agent.phone) && (
+                              <p style={s.mutedSmall}>
+                                {agent.company_name
+                                  ? `${agent.company_name} · `
+                                  : ""}
+                                {agent.billing_email
+                                  ? `Facturation : ${agent.billing_email} · `
+                                  : ""}
+                                {agent.phone ?? ""}
+                              </p>
+                            )}
+                          </div>
+
+                          <div style={s.agentActions}>
+                            <span
+                              style={{
+                                ...s.badge,
+                                color:
+                                  agent.role === "admin"
+                                    ? "#d4a843"
+                                    : "#7ec97e",
+                                borderColor:
+                                  agent.role === "admin"
+                                    ? "rgba(212,168,67,0.35)"
+                                    : "rgba(126,201,126,0.35)",
+                              }}
+                            >
+                              {agent.role}
+                            </span>
+
+                            <Link
+                              href={`/agent/admin/agents/${agent.id}`}
+                              style={s.smallActionLink}
+                              className="sel-btn-ghost"
+                            >
+                              Gérer
+                            </Link>
+                          </div>
                         </div>
-
-                        <span
-                          style={{
-                            ...s.badge,
-                            color:
-                              agent.role === "admin" ? "#d4a843" : "#7ec97e",
-                            borderColor:
-                              agent.role === "admin"
-                                ? "rgba(212,168,67,0.35)"
-                                : "rgba(126,201,126,0.35)",
-                          }}
-                        >
-                          {agent.role}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </article>
@@ -595,6 +643,27 @@ const s: Record<string, CSSProperties> = {
     borderRadius: 8,
     padding: "0.75rem",
     background: "rgba(255,255,255,0.025)",
+  },
+  agentActions: {
+    display: "grid",
+    gap: "0.45rem",
+    justifyItems: "end",
+  },
+  smallActionLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0.35rem 0.65rem",
+    background: "transparent",
+    color: C.gold,
+    border: `1px solid rgba(196,169,106,0.3)`,
+    borderRadius: 6,
+    fontSize: "0.74rem",
+    fontFamily: "sans-serif",
+    textAlign: "center",
+    textDecoration: "none",
+    cursor: "pointer",
+    boxSizing: "border-box",
   },
   agentEmail: {
     color: C.text,

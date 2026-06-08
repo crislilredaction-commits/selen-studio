@@ -29,12 +29,16 @@ type DossierStatus =
 
 type AssignmentProfile =
   | {
-      full_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
       email: string | null;
+      role: string | null;
     }
   | {
-      full_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
       email: string | null;
+      role: string | null;
     }[]
   | null;
 
@@ -94,6 +98,27 @@ function getOrganisationName(organisation: OrganisationRelation): string {
   return organisation.name ?? "—";
 }
 
+function getAgentDisplayName(
+  profile:
+    | {
+        first_name: string | null;
+        last_name: string | null;
+        email: string | null;
+        role: string | null;
+      }
+    | null
+    | undefined,
+): string {
+  if (!profile) return "—";
+
+  const fullName = [profile.first_name, profile.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  return fullName || profile.email || "—";
+}
+
 function getAssignedAgentName(assignments: AssignmentRow[] | null): string {
   if (!assignments || assignments.length === 0) return "—";
 
@@ -105,10 +130,10 @@ function getAssignedAgentName(assignments: AssignmentRow[] | null): string {
   if (!profile) return "—";
 
   if (Array.isArray(profile)) {
-    return profile[0]?.full_name ?? profile[0]?.email ?? "—";
+    return getAgentDisplayName(profile[0]);
   }
 
-  return profile.full_name ?? profile.email ?? "—";
+  return getAgentDisplayName(profile);
 }
 
 function getTypeLabel(type: DossierType): string {
@@ -228,8 +253,10 @@ export default async function AgentDossiersPage() {
       dossier_assignments (
         is_primary,
         profiles:agent_id (
-          full_name,
-          email
+          first_name,
+          last_name,
+          email,
+          role
         )
       ),
       messages (
@@ -239,6 +266,7 @@ export default async function AgentDossiersPage() {
       )
     `,
     )
+    .neq("status", "archived")
     .order("created_at", { ascending: false });
 
   if (error) {

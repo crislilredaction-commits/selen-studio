@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
@@ -20,21 +21,25 @@ export default async function NewClientPage() {
       throw new Error("Le nom du client est obligatoire.");
     }
 
-    const { error } = await supabase.from("organisations").insert({
-      name,
-      siret,
-      email,
-      phone,
-      address,
-      nda_number,
-    });
+    const { data: organisation, error } = await supabase
+      .from("organisations")
+      .insert({
+        name,
+        siret,
+        email,
+        phone,
+        address,
+        nda_number,
+      })
+      .select("id")
+      .single();
 
-    if (error) {
+    if (error || !organisation) {
       console.error(error);
       throw new Error("Impossible de créer le client.");
     }
 
-    redirect("/agent/clients");
+    redirect(`/agent/clients/${organisation.id}`);
   }
 
   return (
@@ -83,6 +88,23 @@ export default async function NewClientPage() {
         >
           Créer un nouveau client dans Studio.
         </p>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          marginTop: 14,
+        }}
+      >
+        <Link href="/agent" style={{ textDecoration: "none" }}>
+          <SelenButton variant="ghost">← Tableau de bord</SelenButton>
+        </Link>
+
+        <Link href="/agent/clients" style={{ textDecoration: "none" }}>
+          <SelenButton variant="ghost">← Clients</SelenButton>
+        </Link>
       </div>
 
       <SelenCard>

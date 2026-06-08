@@ -123,6 +123,29 @@ const adminLinks = [
   },
 ];
 
+const quickLinks = [
+  {
+    label: "Tableau de bord",
+    href: "/agent",
+    variant: "ghost" as const,
+  },
+  {
+    label: "Créer un dossier",
+    href: "/agent/dossiers/new",
+    variant: "primary" as const,
+  },
+  {
+    label: "Créer un client",
+    href: "/agent/clients/new",
+    variant: "ghost" as const,
+  },
+  {
+    label: "Profil",
+    href: "/agent/profil",
+    variant: "ghost" as const,
+  },
+];
+
 const inactiveStatuses = new Set([
   "completed",
   "cancelled",
@@ -246,7 +269,7 @@ async function getCurrentStaffInfo(
       user_id: null,
       role: "admin",
       email: "local-dev-agent@selen.local",
-      first_name: "Admin",
+      first_name: null,
       last_name: null,
     };
   }
@@ -608,15 +631,21 @@ export default async function AgentHomePage() {
             flexWrap: "wrap",
           }}
         >
-          <Link href="/agent/clients" style={{ textDecoration: "none" }}>
-            <SelenButton variant="primary">
-              Ouvrir le portefeuille clients
-            </SelenButton>
-          </Link>
+          {quickLinks.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              style={{ textDecoration: "none" }}
+            >
+              <SelenButton variant={item.variant}>{item.label}</SelenButton>
+            </Link>
+          ))}
 
-          <Link href="/agent/dossiers" style={{ textDecoration: "none" }}>
-            <SelenButton variant="ghost">Voir les dossiers</SelenButton>
-          </Link>
+          {isAdmin && (
+            <Link href="/agent/admin/agents" style={{ textDecoration: "none" }}>
+              <SelenButton variant="ghost">Accès agents</SelenButton>
+            </Link>
+          )}
 
           <LogoutButton />
         </div>
@@ -631,11 +660,13 @@ export default async function AgentHomePage() {
         }}
       >
         <TaskCard
-          icon="📁"
-          title="Dossiers en cours"
-          count={dashboard.assignedDossiers.length}
-          emptyText="Aucun dossier attribué en cours."
-          items={dashboard.assignedDossiers}
+          icon="💬"
+          title="Nouveaux messages"
+          count={dashboard.unreadMessagesCount}
+          emptyText="Aucun nouveau message client."
+          items={dashboard.unreadMessageDossiers}
+          footerHref="/agent/dossiers"
+          footerLabel="Ouvrir les dossiers avec messages"
         />
 
         <TaskCard

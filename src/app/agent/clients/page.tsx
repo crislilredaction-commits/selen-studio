@@ -132,6 +132,10 @@ function getLatestDossier(dossiers: DossierLite[] | null): DossierLite | null {
   )[0];
 }
 
+function getActiveDossiers(dossiers: DossierLite[] | null): DossierLite[] {
+  return (dossiers ?? []).filter((dossier) => dossier.status !== "archived");
+}
+
 export default async function AgentClientsPage() {
   const supabase = await createClient();
 
@@ -155,6 +159,9 @@ export default async function AgentClientsPage() {
         )
       `,
     )
+
+    .neq("status", "archived")
+
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -264,8 +271,11 @@ export default async function AgentClientsPage() {
             }}
           >
             {clients.map((client) => {
-              const dossierCount = client.dossiers?.length ?? 0;
-              const latestDossier = getLatestDossier(client.dossiers);
+              const activeDossiers = getActiveDossiers(client.dossiers);
+
+              const dossierCount = activeDossiers.length;
+
+              const latestDossier = getLatestDossier(activeDossiers);
 
               return (
                 <div
@@ -338,7 +348,8 @@ export default async function AgentClientsPage() {
 
                   <div>
                     <SelenBadge variant="neutral" dot>
-                      {dossierCount} dossier{dossierCount > 1 ? "s" : ""}
+                      {dossierCount} dossier{dossierCount > 1 ? "s" : ""} actif
+                      {dossierCount > 1 ? "s" : ""}
                     </SelenBadge>
                   </div>
 
