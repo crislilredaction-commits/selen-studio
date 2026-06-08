@@ -33,6 +33,7 @@ type AuditBlancCaseRow = {
   updated_at: string | null;
   agent_id: string | null;
   agent_email: string | null;
+  report_status: string | null;
 };
 
 type MessageRow = {
@@ -57,46 +58,17 @@ type DashboardData = {
   unreadMessageDossiers: DashboardItem[];
   relanceDossiers: DashboardItem[];
   actionDossiers: DashboardItem[];
+  auditBlancItems: DashboardItem[];
   unassignedItems: DashboardItem[];
   unreadMessagesCount: number;
 };
 
-const studioLinks = [
-  {
-    title: "Clients",
-    description:
-      "Voir le portefeuille clients, les accès aux prestations et les informations de contact.",
-    href: "/agent/clients",
-    icon: "👥",
-  },
-  {
-    title: "Dossiers",
-    description:
-      "Suivre les dossiers NDA, Review, Prépa ou Daily en cours de traitement.",
-    href: "/agent/dossiers",
-    icon: "📁",
-  },
-  {
-    title: "Audits blancs",
-    description:
-      "Piloter les audits blancs Qualiopi côté agent : préparation, analyse et rapport.",
-    href: "/agent/audits-blancs",
-    icon: "🧾",
-  },
-  {
-    title: "Formations",
-    description: "Gérer les formations et les éléments liés aux programmes.",
-    href: "/agent/formations",
-    icon: "📚",
-  },
-  {
-    title: "Organisations",
-    description:
-      "Gérer les organismes de formation et leurs informations administratives.",
-    href: "/agent/organisations",
-    icon: "🏢",
-  },
-];
+const studioLinks: {
+  title: string;
+  description: string;
+  href: string;
+  icon: string;
+}[] = [];
 
 const adminLinks = [
   {
@@ -125,11 +97,6 @@ const adminLinks = [
 
 const quickLinks = [
   {
-    label: "Tableau de bord",
-    href: "/agent",
-    variant: "ghost" as const,
-  },
-  {
     label: "Créer un dossier",
     href: "/agent/dossiers/new",
     variant: "primary" as const,
@@ -137,11 +104,6 @@ const quickLinks = [
   {
     label: "Créer un client",
     href: "/agent/clients/new",
-    variant: "ghost" as const,
-  },
-  {
-    label: "Profil",
-    href: "/agent/profil",
     variant: "ghost" as const,
   },
 ];
@@ -170,6 +132,22 @@ function isActiveStatus(status?: string | null) {
 function isWaitingClientStatus(status?: string | null) {
   if (!status) return false;
   return waitingClientStatuses.has(status);
+}
+
+function shouldShowAuditBlancInDashboard(auditCase: AuditBlancCaseRow) {
+  if (!isActiveStatus(auditCase.status)) return false;
+
+  // Quand le rapport est envoyé au client, on ne garde plus l’audit blanc
+  // comme action dashboard tant que le client ne relance pas lui-même.
+  if (
+    auditCase.report_status === "sent" ||
+    auditCase.status === "report_ready" ||
+    auditCase.status === "completed"
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function formatStatus(status?: string | null) {
@@ -525,24 +503,61 @@ async function getDashboardData(
   const { data: unassignedAuditData } = await supabase
     .from("audit_blanc_cases")
     .select(
-      "id, client_email, status, offer, updated_at, agent_id, agent_email",
+      "id, client_email, status, offer, updated_at, agent_id, agent_email, report_status",
     )
     .or("agent_id.is.null,agent_email.is.null")
     .order("updated_at", { ascending: false })
     .limit(6);
 
   const unassignedAudits = ((unassignedAuditData ?? []) as AuditBlancCaseRow[])
-    .filter((auditCase) => isActiveStatus(auditCase.status))
+    .filter((auditCase) => shouldShowAuditBlancInDashboard(auditCase))
     .map((auditCase) => ({
       ...buildAuditItem(auditCase),
       subtitle: `${formatOffer(auditCase.offer)} · sans attribution`,
     }));
+
+  let auditBlancItems: DashboardItem[] = [];
+
+  if (staff.role === "admin" || staff.id || staff.email) {
+    let auditQuery = supabase
+      .from("audit_blanc_cases")
+      .select(
+        "id, client_email, status, offer, updated_at, agent_id, agent_email, report_status",
+      )
+      .order("updated_at", { ascending: false })
+      .limit(20);
+
+    if (staff.role !== "admin") {
+      if (staff.id && staff.email) {
+        auditQuery = auditQuery.or(
+          `agent_id.eq.${staff.id},agent_email.eq.${staff.email}`,
+        );
+      } else if (staff.id) {
+        auditQuery = auditQuery.eq("agent_id", staff.id);
+      } else if (staff.email) {
+        auditQuery = auditQuery.eq("agent_email", staff.email);
+      }
+    }
+
+    const { data: auditData } = await auditQuery;
+
+    auditBlancItems = ((auditData ?? []) as AuditBlancCaseRow[])
+      .filter((auditCase) => shouldShowAuditBlancInDashboard(auditCase))
+      .slice(0, 8)
+      .map((auditCase) => ({
+        ...buildAuditItem(auditCase),
+        subtitle: `${formatOffer(auditCase.offer)} · ${formatStatus(
+          auditCase.status,
+        )}`,
+      }));
+  }
 
   return {
     assignedDossiers: assignedDossiers.slice(0, 6),
     unreadMessageDossiers: unreadMessageDossiers.slice(0, 6),
     relanceDossiers: relanceDossiers.slice(0, 6),
     actionDossiers: actionDossiers.slice(0, 8),
+    auditBlancItems,
     unassignedItems: [...unassignedDossiers, ...unassignedAudits].slice(0, 8),
     unreadMessagesCount: unreadMessagesRaw.length,
   };
@@ -644,12 +659,6 @@ export default async function AgentHomePage() {
             </Link>
           ))}
 
-          {isAdmin && (
-            <Link href="/agent/admin/agents" style={{ textDecoration: "none" }}>
-              <SelenButton variant="ghost">Accès agents</SelenButton>
-            </Link>
-          )}
-
           <LogoutButton />
         </div>
       </section>
@@ -681,13 +690,13 @@ export default async function AgentHomePage() {
         />
 
         <TaskCard
-          icon="💬"
-          title="Nouveaux messages"
-          count={dashboard.unreadMessagesCount}
-          emptyText="Aucun nouveau message client."
-          items={dashboard.unreadMessageDossiers}
-          footerHref="/agent/dossiers"
-          footerLabel="Ouvrir les dossiers"
+          icon="🧾"
+          title="Audits blancs Review"
+          count={dashboard.auditBlancItems.length}
+          emptyText="Aucun audit blanc Review actif à suivre."
+          items={dashboard.auditBlancItems}
+          footerHref="/agent/audits-blancs"
+          footerLabel="Ouvrir les audits blancs"
         />
 
         <TaskCard
@@ -696,14 +705,6 @@ export default async function AgentHomePage() {
           count={dashboard.relanceDossiers.length}
           emptyText="Aucune relance client détectée."
           items={dashboard.relanceDossiers}
-        />
-
-        <TaskCard
-          icon="🧭"
-          title="Sans attribution"
-          count={dashboard.unassignedItems.length}
-          emptyText="Aucun dossier sans attribution."
-          items={dashboard.unassignedItems}
         />
       </section>
 
@@ -784,6 +785,19 @@ export default async function AgentHomePage() {
           </Link>
         ))}
       </section>
+      {dashboard.unassignedItems.length > 0 && (
+        <section style={{ marginBottom: 24 }}>
+          <TaskCard
+            icon="🧭"
+            title="Dossiers en attente d’un agent"
+            count={dashboard.unassignedItems.length}
+            emptyText="Aucun dossier en attente d’attribution."
+            items={dashboard.unassignedItems}
+            footerHref="/agent/dossiers"
+            footerLabel="Voir les dossiers"
+          />
+        </section>
+      )}
 
       {isAdmin && (
         <section>

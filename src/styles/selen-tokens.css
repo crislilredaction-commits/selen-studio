@@ -1,12 +1,11 @@
 @import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap");
 
 :root {
-  --selen-bg: #1a1410;
-  --selen-bg2: #221c16;
-  --selen-bg3: #2c2218;
-  --selen-card: #26201a;
-  --selen-card2: #2f271f;
-  --selen-sidebar: #120f0c;
+  --selen-bg: #2d231a;
+  --selen-bg2: #382b20;
+  --selen-bg3: #493728;
+  --selen-card: #403123;
+  --selen-card2: #4c3a2a;
 
   --selen-border: rgba(180, 140, 80, 0.18);
   --selen-border2: rgba(180, 140, 80, 0.32);

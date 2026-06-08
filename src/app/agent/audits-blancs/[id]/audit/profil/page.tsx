@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -169,6 +169,12 @@ export default function AgentAuditProfilePage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+
+  const skipNextAutoSaveRef = useRef(true);
 
   const [agent, setAgent] = useState<AgentProfile | null>(null);
   const [auditCase, setAuditCase] = useState<AuditBlancCase | null>(null);
@@ -252,18 +258,57 @@ export default function AgentAuditProfilePage() {
           existingProfile[field.key] ?? getInitialProfileValue(field);
       });
 
+      skipNextAutoSaveRef.current = true;
       setProfile(initialProfile);
+      setProfileLoaded(true);
+      setSaveStatus("saved");
       setLoading(false);
     }
 
     loadProfilePage();
   }, [caseId, router, supabase]);
 
+  useEffect(() => {
+    if (!profileLoaded || !auditCase?.id) return;
+
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false;
+      return;
+    }
+
+    setSaveStatus("idle");
+
+    const timeout = window.setTimeout(() => {
+      void saveProfileDraft(profile);
+    }, 800);
+
+    return () => window.clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, profileLoaded, auditCase?.id]);
+
   function updateProfile(key: string, value: unknown) {
     setProfile((prev) => ({
       ...prev,
       [key]: value,
     }));
+  }
+
+  function buildCleanProfile(profileToClean: Record<string, unknown>) {
+    const cleanProfile: Record<string, unknown> = {};
+
+    PROFILE_FIELDS.forEach((field) => {
+      const value = profileToClean[field.key];
+
+      if (Array.isArray(value)) {
+        cleanProfile[field.key] = value;
+      } else if (value === undefined || value === null) {
+        cleanProfile[field.key] = "";
+      } else {
+        cleanProfile[field.key] = value;
+      }
+    });
+
+    return cleanProfile;
   }
 
   function toggleMultiChoice(key: string, option: string) {
@@ -278,46 +323,18 @@ export default function AgentAuditProfilePage() {
     updateProfile(key, next);
   }
 
-  async function saveProfileAndGoNext() {
+  async function saveProfileDraft(profileToSave = profile) {
     if (!auditCase?.id) {
-      setError("Dossier audit blanc introuvable. Impossible de continuer.");
-      return;
+      return false;
     }
 
     setSaving(true);
+    setSaveStatus("saving");
     setError("");
     setSuccess("");
 
-    const missingRequired = PROFILE_FIELDS.filter((field) => {
-      if (!field.required) return false;
-      return !isAnswered(profile[field.key]);
-    });
-
-    if (missingRequired.length > 0) {
-      setError(
-        `Veuillez compléter les champs obligatoires avant de continuer (${missingRequired.length} manquant${
-          missingRequired.length > 1 ? "s" : ""
-        }).`,
-      );
-      setSaving(false);
-      return;
-    }
-
     const { applicable, excluded } = computeDefaultIndicators();
-
-    const cleanProfile: Record<string, unknown> = {};
-
-    PROFILE_FIELDS.forEach((field) => {
-      const value = profile[field.key];
-
-      if (Array.isArray(value)) {
-        cleanProfile[field.key] = value;
-      } else if (value === undefined || value === null) {
-        cleanProfile[field.key] = "";
-      } else {
-        cleanProfile[field.key] = value;
-      }
-    });
+    const cleanProfile = buildCleanProfile(profileToSave);
 
     const { error: updateError } = await supabase
       .from("audit_blanc_cases")
@@ -332,12 +349,44 @@ export default function AgentAuditProfilePage() {
     if (updateError) {
       console.error("Erreur sauvegarde profil audit blanc :", updateError);
       setError(`Erreur sauvegarde profil : ${updateError.message}`);
+      setSaveStatus("error");
       setSaving(false);
+      return false;
+    }
+
+    setSaveStatus("saved");
+    setSaving(false);
+    return true;
+  }
+
+  async function saveProfileAndGoNext() {
+    if (!auditCase?.id) {
+      setError("Dossier audit blanc introuvable. Impossible de continuer.");
       return;
     }
 
-    setSuccess("Profil sauvegardé.");
-    setSaving(false);
+    setError("");
+    setSuccess("");
+
+    const missingRequired = PROFILE_FIELDS.filter((field) => {
+      if (!field.required) return false;
+      return !isAnswered(profile[field.key]);
+    });
+
+    if (missingRequired.length > 0) {
+      setError(
+        `Veuillez compléter les champs obligatoires avant de continuer (${missingRequired.length} manquant${
+          missingRequired.length > 1 ? "s" : ""
+        }).`,
+      );
+      return;
+    }
+
+    const saved = await saveProfileDraft(profile);
+
+    if (!saved) {
+      return;
+    }
 
     router.push(`/agent/audits-blancs/${auditCase.id}/audit/marques`);
   }
@@ -606,6 +655,28 @@ export default function AgentAuditProfilePage() {
               </div>
 
               <div style={s.navCard}>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color:
+                      saveStatus === "error"
+                        ? "#c97a7a"
+                        : saveStatus === "saved"
+                          ? "#7ec97e"
+                          : C.textFaint,
+                    fontFamily: "sans-serif",
+                    marginBottom: 4,
+                  }}
+                >
+                  {saveStatus === "saving"
+                    ? "Sauvegarde automatique…"
+                    : saveStatus === "saved"
+                      ? "Sauvegardé automatiquement"
+                      : saveStatus === "error"
+                        ? "Erreur de sauvegarde"
+                        : "Les modifications sont sauvegardées automatiquement."}
+                </p>
+
                 <Link
                   href={`/agent/audits-blancs/${auditCase.id}`}
                   style={s.btnGhost}

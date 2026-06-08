@@ -12,6 +12,9 @@ export default async function NewClientPage() {
     const supabase = await createClient();
 
     const name = (formData.get("name") as string)?.trim();
+    const company_name =
+      (formData.get("company_name") as string)?.trim() || null;
+
     const siret = (formData.get("siret") as string)?.trim() || null;
     const email = (formData.get("email") as string)?.trim() || null;
     const phone = (formData.get("phone") as string)?.trim() || null;
@@ -26,6 +29,7 @@ export default async function NewClientPage() {
       .from("organisations")
       .insert({
         name,
+        company_name,
         siret,
         email,
         phone,
@@ -134,6 +138,36 @@ export default async function NewClientPage() {
             </label>
             <input
               name="name"
+              style={{
+                width: "100%",
+                background: "var(--selen-bg3)",
+                border: "1px solid var(--selen-border)",
+                borderRadius: "var(--radius-md)",
+                padding: "12px 14px",
+                color: "var(--selen-text)",
+                fontSize: 13,
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: 11,
+                color: "var(--selen-text3)",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+                marginBottom: 6,
+              }}
+            >
+              Nom entreprise
+            </label>
+
+            <input
+              name="company_name"
+              placeholder="Optionnel"
               style={{
                 width: "100%",
                 background: "var(--selen-bg3)",

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -343,6 +343,12 @@ export default function AgentAuditMarquesPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [marquesLoaded, setMarquesLoaded] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+
+  const skipNextAutoSaveRef = useRef(true);
 
   const [agent, setAgent] = useState<AgentProfile | null>(null);
   const [auditCase, setAuditCase] = useState<AuditBlancCase | null>(null);
@@ -450,13 +456,34 @@ export default function AgentAuditMarquesPage() {
         initialAnswers[question.key] = storedAnswers[question.key] ?? "";
       });
 
+      skipNextAutoSaveRef.current = true;
       setAnswers(initialAnswers);
       setNotes(caseData.brand_usage_notes ?? "");
+      setMarquesLoaded(true);
+      setSaveStatus("saved");
       setLoading(false);
     }
 
     loadMarquesPage();
   }, [caseId, router, supabase]);
+
+  useEffect(() => {
+    if (!marquesLoaded || !auditCase?.id) return;
+
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false;
+      return;
+    }
+
+    setSaveStatus("idle");
+
+    const timeout = window.setTimeout(() => {
+      void saveMarquesDraft(answers, notes);
+    }, 800);
+
+    return () => window.clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answers, notes, marquesLoaded, auditCase?.id]);
 
   function updateAnswer(key: string, value: BrandAnswer) {
     setAnswers((prev) => ({
@@ -465,60 +492,49 @@ export default function AgentAuditMarquesPage() {
     }));
   }
 
+  async function saveMarquesDraft(
+    answersToSave = answers,
+    notesToSave = notes,
+  ) {
+    if (!auditCase) return false;
+
+    const nextDiagnostic = computeDiagnostic(brandQuestions, answersToSave);
+
+    setSaving(true);
+    setSaveStatus("saving");
+    setError("");
+    setSuccess("");
+
+    const { error: updateError } = await supabase
+      .from("audit_blanc_cases")
+      .update({
+        brand_usage_answers: answersToSave,
+        brand_usage_notes: notesToSave,
+        brand_usage_diagnostic: nextDiagnostic,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", auditCase.id);
+
+    if (updateError) {
+      setError(updateError.message);
+      setSaveStatus("error");
+      setSaving(false);
+      return false;
+    }
+
+    setSaveStatus("saved");
+    setSaving(false);
+    return true;
+  }
+
   async function saveMarquesAndGoNext() {
     if (!auditCase) return;
 
-    setSaving(true);
-    setError("");
-    setSuccess("");
+    const saved = await saveMarquesDraft(answers, notes);
 
-    const { error: updateError } = await supabase
-      .from("audit_blanc_cases")
-      .update({
-        brand_usage_answers: answers,
-        brand_usage_notes: notes,
-        brand_usage_diagnostic: diagnostic,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", auditCase.id);
-
-    if (updateError) {
-      setError(updateError.message);
-      setSaving(false);
-      return;
-    }
-
-    setSuccess("Usage des marques sauvegardé.");
-    setSaving(false);
+    if (!saved) return;
 
     router.push(`/agent/audits-blancs/${auditCase.id}/audit/1`);
-  }
-
-  async function saveOnly() {
-    if (!auditCase) return;
-
-    setSaving(true);
-    setError("");
-    setSuccess("");
-
-    const { error: updateError } = await supabase
-      .from("audit_blanc_cases")
-      .update({
-        brand_usage_answers: answers,
-        brand_usage_notes: notes,
-        brand_usage_diagnostic: diagnostic,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", auditCase.id);
-
-    if (updateError) {
-      setError(updateError.message);
-      setSaving(false);
-      return;
-    }
-
-    setSuccess("Usage des marques sauvegardé.");
-    setSaving(false);
   }
 
   if (loading) {
@@ -746,7 +762,6 @@ export default function AgentAuditMarquesPage() {
                 <textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
-                  onBlur={saveOnly}
                   placeholder="Ex : certificat présent sur le site, logo non utilisé, mention à corriger sur la page d’accueil..."
                   style={s.textarea}
                   className="sel-textarea"
@@ -811,6 +826,28 @@ export default function AgentAuditMarquesPage() {
               </div>
 
               <div style={s.navCard}>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color:
+                      saveStatus === "error"
+                        ? "#c97a7a"
+                        : saveStatus === "saved"
+                          ? "#7ec97e"
+                          : C.textFaint,
+                    fontFamily: "sans-serif",
+                    marginBottom: 4,
+                  }}
+                >
+                  {saveStatus === "saving"
+                    ? "Sauvegarde automatique…"
+                    : saveStatus === "saved"
+                      ? "Sauvegardé automatiquement"
+                      : saveStatus === "error"
+                        ? "Erreur de sauvegarde"
+                        : "Les modifications sont sauvegardées automatiquement."}
+                </p>
+
                 <button
                   type="button"
                   onClick={saveMarquesAndGoNext}
@@ -822,21 +859,7 @@ export default function AgentAuditMarquesPage() {
                   }}
                   className="sel-btn-primary"
                 >
-                  {saving ? "Sauvegarde…" : "Continuer vers indicateur 1 →"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={saveOnly}
-                  disabled={saving}
-                  style={{
-                    ...s.btnGhost,
-                    opacity: saving ? 0.55 : 1,
-                    cursor: saving ? "not-allowed" : "pointer",
-                  }}
-                  className="sel-btn-ghost"
-                >
-                  Sauvegarder
+                  {saving ? "Sauvegarde…" : "Continuer vers l’indicateur 1 →"}
                 </button>
 
                 <Link

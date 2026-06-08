@@ -105,6 +105,146 @@ function generateTemporaryPassword() {
   return `Selen-${random}!`;
 }
 
+const TOOL_DOSSIER_CONFIG: Record<
+  string,
+  {
+    dossierType: string;
+    title: string;
+    status: string;
+  }
+> = {
+  preaudit: {
+    dossierType: "preaudit",
+    title: "Préaudit Qualiopi",
+    status: "assignable",
+  },
+  "preaudit-qualiopi": {
+    dossierType: "preaudit",
+    title: "Préaudit Qualiopi",
+    status: "assignable",
+  },
+  audit_blanc: {
+    dossierType: "audit_blanc",
+    title: "Audit blanc Review",
+    status: "assignable",
+  },
+  "audit-blanc": {
+    dossierType: "audit_blanc",
+    title: "Audit blanc Review",
+    status: "assignable",
+  },
+};
+
+function getDossierConfigFromToolSlug(toolSlug: string) {
+  return TOOL_DOSSIER_CONFIG[toolSlug] ?? null;
+}
+
+async function ensureOrganisationForClient({
+  admin,
+  email,
+  fullName,
+}: {
+  admin: AdminClient;
+  email: string;
+  fullName?: string | null;
+}) {
+  const cleanEmail = email.trim().toLowerCase();
+
+  const { data: existingOrganisation, error: existingOrganisationError } =
+    await admin
+      .from("organisations")
+      .select("id, name, email")
+      .eq("email", cleanEmail)
+      .maybeSingle();
+
+  if (existingOrganisationError) {
+    throw new Error(
+      `Impossible de vérifier le client Studio. ${existingOrganisationError.message}`,
+    );
+  }
+
+  if (existingOrganisation?.id) {
+    return existingOrganisation;
+  }
+
+  const fallbackName = fullName?.trim() || cleanEmail;
+
+  const { data: newOrganisation, error: organisationError } = await admin
+    .from("organisations")
+    .insert({
+      name: fallbackName,
+      email: cleanEmail,
+      status: "active",
+    })
+    .select("id, name, email")
+    .single();
+
+  if (organisationError || !newOrganisation) {
+    throw new Error(
+      `Impossible de créer le client Studio. ${
+        organisationError?.message ?? ""
+      }`,
+    );
+  }
+
+  return newOrganisation;
+}
+
+async function ensureDossierForClientAccess({
+  admin,
+  organisationId,
+  toolSlug,
+}: {
+  admin: AdminClient;
+  organisationId: string;
+  toolSlug: string;
+}) {
+  const config = getDossierConfigFromToolSlug(toolSlug);
+
+  if (!config) {
+    return null;
+  }
+
+  const { data: existingDossier, error: existingDossierError } = await admin
+    .from("dossiers")
+    .select("id, title, type, status")
+    .eq("organisation_id", organisationId)
+    .eq("type", config.dossierType)
+    .neq("status", "archived")
+    .maybeSingle();
+
+  if (existingDossierError) {
+    throw new Error(
+      `Impossible de vérifier les dossiers existants. ${existingDossierError.message}`,
+    );
+  }
+
+  if (existingDossier?.id) {
+    return existingDossier;
+  }
+
+  const { data: dossier, error: dossierError } = await admin
+    .from("dossiers")
+    .insert({
+      title: config.title,
+      type: config.dossierType,
+      organisation_id: organisationId,
+      status: config.status,
+    })
+    .select("id, title, type, status")
+    .single();
+
+  if (dossierError || !dossier) {
+    throw new Error(
+      `Accès créé, mais impossible de créer le dossier Studio. ${
+        dossierError?.message ?? ""
+      }`,
+    );
+  }
+
+  return dossier;
+}
+
 async function findAuthUserByEmail(
   admin: ReturnType<typeof getAdminClient>,
   email: string,
@@ -375,9 +515,27 @@ export async function POST(request: NextRequest) {
           return jsonResponse({ error: updateError.message }, 500);
         }
 
+        const organisation = await ensureOrganisationForClient({
+          admin,
+          email,
+          fullName:
+            typeof client.user_metadata?.full_name === "string"
+              ? client.user_metadata.full_name
+              : null,
+        });
+
+        const dossier = await ensureDossierForClientAccess({
+          admin,
+          organisationId: organisation.id,
+          toolSlug,
+        });
+
         return jsonResponse({
           updated: true,
-          message: "Accès mis à jour.",
+          dossier,
+          message: dossier
+            ? "Accès mis à jour et dossier Studio vérifié."
+            : "Accès mis à jour.",
         });
       }
 
@@ -393,9 +551,25 @@ export async function POST(request: NextRequest) {
         return jsonResponse({ error: insertError.message }, 500);
       }
 
+      const organisation = await ensureOrganisationForClient({
+        admin,
+        email,
+        fullName:
+          typeof client.user_metadata?.full_name === "string"
+            ? client.user_metadata.full_name
+            : null,
+      });
+
+      const dossier = await ensureDossierForClientAccess({
+        admin,
+        organisationId: organisation.id,
+        toolSlug,
+      });
+
       return jsonResponse({
         created: true,
-        message: "Accès créé.",
+        dossier,
+        message: dossier ? "Accès créé et dossier Studio créé." : "Accès créé.",
       });
     }
 

@@ -352,10 +352,12 @@ export default function AgentSidebarMessaging() {
   return (
     <div
       style={{
+        position: "relative",
+        zIndex: open ? 80 : 1,
         border: "1px solid var(--selen-border)",
         background: "var(--selen-bg2)",
         borderRadius: "var(--radius-lg)",
-        overflow: "hidden",
+        overflow: "visible",
       }}
     >
       <button
@@ -437,9 +439,18 @@ export default function AgentSidebarMessaging() {
       {open && (
         <div
           style={{
-            borderTop: "1px solid var(--selen-border)",
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: "calc(100% + 10px)",
+            zIndex: 90,
+            border: "1px solid var(--selen-border)",
+            background: "var(--selen-bg2)",
+            borderRadius: "var(--radius-lg)",
+            boxShadow: "0 -18px 45px rgba(0,0,0,0.45)",
             padding: 10,
-            height: 520,
+            height: "min(620px, calc(100vh - 180px))",
+            minHeight: 460,
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
@@ -788,7 +799,8 @@ export default function AgentSidebarMessaging() {
                 placeholder="Écrire à l'équipe..."
                 style={{
                   width: "100%",
-                  minHeight: 110,
+                  minHeight: 90,
+                  maxHeight: 130,
                   resize: "vertical",
                   background: "var(--selen-bg3)",
                   border: "1px solid var(--selen-border)",

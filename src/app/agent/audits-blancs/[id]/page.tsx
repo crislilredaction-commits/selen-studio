@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -80,6 +80,8 @@ type AuditSummary = {
   majeure: number;
   aVerifier: number;
 };
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 function formatDateTime(value?: string | null) {
   if (!value) return "Non renseigné";
@@ -190,9 +192,19 @@ function isoToLocalInput(value?: string | null) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-function localInputToIso(value: string) {
-  if (!value) return null;
-  return new Date(value).toISOString();
+function buildCaseAutosaveSignature(auditCase: AuditBlancCase | null) {
+  if (!auditCase) return "";
+
+  return JSON.stringify({
+    status: auditCase.status,
+    calendly_mode: auditCase.calendly_mode,
+    calendly_event_1_start: auditCase.calendly_event_1_start,
+    calendly_event_1_end: auditCase.calendly_event_1_end,
+    calendly_event_2_start: auditCase.calendly_event_2_start,
+    calendly_event_2_end: auditCase.calendly_event_2_end,
+    meeting_url: auditCase.meeting_url,
+    report_status: auditCase.report_status,
+  });
 }
 
 function sanitizeFileName(name: string) {
@@ -400,6 +412,8 @@ export default function AgentAuditBlancDetailPage() {
   }
   const [loading, setLoading] = useState(true);
   const [savingCase, setSavingCase] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const initialCaseSnapshotRef = useRef("");
   const [uploading, setUploading] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
 
@@ -514,7 +528,10 @@ export default function AgentAuditBlancDetailPage() {
       return;
     }
 
-    setAuditCase(caseData as AuditBlancCase);
+    const loadedCase = caseData as AuditBlancCase;
+
+    initialCaseSnapshotRef.current = buildCaseAutosaveSignature(loadedCase);
+    setAuditCase(loadedCase);
 
     const { data: documentData, error: documentError } = await supabase
       .from("audit_blanc_documents")
@@ -587,6 +604,39 @@ export default function AgentAuditBlancDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
 
+  useEffect(() => {
+    if (!auditCase) return;
+
+    const currentSignature = buildCaseAutosaveSignature(auditCase);
+
+    if (!initialCaseSnapshotRef.current) {
+      initialCaseSnapshotRef.current = currentSignature;
+      return;
+    }
+
+    if (currentSignature === initialCaseSnapshotRef.current) {
+      return;
+    }
+
+    setSaveStatus("idle");
+
+    const timeout = window.setTimeout(() => {
+      void saveCase(auditCase);
+    }, 800);
+
+    return () => window.clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    auditCase?.status,
+    auditCase?.calendly_mode,
+    auditCase?.calendly_event_1_start,
+    auditCase?.calendly_event_1_end,
+    auditCase?.calendly_event_2_start,
+    auditCase?.calendly_event_2_end,
+    auditCase?.meeting_url,
+    auditCase?.report_status,
+  ]);
+
   function updateCaseField(field: keyof AuditBlancCase, value: string | null) {
     setAuditCase((prev) =>
       prev
@@ -598,36 +648,44 @@ export default function AgentAuditBlancDetailPage() {
     );
   }
 
-  async function saveCase() {
-    if (!auditCase) return;
+  async function saveCase(caseToSave = auditCase) {
+    if (!caseToSave) return false;
 
     setSavingCase(true);
+    setSaveStatus("saving");
     setError("");
-    setSuccess("");
 
     const { error: updateError } = await supabase
       .from("audit_blanc_cases")
       .update({
-        status: auditCase.status,
-        calendly_mode: auditCase.calendly_mode,
-        calendly_event_1_start: auditCase.calendly_event_1_start,
-        calendly_event_1_end: auditCase.calendly_event_1_end,
-        calendly_event_2_start: auditCase.calendly_event_2_start,
-        calendly_event_2_end: auditCase.calendly_event_2_end,
-        meeting_url: auditCase.meeting_url,
-        report_status: auditCase.report_status,
+        status: caseToSave.status,
+        calendly_mode: caseToSave.calendly_mode,
+        calendly_event_1_start: caseToSave.calendly_event_1_start,
+        calendly_event_1_end: caseToSave.calendly_event_1_end,
+        calendly_event_2_start: caseToSave.calendly_event_2_start,
+        calendly_event_2_end: caseToSave.calendly_event_2_end,
+        meeting_url: caseToSave.meeting_url,
+        report_status: caseToSave.report_status,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", auditCase.id);
+      .eq("id", caseToSave.id);
 
     if (updateError) {
       setError(updateError.message);
+      setSaveStatus("error");
       setSavingCase(false);
-      return;
+      return false;
     }
 
-    setSuccess("Dossier mis à jour.");
+    initialCaseSnapshotRef.current = buildCaseAutosaveSignature(caseToSave);
+    setSaveStatus("saved");
     setSavingCase(false);
+
+    window.setTimeout(() => {
+      setSaveStatus((current) => (current === "saved" ? "idle" : current));
+    }, 1800);
+
+    return true;
   }
 
   async function addInternalNote() {
@@ -1108,241 +1166,36 @@ export default function AgentAuditBlancDetailPage() {
               </article>
 
               <article style={s.card}>
-                <p style={s.cardLabel}>Parcours agent</p>
-
-                <h2 style={s.sectionTitle}>Conduire l’audit blanc</h2>
-
-                <p style={s.cardBody}>
-                  Suivez le parcours dans l’ordre : profil, usage des marques,
-                  indicateurs, puis génération du rapport final.
-                </p>
-
-                <div style={s.workflowGrid}>
-                  <Link
-                    href={`/agent/audits-blancs/${auditCase.id}/audit/profil`}
-                    style={s.workflowStep}
-                    className="sel-workflow-step"
-                  >
-                    <span style={s.workflowNumber}>1</span>
-                    <span>
-                      <strong>Profil audité</strong>
-                    </span>
-                  </Link>
-
-                  <Link
-                    href={`/agent/audits-blancs/${auditCase.id}/audit/marques`}
-                    style={s.workflowStep}
-                    className="sel-workflow-step"
-                  >
-                    <span style={s.workflowNumber}>2</span>
-                    <span>
-                      <strong>Usage des marques</strong>
-                    </span>
-                  </Link>
-
-                  <Link
-                    href={`/agent/audits-blancs/${auditCase.id}/audit/1`}
-                    style={s.workflowStep}
-                    className="sel-workflow-step"
-                  >
-                    <span style={s.workflowNumber}>3</span>
-                    <span>
-                      <strong>Indicateurs</strong>
-                    </span>
-                  </Link>
-
-                  <a
-                    href="#rapport-documents"
-                    style={s.workflowStep}
-                    className="sel-workflow-step"
-                  >
-                    <span style={s.workflowNumber}>4</span>
-                    <span>
-                      <strong>Rapport final</strong>
-                    </span>
-                  </a>
-                </div>
-              </article>
-
-              <article style={s.card}>
-                <div style={s.sectionHeader}>
-                  <div>
-                    <p style={s.cardLabel}>Synthèse de l’audit blanc</p>
-                    <h2 style={s.sectionTitle}>État d’avancement</h2>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={generateAuditReportPdf}
-                    disabled={generatingPdf}
-                    style={{
-                      ...s.btnPrimaryCompact,
-                      opacity: generatingPdf ? 0.55 : 1,
-                      cursor: generatingPdf ? "not-allowed" : "pointer",
-                    }}
-                    className="sel-btn-primary"
-                  >
-                    {generatingPdf ? "Génération…" : "Générer le rapport"}
-                  </button>
-                </div>
-
-                <div style={s.statsGrid}>
-                  <SummaryTile
-                    label="Marques"
-                    value={diagnosticLabel(auditCase.brand_usage_diagnostic)}
-                    color={diagnosticColor(auditCase.brand_usage_diagnostic)}
-                  />
-                  <SummaryTile
-                    label="Conformes"
-                    value={auditSummary.conforme}
-                    color="#7ec97e"
-                  />
-                  <SummaryTile
-                    label="Mineures"
-                    value={auditSummary.mineure}
-                    color="#d4a843"
-                  />
-                  <SummaryTile
-                    label="Majeures"
-                    value={auditSummary.majeure}
-                    color="#c97a7a"
-                  />
-                  <SummaryTile
-                    label="À vérifier"
-                    value={auditSummary.aVerifier}
-                    color="rgba(255,255,255,0.35)"
-                  />
-                </div>
-
-                {(hasMajorIssues || hasMinorIssues) && (
-                  <div
-                    style={{
-                      ...s.warningPanel,
-                      borderColor: hasMajorIssues
-                        ? "rgba(201,122,122,0.35)"
-                        : "rgba(212,168,67,0.35)",
-                    }}
-                  >
-                    <p style={s.warningTitle}>
-                      {hasMajorIssues
-                        ? "Des non-conformités majeures probables sont relevées."
-                        : "Des points mineurs sont à suivre."}
-                    </p>
-                    <p style={s.warningText}>
-                      Pensez à publier les documents correctifs utiles depuis
-                      les pages indicateurs ou depuis la section documents
-                      ci-dessous.
-                    </p>
-                  </div>
-                )}
-              </article>
-
-              <article style={s.card}>
-                <p style={s.cardLabel}>Synthèse des constats</p>
-
-                <h2 style={s.sectionTitle}>
-                  Notes prises pendant l’audit blanc
-                </h2>
-
-                <p style={s.cardBody}>
-                  Cette synthèse reprend les notes saisies dans l’outil d’audit.
-                  Elle servira ensuite de base au rapport PDF transmis au
-                  client.
-                </p>
-
-                <div style={s.constatsList}>
-                  <div style={s.constatItem}>
-                    <div style={s.constatHeader}>
-                      <h3 style={s.constatTitle}>Usage des marques</h3>
-
-                      <span
-                        style={{
-                          ...s.diagnosticBadge,
-                          color: diagnosticColor(
-                            auditCase.brand_usage_diagnostic,
-                          ),
-                        }}
-                      >
-                        {diagnosticLabel(auditCase.brand_usage_diagnostic)}
-                      </span>
-                    </div>
-
-                    <p
-                      style={{
-                        ...s.constatText,
-                        color: auditCase.brand_usage_notes
-                          ? C.textSoft
-                          : C.textFaint,
-                      }}
-                    >
-                      {auditCase.brand_usage_notes?.trim() ||
-                        "Aucune note renseignée."}
-                    </p>
-                  </div>
-
-                  {indicatorConstats.length === 0 ? (
-                    <div style={s.emptyInline}>
-                      Aucune note indicateur n’a encore été enregistrée. Les
-                      constats apparaîtront ici au fur et à mesure de l’audit.
-                    </div>
-                  ) : (
-                    indicatorConstats.map((note) => (
-                      <details key={note.indicator_number} style={s.detailItem}>
-                        <summary style={s.detailSummary}>
-                          Indicateur {note.indicator_number} ·{" "}
-                          <span
-                            style={{
-                              color: diagnosticColor(note.agent_diagnostic),
-                            }}
-                          >
-                            {diagnosticLabel(note.agent_diagnostic)}
-                          </span>
-                        </summary>
-
-                        <div style={s.detailBody}>
-                          <p
-                            style={{
-                              ...s.constatText,
-                              color: note.user_notes ? C.textSoft : C.textFaint,
-                            }}
-                          >
-                            {note.user_notes?.trim() ||
-                              "Aucune note renseignée."}
-                          </p>
-
-                          {note.updated_at && (
-                            <p style={s.mutedSmall}>
-                              Dernière mise à jour :{" "}
-                              {formatDateTime(note.updated_at)}
-                            </p>
-                          )}
-                        </div>
-                      </details>
-                    ))
-                  )}
-                </div>
-              </article>
-
-              <article style={s.card}>
                 <div style={s.sectionHeader}>
                   <div>
                     <p style={s.cardLabel}>Rendez-vous et statut</p>
                     <h2 style={s.sectionTitle}>Pilotage du dossier</h2>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={saveCase}
-                    disabled={savingCase}
+                  <p
                     style={{
-                      ...s.btnPrimaryCompact,
-                      opacity: savingCase ? 0.55 : 1,
-                      cursor: savingCase ? "not-allowed" : "pointer",
+                      fontSize: "0.78rem",
+                      color:
+                        saveStatus === "error"
+                          ? "#c97a7a"
+                          : saveStatus === "saved"
+                            ? "#7ec97e"
+                            : saveStatus === "saving"
+                              ? C.gold
+                              : C.textFaint,
+                      fontFamily: "sans-serif",
+                      fontWeight: 700,
+                      marginTop: 0,
                     }}
-                    className="sel-btn-primary"
                   >
-                    {savingCase ? "Sauvegarde…" : "Enregistrer"}
-                  </button>
+                    {saveStatus === "saving"
+                      ? "Sauvegarde automatique…"
+                      : saveStatus === "saved"
+                        ? "Modifications enregistrées ✓"
+                        : saveStatus === "error"
+                          ? "Erreur de sauvegarde"
+                          : "Sauvegarde automatique active"}
+                  </p>
                 </div>
 
                 <div style={s.formGrid}>
@@ -1497,12 +1350,176 @@ export default function AgentAuditBlancDetailPage() {
                 </div>
               </article>
 
-              <article id="rapport-documents" style={s.card}>
+              <article style={s.card}>
                 <div style={s.sectionHeader}>
                   <div>
-                    <p style={s.cardLabel}>Rapport et documents</p>
-                    <h2 style={s.sectionTitle}>Documents client</h2>
+                    <p style={s.cardLabel}>Synthèse de l’audit blanc</p>
+                    <h2 style={s.sectionTitle}>État d’avancement</h2>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={generateAuditReportPdf}
+                    disabled={generatingPdf}
+                    style={{
+                      ...s.btnPrimaryCompact,
+                      opacity: generatingPdf ? 0.55 : 1,
+                      cursor: generatingPdf ? "not-allowed" : "pointer",
+                    }}
+                    className="sel-btn-primary"
+                  >
+                    {generatingPdf ? "Génération…" : "Générer le rapport"}
+                  </button>
+                </div>
+
+                <div style={s.statsGrid}>
+                  <SummaryTile
+                    label="Marques"
+                    value={diagnosticLabel(auditCase.brand_usage_diagnostic)}
+                    color={diagnosticColor(auditCase.brand_usage_diagnostic)}
+                  />
+                  <SummaryTile
+                    label="Conformes"
+                    value={auditSummary.conforme}
+                    color="#7ec97e"
+                  />
+                  <SummaryTile
+                    label="Mineures"
+                    value={auditSummary.mineure}
+                    color="#d4a843"
+                  />
+                  <SummaryTile
+                    label="Majeures"
+                    value={auditSummary.majeure}
+                    color="#c97a7a"
+                  />
+                  <SummaryTile
+                    label="À vérifier"
+                    value={auditSummary.aVerifier}
+                    color="rgba(255,255,255,0.35)"
+                  />
+                </div>
+
+                {(hasMajorIssues || hasMinorIssues) && (
+                  <div
+                    style={{
+                      ...s.warningPanel,
+                      borderColor: hasMajorIssues
+                        ? "rgba(201,122,122,0.35)"
+                        : "rgba(212,168,67,0.35)",
+                    }}
+                  >
+                    <p style={s.warningTitle}>
+                      {hasMajorIssues
+                        ? "Des non-conformités majeures probables sont relevées."
+                        : "Des points mineurs sont à suivre."}
+                    </p>
+                    <p style={s.warningText}>
+                      Pensez à publier les documents correctifs utiles depuis
+                      les pages indicateurs ou depuis la section documents
+                      ci-dessous.
+                    </p>
+                  </div>
+                )}
+              </article>
+
+              <details style={s.card}>
+                <summary style={s.foldSummary}>
+                  <span>
+                    <span style={s.cardLabel}>Synthèse des constats</span>
+                    <span style={s.foldTitle}>
+                      Notes prises pendant l’audit blanc
+                    </span>
+                  </span>
+
+                  <span style={s.foldHint}>Cliquer pour ouvrir / fermer</span>
+                </summary>
+
+                <p style={s.cardBody}>
+                  Cette synthèse reprend les notes saisies dans l’outil d’audit.
+                  Elle servira ensuite de base au rapport PDF transmis au
+                  client.
+                </p>
+
+                <div style={s.constatsList}>
+                  <div style={s.constatItem}>
+                    <div style={s.constatHeader}>
+                      <h3 style={s.constatTitle}>Usage des marques</h3>
+
+                      <span
+                        style={{
+                          ...s.diagnosticBadge,
+                          color: diagnosticColor(
+                            auditCase.brand_usage_diagnostic,
+                          ),
+                        }}
+                      >
+                        {diagnosticLabel(auditCase.brand_usage_diagnostic)}
+                      </span>
+                    </div>
+
+                    <p
+                      style={{
+                        ...s.constatText,
+                        color: auditCase.brand_usage_notes
+                          ? C.textSoft
+                          : C.textFaint,
+                      }}
+                    >
+                      {auditCase.brand_usage_notes?.trim() ||
+                        "Aucune note renseignée."}
+                    </p>
+                  </div>
+
+                  {indicatorConstats.length === 0 ? (
+                    <div style={s.emptyInline}>
+                      Aucune note indicateur n’a encore été enregistrée. Les
+                      constats apparaîtront ici au fur et à mesure de l’audit.
+                    </div>
+                  ) : (
+                    indicatorConstats.map((note) => (
+                      <details key={note.indicator_number} style={s.detailItem}>
+                        <summary style={s.detailSummary}>
+                          Indicateur {note.indicator_number} ·{" "}
+                          <span
+                            style={{
+                              color: diagnosticColor(note.agent_diagnostic),
+                            }}
+                          >
+                            {diagnosticLabel(note.agent_diagnostic)}
+                          </span>
+                        </summary>
+
+                        <div style={s.detailBody}>
+                          <p
+                            style={{
+                              ...s.constatText,
+                              color: note.user_notes ? C.textSoft : C.textFaint,
+                            }}
+                          >
+                            {note.user_notes?.trim() ||
+                              "Aucune note renseignée."}
+                          </p>
+
+                          {note.updated_at && (
+                            <p style={s.mutedSmall}>
+                              Dernière mise à jour :{" "}
+                              {formatDateTime(note.updated_at)}
+                            </p>
+                          )}
+                        </div>
+                      </details>
+                    ))
+                  )}
+                </div>
+              </details>
+
+              <details id="rapport-documents" style={s.card}>
+                <summary style={s.foldSummary}>
+                  <span>
+                    <span style={s.cardLabel}>Rapport et documents</span>
+                    <span style={s.foldTitle}>Documents client</span>
+                  </span>
 
                   <span style={s.badge}>
                     {visibleClientDocuments} visible
@@ -1510,7 +1527,7 @@ export default function AgentAuditBlancDetailPage() {
                     {internalDocuments} interne
                     {internalDocuments > 1 ? "s" : ""}
                   </span>
-                </div>
+                </summary>
 
                 <div style={s.documentPanel}>
                   <p style={s.cardLabel}>Documents existants</p>
@@ -1766,7 +1783,7 @@ export default function AgentAuditBlancDetailPage() {
                     ))
                   )}
                 </div>
-              </article>
+              </details>
 
               <article style={s.card}>
                 <div style={s.sectionHeader}>
@@ -2213,6 +2230,31 @@ const s: Record<string, CSSProperties> = {
     alignItems: "flex-start",
     marginBottom: "0.9rem",
     flexWrap: "wrap",
+  },
+  foldSummary: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "1rem",
+    cursor: "pointer",
+    listStyle: "none",
+    marginBottom: "0.9rem",
+  },
+
+  foldTitle: {
+    display: "block",
+    color: C.text,
+    fontSize: "1.08rem",
+    marginTop: "0.2rem",
+    fontFamily: "Georgia, serif",
+    fontWeight: 700,
+  },
+
+  foldHint: {
+    color: C.textFaint,
+    fontSize: "0.76rem",
+    fontFamily: "sans-serif",
+    whiteSpace: "nowrap",
   },
   sectionTitle: {
     color: C.text,
@@ -2727,4 +2769,18 @@ const css = `
       grid-template-columns: 1fr !important;
     }
   }
+    details > summary::-webkit-details-marker {
+  display: none;
+}
+
+details > summary::after {
+  content: "▾";
+  color: rgba(196,169,106,0.75);
+  font-size: 0.9rem;
+  transition: transform 0.15s ease;
+}
+
+details[open] > summary::after {
+  transform: rotate(180deg);
+}
 `;

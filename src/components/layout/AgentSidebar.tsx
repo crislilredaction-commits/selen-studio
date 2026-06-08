@@ -202,7 +202,7 @@ export default function AgentSidebar() {
             lineHeight: 1.4,
           }}
         >
-          Pilotage Qualiopi
+          Belle journée :)
         </p>
       </div>
 
