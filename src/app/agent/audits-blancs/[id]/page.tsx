@@ -192,6 +192,18 @@ function isoToLocalInput(value?: string | null) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function localInputToIso(value: string) {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
+}
+
 function buildCaseAutosaveSignature(auditCase: AuditBlancCase | null) {
   if (!auditCase) return "";
 

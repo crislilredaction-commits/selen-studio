@@ -1,16 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import {
+  createClient as createSupabaseAdminClient,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
 import { createClient as createSessionClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-type AdminClient = ReturnType<typeof createSupabaseAdminClient>;
+type AdminClient = SupabaseClient<any>;
+
+type OrganisationAccessRow = {
+  id: string;
+  name: string | null;
+  email: string | null;
+};
+
+type DossierAccessRow = {
+  id: string;
+  title: string | null;
+  type: string | null;
+  status: string | null;
+};
 
 function jsonResponse(data: unknown, status = 200) {
   return NextResponse.json(data, { status });
 }
 
-function getAdminClient() {
+function getAdminClient(): AdminClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -25,7 +41,7 @@ function getAdminClient() {
       autoRefreshToken: false,
       persistSession: false,
     },
-  });
+  }) as AdminClient;
 }
 
 async function requireAgentAdmin() {
@@ -150,12 +166,15 @@ async function ensureOrganisationForClient({
 }) {
   const cleanEmail = email.trim().toLowerCase();
 
-  const { data: existingOrganisation, error: existingOrganisationError } =
+  const { data: existingOrganisationRaw, error: existingOrganisationError } =
     await admin
       .from("organisations")
       .select("id, name, email")
       .eq("email", cleanEmail)
       .maybeSingle();
+
+  const existingOrganisation =
+    existingOrganisationRaw as OrganisationAccessRow | null;
 
   if (existingOrganisationError) {
     throw new Error(
@@ -169,7 +188,7 @@ async function ensureOrganisationForClient({
 
   const fallbackName = fullName?.trim() || cleanEmail;
 
-  const { data: newOrganisation, error: organisationError } = await admin
+  const { data: newOrganisationRaw, error: organisationError } = await admin
     .from("organisations")
     .insert({
       name: fallbackName,
@@ -178,6 +197,8 @@ async function ensureOrganisationForClient({
     })
     .select("id, name, email")
     .single();
+
+  const newOrganisation = newOrganisationRaw as OrganisationAccessRow | null;
 
   if (organisationError || !newOrganisation) {
     throw new Error(
@@ -205,13 +226,15 @@ async function ensureDossierForClientAccess({
     return null;
   }
 
-  const { data: existingDossier, error: existingDossierError } = await admin
+  const { data: existingDossierRaw, error: existingDossierError } = await admin
     .from("dossiers")
     .select("id, title, type, status")
     .eq("organisation_id", organisationId)
     .eq("type", config.dossierType)
     .neq("status", "archived")
     .maybeSingle();
+
+  const existingDossier = existingDossierRaw as DossierAccessRow | null;
 
   if (existingDossierError) {
     throw new Error(
@@ -223,7 +246,7 @@ async function ensureDossierForClientAccess({
     return existingDossier;
   }
 
-  const { data: dossier, error: dossierError } = await admin
+  const { data: dossierRaw, error: dossierError } = await admin
     .from("dossiers")
     .insert({
       title: config.title,
@@ -233,6 +256,8 @@ async function ensureDossierForClientAccess({
     })
     .select("id, title, type, status")
     .single();
+
+  const dossier = dossierRaw as DossierAccessRow | null;
 
   if (dossierError || !dossier) {
     throw new Error(
@@ -245,10 +270,7 @@ async function ensureDossierForClientAccess({
   return dossier;
 }
 
-async function findAuthUserByEmail(
-  admin: ReturnType<typeof getAdminClient>,
-  email: string,
-) {
+async function findAuthUserByEmail(admin: AdminClient, email: string) {
   const normalizedEmail = email.trim().toLowerCase();
 
   let page = 1;

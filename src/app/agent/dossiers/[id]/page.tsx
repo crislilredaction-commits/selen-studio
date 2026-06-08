@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenBadge from "@/components/ui/SelenBadge";
@@ -84,6 +85,18 @@ type MessageRow = {
   content: string;
   sender_type: "agent" | "client";
   created_at: string;
+};
+
+type PreauditSessionSummary = {
+  id: string;
+  user_id: string;
+  status: string | null;
+  audit_type: string | null;
+  is_new_entrant: boolean | null;
+  applicable_indicators: number[] | null;
+  excluded_indicators: number[] | null;
+  created_at: string;
+  updated_at: string | null;
 };
 
 function getTypeLabel(type: string): string {
@@ -283,6 +296,89 @@ function getRegionFromPostalCode(codePostal?: string | null) {
   };
 
   return regionMap[dept] ?? "";
+}
+
+function getSupabaseAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error(
+      "Configuration Supabase admin manquante : NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY.",
+    );
+  }
+
+  return createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
+async function findAuthUserIdByEmail(email: string) {
+  const admin = getSupabaseAdminClient();
+  const normalizedEmail = email.trim().toLowerCase();
+
+  let page = 1;
+  const perPage = 1000;
+
+  while (page <= 20) {
+    const { data, error } = await admin.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+
+    if (error) {
+      throw new Error(
+        `Impossible de retrouver le compte client Supabase Auth. ${error.message}`,
+      );
+    }
+
+    const found = data.users.find(
+      (user) => user.email?.trim().toLowerCase() === normalizedEmail,
+    );
+
+    if (found?.id) {
+      return found.id;
+    }
+
+    if (data.users.length < perPage) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return null;
+}
+
+async function getLatestPreauditSessionByEmail(email?: string | null) {
+  if (!email) return null;
+
+  const userId = await findAuthUserIdByEmail(email);
+
+  if (!userId) return null;
+
+  const admin = getSupabaseAdminClient();
+
+  const { data, error } = await admin
+    .from("preaudit_sessions")
+    .select(
+      "id, user_id, status, audit_type, is_new_entrant, applicable_indicators, excluded_indicators, created_at, updated_at",
+    )
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `Impossible de charger la session préaudit du client. ${error.message}`,
+    );
+  }
+
+  return data as PreauditSessionSummary | null;
 }
 
 const MOCK_HISTORY: HistoryEntry[] = [
@@ -548,6 +644,17 @@ export default async function DossierPage({ params }: PageProps) {
     : dossier.organisations;
 
   const organisation = (organisationRaw ?? null) as OrganisationRow | null;
+
+  const preauditSession =
+    dossier.type === "preaudit"
+      ? await getLatestPreauditSessionByEmail(organisation?.email)
+      : null;
+
+  const preauditApplicableCount =
+    preauditSession?.applicable_indicators?.length ?? 0;
+
+  const preauditExcludedCount =
+    preauditSession?.excluded_indicators?.length ?? 0;
 
   const { data: relatedDossiers } = organisation
     ? await supabase
@@ -1104,11 +1211,13 @@ export default async function DossierPage({ params }: PageProps) {
               </SelenCard>
             ) : null}
 
-            <AgentProgramEditor
-              dossierId={dossier.id}
-              initialAnalysis={latestProgramAnalysis}
-              initialVersion={latestProgramVersion}
-            />
+            {dossier.type === "nda" ? (
+              <AgentProgramEditor
+                dossierId={dossier.id}
+                initialAnalysis={latestProgramAnalysis}
+                initialVersion={latestProgramVersion}
+              />
+            ) : null}
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1331,11 +1440,227 @@ export default async function DossierPage({ params }: PageProps) {
               </div>
             </SelenCard>
 
-            <NdaVariablesCard
-              dossierId={dossier.id}
-              initialValues={ndaVariablesInitialValues}
-            />
-            {canRunAutoAnalysis && <AnalyzeNdaButton dossierId={dossier.id} />}
+            {dossier.type === "preaudit" ? (
+              <SelenCard>
+                <SelenCardTitle>Synthèse préaudit</SelenCardTitle>
+
+                {preauditSession ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: "var(--selen-bg3)",
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "10px 12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: "var(--selen-text3)",
+                            marginBottom: 4,
+                          }}
+                        >
+                          Statut
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--selen-text)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {preauditSession.status ?? "—"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "var(--selen-bg3)",
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "10px 12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: "var(--selen-text3)",
+                            marginBottom: 4,
+                          }}
+                        >
+                          Audit
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--selen-text)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {preauditSession.audit_type ?? "Non renseigné"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "var(--selen-bg3)",
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "10px 12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: "var(--selen-text3)",
+                            marginBottom: 4,
+                          }}
+                        >
+                          Indicateurs
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--selen-text)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {preauditApplicableCount} applicables
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "var(--selen-bg3)",
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "10px 12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: "var(--selen-text3)",
+                            marginBottom: 4,
+                          }}
+                        >
+                          Exclus
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--selen-text)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {preauditExcludedCount}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--selen-text3)",
+                        lineHeight: 1.5,
+                        margin: 0,
+                      }}
+                    >
+                      Dernière mise à jour :{" "}
+                      {new Date(
+                        preauditSession.updated_at ??
+                          preauditSession.created_at,
+                      ).toLocaleDateString("fr-FR")}
+                    </p>
+
+                    <Link
+                      href={`/agent/dossiers/${dossier.id}/preaudit`}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        borderRadius: "var(--radius-sm)",
+                        padding: "9px 12px",
+                        background:
+                          "linear-gradient(135deg, var(--selen-gold), var(--selen-copper))",
+                        color: "#0f0c08",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        textDecoration: "none",
+                      }}
+                    >
+                      Voir la synthèse préaudit →
+                    </Link>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--selen-text3)",
+                        lineHeight: 1.5,
+                        margin: 0,
+                      }}
+                    >
+                      Aucune session préaudit n’a été retrouvée pour l’email de
+                      cette organisation.
+                    </p>
+
+                    <p
+                      style={{
+                        fontSize: 11,
+                        color: "var(--selen-text3)",
+                        lineHeight: 1.5,
+                        margin: 0,
+                      }}
+                    >
+                      Email recherché : {organisation?.email ?? "—"}
+                    </p>
+                  </div>
+                )}
+              </SelenCard>
+            ) : null}
+
+            {dossier.type === "nda" ? (
+              <>
+                <NdaVariablesCard
+                  dossierId={dossier.id}
+                  initialValues={ndaVariablesInitialValues}
+                />
+                {canRunAutoAnalysis && (
+                  <AnalyzeNdaButton dossierId={dossier.id} />
+                )}
+              </>
+            ) : null}
 
             <SelenCard>
               <SelenCardTitle>Historique</SelenCardTitle>

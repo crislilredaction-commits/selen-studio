@@ -74,6 +74,39 @@ const links = [
     ),
   },
   {
+    href: "/agent/audits-blancs",
+    label: "Review",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
+        <path
+          d="M3 2.5h10v11H3z"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          rx="2"
+        />
+        <path
+          d="M5 5h6"
+          stroke="currentColor"
+          strokeWidth="1"
+          strokeLinecap="round"
+        />
+        <path
+          d="M5 7.5h4"
+          stroke="currentColor"
+          strokeWidth="1"
+          strokeLinecap="round"
+        />
+        <path
+          d="M5 10.5l1 1 2-2"
+          stroke="currentColor"
+          strokeWidth="1.1"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
+  },
+  {
     href: "/agent/clients",
     label: "Clients",
     icon: (
@@ -220,7 +253,10 @@ export default function AgentSidebar() {
         </p>
 
         {links.map((link) => {
-          const isActive = pathname.startsWith(link.href);
+          const isActive =
+            link.href === "/agent"
+              ? pathname === "/agent"
+              : pathname.startsWith(link.href);
 
           return (
             <Link
