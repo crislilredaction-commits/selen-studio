@@ -2,6 +2,7 @@ import Link from "next/link";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import { createClient } from "@/lib/supabase/server";
+import LogoutButton from "@/components/agent/LogoutButton";
 
 const studioLinks = [
   {
@@ -205,6 +206,8 @@ export default async function AgentHomePage() {
           <Link href="/agent/dossiers" style={{ textDecoration: "none" }}>
             <SelenButton variant="ghost">Voir les dossiers</SelenButton>
           </Link>
+
+          <LogoutButton />
         </div>
       </section>
 
