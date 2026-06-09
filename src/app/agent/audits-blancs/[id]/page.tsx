@@ -11,6 +11,7 @@ import AuditGrimoire from "@/components/agent/AuditGrimoire";
 
 type AuditBlancCase = {
   id: string;
+  dossier_id: string | null;
   client_email: string;
   status: string;
   offer: string;
@@ -273,7 +274,7 @@ function generateAuditReportPdfBlob({
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
-  doc.text("Rapport d'audit blanc Qualiopi", margin, y);
+  doc.text("Rapport Review - Audit blanc Qualiopi", margin, y);
 
   y += 9;
 
@@ -394,7 +395,7 @@ function generateAuditReportPdfBlob({
     doc.setFontSize(8);
     doc.setTextColor(120, 90, 65);
     doc.text(
-      `Selen Editions - Rapport d'audit blanc - Page ${page}/${pageCount}`,
+      `Selen Editions - Rapport Review - Page ${page}/${pageCount}`,
       margin,
       288,
     );
@@ -523,19 +524,19 @@ export default function AgentAuditBlancDetailPage() {
     const { data: caseData, error: caseError } = await supabase
       .from("audit_blanc_cases")
       .select(
-        "id, client_email, status, offer, price_paid, currency, calendly_mode, calendly_event_1_start, calendly_event_1_end, calendly_event_2_start, calendly_event_2_end, meeting_url, report_status, report_storage_path, brand_usage_diagnostic, brand_usage_notes, created_at, updated_at",
+        "id, dossier_id, client_email, status, offer, price_paid, currency, calendly_mode, calendly_event_1_start, calendly_event_1_end, calendly_event_2_start, calendly_event_2_end, meeting_url, report_status, report_storage_path, brand_usage_diagnostic, brand_usage_notes, created_at, updated_at",
       )
       .eq("id", caseId)
       .maybeSingle();
 
     if (caseError) {
-      setError(`Impossible de charger le dossier. ${caseError.message}`);
+      setError(`Impossible de charger le dossier Review. ${caseError.message}`);
       setLoading(false);
       return;
     }
 
     if (!caseData) {
-      setError("Dossier audit blanc introuvable.");
+      setError("Dossier Review introuvable.");
       setLoading(false);
       return;
     }
@@ -862,7 +863,7 @@ export default function AgentAuditBlancDetailPage() {
         .from("audit_blanc_documents")
         .insert({
           case_id: auditCase.id,
-          name: "Rapport d’audit blanc",
+          name: "Rapport Review",
           document_type: "rapport_audit_blanc",
           storage_bucket: "selen-documents",
           storage_path: storagePath,
@@ -1059,7 +1060,7 @@ export default function AgentAuditBlancDetailPage() {
 
         <div style={s.loadingWrap}>
           <div className="sel-spinner" />
-          <p style={s.loadingText}>Chargement du dossier audit blanc…</p>
+          <p style={s.loadingText}>Chargement du dossier Review…</p>
         </div>
       </div>
     );
@@ -1078,21 +1079,21 @@ export default function AgentAuditBlancDetailPage() {
               style={s.breadcrumbLink}
               className="sel-breadcrumb"
             >
-              Dossiers
+              Review
             </Link>
             <span style={s.breadcrumbSep}>›</span>
-            <span style={s.breadcrumbCurrent}>Fiche audit blanc</span>
+            <span style={s.breadcrumbCurrent}>Fiche Review</span>
           </div>
 
           <div style={s.headerBody}>
             <div>
-              <p style={s.eyebrow}>Selen Studio · Audit blanc</p>
+              <p style={s.eyebrow}>Selen Studio · Review</p>
 
-              <h1 style={s.title}>Fiche audit blanc</h1>
+              <h1 style={s.title}>Fiche Review</h1>
 
               <p style={s.subtitle}>
-                Pilotez le dossier, le rendez-vous, les constats, les documents
-                correctifs et le rapport final transmis au client.
+                Pilotez l’audit blanc Review, le rendez-vous, les constats, les
+                documents correctifs et le rapport final transmis au client.
               </p>
 
               {agent && (
@@ -1129,9 +1130,9 @@ export default function AgentAuditBlancDetailPage() {
           <EmptyState
             label="Accès impossible"
             title="Le dossier est introuvable ou votre accès agent n’est pas autorisé."
-            body="Revenez à la liste des audits blancs pour vérifier le dossier."
+            body="Revenez à la liste Review pour vérifier le dossier."
             href="/agent/audits-blancs"
-            action="Retour aux dossiers"
+            action="Retour à Review"
           />
         ) : (
           <div style={s.layout} className="sel-layout">
@@ -1365,7 +1366,7 @@ export default function AgentAuditBlancDetailPage() {
               <article style={s.card}>
                 <div style={s.sectionHeader}>
                   <div>
-                    <p style={s.cardLabel}>Synthèse de l’audit blanc</p>
+                    <p style={s.cardLabel}>Synthèse Review</p>
                     <h2 style={s.sectionTitle}>État d’avancement</h2>
                   </div>
 
@@ -1380,7 +1381,9 @@ export default function AgentAuditBlancDetailPage() {
                     }}
                     className="sel-btn-primary"
                   >
-                    {generatingPdf ? "Génération…" : "Générer le rapport"}
+                    {generatingPdf
+                      ? "Génération…"
+                      : "Générer le rapport Review"}
                   </button>
                 </div>
 
@@ -1439,16 +1442,14 @@ export default function AgentAuditBlancDetailPage() {
                 <summary style={s.foldSummary}>
                   <span>
                     <span style={s.cardLabel}>Synthèse des constats</span>
-                    <span style={s.foldTitle}>
-                      Notes prises pendant l’audit blanc
-                    </span>
+                    <span style={s.foldTitle}>Notes prises pendant Review</span>
                   </span>
 
                   <span style={s.foldHint}>Cliquer pour ouvrir / fermer</span>
                 </summary>
 
                 <p style={s.cardBody}>
-                  Cette synthèse reprend les notes saisies dans l’outil d’audit.
+                  Cette synthèse reprend les notes saisies dans l’outil Review.
                   Elle servira ensuite de base au rapport PDF transmis au
                   client.
                 </p>
@@ -1678,7 +1679,7 @@ export default function AgentAuditBlancDetailPage() {
                         className="sel-input"
                       >
                         <option value="rapport_audit_blanc">
-                          Rapport d’audit blanc
+                          Rapport Review
                         </option>
                         <option value="document_correctif">
                           Document correctif
@@ -1696,7 +1697,7 @@ export default function AgentAuditBlancDetailPage() {
                         onChange={(event) =>
                           setDocumentName(event.target.value)
                         }
-                        placeholder="Ex : Rapport audit blanc"
+                        placeholder="Ex : Rapport Review"
                         style={s.input}
                         className="sel-input"
                       />
@@ -1898,8 +1899,18 @@ export default function AgentAuditBlancDetailPage() {
                     style={s.btnPrimary}
                     className="sel-btn-primary"
                   >
-                    Reprendre l’outil d’audit →
+                    Reprendre Review →
                   </Link>
+
+                  {auditCase.dossier_id ? (
+                    <Link
+                      href={`/agent/dossiers/${auditCase.dossier_id}`}
+                      style={s.btnGhost}
+                      className="sel-btn-ghost"
+                    >
+                      Ouvrir le dossier client
+                    </Link>
+                  ) : null}
 
                   <Link
                     href={`/agent/audits-blancs/${auditCase.id}/audit/1`}
@@ -1922,7 +1933,7 @@ export default function AgentAuditBlancDetailPage() {
                     style={s.navLink}
                     className="sel-nav-link"
                   >
-                    ← Retour aux dossiers
+                    ← Retour à Review
                   </Link>
 
                   <Link

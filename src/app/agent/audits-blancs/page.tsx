@@ -205,7 +205,9 @@ export default function AgentAuditsBlancsPage() {
         .order("created_at", { ascending: false });
 
       if (casesError) {
-        setError(`Impossible de charger les dossiers. ${casesError.message}`);
+        setError(
+          `Impossible de charger les dossiers Review. ${casesError.message}`,
+        );
         setLoading(false);
         return;
       }
@@ -261,7 +263,7 @@ export default function AgentAuditsBlancsPage() {
         <header style={s.header}>
           <p style={s.eyebrow}>Selen Studio</p>
           <div style={s.headerRow}>
-            <h1 style={s.title}>Audits blancs Qualiopi</h1>
+            <h1 style={s.title}>Selen Review</h1>
             {agent && (
               <div style={s.agentBadge}>
                 <span style={s.agentOnline} />
@@ -273,8 +275,8 @@ export default function AgentAuditsBlancsPage() {
             )}
           </div>
           <p style={s.subtitle}>
-            Pilotez les dossiers d'audit blanc, vérifiez les rendez-vous, ouvrez
-            l'outil d'audit et suivez la préparation du rapport client.
+            Pilotez les audits blancs Review, vérifiez les rendez-vous, ouvrez
+            l’outil d’audit et suivez la préparation du rapport client.
           </p>
         </header>
 
@@ -314,11 +316,7 @@ export default function AgentAuditsBlancsPage() {
           <>
             {/* ── Stats ── */}
             <section className="selen-stats-grid" style={s.statsGrid}>
-              <StatCard
-                label="Total dossiers"
-                value={stats.total}
-                color="#c4a96a"
-              />
+              <StatCard label="Reviews" value={stats.total} color="#c4a96a" />
               <StatCard
                 label="À planifier"
                 value={stats.toPlan}
@@ -402,8 +400,8 @@ export default function AgentAuditsBlancsPage() {
             {/* ── Content ── */}
             {cases.length === 0 ? (
               <EmptyState
-                label="Registre vide"
-                title="Aucun audit blanc n'a encore été créé."
+                label="Registre Review vide"
+                title="Aucun audit blanc Review n’a encore été créé."
                 body="Les dossiers apparaîtront ici après paiement ou création manuelle."
               />
             ) : filteredCases.length === 0 ? (
@@ -537,14 +535,14 @@ function CaseRow({
             style={s.btnPrimary}
             className="selen-btn-primary"
           >
-            Fiche
+            Fiche Review
           </Link>
           <Link
             href={`/agent/audits-blancs/${auditCase.id}/audit/profil`}
             style={s.btnGhost}
             className="selen-btn-ghost"
           >
-            Audit →
+            Auditer →
           </Link>
         </div>
       </td>

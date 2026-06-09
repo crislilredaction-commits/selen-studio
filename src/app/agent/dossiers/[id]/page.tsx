@@ -99,6 +99,14 @@ type PreauditSessionSummary = {
   updated_at: string | null;
 };
 
+type ReviewCaseSummary = {
+  id: string;
+  status: string | null;
+  report_status: string | null;
+  client_email: string | null;
+  updated_at: string | null;
+};
+
 function getTypeLabel(type: string): string {
   const map: Record<string, string> = {
     nda: "NDA",
@@ -109,6 +117,7 @@ function getTypeLabel(type: string): string {
     audit_blanc: "Review",
     mise_en_conformite: "Prépa",
     audit_reel: "Prépa",
+    preaudit: "Préaudit",
   };
   return map[type] ?? type;
 }
@@ -656,6 +665,19 @@ export default async function DossierPage({ params }: PageProps) {
   const preauditExcludedCount =
     preauditSession?.excluded_indicators?.length ?? 0;
 
+  const { data: reviewCaseRaw } =
+    dossier.type === "review" || dossier.type === "audit_blanc"
+      ? await supabase
+          .from("audit_blanc_cases")
+          .select("id, status, report_status, client_email, updated_at")
+          .eq("dossier_id", dossier.id)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+
+  const reviewCase = reviewCaseRaw as ReviewCaseSummary | null;
+
   const { data: relatedDossiers } = organisation
     ? await supabase
         .from("dossiers")
@@ -1191,10 +1213,12 @@ export default async function DossierPage({ params }: PageProps) {
               unreadCount={unreadCount}
             />
 
-            <AnalyzeProgramButton
-              dossierId={dossier.id}
-              initialAnalysis={latestProgramAnalysis}
-            />
+            {dossier.type === "nda" ? (
+              <AnalyzeProgramButton
+                dossierId={dossier.id}
+                initialAnalysis={latestProgramAnalysis}
+              />
+            ) : null}
 
             {latestClientDecision ? (
               <SelenCard>
@@ -1439,6 +1463,132 @@ export default async function DossierPage({ params }: PageProps) {
                 />
               </div>
             </SelenCard>
+
+            {dossier.type === "review" || dossier.type === "audit_blanc" ? (
+              <SelenCard>
+                <SelenCardTitle>Review</SelenCardTitle>
+
+                {reviewCase ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--selen-text3)",
+                        lineHeight: 1.5,
+                        margin: 0,
+                      }}
+                    >
+                      Cette fiche dossier est reliée à un audit blanc Review.
+                    </p>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: "var(--selen-bg3)",
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "10px 12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: "var(--selen-text3)",
+                            marginBottom: 4,
+                          }}
+                        >
+                          Statut
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--selen-text)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {reviewCase.status ?? "—"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "var(--selen-bg3)",
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "10px 12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: "var(--selen-text3)",
+                            marginBottom: 4,
+                          }}
+                        >
+                          Rapport
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--selen-text)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {reviewCase.report_status ?? "—"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Link
+                      href={`/agent/audits-blancs/${reviewCase.id}`}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        borderRadius: "var(--radius-sm)",
+                        padding: "9px 12px",
+                        background:
+                          "linear-gradient(135deg, var(--selen-gold), var(--selen-copper))",
+                        color: "#0f0c08",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        textDecoration: "none",
+                      }}
+                    >
+                      Ouvrir la fiche Review →
+                    </Link>
+                  </div>
+                ) : (
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "var(--selen-text3)",
+                      lineHeight: 1.5,
+                      margin: 0,
+                    }}
+                  >
+                    Aucun audit blanc Review n’est encore relié à ce dossier.
+                  </p>
+                )}
+              </SelenCard>
+            ) : null}
 
             {dossier.type === "preaudit" ? (
               <SelenCard>
