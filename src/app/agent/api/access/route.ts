@@ -22,6 +22,14 @@ type DossierAccessRow = {
   status: string | null;
 };
 
+type ReviewCaseAccessRow = {
+  id: string;
+  dossier_id: string | null;
+  client_email: string;
+  status: string;
+  report_status: string;
+};
+
 function jsonResponse(data: unknown, status = 200) {
   return NextResponse.json(data, { status });
 }
@@ -140,14 +148,27 @@ const TOOL_DOSSIER_CONFIG: Record<
     status: "assignable",
   },
   audit_blanc: {
-    dossierType: "audit_blanc",
-    title: "Audit blanc Review",
-    status: "assignable",
+    dossierType: "review",
+    title: "Selen Review - Audit blanc Qualiopi",
+    status: "in_progress",
   },
+
   "audit-blanc": {
-    dossierType: "audit_blanc",
-    title: "Audit blanc Review",
-    status: "assignable",
+    dossierType: "review",
+    title: "Selen Review - Audit blanc Qualiopi",
+    status: "in_progress",
+  },
+
+  "audit-blanc-qualiopi": {
+    dossierType: "review",
+    title: "Selen Review - Audit blanc Qualiopi",
+    status: "in_progress",
+  },
+
+  audit_blanc_qualiopi: {
+    dossierType: "review",
+    title: "Selen Review - Audit blanc Qualiopi",
+    status: "in_progress",
   },
 };
 
@@ -268,6 +289,109 @@ async function ensureDossierForClientAccess({
   }
 
   return dossier;
+}
+
+async function ensureReviewCaseForClientAccess({
+  admin,
+  email,
+  clientUserId,
+  dossierId,
+  toolSlug,
+}: {
+  admin: AdminClient;
+  email: string;
+  clientUserId: string;
+  dossierId: string | null;
+  toolSlug: string;
+}) {
+  if (
+    ![
+      "audit_blanc",
+      "audit-blanc",
+      "audit-blanc-qualiopi",
+      "audit_blanc_qualiopi",
+    ].includes(toolSlug)
+  ) {
+    return null;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  const { data: existingCaseRaw, error: existingCaseError } = await admin
+    .from("audit_blanc_cases")
+    .select("id, dossier_id, client_email, status, report_status")
+    .eq("client_email", cleanEmail)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const existingCase = existingCaseRaw as ReviewCaseAccessRow | null;
+
+  if (existingCaseError) {
+    throw new Error(
+      `Impossible de vérifier la fiche Review existante. ${existingCaseError.message}`,
+    );
+  }
+
+  if (existingCase?.id) {
+    if (dossierId && !existingCase.dossier_id) {
+      const { data: updatedCaseRaw, error: updateCaseError } = await admin
+        .from("audit_blanc_cases")
+        .update({
+          dossier_id: dossierId,
+          client_user_id: clientUserId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingCase.id)
+        .select("id, dossier_id, client_email, status, report_status")
+        .single();
+
+      if (updateCaseError) {
+        throw new Error(
+          `Fiche Review trouvée, mais impossible de la relier au dossier Studio. ${updateCaseError.message}`,
+        );
+      }
+
+      return updatedCaseRaw as ReviewCaseAccessRow;
+    }
+
+    return existingCase;
+  }
+
+  const { data: newCaseRaw, error: newCaseError } = await admin
+    .from("audit_blanc_cases")
+    .insert({
+      client_email: cleanEmail,
+      client_user_id: clientUserId,
+      dossier_id: dossierId,
+      status: "booking_pending",
+      offer: "manual",
+      price_paid: null,
+      currency: "eur",
+      calendly_mode: null,
+      meeting_url: null,
+      agent_id: null,
+      agent_email: null,
+      report_status: "not_started",
+      profile_data: {},
+      applicable_indicators: [],
+      excluded_indicators: [],
+      brand_usage_answers: {},
+      brand_usage_diagnostic: "a_verifier",
+      brand_usage_notes: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .select("id, dossier_id, client_email, status, report_status")
+    .single();
+
+  if (newCaseError) {
+    throw new Error(
+      `Dossier Studio créé, mais impossible de créer la fiche Review. ${newCaseError.message}`,
+    );
+  }
+
+  return newCaseRaw as ReviewCaseAccessRow;
 }
 
 async function findAuthUserByEmail(admin: AdminClient, email: string) {
@@ -552,12 +676,23 @@ export async function POST(request: NextRequest) {
           toolSlug,
         });
 
+        const reviewCase = await ensureReviewCaseForClientAccess({
+          admin,
+          email,
+          clientUserId: client.id,
+          dossierId: dossier?.id ?? null,
+          toolSlug,
+        });
+
         return jsonResponse({
           updated: true,
           dossier,
-          message: dossier
-            ? "Accès mis à jour et dossier Studio vérifié."
-            : "Accès mis à jour.",
+          reviewCase,
+          message: reviewCase
+            ? "Accès mis à jour, dossier Studio vérifié et fiche Review reliée."
+            : dossier
+              ? "Accès mis à jour et dossier Studio vérifié."
+              : "Accès mis à jour.",
         });
       }
 
@@ -588,10 +723,23 @@ export async function POST(request: NextRequest) {
         toolSlug,
       });
 
+      const reviewCase = await ensureReviewCaseForClientAccess({
+        admin,
+        email,
+        clientUserId: client.id,
+        dossierId: dossier?.id ?? null,
+        toolSlug,
+      });
+
       return jsonResponse({
         created: true,
         dossier,
-        message: dossier ? "Accès créé et dossier Studio créé." : "Accès créé.",
+        reviewCase,
+        message: reviewCase
+          ? "Accès créé, dossier Studio créé et fiche Review reliée."
+          : dossier
+            ? "Accès créé et dossier Studio créé."
+            : "Accès créé.",
       });
     }
 
