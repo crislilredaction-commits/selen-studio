@@ -68,16 +68,10 @@ type QuestionRow = {
 type PreauditAnswerRow = {
   question_id: string;
   answer: string | null;
-  answer_details: unknown;
-  evidence_notes: unknown;
-  user_notes: unknown;
 };
 
 type SummaryQuestionRow = QuestionRow & {
   answer: string | null;
-  answerDetails: unknown;
-  evidenceNotes: unknown;
-  userNotes: unknown;
 };
 
 type SummaryRow = {
@@ -107,6 +101,8 @@ type PreauditIndicatorResultRow = {
   corrective_actions: unknown;
   recommended_models: unknown;
 };
+
+type PreauditIndicatorNoteRow = Record<string, unknown>;
 
 function getSupabaseAdminClient(): AdminClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -210,6 +206,20 @@ function formatNullableValue(value: unknown) {
   return String(value);
 }
 
+function extractIndicatorNote(row: PreauditIndicatorNoteRow | null) {
+  if (!row) return "";
+
+  const value =
+    row.note ??
+    row.user_notes ??
+    row.client_note ??
+    row.content ??
+    row.notes ??
+    "";
+
+  return typeof value === "string" ? value.trim() : String(value);
+}
+
 function mapResultStatusToDiagnostic(status?: string | null): Diagnostic {
   if (status === "conforme") return "conforme";
   if (status === "majeure") return "majeure";
@@ -271,7 +281,7 @@ async function getSummaryRows(
       const { data: answerData } = questionIds.length
         ? await admin
             .from("preaudit_answers")
-            .select("question_id, answer, answer_details, evidence_notes, user_notes")
+            .select("question_id, answer")
             .eq("session_id", session.id)
             .in("question_id", questionIds)
         : { data: [] };
@@ -302,6 +312,17 @@ async function getSummaryRows(
 
       const result = resultData as PreauditIndicatorResultRow | null;
 
+      const { data: noteData } = await admin
+        .from("preaudit_indicator_notes")
+        .select("*")
+        .eq("session_id", session.id)
+        .eq("indicator_number", indicatorNumber)
+        .maybeSingle();
+
+      const indicatorNote = extractIndicatorNote(
+        noteData as PreauditIndicatorNoteRow | null,
+      );
+
       const answeredCount = Object.keys(answers).filter((questionId) =>
         questions.some((question) => question.id === questionId),
       ).length;
@@ -316,9 +337,6 @@ async function getSummaryRows(
         return {
           ...question,
           answer: answer?.answer ?? null,
-          answerDetails: answer?.answer_details ?? null,
-          evidenceNotes: answer?.evidence_notes ?? null,
-          userNotes: answer?.user_notes ?? null,
         };
       });
 
@@ -338,7 +356,7 @@ async function getSummaryRows(
         answeredCount,
         totalQuestions: questions.length,
         issues,
-        note: result?.diagnosis ? String(result.diagnosis) : "",
+        note: indicatorNote,
         questions: detailedQuestions,
       };
     }),
@@ -979,6 +997,21 @@ export default async function AgentPreauditSummaryPage({ params }: PageProps) {
                         </div>
                       </div>
 
+                      <div
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: "var(--radius-sm)",
+                          border: "1px solid var(--selen-border)",
+                          background: "var(--selen-bg)",
+                          fontSize: 12,
+                          color: "var(--selen-text2)",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        <strong>Note client sur l’indicateur :</strong>{" "}
+                        {row.note || "Aucune note client pour cet indicateur."}
+                      </div>
+
                       {row.answeredCount === 0 ? (
                         <p
                           style={{
@@ -1038,29 +1071,6 @@ export default async function AgentPreauditSummaryPage({ params }: PageProps) {
                                 {question.help_text}
                               </p>
                             ) : null}
-
-                            <div
-                              style={{
-                                display: "grid",
-                                gap: 6,
-                                fontSize: 12,
-                                color: "var(--selen-text2)",
-                                lineHeight: 1.5,
-                              }}
-                            >
-                              <div>
-                                <strong>Détails :</strong>{" "}
-                                {formatNullableValue(question.answerDetails)}
-                              </div>
-                              <div>
-                                <strong>Preuves :</strong>{" "}
-                                {formatNullableValue(question.evidenceNotes)}
-                              </div>
-                              <div>
-                                <strong>Notes client :</strong>{" "}
-                                {formatNullableValue(question.userNotes)}
-                              </div>
-                            </div>
                           </article>
                         ))}
                       </div>
