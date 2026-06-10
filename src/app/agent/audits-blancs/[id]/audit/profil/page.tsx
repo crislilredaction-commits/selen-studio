@@ -59,8 +59,8 @@ type ProfileField =
 const PROFILE_FIELDS: ProfileField[] = [
   {
     key: "audit_type",
-    label: "Type d’audit concerné",
-    help: "Cette information permet d’adapter le niveau d’exigence attendu pendant l’audit blanc.",
+    label: "Type d’audit blanc à simuler",
+    help: "Permet de contextualiser le niveau d’exigence attendu pendant la Review.",
     type: "choice",
     required: true,
     options: [
@@ -72,8 +72,8 @@ const PROFILE_FIELDS: ProfileField[] = [
   },
   {
     key: "action_categories",
-    label: "Catégories d’actions concernées",
-    help: "Cochez toutes les catégories qui concernent l’organisme audité.",
+    label: "Activités couvertes par l’audit",
+    help: "Sélectionnez toutes les activités réellement concernées par la Review.",
     type: "multi_choice",
     required: true,
     options: [
@@ -85,34 +85,34 @@ const PROFILE_FIELDS: ProfileField[] = [
   },
   {
     key: "is_new_entrant",
-    label: "L’organisme est-il nouvel entrant ?",
-    help: "Un nouvel entrant n’a pas encore tout l’historique attendu, mais doit montrer ce qu’il a prévu de suivre.",
+    label: "L’organisme est-il nouvel entrant Qualiopi ?",
+    help: "Oui si l’organisme a moins d’un an d’activité en tant qu’organisme de formation et n’a pas encore déclaré de BPF.",
     type: "yes_no",
     required: true,
   },
   {
     key: "certification_training",
-    label: "L’organisme propose-t-il des formations certifiantes ?",
-    help: "Cela peut avoir un impact sur certains indicateurs liés aux certifications et aux résultats.",
+    label: "Des formations RNCP ou RS sont-elles auditées ?",
+    help: "Oui uniquement si la Review porte sur des formations rattachées à une certification RNCP ou RS. Les habilitations, SST, PSC, habilitations électriques ou simples attestations ne sont pas à cocher ici.",
     type: "yes_no",
   },
   {
     key: "alternance_training",
     label:
-      "L’organisme réalise-t-il des formations en alternance / apprentissage ?",
-    help: "Cela concerne notamment les obligations spécifiques liées aux CFA et à l’accompagnement des apprentis.",
+      "La Review concerne-t-elle de l’apprentissage ou de l’alternance ?",
+    help: "Oui si l’organisme réalise des parcours en apprentissage ou en alternance, avec obligations spécifiques liées aux apprentis, au CFA ou au suivi en entreprise.",
     type: "yes_no",
   },
   {
     key: "short_training_only",
-    label: "L’organisme propose-t-il uniquement des formations courtes ?",
-    help: "Cette information permet de contextualiser certains attendus, notamment sur le suivi et l’accompagnement.",
+    label: "La Review porte-t-elle uniquement sur des formations courtes ?",
+    help: "À cocher uniquement si toutes les prestations concernées par la Review durent moins de 14 heures.",
     type: "yes_no",
   },
   {
     key: "subcontracting_or_portage",
-    label: "L’organisme intervient-il en sous-traitance ou portage ?",
-    help: "Cela peut avoir un impact sur les preuves attendues et les responsabilités Qualiopi.",
+    label: "L’organisme est-il concerné par la sous-traitance ou le portage ?",
+    help: "Oui si l’organisme intervient lui-même en sous-traitance/portage ou s’il fait appel à des sous-traitants. À distinguer ensuite dans l’analyse, car les impacts ne sont pas les mêmes.",
     type: "yes_no",
   },
 ];

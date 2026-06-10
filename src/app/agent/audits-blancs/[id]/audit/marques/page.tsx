@@ -40,40 +40,40 @@ const INITIAL_AUDIT_BRAND_QUESTIONS: BrandQuestion[] = [
   {
     key: "displays_qualiopi_certificate_before_certification",
     question:
-      "Le client affiche-t-il déjà un certificat Qualiopi alors qu’il est en audit initial ?",
-    help: "En audit initial, l’organisme n’est pas encore certifié. Il ne doit donc pas afficher un certificat Qualiopi comme s’il était déjà obtenu.",
+      "L’organisme affiche-t-il un certificat Qualiopi alors qu’il n’est pas encore certifié ?",
+    help: "En audit initial, aucun certificat ne doit être présenté comme déjà obtenu.",
     expectedAnswer: "no",
     severity: "major",
   },
   {
     key: "uses_qualiopi_logo_before_certification",
     question:
-      "Le client utilise-t-il déjà le logo Qualiopi dans sa communication ?",
-    help: "Le logo Qualiopi ne doit pas être utilisé avant obtention effective de la certification.",
+      "L’organisme utilise-t-il le logo Qualiopi avant certification ?",
+    help: "Le logo Qualiopi ne doit pas être utilisé avant l’obtention effective de la certification.",
     expectedAnswer: "no",
     severity: "major",
   },
   {
     key: "claims_qualiopi_certified_before_certification",
     question:
-      "Le client indique-t-il qu’il est certifié Qualiopi alors que l’audit initial n’a pas encore abouti ?",
-    help: "Attention aux mentions du type “certifié Qualiopi”, “organisme certifié” ou équivalent avant obtention réelle du certificat.",
+      "L’organisme se présente-t-il comme certifié Qualiopi avant obtention du certificat ?",
+    help: "Rechercher les mentions “certifié Qualiopi”, “organisme certifié” ou équivalentes.",
     expectedAnswer: "no",
     severity: "major",
   },
   {
     key: "mentions_cofrac_or_certifier_misleading",
     question:
-      "Le client mentionne-t-il le Cofrac ou un certificateur d’une manière pouvant laisser croire qu’il est déjà certifié ?",
-    help: "Le Cofrac accrédite les certificateurs, pas directement l’organisme de formation. Toute mention doit éviter de créer une confusion.",
+      "Les mentions Cofrac ou certificateur peuvent-elles laisser croire que l’organisme est déjà certifié ?",
+    help: "Le Cofrac accrédite les certificateurs, pas directement les organismes de formation.",
     expectedAnswer: "no",
     severity: "major",
   },
   {
     key: "uses_pending_audit_as_certification",
     question:
-      "Le client présente-t-il une démarche en cours comme une certification déjà acquise ?",
-    help: "Il peut préparer une certification, mais ne doit pas transformer une démarche en cours en argument commercial trompeur.",
+      "La démarche de certification en cours est-elle présentée comme une certification acquise ?",
+    help: "Une démarche en cours peut être mentionnée, mais sans laisser croire que la certification est déjà obtenue.",
     expectedAnswer: "no",
     severity: "major",
   },
@@ -82,38 +82,38 @@ const INITIAL_AUDIT_BRAND_QUESTIONS: BrandQuestion[] = [
 const CERTIFIED_BRAND_QUESTIONS: BrandQuestion[] = [
   {
     key: "has_qualiopi_certificate",
-    question: "Le client dispose-t-il bien de son certificat Qualiopi ?",
-    help: "Pour un audit de surveillance ou de renouvellement, le certificat doit être disponible et cohérent.",
+    question: "Le certificat Qualiopi est-il disponible ?",
+    help: "Vérifier que l’organisme peut présenter son certificat.",
     expectedAnswer: "yes",
     severity: "major",
   },
   {
     key: "certificate_is_current",
     question: "Le certificat présenté est-il en cours de validité ?",
-    help: "Vérifiez la date de validité, l’organisme certificateur et le périmètre certifié.",
+    help: "Vérifier les dates, le certificateur et l’absence d’expiration.",
     expectedAnswer: "yes",
     severity: "major",
   },
   {
     key: "certificate_scope_matches_activity",
     question:
-      "Le périmètre affiché sur le certificat correspond-il bien aux activités réalisées ?",
-    help: "Les catégories d’actions certifiées doivent correspondre à ce que l’organisme communique et vend.",
+      "Le périmètre du certificat correspond-il aux activités auditées ?",
+    help: "Les catégories certifiées doivent correspondre aux activités communiquées et vendues.",
     expectedAnswer: "yes",
     severity: "major",
   },
   {
     key: "certificate_on_website",
     question:
-      "Le certificat Qualiopi est-il diffusé sur le site internet du client ?",
-    help: "La diffusion sur le site est une bonne pratique. Si ce n’est pas le cas, vérifiez s’il est transmis autrement.",
+      "Le certificat est-il accessible sur le site internet ?",
+    help: "Si le certificat n’est pas publié sur le site, vérifier un autre mode de transmission.",
     expectedAnswer: "yes",
     severity: "minor",
   },
   {
     key: "certificate_by_email_or_social",
     question:
-      "Si le certificat n’est pas sur le site, est-il communiqué par un autre moyen ?",
+      "Le certificat est-il transmis par un autre canal ?",
     help: "Exemples : email, devis, plaquette, réseau social professionnel, espace client.",
     expectedAnswer: "yes",
     severity: "minor",
@@ -122,31 +122,31 @@ const CERTIFIED_BRAND_QUESTIONS: BrandQuestion[] = [
   {
     key: "certificate_diffusion_proof",
     question:
-      "Le client peut-il prouver la diffusion ou la transmission de son certificat ?",
-    help: "Capture du site, lien public, modèle d’email, plaquette, preuve de remise ou autre trace exploitable.",
+      "Une preuve de diffusion ou de transmission du certificat existe-t-elle ?",
+    help: "Capture, lien public, modèle d’email, plaquette ou trace de remise.",
     expectedAnswer: "yes",
     severity: "minor",
   },
   {
     key: "uses_qualiopi_logo",
-    question: "Le client utilise-t-il le logo Qualiopi ?",
-    help: "L’utilisation du logo n’est pas obligatoire. Cette question sert uniquement à afficher les contrôles associés.",
+    question: "L’organisme utilise-t-il le logo Qualiopi ?",
+    help: "Question de contexte : si oui, contrôler l’usage du logo.",
     expectedAnswer: "no",
     severity: "minor",
     skipConformityCheck: true,
   },
   {
     key: "logo_is_official",
-    question: "Le logo utilisé est-il le logo officiel Qualiopi ?",
-    help: "Il ne doit pas s’agir d’un logo recomposé, déformé ou repris depuis une source douteuse.",
+    question: "Le logo utilisé est-il le logo officiel ?",
+    help: "Vérifier qu’il ne s’agit pas d’une version recomposée ou douteuse.",
     expectedAnswer: "yes",
     severity: "major",
     condition: (answers) => answers.uses_qualiopi_logo === "yes",
   },
   {
     key: "logo_not_modified",
-    question: "Le logo n’a-t-il pas été modifié, déformé ou recoloré ?",
-    help: "Le logo Qualiopi doit respecter la charte d’usage applicable.",
+    question: "Le logo respecte-t-il la charte graphique ?",
+    help: "Vérifier qu’il n’est pas déformé, modifié ou recoloré.",
     expectedAnswer: "yes",
     severity: "major",
     condition: (answers) => answers.uses_qualiopi_logo === "yes",
@@ -154,8 +154,8 @@ const CERTIFIED_BRAND_QUESTIONS: BrandQuestion[] = [
   {
     key: "logo_use_not_misleading",
     question:
-      "L’usage du logo ne laisse-t-il pas croire que toutes les activités sont certifiées si ce n’est pas le cas ?",
-    help: "Attention aux organismes ayant plusieurs activités ou plusieurs catégories d’actions.",
+      "L’usage du logo respecte-t-il le périmètre certifié ?",
+    help: "Le logo ne doit pas laisser croire que des activités non certifiées sont couvertes.",
     expectedAnswer: "yes",
     severity: "major",
     condition: (answers) => answers.uses_qualiopi_logo === "yes",
@@ -163,8 +163,8 @@ const CERTIFIED_BRAND_QUESTIONS: BrandQuestion[] = [
   {
     key: "logo_not_on_training_certificate",
     question:
-      "Le logo n’est-il pas utilisé sur des attestations ou certificats remis aux bénéficiaires de manière trompeuse ?",
-    help: "Le logo certifie l’organisme ou les catégories d’actions, pas la réussite individuelle du bénéficiaire.",
+      "Le logo est-il absent des attestations ou certificats bénéficiaires trompeurs ?",
+    help: "Le logo concerne la certification de l’organisme, pas la réussite individuelle d’un bénéficiaire.",
     expectedAnswer: "yes",
     severity: "major",
     condition: (answers) => answers.uses_qualiopi_logo === "yes",
