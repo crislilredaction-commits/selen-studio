@@ -7,6 +7,8 @@ import {
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenBadge from "@/components/ui/SelenBadge";
 
+export const dynamic = "force-dynamic";
+
 type PageProps = {
   params: Promise<{
     id: string;
@@ -63,14 +65,47 @@ type QuestionRow = {
   display_condition: Record<string, unknown> | null;
 };
 
+type PreauditAnswerRow = {
+  question_id: string;
+  answer: string | null;
+  answer_details: unknown;
+  evidence_notes: unknown;
+  user_notes: unknown;
+};
+
+type SummaryQuestionRow = QuestionRow & {
+  answer: string | null;
+  answerDetails: unknown;
+  evidenceNotes: unknown;
+  userNotes: unknown;
+};
+
 type SummaryRow = {
   indicatorNumber: number;
   title: string;
+  status: string | null;
+  score: number | null;
+  riskLevel: string | null;
+  diagnosis: string | null;
+  correctiveActions: unknown;
+  recommendedModels: unknown;
   diagnostic: Diagnostic;
   answeredCount: number;
   totalQuestions: number;
   issues: string[];
   note: string;
+  questions: SummaryQuestionRow[];
+};
+
+type PreauditIndicatorResultRow = {
+  session_id: string;
+  indicator_number: number;
+  status: string | null;
+  score: number | null;
+  risk_level: string | null;
+  diagnosis: string | null;
+  corrective_actions: unknown;
+  recommended_models: unknown;
 };
 
 function getSupabaseAdminClient(): AdminClient {
@@ -151,49 +186,35 @@ function formatAuditType(value?: string | null) {
   return "Non renseigné";
 }
 
-function computeDiagnostic(
-  indicatorNumber: number,
-  questions: QuestionRow[],
-  answers: Record<string, Answer>,
-): Diagnostic {
-  let hasMajor = false;
-  let hasMinor = false;
-  let answered = 0;
+function formatAnswer(value?: string | null) {
+  if (value === "yes") return "Oui";
+  if (value === "partial") return "Partiellement";
+  if (value === "no") return "Non";
+  if (value === "unknown") return "Je ne sais pas";
+  return value || "—";
+}
 
-  questions.forEach((q) => {
-    const answer = answers[q.id];
+function formatNullableValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (Array.isArray(value)) {
+    if (!value.length) return "—";
+    return value
+      .map((item) =>
+        typeof item === "string" || typeof item === "number"
+          ? String(item)
+          : JSON.stringify(item),
+      )
+      .join(", ");
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
 
-    if (!answer) return;
-
-    answered++;
-
-    if (answer === "no") {
-      if (q.affects_major) hasMajor = true;
-      else if (q.affects_minor) hasMinor = true;
-    }
-
-    if (answer === "partial") {
-      if (
-        [10, 11, 12, 14, 15, 16, 20, 21, 22, 26, 27, 28, 29, 31, 32].includes(
-          indicatorNumber,
-        ) &&
-        q.affects_major
-      ) {
-        hasMajor = true;
-      } else {
-        hasMinor = true;
-      }
-    }
-  });
-
-  if (questions.length === 0) return "a_verifier";
-
-  const requiredAnswers = Math.min(5, questions.length);
-
-  if (answered < requiredAnswers) return "a_verifier";
-  if (hasMajor) return "majeure";
-  if (hasMinor) return "mineure";
-  return "conforme";
+function mapResultStatusToDiagnostic(status?: string | null): Diagnostic {
+  if (status === "conforme") return "conforme";
+  if (status === "majeure") return "majeure";
+  if (status === "mineure") return "mineure";
+  return "a_verifier";
 }
 
 function getIssues(questions: QuestionRow[], answers: Record<string, Answer>) {
@@ -243,39 +264,63 @@ async function getSummaryRows(
         .order("question_order", { ascending: true });
 
       const questions = (questionData ?? []) as QuestionRow[];
-
-      const { data: answerData } = await admin.rpc(
-        "get_preaudit_indicator_answers",
-        {
-          p_session_id: session.id,
-          p_indicator_number: indicatorNumber,
-        },
-      );
+      const questionIds = questions.map((question) => question.id);
 
       const answers: Record<string, Answer> = {};
 
-      (answerData ?? []).forEach(
-        (row: { question_id: string; answer: string }) => {
-          if (["yes", "partial", "no", "unknown"].includes(row.answer)) {
+      const { data: answerData } = questionIds.length
+        ? await admin
+            .from("preaudit_answers")
+            .select("question_id, answer, answer_details, evidence_notes, user_notes")
+            .eq("session_id", session.id)
+            .in("question_id", questionIds)
+        : { data: [] };
+
+      const indicatorAnswers = Array.isArray(answerData)
+        ? (answerData as PreauditAnswerRow[])
+        : [];
+      const answerByQuestionId = new Map(
+        indicatorAnswers.map((answer) => [answer.question_id, answer]),
+      );
+
+      indicatorAnswers.forEach(
+        (row) => {
+          if (row.answer && ["yes", "partial", "no", "unknown"].includes(row.answer)) {
             answers[row.question_id] = row.answer as Answer;
           }
         },
       );
 
-      const { data: noteData } = await admin.rpc(
-        "get_preaudit_indicator_note",
-        {
-          p_session_id: session.id,
-          p_indicator_number: indicatorNumber,
-        },
-      );
+      const { data: resultData } = await admin
+        .from("preaudit_indicator_results")
+        .select(
+          "session_id, indicator_number, status, score, risk_level, diagnosis, corrective_actions, recommended_models",
+        )
+        .eq("session_id", session.id)
+        .eq("indicator_number", indicatorNumber)
+        .maybeSingle();
+
+      const result = resultData as PreauditIndicatorResultRow | null;
 
       const answeredCount = Object.keys(answers).filter((questionId) =>
         questions.some((question) => question.id === questionId),
       ).length;
 
-      const diagnostic = computeDiagnostic(indicatorNumber, questions, answers);
+      const diagnostic = result
+        ? mapResultStatusToDiagnostic(result.status)
+        : "a_verifier";
       const issues = getIssues(questions, answers);
+      const detailedQuestions = questions.map((question) => {
+        const answer = answerByQuestionId.get(question.id);
+
+        return {
+          ...question,
+          answer: answer?.answer ?? null,
+          answerDetails: answer?.answer_details ?? null,
+          evidenceNotes: answer?.evidence_notes ?? null,
+          userNotes: answer?.user_notes ?? null,
+        };
+      });
 
       return {
         indicatorNumber,
@@ -283,11 +328,18 @@ async function getSummaryRows(
           indicatorData?.simplified_title ||
           indicatorData?.title ||
           `Indicateur ${indicatorNumber}`,
+        status: result?.status ?? null,
+        score: result?.score ?? null,
+        riskLevel: result?.risk_level ?? null,
+        diagnosis: result?.diagnosis ?? null,
+        correctiveActions: result?.corrective_actions ?? null,
+        recommendedModels: result?.recommended_models ?? null,
         diagnostic,
         answeredCount,
         totalQuestions: questions.length,
         issues,
-        note: noteData ? String(noteData) : "",
+        note: result?.diagnosis ? String(result.diagnosis) : "",
+        questions: detailedQuestions,
       };
     }),
   );
@@ -374,10 +426,15 @@ export default async function AgentPreauditSummaryPage({ params }: PageProps) {
   );
 
   const answeredIndicators = summaryRows.filter(
-    (row) => row.answeredCount > 0,
+    (row) => row.answeredCount > 0 || row.diagnostic !== "a_verifier",
   ).length;
 
   const applicableCount = session?.applicable_indicators?.length ?? 0;
+  const excludedCount = session?.excluded_indicators?.length ?? 0;
+  const excludedIndicatorsLabel = session?.excluded_indicators?.length
+    ? session.excluded_indicators.join(", ")
+    : "—";
+  const refreshHref = `/agent/dossiers/${dossier.id}/preaudit`;
   const progressPercent =
     applicableCount > 0
       ? Math.round((answeredIndicators / applicableCount) * 100)
@@ -551,6 +608,37 @@ export default async function AgentPreauditSummaryPage({ params }: PageProps) {
                     session.updated_at ?? session.created_at,
                   ).toLocaleDateString("fr-FR")}
                 </p>
+
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "var(--selen-text3)",
+                    lineHeight: 1.5,
+                    margin: 0,
+                  }}
+                >
+                  Indicateurs non concernés : {excludedIndicatorsLabel}
+                </p>
+
+                <Link
+                  href={refreshHref}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    justifySelf: "start",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "8px 11px",
+                    background: "var(--selen-bg3)",
+                    border: "1px solid var(--selen-border)",
+                    color: "var(--selen-text2)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    textDecoration: "none",
+                  }}
+                >
+                  Actualiser les réponses
+                </Link>
               </div>
             ) : (
               <p
@@ -572,7 +660,7 @@ export default async function AgentPreauditSummaryPage({ params }: PageProps) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(5, 1fr)",
+                gridTemplateColumns: "repeat(6, 1fr)",
                 gap: 12,
                 marginBottom: 16,
               }}
@@ -585,6 +673,10 @@ export default async function AgentPreauditSummaryPage({ params }: PageProps) {
                 {
                   label: "Applicables",
                   value: String(applicableCount),
+                },
+                {
+                  label: "Non concernés",
+                  value: String(excludedCount),
                 },
                 {
                   label: "Conformes",
@@ -743,16 +835,10 @@ export default async function AgentPreauditSummaryPage({ params }: PageProps) {
 
               <div style={{ display: "grid", gap: 8 }}>
                 {summaryRows.map((row) => (
-                  <Link
+                  <details
                     key={row.indicatorNumber}
-                    href={`/agent/dossiers/${dossier.id}/preaudit#indicateur-${row.indicatorNumber}`}
                     id={`indicateur-${row.indicatorNumber}`}
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "90px 1fr auto",
-                      gap: 12,
-                      alignItems: "center",
-                      textDecoration: "none",
                       background: "var(--selen-bg3)",
                       border: "1px solid var(--selen-border)",
                       borderRadius: "var(--radius-sm)",
@@ -760,23 +846,226 @@ export default async function AgentPreauditSummaryPage({ params }: PageProps) {
                       color: "var(--selen-text)",
                     }}
                   >
-                    <span
+                    <summary
                       style={{
-                        fontSize: 11,
-                        color: "var(--selen-gold)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.1em",
+                        display: "grid",
+                        gridTemplateColumns: "90px 1fr auto",
+                        gap: 12,
+                        alignItems: "center",
+                        cursor: "pointer",
                       }}
                     >
-                      Ind. {row.indicatorNumber}
-                    </span>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--selen-gold)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.1em",
+                        }}
+                      >
+                        Ind. {row.indicatorNumber}
+                      </span>
 
-                    <span style={{ fontSize: 13 }}>{row.title}</span>
+                      <span style={{ fontSize: 13 }}>{row.title}</span>
 
-                    <SelenBadge variant={diagnosticVariant(row.diagnostic)} dot>
-                      {diagnosticLabel(row.diagnostic)}
-                    </SelenBadge>
-                  </Link>
+                      <SelenBadge
+                        variant={diagnosticVariant(row.diagnostic)}
+                        dot
+                      >
+                        {diagnosticLabel(row.diagnostic)}
+                      </SelenBadge>
+                    </summary>
+
+                    <div
+                      style={{
+                        marginTop: 12,
+                        paddingTop: 12,
+                        borderTop: "1px solid var(--selen-border)",
+                        display: "grid",
+                        gap: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(4, 1fr)",
+                          gap: 8,
+                        }}
+                      >
+                        {[
+                          {
+                            label: "Statut",
+                            value: row.status
+                              ? diagnosticLabel(row.diagnostic)
+                              : "À vérifier",
+                          },
+                          {
+                            label: "Score",
+                            value:
+                              row.score === null || row.score === undefined
+                                ? "—"
+                                : `${row.score}%`,
+                          },
+                          {
+                            label: "Risque",
+                            value: formatNullableValue(row.riskLevel),
+                          },
+                          {
+                            label: "Réponses",
+                            value: `${row.answeredCount}/${row.totalQuestions}`,
+                          },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            style={{
+                              background: "var(--selen-bg)",
+                              border: "1px solid var(--selen-border)",
+                              borderRadius: "var(--radius-sm)",
+                              padding: "9px 10px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 9,
+                                letterSpacing: "0.1em",
+                                textTransform: "uppercase",
+                                color: "var(--selen-text3)",
+                                marginBottom: 4,
+                              }}
+                            >
+                              {item.label}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 13,
+                                color: "var(--selen-text)",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {item.value}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {row.diagnosis ? (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "var(--selen-text2)",
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          <strong>Diagnostic :</strong> {row.diagnosis}
+                        </div>
+                      ) : null}
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 8,
+                          fontSize: 12,
+                          color: "var(--selen-text2)",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        <div>
+                          <strong>Actions correctives :</strong>{" "}
+                          {formatNullableValue(row.correctiveActions)}
+                        </div>
+                        <div>
+                          <strong>Modèles recommandés :</strong>{" "}
+                          {formatNullableValue(row.recommendedModels)}
+                        </div>
+                      </div>
+
+                      {row.answeredCount === 0 ? (
+                        <p
+                          style={{
+                            fontSize: 13,
+                            color: "var(--selen-text3)",
+                            lineHeight: 1.5,
+                            margin: 0,
+                          }}
+                        >
+                          Aucune réponse enregistrée pour cet indicateur.
+                        </p>
+                      ) : null}
+
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {row.questions.map((question) => (
+                          <article
+                            key={question.id}
+                            style={{
+                              background: "var(--selen-bg)",
+                              border: "1px solid var(--selen-border)",
+                              borderRadius: "var(--radius-sm)",
+                              padding: "10px 12px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 12,
+                                marginBottom: 8,
+                              }}
+                            >
+                              <h3
+                                style={{
+                                  fontSize: 13,
+                                  color: "var(--selen-text)",
+                                  margin: 0,
+                                  lineHeight: 1.45,
+                                }}
+                              >
+                                Q{question.question_order}. {question.question}
+                              </h3>
+                              <SelenBadge variant="status" dot>
+                                {formatAnswer(question.answer)}
+                              </SelenBadge>
+                            </div>
+
+                            {question.help_text ? (
+                              <p
+                                style={{
+                                  fontSize: 12,
+                                  color: "var(--selen-text3)",
+                                  lineHeight: 1.5,
+                                  margin: "0 0 8px",
+                                }}
+                              >
+                                {question.help_text}
+                              </p>
+                            ) : null}
+
+                            <div
+                              style={{
+                                display: "grid",
+                                gap: 6,
+                                fontSize: 12,
+                                color: "var(--selen-text2)",
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <div>
+                                <strong>Détails :</strong>{" "}
+                                {formatNullableValue(question.answerDetails)}
+                              </div>
+                              <div>
+                                <strong>Preuves :</strong>{" "}
+                                {formatNullableValue(question.evidenceNotes)}
+                              </div>
+                              <div>
+                                <strong>Notes client :</strong>{" "}
+                                {formatNullableValue(question.userNotes)}
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
                 ))}
               </div>
             </SelenCard>

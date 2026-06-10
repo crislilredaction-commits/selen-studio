@@ -53,6 +53,21 @@ button {
   font: inherit;
 }
 
+select {
+  color: var(--selen-ink) !important;
+  background-color: var(--selen-parchment) !important;
+  color-scheme: light;
+}
+
+select option {
+  color: var(--selen-ink) !important;
+  background-color: var(--selen-parchment) !important;
+}
+
+select option:disabled {
+  color: var(--selen-text3) !important;
+}
+
 .sparkle-magic {
   display: inline-block;
   animation: sparkleFloat 1.2s ease-in-out infinite;

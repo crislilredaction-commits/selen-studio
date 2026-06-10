@@ -22,6 +22,18 @@ type AuditBlancCase = {
   excluded_indicators: number[] | null;
 };
 
+type DisplayCondition = {
+  profile_question_key?: string;
+  operator?: string;
+  value?: unknown;
+  values?: unknown[];
+};
+
+type PreauditQuestionCondition = {
+  indicator_number: number;
+  display_condition: DisplayCondition | DisplayCondition[] | string | null;
+};
+
 type ProfileField =
   | {
       key: string;
@@ -113,16 +125,89 @@ function getInitialProfileValue(field: ProfileField) {
   return "";
 }
 
-function computeDefaultIndicators() {
-  return {
-    applicable: Array.from({ length: 32 }, (_, index) => index + 1),
-    excluded: [],
-  };
-}
-
 function isAnswered(value: unknown) {
   if (Array.isArray(value)) return value.length > 0;
-  return value !== "" && value !== null && value !== undefined;
+  return value !== "" && value !== null && value !== undefined && value !== "unknown";
+}
+
+function normalizeBooleanLike(value: unknown) {
+  if (value === true || value === "true" || value === "yes") return true;
+  if (value === false || value === "false" || value === "no") return false;
+  return value;
+}
+
+function parseDisplayCondition(
+  condition: DisplayCondition | DisplayCondition[] | string | null,
+): DisplayCondition | DisplayCondition[] | null {
+  if (!condition) return null;
+  if (typeof condition === "string") {
+    try {
+      return JSON.parse(condition) as DisplayCondition | DisplayCondition[];
+    } catch {
+      return null;
+    }
+  }
+  return condition;
+}
+
+function hasKnownProfileValue(value: unknown) {
+  if (Array.isArray(value)) return value.length > 0;
+  return value !== "" && value !== null && value !== undefined && value !== "unknown";
+}
+
+function matchSingleCondition(
+  condition: DisplayCondition,
+  profileData: Record<string, unknown>,
+) {
+  const key = condition.profile_question_key;
+  if (!key) return true;
+
+  const profileValue = profileData[key];
+  if (!hasKnownProfileValue(profileValue)) return false;
+
+  const expectedValue = condition.value;
+  const operator = condition.operator ?? "equals";
+
+  if (operator === "equals")
+    return (
+      normalizeBooleanLike(profileValue) === normalizeBooleanLike(expectedValue)
+    );
+  if (operator === "not_equals")
+    return (
+      normalizeBooleanLike(profileValue) !== normalizeBooleanLike(expectedValue)
+    );
+  if (operator === "contains") {
+    if (Array.isArray(profileValue))
+      return profileValue.map(String).includes(String(expectedValue));
+    if (typeof profileValue === "string")
+      return profileValue.includes(String(expectedValue));
+    return false;
+  }
+  if (operator === "not_contains") {
+    if (Array.isArray(profileValue))
+      return !profileValue.map(String).includes(String(expectedValue));
+    if (typeof profileValue === "string")
+      return !profileValue.includes(String(expectedValue));
+    return false;
+  }
+  if (operator === "in") {
+    const values = condition.values ?? [];
+    return values.map(String).includes(String(profileValue));
+  }
+  return true;
+}
+
+function questionMatchesProfile(
+  question: PreauditQuestionCondition,
+  profileData: Record<string, unknown>,
+) {
+  const parsedCondition = parseDisplayCondition(question.display_condition);
+  if (!parsedCondition) return true;
+  if (Array.isArray(parsedCondition))
+    return parsedCondition.every((condition) =>
+      matchSingleCondition(condition, profileData),
+    );
+  return matchSingleCondition(parsedCondition, profileData);
 }
 
 function formatProfileValue(field: ProfileField, value: unknown) {
@@ -333,8 +418,47 @@ export default function AgentAuditProfilePage() {
     setError("");
     setSuccess("");
 
-    const { applicable, excluded } = computeDefaultIndicators();
     const cleanProfile = buildCleanProfile(profileToSave);
+    const missingRequired = PROFILE_FIELDS.filter((field) => {
+      if (!field.required) return false;
+      return !isAnswered(cleanProfile[field.key]);
+    });
+
+    let applicable: number[] = [];
+    let excluded: number[] = [];
+
+    if (missingRequired.length === 0) {
+      const { data: questionData, error: questionError } = await supabase
+        .from("preaudit_questions")
+        .select("indicator_number, display_condition");
+
+      if (questionError) {
+        console.error("Erreur calcul indicateurs audit blanc :", questionError);
+        setError(`Erreur calcul indicateurs : ${questionError.message}`);
+        setSaveStatus("error");
+        setSaving(false);
+        return false;
+      }
+
+      const questions =
+        ((questionData ?? []) as PreauditQuestionCondition[]).filter(
+          (question) => Number.isFinite(Number(question.indicator_number)),
+        );
+      const indicatorNumbers = Array.from(
+        new Set(questions.map((question) => Number(question.indicator_number))),
+      ).sort((a, b) => a - b);
+
+      applicable = indicatorNumbers.filter((indicatorNumber) =>
+        questions.some(
+          (question) =>
+            Number(question.indicator_number) === indicatorNumber &&
+            questionMatchesProfile(question, cleanProfile),
+        ),
+      );
+      excluded = indicatorNumbers.filter(
+        (indicatorNumber) => !applicable.includes(indicatorNumber),
+      );
+    }
 
     const { error: updateError } = await supabase
       .from("audit_blanc_cases")

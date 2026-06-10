@@ -390,28 +390,41 @@ async function getLatestPreauditSessionByEmail(email?: string | null) {
   return data as PreauditSessionSummary | null;
 }
 
-const MOCK_HISTORY: HistoryEntry[] = [
-  {
-    id: "h1",
-    label: "Dossier ouvert",
-    date: "01/03",
-  },
-  {
-    id: "h2",
-    label: "Programme et CV reçus",
-    date: "03/03",
-  },
-  {
-    id: "h3",
-    label: "Relance envoyée au client",
-    date: "08/03",
-  },
-  {
-    id: "h4",
-    label: "Statut → Collecte documents",
-    date: "10/03",
-  },
-];
+async function getPreauditIndicatorAnswerCount(
+  session: PreauditSessionSummary,
+) {
+  const applicableIndicators = session.applicable_indicators ?? [];
+
+  if (!applicableIndicators.length) return 0;
+
+  const admin = getSupabaseAdminClient();
+
+  const counts = await Promise.all(
+    applicableIndicators.map(async (indicatorNumber) => {
+      try {
+        const { data, error } = await admin.rpc(
+          "get_preaudit_indicator_answers",
+          {
+            p_session_id: session.id,
+            p_indicator_number: indicatorNumber,
+          },
+        );
+
+        if (error) {
+          console.error(error);
+          return 0;
+        }
+
+        return Array.isArray(data) ? data.length : 0;
+      } catch (error) {
+        console.error(error);
+        return 0;
+      }
+    }),
+  );
+
+  return counts.reduce((total, count) => total + count, 0);
+}
 
 export default async function DossierPage({ params }: PageProps) {
   const { id } = await params;
@@ -665,6 +678,10 @@ export default async function DossierPage({ params }: PageProps) {
   const preauditExcludedCount =
     preauditSession?.excluded_indicators?.length ?? 0;
 
+  const preauditIndicatorAnswerCount = preauditSession
+    ? await getPreauditIndicatorAnswerCount(preauditSession)
+    : 0;
+
   const { data: reviewCaseRaw } =
     dossier.type === "review" || dossier.type === "audit_blanc"
       ? await supabase
@@ -677,6 +694,9 @@ export default async function DossierPage({ params }: PageProps) {
       : { data: null };
 
   const reviewCase = reviewCaseRaw as ReviewCaseSummary | null;
+  const showGenericGenerateButton = !["preaudit", "review", "audit_blanc"].includes(
+    dossier.type,
+  );
 
   const { data: relatedDossiers } = organisation
     ? await supabase
@@ -839,6 +859,73 @@ export default async function DossierPage({ params }: PageProps) {
   const hasUnread = (unreadMessages ?? []).length > 0;
   const unreadCount = (unreadMessages ?? []).length;
 
+  const historyItems: Array<{
+    id: string;
+    label: string;
+    rawDate: Date;
+  }> = [];
+
+  function addHistoryItem(id: string, label: string, value?: string | null) {
+    if (!value) return;
+
+    const rawDate = new Date(value);
+    if (Number.isNaN(rawDate.getTime())) return;
+
+    historyItems.push({ id, label, rawDate });
+  }
+
+  addHistoryItem(`dossier-created-${dossier.id}`, "Dossier créé", dossier.created_at);
+
+  if (dossier.updated_at !== dossier.created_at) {
+    addHistoryItem(
+      `dossier-updated-${dossier.id}`,
+      "Dossier mis à jour",
+      dossier.updated_at,
+    );
+  }
+
+  ((documentsData ?? []) as DbDocumentRow[]).forEach((doc) => {
+    addHistoryItem(
+      `document-${doc.id}`,
+      `Document ajouté : ${doc.name}`,
+      doc.created_at,
+    );
+  });
+
+  ((dossierMessages ?? []) as MessageRow[]).forEach((message) => {
+    addHistoryItem(
+      `message-${message.id}`,
+      message.sender_type === "client"
+        ? "Message client reçu"
+        : "Message agent envoyé",
+      message.created_at,
+    );
+  });
+
+  if (preauditSession) {
+    addHistoryItem(
+      `preaudit-${preauditSession.id}`,
+      "Préaudit client mis à jour",
+      preauditSession.updated_at ?? preauditSession.created_at,
+    );
+  }
+
+  if (reviewCase?.updated_at) {
+    addHistoryItem(
+      `review-${reviewCase.id}`,
+      "Fiche Review mise à jour",
+      reviewCase.updated_at,
+    );
+  }
+
+  const historyEntries: HistoryEntry[] = historyItems
+    .sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime())
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      date: item.rawDate.toLocaleDateString("fr-FR"),
+    }));
+
   return (
     <main
       style={{
@@ -895,9 +982,11 @@ export default async function DossierPage({ params }: PageProps) {
           <SelenButton variant="ghost" size="sm">
             Ajouter un document
           </SelenButton>
-          <SelenButton variant="primary" size="sm">
-            Générer le {getTypeLabel(dossier.type)}
-          </SelenButton>
+          {showGenericGenerateButton ? (
+            <SelenButton variant="primary" size="sm" type="button">
+              Générer le {getTypeLabel(dossier.type)}
+            </SelenButton>
+          ) : null}
         </div>
       </div>
 
@@ -1592,7 +1681,7 @@ export default async function DossierPage({ params }: PageProps) {
 
             {dossier.type === "preaudit" ? (
               <SelenCard>
-                <SelenCardTitle>Synthèse préaudit</SelenCardTitle>
+                <SelenCardTitle>Synthèse préaudit client</SelenCardTitle>
 
                 {preauditSession ? (
                   <div
@@ -1686,6 +1775,36 @@ export default async function DossierPage({ params }: PageProps) {
                             marginBottom: 4,
                           }}
                         >
+                          Nouvel entrant
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--selen-text)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {preauditSession.is_new_entrant ? "Oui" : "Non"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "var(--selen-bg3)",
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "10px 12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: "var(--selen-text3)",
+                            marginBottom: 4,
+                          }}
+                        >
                           Indicateurs
                         </div>
                         <div
@@ -1726,6 +1845,36 @@ export default async function DossierPage({ params }: PageProps) {
                           }}
                         >
                           {preauditExcludedCount}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "var(--selen-bg3)",
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "10px 12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: "var(--selen-text3)",
+                            marginBottom: 4,
+                          }}
+                        >
+                          Réponses indicateurs
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--selen-text)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {preauditIndicatorAnswerCount}
                         </div>
                       </div>
                     </div>
@@ -1814,7 +1963,20 @@ export default async function DossierPage({ params }: PageProps) {
 
             <SelenCard>
               <SelenCardTitle>Historique</SelenCardTitle>
-              <DossierHistorique entries={MOCK_HISTORY} />
+              {historyEntries.length ? (
+                <DossierHistorique entries={historyEntries} />
+              ) : (
+                <p
+                  style={{
+                    fontSize: 13,
+                    color: "var(--selen-text3)",
+                    lineHeight: 1.5,
+                    margin: 0,
+                  }}
+                >
+                  Aucun historique réel enregistré pour le moment.
+                </p>
+              )}
             </SelenCard>
             <SelenCard>
               <SelenCardTitle>Zone danger</SelenCardTitle>

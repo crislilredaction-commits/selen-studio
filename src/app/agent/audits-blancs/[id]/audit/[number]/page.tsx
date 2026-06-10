@@ -126,6 +126,11 @@ function normalizeBooleanLike(value: unknown) {
   return value;
 }
 
+function hasKnownProfileValue(value: unknown) {
+  if (Array.isArray(value)) return value.length > 0;
+  return value !== "" && value !== null && value !== undefined && value !== "unknown";
+}
+
 function parseDisplayCondition(
   condition: DisplayCondition | DisplayCondition[] | string | null,
 ): DisplayCondition | DisplayCondition[] | null {
@@ -147,6 +152,7 @@ function matchSingleCondition(
   const key = condition.profile_question_key;
   if (!key) return true;
   const profileValue = profileData?.[key];
+  if (!hasKnownProfileValue(profileValue)) return false;
   const expectedValue = condition.value;
   const operator = condition.operator ?? "equals";
   if (operator === "equals")
@@ -169,7 +175,7 @@ function matchSingleCondition(
       return !profileValue.map(String).includes(String(expectedValue));
     if (typeof profileValue === "string")
       return !profileValue.includes(String(expectedValue));
-    return true;
+    return false;
   }
   if (operator === "in") {
     const values = condition.values ?? [];
@@ -787,14 +793,26 @@ export default function AgentAuditToolPage() {
   const totalQuestions = questions.length;
   const progress =
     totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
-  const prevNum = indicatorNumber > 1 ? indicatorNumber - 1 : null;
-  const nextNum = indicatorNumber < 32 ? indicatorNumber + 1 : null;
   const dc = diagnosticConfig(diagnostic);
   const indicatorOptions =
     auditCase?.applicable_indicators &&
     auditCase.applicable_indicators.length > 0
       ? auditCase.applicable_indicators
-      : Array.from({ length: 32 }, (_, index) => index + 1);
+      : [];
+  const currentIndicatorIndex = indicatorOptions.indexOf(indicatorNumber);
+  const currentIndicatorIsExcluded = Boolean(
+    auditCase?.excluded_indicators?.includes(indicatorNumber),
+  );
+  const currentIndicatorIsApplicable =
+    currentIndicatorIndex >= 0 && !currentIndicatorIsExcluded;
+  const firstApplicableIndicator = indicatorOptions[0] ?? null;
+  const prevNum =
+    currentIndicatorIndex > 0 ? indicatorOptions[currentIndicatorIndex - 1] : null;
+  const nextNum =
+    currentIndicatorIndex >= 0 &&
+    currentIndicatorIndex < indicatorOptions.length - 1
+      ? indicatorOptions[currentIndicatorIndex + 1]
+      : null;
   const indicatorDocumentModels = useMemo(() => {
     return documentModels.filter((model) => {
       if (!Array.isArray(model.related_indicators)) return false;
@@ -878,6 +896,27 @@ export default function AgentAuditToolPage() {
         indicatorData?.title ||
         `Indicateur ${indicatorNumber}`,
     );
+
+    const applicableIndicators = Array.isArray(caseData.applicable_indicators)
+      ? caseData.applicable_indicators
+      : [];
+    const excludedIndicators = Array.isArray(caseData.excluded_indicators)
+      ? caseData.excluded_indicators
+      : [];
+
+    if (
+      applicableIndicators.length === 0 ||
+      excludedIndicators.includes(indicatorNumber) ||
+      !applicableIndicators.includes(indicatorNumber)
+    ) {
+      setQuestions([]);
+      setAnswers({});
+      setNote("");
+      setDocumentModels([]);
+      setPublishedDocuments([]);
+      setLoading(false);
+      return;
+    }
 
     const { data: questionData, error: questionError } = await supabase
       .from("preaudit_questions")
@@ -1295,7 +1334,41 @@ export default function AgentAuditToolPage() {
           <div style={s.layout} className="sel-layout">
             {/* ── Questions ── */}
             <section style={s.questionsList}>
-              <div style={s.infoGrid}>
+              {!currentIndicatorIsApplicable ? (
+                <div style={s.card}>
+                  <p style={s.cardLabel}>Indicateur non concerné</p>
+                  <p style={s.cardBody}>
+                    {indicatorOptions.length === 0
+                      ? "Complétez le profil Review pour déterminer les indicateurs applicables."
+                      : "Cet indicateur n’est pas concerné par le profil Review renseigné."}
+                  </p>
+                  <div style={s.navBtns}>
+                    {firstApplicableIndicator ? (
+                      <button
+                        type="button"
+                        onClick={() => goToIndicator(firstApplicableIndicator)}
+                        style={s.btnPrimary}
+                        className="sel-btn-primary"
+                      >
+                        Aller au premier indicateur applicable
+                      </button>
+                    ) : null}
+                    <Link
+                      href={`/agent/audits-blancs/${caseId}/audit/profil`}
+                      style={s.btnGhost}
+                      className="sel-btn-ghost"
+                    >
+                      Modifier le profil Review
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
+              <div
+                style={{
+                  ...s.infoGrid,
+                  display: currentIndicatorIsApplicable ? "grid" : "none",
+                }}
+              >
                 {getIndicatorInfoBlocks(indicatorNumber).map((block) => (
                   <article key={block.title} style={s.infoCard}>
                     <div style={s.infoCardRail} />
@@ -1307,7 +1380,7 @@ export default function AgentAuditToolPage() {
                 ))}
               </div>
 
-              {questions.length === 0 ? (
+              {!currentIndicatorIsApplicable ? null : questions.length === 0 ? (
                 <div style={s.card}>
                   <p style={s.cardLabel}>Aucune question</p>
                   <p style={s.cardBody}>
