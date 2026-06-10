@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { indicatorAdvice } from "@/content/review/indicatorAdvice";
+import { qualiopiGuide } from "@/content/review/qualiopiGuide";
+import { reviewProcedure } from "@/content/review/reviewProcedure";
+import { downloadReviewResourcePdf } from "@/lib/review/reviewResourcePdf";
 
 export default function AuditGrimoire() {
   const [open, setOpen] = useState(false);
@@ -51,6 +55,38 @@ export default function AuditGrimoire() {
             </p>
 
             <div style={s.content}>
+              <Section title="Ressources auditeur">
+                <ResourceCard
+                  title={reviewProcedure.title}
+                  description={reviewProcedure.description}
+                  meta={`${reviewProcedure.sections.length} étapes`}
+                  actionLabel="Télécharger la procédure Review"
+                  onAction={() =>
+                    downloadReviewResourcePdf(
+                      reviewProcedure,
+                      "procedure-utilisation-review.pdf",
+                    )
+                  }
+                />
+                <ResourceCard
+                  title={qualiopiGuide.title}
+                  description={qualiopiGuide.description}
+                  meta={`${qualiopiGuide.sections.length} repères`}
+                  actionLabel="Télécharger le guide express Qualiopi"
+                  onAction={() =>
+                    downloadReviewResourcePdf(
+                      qualiopiGuide,
+                      "guide-express-qualiopi.pdf",
+                    )
+                  }
+                />
+                <ResourceCard
+                  title="Conseils terrain par indicateur"
+                  description="Disponibles par indicateur dans l'outil directement."
+                  meta={`${Object.keys(indicatorAdvice).length} indicateurs préparés`}
+                />
+              </Section>
+
               <Section title="Liens utiles">
                 <LinkItem
                   label="Référentiel national qualité — guide de lecture Qualiopi"
@@ -284,6 +320,38 @@ function LinkItem({ label, href }: { label: string; href: string }) {
   );
 }
 
+function ResourceCard({
+  title,
+  description,
+  meta,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  description: string;
+  meta: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <article style={s.resourceCard}>
+      <p style={s.resourceMeta}>{meta}</p>
+      <h3 style={s.resourceTitle}>{title}</h3>
+      <p style={s.resourceDescription}>{description}</p>
+      {actionLabel && onAction ? (
+        <button
+          type="button"
+          onClick={onAction}
+          style={s.resourceButton}
+          className="sel-btn-ghost"
+        >
+          {actionLabel}
+        </button>
+      ) : null}
+    </article>
+  );
+}
+
 function Definition({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div style={s.definition}>
@@ -440,6 +508,48 @@ const s: Record<string, CSSProperties> = {
     fontSize: "0.82rem",
     lineHeight: 1.4,
     fontFamily: "sans-serif",
+  },
+  resourceCard: {
+    border: `1px solid ${C.border}`,
+    background: "rgba(255,255,255,0.03)",
+    borderRadius: 8,
+    padding: "0.78rem",
+  },
+  resourceMeta: {
+    color: C.gold,
+    fontSize: "0.68rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    fontWeight: 800,
+    fontFamily: "sans-serif",
+    marginBottom: "0.32rem",
+  },
+  resourceTitle: {
+    margin: "0 0 0.35rem",
+    color: C.text,
+    fontSize: "0.92rem",
+    lineHeight: 1.25,
+    fontFamily: "Georgia, serif",
+  },
+  resourceDescription: {
+    color: C.textSoft,
+    fontSize: "0.8rem",
+    lineHeight: 1.5,
+    fontFamily: "sans-serif",
+  },
+  resourceButton: {
+    marginTop: "0.65rem",
+    width: "100%",
+    border: `1px solid ${C.borderStrong}`,
+    borderRadius: 8,
+    background: "rgba(196,169,106,0.08)",
+    color: C.gold,
+    padding: "0.55rem 0.65rem",
+    cursor: "pointer",
+    fontSize: "0.78rem",
+    fontWeight: 800,
+    fontFamily: "sans-serif",
+    textAlign: "left",
   },
   definition: {
     borderLeft: `2px solid ${C.gold}`,

@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import AuditGrimoire from "@/components/agent/AuditGrimoire";
+import { indicatorAdvice } from "@/content/review/indicatorAdvice";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -817,6 +818,7 @@ export default function AgentAuditToolPage() {
   const progress =
     totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
   const dc = diagnosticConfig(diagnostic);
+  const currentIndicatorAdvice = indicatorAdvice[indicatorNumber];
   const indicatorOptions =
     auditCase?.applicable_indicators &&
     auditCase.applicable_indicators.length > 0
@@ -1403,6 +1405,45 @@ export default function AgentAuditToolPage() {
                 ))}
               </div>
 
+              {currentIndicatorIsApplicable && currentIndicatorAdvice ? (
+                <details style={s.adviceCard} open>
+                  <summary style={s.adviceSummary}>
+                    <span>
+                      <span style={s.cardLabel}>
+                        Conseils terrain pour cet indicateur
+                      </span>
+                      <span style={s.adviceTitle}>
+                        {currentIndicatorAdvice.title}
+                      </span>
+                    </span>
+                    <span style={s.adviceHint}>Ouvrir / fermer</span>
+                  </summary>
+
+                  <div style={s.adviceBody}>
+                    <p style={s.adviceText}>
+                      {currentIndicatorAdvice.summary}
+                    </p>
+
+                    <AdviceList
+                      title="Questions à poser"
+                      items={currentIndicatorAdvice.questionsToAsk}
+                    />
+                    <AdviceList
+                      title="Preuves à demander"
+                      items={currentIndicatorAdvice.evidenceToRequest}
+                    />
+                    <AdviceList
+                      title="Points de vigilance"
+                      items={currentIndicatorAdvice.vigilancePoints}
+                    />
+                    <AdviceList
+                      title="Bénéfice client"
+                      items={currentIndicatorAdvice.clientBenefit}
+                    />
+                  </div>
+                </details>
+              ) : null}
+
               {!currentIndicatorIsApplicable ? null : questions.length === 0 ? (
                 <div style={s.card}>
                   <p style={s.cardLabel}>Aucune question</p>
@@ -1746,6 +1787,21 @@ export default function AgentAuditToolPage() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+function AdviceList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+
+  return (
+    <div style={s.adviceBlock}>
+      <p style={s.adviceBlockTitle}>{title}</p>
+      <ul style={s.adviceList}>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function Alert({
   type,
   message,
@@ -2038,6 +2094,79 @@ const s: Record<string, CSSProperties> = {
   } as CSSProperties,
 
   infoBlockText: {
+    color: C.textSoft,
+    fontSize: "0.82rem",
+    lineHeight: 1.55,
+    fontFamily: "sans-serif",
+  } as CSSProperties,
+
+  adviceCard: {
+    background: C.surface,
+    border: `1px solid ${C.borderStrong}`,
+    borderRadius: 10,
+    overflow: "hidden",
+  } as CSSProperties,
+
+  adviceSummary: {
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "1rem",
+    padding: "1rem 1.1rem",
+    listStyle: "none",
+  } as CSSProperties,
+
+  adviceTitle: {
+    display: "block",
+    color: C.text,
+    fontSize: "1rem",
+    lineHeight: 1.25,
+    fontFamily: "Georgia, serif",
+    fontWeight: 700,
+  } as CSSProperties,
+
+  adviceHint: {
+    color: C.textFaint,
+    fontSize: "0.72rem",
+    fontFamily: "sans-serif",
+    whiteSpace: "nowrap",
+  } as CSSProperties,
+
+  adviceBody: {
+    borderTop: `1px solid ${C.border}`,
+    padding: "1rem 1.1rem 1.1rem",
+    display: "grid",
+    gap: "0.8rem",
+  } as CSSProperties,
+
+  adviceText: {
+    color: C.textSoft,
+    fontSize: "0.86rem",
+    lineHeight: 1.6,
+    fontFamily: "sans-serif",
+  } as CSSProperties,
+
+  adviceBlock: {
+    border: `1px solid ${C.border}`,
+    background: "rgba(255,255,255,0.025)",
+    borderRadius: 8,
+    padding: "0.75rem",
+  } as CSSProperties,
+
+  adviceBlockTitle: {
+    color: C.gold,
+    fontSize: "0.72rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.08em",
+    fontWeight: 800,
+    fontFamily: "sans-serif",
+    marginBottom: "0.45rem",
+  } as CSSProperties,
+
+  adviceList: {
+    margin: 0,
+    paddingLeft: "1.05rem",
     color: C.textSoft,
     fontSize: "0.82rem",
     lineHeight: 1.55,
