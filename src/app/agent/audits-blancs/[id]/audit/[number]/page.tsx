@@ -121,14 +121,37 @@ function getIssues(questions: Question[], answers: Record<string, Answer>) {
 }
 
 function normalizeBooleanLike(value: unknown) {
-  if (value === true || value === "true" || value === "yes") return true;
-  if (value === false || value === "false" || value === "no") return false;
+  const normalizedValue =
+    typeof value === "string" ? value.trim().toLowerCase() : value;
+
+  if (
+    normalizedValue === true ||
+    normalizedValue === "true" ||
+    normalizedValue === "yes"
+  )
+    return true;
+  if (
+    normalizedValue === false ||
+    normalizedValue === "false" ||
+    normalizedValue === "no"
+  )
+    return false;
   return value;
+}
+
+function valuesMatch(left: unknown, right: unknown) {
+  return normalizeBooleanLike(left) === normalizeBooleanLike(right);
+}
+
+function arrayContainsEquivalent(values: unknown[], expectedValue: unknown) {
+  return values.some((value) => valuesMatch(value, expectedValue));
 }
 
 function hasKnownProfileValue(value: unknown) {
   if (Array.isArray(value)) return value.length > 0;
-  return value !== "" && value !== null && value !== undefined && value !== "unknown";
+  if (typeof value === "string")
+    return value.trim() !== "" && value.trim().toLowerCase() !== "unknown";
+  return value !== null && value !== undefined;
 }
 
 function parseDisplayCondition(
@@ -165,21 +188,21 @@ function matchSingleCondition(
     );
   if (operator === "contains") {
     if (Array.isArray(profileValue))
-      return profileValue.map(String).includes(String(expectedValue));
+      return arrayContainsEquivalent(profileValue, expectedValue);
     if (typeof profileValue === "string")
-      return profileValue.includes(String(expectedValue));
+      return valuesMatch(profileValue, expectedValue);
     return false;
   }
   if (operator === "not_contains") {
     if (Array.isArray(profileValue))
-      return !profileValue.map(String).includes(String(expectedValue));
+      return !arrayContainsEquivalent(profileValue, expectedValue);
     if (typeof profileValue === "string")
-      return !profileValue.includes(String(expectedValue));
+      return !valuesMatch(profileValue, expectedValue);
     return false;
   }
   if (operator === "in") {
     const values = condition.values ?? [];
-    return values.map(String).includes(String(profileValue));
+    return arrayContainsEquivalent(values, profileValue);
   }
   return true;
 }
@@ -1642,19 +1665,7 @@ export default function AgentAuditToolPage() {
                   {noteSaveStatus === "idle" &&
                     "Sauvegarde automatique activée"}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => saveIndicatorNote(note)}
-                  disabled={savingNote}
-                  style={{
-                    ...s.btnPrimary,
-                    opacity: savingNote ? 0.55 : 1,
-                    cursor: savingNote ? "not-allowed" : "pointer",
-                  }}
-                  className="sel-btn-primary"
-                >
-                  {savingNote ? "Sauvegarde…" : "Sauvegarder la note"}
-                </button>
+                <p style={s.mutedSmall}>Note enregistrée automatiquement</p>
               </div>
 
               {/* Navigation */}

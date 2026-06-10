@@ -34,6 +34,9 @@ type AuditBlancCase = {
     | "majeure"
     | null;
   brand_usage_notes: string | null;
+  profile_data: Record<string, unknown> | null;
+  applicable_indicators: number[] | null;
+  excluded_indicators: number[] | null;
 };
 
 type AgentProfile = {
@@ -117,6 +120,39 @@ function formatStatus(status?: string | null) {
   if (status === "completed") return "Terminé";
   if (status === "cancelled") return "Annulé";
   return "À vérifier";
+}
+
+function formatAuditType(value?: unknown) {
+  if (value === "initial") return "Audit initial";
+  if (value === "surveillance") return "Audit de surveillance";
+  if (value === "renouvellement") return "Audit de renouvellement";
+  if (value === "unknown") return "Je ne sais pas";
+  return "Non renseigné";
+}
+
+function formatYesNoUnknown(value?: unknown) {
+  if (value === "yes" || value === true) return "Oui";
+  if (value === "no" || value === false) return "Non";
+  if (value === "unknown") return "Je ne sais pas";
+  return "Non renseigné";
+}
+
+function formatActionCategories(value?: unknown) {
+  if (!Array.isArray(value) || value.length === 0) return "Non renseigné";
+
+  const labels: Record<string, string> = {
+    AF: "AF",
+    BC: "BC",
+    VAE: "VAE",
+    CFA: "CFA",
+  };
+
+  return value.map((item) => labels[String(item)] ?? String(item)).join(", ");
+}
+
+function formatIndicatorList(value?: number[] | null) {
+  if (!value?.length) return "Aucun";
+  return value.join(", ");
 }
 
 function formatReportStatus(status?: string | null) {
@@ -455,6 +491,17 @@ export default function AgentAuditBlancDetailPage() {
   const [generatingPdf, setGeneratingPdf] = useState(false);
 
   const auditSummary = buildAuditSummary(indicatorNotes);
+  const profileData = (auditCase?.profile_data ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const applicableIndicators = auditCase?.applicable_indicators ?? [];
+  const excludedIndicators = auditCase?.excluded_indicators ?? [];
+  const firstApplicableIndicator = applicableIndicators[0] ?? null;
+  const allIndicatorNumbers = Array.from({ length: 32 }, (_, index) => index + 1);
+  const needsIndicatorRecalculation =
+    applicableIndicators.length === allIndicatorNumbers.length &&
+    allIndicatorNumbers.every((number) => applicableIndicators.includes(number));
 
   const indicatorConstats = [...indicatorNotes]
     .filter(
@@ -524,7 +571,7 @@ export default function AgentAuditBlancDetailPage() {
     const { data: caseData, error: caseError } = await supabase
       .from("audit_blanc_cases")
       .select(
-        "id, dossier_id, client_email, status, offer, price_paid, currency, calendly_mode, calendly_event_1_start, calendly_event_1_end, calendly_event_2_start, calendly_event_2_end, meeting_url, report_status, report_storage_path, brand_usage_diagnostic, brand_usage_notes, created_at, updated_at",
+        "id, dossier_id, client_email, status, offer, price_paid, currency, calendly_mode, calendly_event_1_start, calendly_event_1_end, calendly_event_2_start, calendly_event_2_end, meeting_url, report_status, report_storage_path, brand_usage_diagnostic, brand_usage_notes, profile_data, applicable_indicators, excluded_indicators, created_at, updated_at",
       )
       .eq("id", caseId)
       .maybeSingle();
@@ -1176,6 +1223,109 @@ export default function AgentAuditBlancDetailPage() {
                     {hasMeeting ? "RDV renseigné" : "RDV à compléter"}
                   </span>
                 </div>
+              </article>
+
+              <article style={s.card}>
+                <div style={s.sectionHeader}>
+                  <div>
+                    <p style={s.cardLabel}>Profil Review</p>
+                    <h2 style={s.sectionTitle}>Profil et périmètre</h2>
+                  </div>
+
+                  <Link
+                    href={`/agent/audits-blancs/${auditCase.id}/audit/profil`}
+                    style={s.btnGhostCompact}
+                    className="sel-btn-ghost"
+                  >
+                    Modifier
+                  </Link>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: "0.75rem",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  <InfoLine
+                    label="Type d’audit"
+                    value={formatAuditType(profileData.audit_type)}
+                  />
+                  <InfoLine
+                    label="Nouvel entrant"
+                    value={formatYesNoUnknown(profileData.is_new_entrant)}
+                  />
+                  <InfoLine
+                    label="Catégories"
+                    value={formatActionCategories(profileData.action_categories)}
+                  />
+                  <InfoLine
+                    label="Formation certifiante"
+                    value={formatYesNoUnknown(
+                      profileData.certification_training,
+                    )}
+                  />
+                  <InfoLine
+                    label="Alternance"
+                    value={formatYesNoUnknown(
+                      profileData.alternance_training,
+                    )}
+                  />
+                  <InfoLine
+                    label="Sous-traitance / portage"
+                    value={formatYesNoUnknown(
+                      profileData.subcontracting_or_portage,
+                    )}
+                  />
+                  <InfoLine
+                    label="Formations courtes"
+                    value={formatYesNoUnknown(profileData.short_training_only)}
+                  />
+                </div>
+
+                <div style={s.statsGrid}>
+                  <SummaryTile
+                    label="Applicables"
+                    value={applicableIndicators.length}
+                    color="#7ec97e"
+                  />
+                  <SummaryTile
+                    label="Non concernés"
+                    value={excludedIndicators.length}
+                    color="#d4a843"
+                  />
+                </div>
+
+                <div
+                  style={{ display: "grid", gap: "0.55rem", marginTop: "1rem" }}
+                >
+                  <p style={s.muted}>
+                    <strong>Indicateurs applicables :</strong>{" "}
+                    {formatIndicatorList(applicableIndicators)}
+                  </p>
+                  <p style={s.muted}>
+                    <strong>Indicateurs non concernés :</strong>{" "}
+                    {formatIndicatorList(excludedIndicators)}
+                  </p>
+                </div>
+
+                {needsIndicatorRecalculation ? (
+                  <div style={{ ...s.warningPanel, marginTop: "1rem" }}>
+                    <p style={s.warningTitle}>
+                      Le profil Review doit peut-être être réenregistré pour
+                      recalculer les indicateurs applicables.
+                    </p>
+                  </div>
+                ) : null}
+
+                {!firstApplicableIndicator ? (
+                  <div style={{ ...s.emptyInline, marginTop: "1rem" }}>
+                    Complétez ou réenregistrez le profil Review pour déterminer
+                    les indicateurs applicables.
+                  </div>
+                ) : null}
               </article>
 
               <article style={s.card}>
@@ -1894,13 +2044,20 @@ export default function AgentAuditBlancDetailPage() {
                 <p style={s.cardLabel}>Actions rapides</p>
 
                 <div style={s.sideActions}>
-                  <Link
-                    href={`/agent/audits-blancs/${auditCase.id}/audit/profil`}
-                    style={s.btnPrimary}
-                    className="sel-btn-primary"
-                  >
-                    Reprendre Review →
-                  </Link>
+                  {firstApplicableIndicator ? (
+                    <Link
+                      href={`/agent/audits-blancs/${auditCase.id}/audit/${firstApplicableIndicator}`}
+                      style={s.btnPrimary}
+                      className="sel-btn-primary"
+                    >
+                      Reprendre la Review →
+                    </Link>
+                  ) : (
+                    <div style={s.emptyInline}>
+                      Complétez ou réenregistrez le profil Review pour lancer
+                      les indicateurs applicables.
+                    </div>
+                  )}
 
                   {auditCase.dossier_id ? (
                     <Link
@@ -1913,11 +2070,11 @@ export default function AgentAuditBlancDetailPage() {
                   ) : null}
 
                   <Link
-                    href={`/agent/audits-blancs/${auditCase.id}/audit/1`}
+                    href={`/agent/audits-blancs/${auditCase.id}/audit/profil`}
                     style={s.btnGhost}
                     className="sel-btn-ghost"
                   >
-                    Aller à l’indicateur 1
+                    Modifier le profil Review
                   </Link>
 
                   <a

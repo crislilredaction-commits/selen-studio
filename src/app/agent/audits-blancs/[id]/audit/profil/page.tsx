@@ -22,17 +22,14 @@ type AuditBlancCase = {
   excluded_indicators: number[] | null;
 };
 
-type DisplayCondition = {
-  profile_question_key?: string;
-  operator?: string;
-  value?: unknown;
-  values?: unknown[];
-};
-
-type PreauditQuestionCondition = {
-  indicator_number: number;
-  display_condition: DisplayCondition | DisplayCondition[] | string | null;
-};
+const REVIEW_INDICATOR_NUMBERS = Array.from(
+  { length: 32 },
+  (_, index) => index + 1,
+);
+const REVIEW_CERTIFICATION_INDICATORS = [3, 7, 16];
+const REVIEW_CFA_ALTERNANCE_INDICATORS = [13, 14, 15, 20, 28, 29];
+const REVIEW_SUBCONTRACTING_INDICATORS = [27];
+const REVIEW_LONG_TRAINING_INDICATORS = [12];
 
 type ProfileField =
   | {
@@ -131,83 +128,82 @@ function isAnswered(value: unknown) {
 }
 
 function normalizeBooleanLike(value: unknown) {
-  if (value === true || value === "true" || value === "yes") return true;
-  if (value === false || value === "false" || value === "no") return false;
+  const normalizedValue =
+    typeof value === "string" ? value.trim().toLowerCase() : value;
+
+  if (
+    normalizedValue === true ||
+    normalizedValue === "true" ||
+    normalizedValue === "yes"
+  )
+    return true;
+  if (
+    normalizedValue === false ||
+    normalizedValue === "false" ||
+    normalizedValue === "no"
+  )
+    return false;
   return value;
 }
 
-function parseDisplayCondition(
-  condition: DisplayCondition | DisplayCondition[] | string | null,
-): DisplayCondition | DisplayCondition[] | null {
-  if (!condition) return null;
-  if (typeof condition === "string") {
-    try {
-      return JSON.parse(condition) as DisplayCondition | DisplayCondition[];
-    } catch {
-      return null;
-    }
-  }
-  return condition;
+function profileValueIsYes(value: unknown) {
+  return normalizeBooleanLike(value) === true;
 }
 
-function hasKnownProfileValue(value: unknown) {
-  if (Array.isArray(value)) return value.length > 0;
-  return value !== "" && value !== null && value !== undefined && value !== "unknown";
-}
+function computeReviewIndicatorScope(profileData: Record<string, unknown>) {
+  const categories = Array.isArray(profileData.action_categories)
+    ? profileData.action_categories.map(String)
+    : [];
+  const hasCfaCategory = categories.includes("CFA");
+  const hasVaeCategory = categories.includes("VAE");
+  const hasAlternance = profileValueIsYes(profileData.alternance_training);
+  const hasCertification =
+    profileValueIsYes(profileData.certification_training) ||
+    hasCfaCategory ||
+    hasVaeCategory ||
+    hasAlternance;
+  const hasCfaOrAlternance = hasCfaCategory || hasAlternance;
+  const hasSubcontracting = profileValueIsYes(
+    profileData.subcontracting_or_portage,
+  );
+  const shortTrainingOnly = profileValueIsYes(profileData.short_training_only);
 
-function matchSingleCondition(
-  condition: DisplayCondition,
-  profileData: Record<string, unknown>,
-) {
-  const key = condition.profile_question_key;
-  if (!key) return true;
+  const excluded = new Set<number>();
 
-  const profileValue = profileData[key];
-  if (!hasKnownProfileValue(profileValue)) return false;
-
-  const expectedValue = condition.value;
-  const operator = condition.operator ?? "equals";
-
-  if (operator === "equals")
-    return (
-      normalizeBooleanLike(profileValue) === normalizeBooleanLike(expectedValue)
+  if (!hasCfaOrAlternance) {
+    REVIEW_CFA_ALTERNANCE_INDICATORS.forEach((indicator) =>
+      excluded.add(indicator),
     );
-  if (operator === "not_equals")
-    return (
-      normalizeBooleanLike(profileValue) !== normalizeBooleanLike(expectedValue)
-    );
-  if (operator === "contains") {
-    if (Array.isArray(profileValue))
-      return profileValue.map(String).includes(String(expectedValue));
-    if (typeof profileValue === "string")
-      return profileValue.includes(String(expectedValue));
-    return false;
   }
-  if (operator === "not_contains") {
-    if (Array.isArray(profileValue))
-      return !profileValue.map(String).includes(String(expectedValue));
-    if (typeof profileValue === "string")
-      return !profileValue.includes(String(expectedValue));
-    return false;
-  }
-  if (operator === "in") {
-    const values = condition.values ?? [];
-    return values.map(String).includes(String(profileValue));
-  }
-  return true;
-}
 
-function questionMatchesProfile(
-  question: PreauditQuestionCondition,
-  profileData: Record<string, unknown>,
-) {
-  const parsedCondition = parseDisplayCondition(question.display_condition);
-  if (!parsedCondition) return true;
-  if (Array.isArray(parsedCondition))
-    return parsedCondition.every((condition) =>
-      matchSingleCondition(condition, profileData),
+  if (!hasCertification) {
+    REVIEW_CERTIFICATION_INDICATORS.forEach((indicator) =>
+      excluded.add(indicator),
     );
-  return matchSingleCondition(parsedCondition, profileData);
+  }
+
+  if (!hasSubcontracting) {
+    REVIEW_SUBCONTRACTING_INDICATORS.forEach((indicator) =>
+      excluded.add(indicator),
+    );
+  }
+
+  if (shortTrainingOnly) {
+    REVIEW_LONG_TRAINING_INDICATORS.forEach((indicator) =>
+      excluded.add(indicator),
+    );
+  }
+
+  const applicable = REVIEW_INDICATOR_NUMBERS.filter(
+    (indicator) => !excluded.has(indicator),
+  );
+
+  return {
+    applicable,
+    excluded: REVIEW_INDICATOR_NUMBERS.filter((indicator) =>
+      excluded.has(indicator),
+    ),
+  };
 }
 
 function formatProfileValue(field: ProfileField, value: unknown) {
@@ -428,36 +424,9 @@ export default function AgentAuditProfilePage() {
     let excluded: number[] = [];
 
     if (missingRequired.length === 0) {
-      const { data: questionData, error: questionError } = await supabase
-        .from("preaudit_questions")
-        .select("indicator_number, display_condition");
-
-      if (questionError) {
-        console.error("Erreur calcul indicateurs audit blanc :", questionError);
-        setError(`Erreur calcul indicateurs : ${questionError.message}`);
-        setSaveStatus("error");
-        setSaving(false);
-        return false;
-      }
-
-      const questions =
-        ((questionData ?? []) as PreauditQuestionCondition[]).filter(
-          (question) => Number.isFinite(Number(question.indicator_number)),
-        );
-      const indicatorNumbers = Array.from(
-        new Set(questions.map((question) => Number(question.indicator_number))),
-      ).sort((a, b) => a - b);
-
-      applicable = indicatorNumbers.filter((indicatorNumber) =>
-        questions.some(
-          (question) =>
-            Number(question.indicator_number) === indicatorNumber &&
-            questionMatchesProfile(question, cleanProfile),
-        ),
-      );
-      excluded = indicatorNumbers.filter(
-        (indicatorNumber) => !applicable.includes(indicatorNumber),
-      );
+      const indicatorScope = computeReviewIndicatorScope(cleanProfile);
+      applicable = indicatorScope.applicable;
+      excluded = indicatorScope.excluded;
     }
 
     const { error: updateError } = await supabase
