@@ -6,6 +6,21 @@ import { createAgentNotification } from "@/lib/server/notifications";
 const resendApiKey = process.env.RESEND_API_KEY;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
+function getVitrineBaseUrl() {
+  return (
+    process.env.NEXT_PUBLIC_VITRINE_URL ??
+    process.env.NEXT_PUBLIC_CLIENT_APP_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    "http://localhost:3000"
+  ).replace(/\/+$/, "");
+}
+
+function getClientPathForDossier(type?: string | null, id?: string | null) {
+  if (type === "preaudit") return "/client";
+  if (type === "review" || type === "audit_blanc") return "/client/audit-blanc";
+  return `/client/dossier/${id ?? ""}`;
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
@@ -66,7 +81,7 @@ export async function POST(req: Request) {
     if (senderType === "agent") {
       const { data: dossier } = await supabase
         .from("dossiers")
-        .select("id, organisation_id")
+        .select("id, type, organisation_id")
         .eq("id", dossierId)
         .single();
 
@@ -78,7 +93,11 @@ export async function POST(req: Request) {
           .single();
 
         if (organisation?.email) {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+          const clientUrl = `${getVitrineBaseUrl()}${getClientPathForDossier(
+            dossier.type,
+            dossier.id,
+          )}`;
+
           await resend.emails.send({
             from: "Selen ✨ <hello@selen-editions.fr>",
             to: organisation.email,
@@ -88,7 +107,7 @@ export async function POST(req: Request) {
               <p>Votre agent vous a envoyé un message :</p>
               <p><strong>${content}</strong></p>
               <p>
-                👉 <a href="${baseUrl}/client/dossier/${dossierId}">
+                👉 <a href="${clientUrl}">
                   Accéder à mon dossier
                 </a>
               </p>

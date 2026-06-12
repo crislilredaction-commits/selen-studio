@@ -122,6 +122,12 @@ function formatStatus(status?: string | null) {
   return "À vérifier";
 }
 
+function formatCaseStatus(status?: string | null, reportStatus?: string | null) {
+  if (reportStatus === "sent") return "Rapport envoyé";
+  if (status === "report_ready") return "Rapport prêt";
+  return formatStatus(status);
+}
+
 function formatAuditType(value?: unknown) {
   if (value === "initial") return "Audit initial";
   if (value === "surveillance") return "Audit de surveillance";
@@ -167,8 +173,8 @@ function diagnosticLabel(value?: string | null) {
   if (value === "conforme") return "✅ Conforme";
   if (value === "mineure") return "⚠️ Mineure";
   if (value === "majeure") return "🚨 Majeure";
-  if (value === "a_verifier") return "… À vérifier";
-  return "Non renseigné";
+  if (value === "a_verifier") return "À vérifier";
+  return "Non évalué";
 }
 
 function diagnosticColor(value?: string | null) {
@@ -458,6 +464,34 @@ export default function AgentAuditBlancDetailPage() {
 
     return supabase.storage.from("selen-documents").getPublicUrl(storagePath)
       .data.publicUrl;
+  }
+
+  async function hideOtherVisibleReviewReports(currentDocumentId?: string) {
+    if (!auditCase) return;
+
+    const { error: updateError } = await supabase
+      .from("audit_blanc_documents")
+      .update({ is_visible_to_client: false })
+      .eq("case_id", auditCase.id)
+      .eq("document_type", "rapport_audit_blanc")
+      .eq("is_visible_to_client", true)
+      .neq("id", currentDocumentId ?? "");
+
+    if (updateError) {
+      throw new Error(
+        `Impossible de masquer les anciens rapports côté client : ${updateError.message}`,
+      );
+    }
+
+    setDocuments((prev) =>
+      prev.map((document) =>
+        document.document_type === "rapport_audit_blanc" &&
+        document.is_visible_to_client &&
+        document.id !== currentDocumentId
+          ? { ...document, is_visible_to_client: false }
+          : document,
+      ),
+    );
   }
   const [loading, setLoading] = useState(true);
   const [savingCase, setSavingCase] = useState(false);
@@ -929,6 +963,8 @@ export default function AgentAuditBlancDetailPage() {
         );
       }
 
+      await hideOtherVisibleReviewReports(documentData.id);
+
       const { error: caseUpdateError } = await supabase
         .from("audit_blanc_cases")
         .update({
@@ -1031,6 +1067,16 @@ export default function AgentAuditBlancDetailPage() {
     if (documentType === "rapport_audit_blanc") {
       const nextReportStatus = documentVisible ? "sent" : "ready";
 
+      if (documentVisible) {
+        try {
+          await hideOtherVisibleReviewReports(documentData.id);
+        } catch (error) {
+          setError(error instanceof Error ? error.message : "Impossible de masquer les anciens rapports.");
+          setUploading(false);
+          return;
+        }
+      }
+
       const { error: reportUpdateError } = await supabase
         .from("audit_blanc_cases")
         .update({
@@ -1074,10 +1120,25 @@ export default function AgentAuditBlancDetailPage() {
     setError("");
     setSuccess("");
 
+    const nextVisible = !document.is_visible_to_client;
+
+    if (nextVisible && document.document_type === "rapport_audit_blanc") {
+      try {
+        await hideOtherVisibleReviewReports(document.id);
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Impossible de masquer les anciens rapports.",
+        );
+        return;
+      }
+    }
+
     const { error: updateError } = await supabase
       .from("audit_blanc_documents")
       .update({
-        is_visible_to_client: !document.is_visible_to_client,
+        is_visible_to_client: nextVisible,
       })
       .eq("id", document.id);
 
@@ -1091,11 +1152,40 @@ export default function AgentAuditBlancDetailPage() {
         item.id === document.id
           ? {
               ...item,
-              is_visible_to_client: !item.is_visible_to_client,
+              is_visible_to_client: nextVisible,
             }
           : item,
       ),
     );
+
+    if (auditCase && document.document_type === "rapport_audit_blanc" && nextVisible) {
+      const { error: caseUpdateError } = await supabase
+        .from("audit_blanc_cases")
+        .update({
+          report_status: "sent",
+          report_storage_path: document.storage_path,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", auditCase?.id);
+
+      if (caseUpdateError) {
+        setError(
+          `Visibilité mise à jour, mais statut rapport non mis à jour : ${caseUpdateError.message}`,
+        );
+        return;
+      }
+
+      setAuditCase((prev) =>
+        prev
+          ? {
+              ...prev,
+              report_status: "sent",
+              report_storage_path: document.storage_path,
+              updated_at: new Date().toISOString(),
+            }
+          : prev,
+      );
+    }
 
     setSuccess("Visibilité du document mise à jour.");
   }
@@ -1160,7 +1250,7 @@ export default function AgentAuditBlancDetailPage() {
                     color: statusTone(auditCase.status),
                   }}
                 >
-                  {formatStatus(auditCase.status)}
+                  {formatCaseStatus(auditCase.status, auditCase.report_status)}
                 </p>
                 <p style={s.headerStatusSub}>
                   Rapport : {formatReportStatus(auditCase.report_status)}
@@ -1539,7 +1629,7 @@ export default function AgentAuditBlancDetailPage() {
 
                 <div style={s.statsGrid}>
                   <SummaryTile
-                    label="Marques"
+                    label="Usage des marques Qualiopi"
                     value={diagnosticLabel(auditCase.brand_usage_diagnostic)}
                     color={diagnosticColor(auditCase.brand_usage_diagnostic)}
                   />
@@ -2007,7 +2097,10 @@ export default function AgentAuditBlancDetailPage() {
 
                 <InfoLine
                   label="Statut"
-                  value={formatStatus(auditCase.status)}
+                  value={formatCaseStatus(
+                    auditCase.status,
+                    auditCase.report_status,
+                  )}
                   color={statusTone(auditCase.status)}
                 />
 
@@ -2075,6 +2168,14 @@ export default function AgentAuditBlancDetailPage() {
                     className="sel-btn-ghost"
                   >
                     Modifier le profil Review
+                  </Link>
+
+                  <Link
+                    href={`/agent/audits-blancs/${auditCase.id}/audit/marques`}
+                    style={s.btnGhost}
+                    className="sel-btn-ghost"
+                  >
+                    Vérifier l’usage des marques
                   </Link>
 
                   <a

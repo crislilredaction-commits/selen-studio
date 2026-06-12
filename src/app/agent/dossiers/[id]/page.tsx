@@ -148,6 +148,44 @@ function getStatusBadgeVariant(status: string) {
   return "status";
 }
 
+function isReviewDossierType(type: string) {
+  return type === "review" || type === "audit_blanc";
+}
+
+function isPreauditDossierType(type: string) {
+  return type === "preaudit";
+}
+
+function getVitrineBaseUrl() {
+  return (
+    process.env.NEXT_PUBLIC_VITRINE_URL ??
+    process.env.NEXT_PUBLIC_CLIENT_APP_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    "http://localhost:3000"
+  ).replace(/\/+$/, "");
+}
+
+function getClientPathForDossier(type: string, id: string) {
+  if (isPreauditDossierType(type)) return "/client";
+  if (isReviewDossierType(type)) return "/client/audit-blanc";
+  return `/client/dossier/${id}`;
+}
+
+function formatReviewStatus(status?: string | null, reportStatus?: string | null) {
+  if (reportStatus === "sent") return "Rapport envoyé";
+  if (status === "report_ready") return "Rapport prêt";
+  if (status) return getStatusLabel(status);
+  return "—";
+}
+
+function formatReviewReportStatus(status?: string | null) {
+  if (status === "not_started") return "Non commencé";
+  if (status === "draft") return "Brouillon";
+  if (status === "ready") return "Rapport prêt";
+  if (status === "sent") return "Envoyé au client";
+  return status ?? "—";
+}
+
 function mapDbDocumentToItem(doc: DbDocumentRow): DocumentItem {
   let fileType: "pdf" | "doc" | "other" = "other";
 
@@ -430,8 +468,6 @@ export default async function DossierPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
 
-  const clientUrl = `${process.env.NEXT_PUBLIC_APP_URL}/client/dossier/${id}`;
-
   async function updateStatus(formData: FormData) {
     "use server";
 
@@ -616,6 +652,14 @@ export default async function DossierPage({ params }: PageProps) {
     );
   }
 
+  const isNdaDossier = dossier.type === "nda";
+  const isPreauditDossier = isPreauditDossierType(dossier.type);
+  const isReviewDossier = isReviewDossierType(dossier.type);
+  const resolvedClientUrl = `${getVitrineBaseUrl()}${getClientPathForDossier(
+    dossier.type,
+    dossier.id,
+  )}`;
+
   const { data: assignments, error: assignmentsError } = await supabase
     .from("dossier_assignments")
     .select("id, agent_id, is_primary")
@@ -683,7 +727,7 @@ export default async function DossierPage({ params }: PageProps) {
     : 0;
 
   const { data: reviewCaseRaw } =
-    dossier.type === "review" || dossier.type === "audit_blanc"
+    isReviewDossier
       ? await supabase
           .from("audit_blanc_cases")
           .select("id, status, report_status, client_email, updated_at")
@@ -825,7 +869,57 @@ export default async function DossierPage({ params }: PageProps) {
       "Agent sans nom"
     : "";
 
+  const preauditTimelineSteps = [
+    { label: "Dossier\ncréé" },
+    { label: "Profil client\nrempli" },
+    { label: "Indicateurs\ngénérés" },
+    { label: "Réponses\nen cours" },
+    { label: "Synthèse\ndisponible" },
+    { label: "Rapport\nexporté" },
+    { label: "Clôturé" },
+  ];
+
+  const reviewTimelineSteps = [
+    { label: "Création\ndossier" },
+    { label: "Planification\naudit" },
+    { label: "Préparation\ncollecte" },
+    { label: "Audit\nréalisé" },
+    { label: "Rapport en\npréparation" },
+    { label: "Rapport\nenvoyé" },
+    { label: "Clôturé" },
+  ];
+
   const currentStep = statusToStepIndex(dossier.status);
+  const preauditCurrentStep = preauditSession
+    ? preauditIndicatorAnswerCount > 0
+      ? 3
+      : preauditApplicableCount > 0
+        ? 2
+        : 1
+    : 0;
+  const reviewCurrentStep = reviewCase
+    ? reviewCase.report_status === "sent"
+      ? 5
+      : reviewCase.report_status === "ready" ||
+          reviewCase.status === "report_ready"
+        ? 4
+        : reviewCase.status === "in_progress"
+          ? 3
+          : reviewCase.status === "booked" ||
+              reviewCase.status === "partially_booked"
+            ? 1
+            : 2
+    : 0;
+  const dossierTimelineSteps = isPreauditDossier
+    ? preauditTimelineSteps
+    : isReviewDossier
+      ? reviewTimelineSteps
+      : undefined;
+  const dossierCurrentStep = isPreauditDossier
+    ? preauditCurrentStep
+    : isReviewDossier
+      ? reviewCurrentStep
+      : currentStep;
 
   const uniqueReceivedKeys = Array.from(new Set(receivedKeys));
   const docsReceived = NDA_CHECKLIST.filter((item) =>
@@ -1094,7 +1188,10 @@ export default async function DossierPage({ params }: PageProps) {
           </SelenCard>
         ) : null}
 
-        <DossierTimeline currentStep={currentStep} />
+        <DossierTimeline
+          currentStep={dossierCurrentStep}
+          steps={dossierTimelineSteps}
+        />
 
         <div
           style={{
@@ -1106,9 +1203,25 @@ export default async function DossierPage({ params }: PageProps) {
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <SelenCard>
-              <SelenCardTitle>Documents attendus</SelenCardTitle>
+              <SelenCardTitle>
+                {isNdaDossier ? "Documents attendus" : "Documents complémentaires"}
+              </SelenCardTitle>
 
-              <NdaChecklist receivedKeys={receivedKeys} />
+              {isNdaDossier ? (
+                <NdaChecklist receivedKeys={receivedKeys} />
+              ) : (
+                <p
+                  style={{
+                    fontSize: 13,
+                    color: "var(--selen-text3)",
+                    lineHeight: 1.5,
+                    margin: "0 0 10px",
+                  }}
+                >
+                  Les pièces NDA ne sont pas attendues pour ce type de dossier.
+                  Ajoutez ici seulement les documents utiles au suivi agent.
+                </p>
+              )}
 
               {documentsData?.map((doc) => (
                 <form
@@ -1531,12 +1644,15 @@ export default async function DossierPage({ params }: PageProps) {
                     margin: 0,
                   }}
                 >
-                  Envoyez ce lien au client pour qu’il puisse compléter ses
-                  informations essentielles et déposer ses documents.
+                  {isPreauditDossier
+                    ? "Envoyez ce lien au client pour accéder à son espace préaudit."
+                    : isReviewDossier
+                      ? "Envoyez ce lien au client pour accéder à son espace audit blanc Review."
+                      : "Envoyez ce lien au client pour qu’il puisse compléter ses informations essentielles et déposer ses documents."}
                 </p>
 
                 <input
-                  value={clientUrl}
+                  value={resolvedClientUrl}
                   readOnly
                   style={{
                     width: "100%",
@@ -1553,7 +1669,7 @@ export default async function DossierPage({ params }: PageProps) {
               </div>
             </SelenCard>
 
-            {dossier.type === "review" || dossier.type === "audit_blanc" ? (
+            {isReviewDossier ? (
               <SelenCard>
                 <SelenCardTitle>Review</SelenCardTitle>
 
@@ -1609,7 +1725,10 @@ export default async function DossierPage({ params }: PageProps) {
                             fontWeight: 600,
                           }}
                         >
-                          {reviewCase.status ?? "—"}
+                          {formatReviewStatus(
+                            reviewCase.status,
+                            reviewCase.report_status,
+                          )}
                         </div>
                       </div>
 
@@ -1639,7 +1758,7 @@ export default async function DossierPage({ params }: PageProps) {
                             fontWeight: 600,
                           }}
                         >
-                          {reviewCase.report_status ?? "—"}
+                          {formatReviewReportStatus(reviewCase.report_status)}
                         </div>
                       </div>
                     </div>
@@ -1679,7 +1798,7 @@ export default async function DossierPage({ params }: PageProps) {
               </SelenCard>
             ) : null}
 
-            {dossier.type === "preaudit" ? (
+            {isPreauditDossier ? (
               <SelenCard>
                 <SelenCardTitle>Synthèse préaudit client</SelenCardTitle>
 

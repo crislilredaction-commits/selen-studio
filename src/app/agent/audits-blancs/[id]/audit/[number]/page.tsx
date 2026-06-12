@@ -1241,7 +1241,7 @@ export default function AgentAuditToolPage() {
         <style>{css}</style>
         <div style={s.loadingWrap}>
           <div className="sel-spinner" />
-          <p style={s.loadingText}>Chargement de l'outil d'audit…</p>
+          <p style={s.loadingText}>Chargement de l’outil d’audit…</p>
         </div>
       </div>
     );
@@ -1326,7 +1326,7 @@ export default function AgentAuditToolPage() {
                 </text>
               </svg>
               <p style={s.progressSub}>
-                {answeredCount}/{totalQuestions}
+                {answeredCount}/{totalQuestions} questions
               </p>
             </div>
           </div>
@@ -1351,7 +1351,7 @@ export default function AgentAuditToolPage() {
           <div style={s.card}>
             <p style={s.cardLabel}>Accès impossible</p>
             <p style={s.cardBody}>
-              Le dossier est introuvable ou votre accès agent n'est pas
+              Le dossier est introuvable ou votre accès agent n’est pas
               autorisé.
             </p>
           </div>
@@ -1448,7 +1448,7 @@ export default function AgentAuditToolPage() {
                 <div style={s.card}>
                   <p style={s.cardLabel}>Aucune question</p>
                   <p style={s.cardBody}>
-                    Aucune question n'est enregistrée pour cet indicateur.
+                    Aucune question n’est enregistrée pour cet indicateur.
                   </p>
                 </div>
               ) : (
@@ -1712,6 +1712,11 @@ export default function AgentAuditToolPage() {
               {/* Navigation */}
               <div style={s.navGroup}>
                 <p style={s.navGroupLabel}>Navigation</p>
+                <p style={s.cardBody}>
+                  {indicatorOptions.length} indicateur
+                  {indicatorOptions.length > 1 ? "s" : ""} applicable
+                  {indicatorOptions.length > 1 ? "s" : ""} dans l’outil.
+                </p>
                 <label style={s.fieldLabel}>
                   Aller à un indicateur
                   <select
@@ -1755,7 +1760,7 @@ export default function AgentAuditToolPage() {
                       style={s.btnPrimary}
                       className="sel-btn-primary"
                     >
-                      Terminer l'audit ✓
+                      Terminer l’audit ✓
                     </Link>
                   )}
                 </div>

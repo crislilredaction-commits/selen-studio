@@ -28,10 +28,17 @@ export function statusToStepIndex(status: string): number {
 
 type DossierTimelineProps = {
   currentStep: number; // 0-based index of the active step
+  steps?: { label: string }[];
 };
 
-export default function DossierTimeline({ currentStep }: DossierTimelineProps) {
-  const fillPercent = Math.round((currentStep / (STEPS.length - 1)) * 100);
+export default function DossierTimeline({
+  currentStep,
+  steps = STEPS,
+}: DossierTimelineProps) {
+  const safeCurrentStep = Math.min(Math.max(currentStep, 0), steps.length - 1);
+  const fillPercent = Math.round(
+    (safeCurrentStep / Math.max(steps.length - 1, 1)) * 100,
+  );
 
   return (
     <div
@@ -81,8 +88,8 @@ export default function DossierTimeline({ currentStep }: DossierTimelineProps) {
           style={{
             position: "absolute",
             top: 18,
-            left: "calc(100% / 14)",
-            right: "calc(100% / 14)",
+            left: `calc(100% / ${steps.length * 2})`,
+            right: `calc(100% / ${steps.length * 2})`,
             height: 2,
             background: "var(--selen-bg3)",
             borderRadius: 1,
@@ -103,10 +110,10 @@ export default function DossierTimeline({ currentStep }: DossierTimelineProps) {
 
         {/* Steps */}
         <div style={{ display: "flex", position: "relative", zIndex: 1 }}>
-          {STEPS.map((step, i) => {
-            const isDone = i < currentStep;
-            const isActive = i === currentStep;
-            const isPending = i > currentStep;
+          {steps.map((step, i) => {
+            const isDone = i < safeCurrentStep;
+            const isActive = i === safeCurrentStep;
+            const isPending = i > safeCurrentStep;
 
             let nodeStyle: React.CSSProperties = {
               width: 36,
