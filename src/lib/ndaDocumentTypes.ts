@@ -6,7 +6,6 @@ export const NDA_DOCUMENT_TYPE_OPTIONS = [
     value: "diplomes_formateur_principal",
     label: "Diplômes du formateur principal",
   },
-  { value: "questionnaire_nda", label: "Questionnaire NDA" },
   { value: "convention_signee", label: "Convention signée" },
   {
     value: "liste_formateurs_signee",
@@ -22,6 +21,11 @@ export const NDA_DOCUMENT_TYPE_OPTIONS = [
 
 export type NdaDocumentType =
   (typeof NDA_DOCUMENT_TYPE_OPTIONS)[number]["value"];
+
+export const NDA_LEGACY_DOCUMENT_TYPES = ["questionnaire_nda"] as const;
+
+export type NdaLegacyDocumentType =
+  (typeof NDA_LEGACY_DOCUMENT_TYPES)[number];
 
 export const NDA_DOCUMENT_ROLE_OPTIONS = [
   "initial_client_document",

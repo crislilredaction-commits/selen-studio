@@ -16,7 +16,7 @@ import DossierHistorique, {
   type HistoryEntry,
 } from "@/components/ui/DossierHistorique";
 import NdaChecklist from "@/components/nda/NdaChecklist";
-import { NDA_CHECKLIST } from "@/lib/ndaChecklist";
+import { NDA_REQUIRED_DOCUMENT_KEYS } from "@/lib/ndaChecklist";
 import SubmitButton from "@/components/ui/SubmitButton";
 import NdaVariablesCard from "@/components/nda/NdaVariablesCard";
 import OpenDocumentButton from "@/components/ui/OpenDocumentButton";
@@ -909,6 +909,18 @@ export default async function DossierPage({ params }: PageProps) {
   const clientDocumentsItems = ((clientDocuments ?? []) as DbDocumentRow[]).map(
     mapDbDocumentToItem,
   );
+  const relatedActiveDossiers = ((relatedDossiers ?? []) as RelatedDossier[])
+    .filter((related) => related.status !== "archived")
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+  const relatedArchivedDossiers = ((relatedDossiers ?? []) as RelatedDossier[])
+    .filter((related) => related.status === "archived")
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
   const allNdaDocuments = [
     ...((documentsData ?? []) as DbDocumentRow[]),
     ...((clientDocuments ?? []) as DbDocumentRow[]),
@@ -1019,10 +1031,14 @@ export default async function DossierPage({ params }: PageProps) {
       : currentStep;
 
   const uniqueReceivedKeys = Array.from(new Set(receivedKeys));
-  const docsReceived = NDA_CHECKLIST.filter((item) =>
-    uniqueReceivedKeys.includes(item.key),
+  const docsReceived = NDA_REQUIRED_DOCUMENT_KEYS.filter((key) =>
+    uniqueReceivedKeys.includes(key),
   ).length;
-  const docsTotal = NDA_CHECKLIST.length;
+  const docsTotal = NDA_REQUIRED_DOCUMENT_KEYS.length;
+  const phase1InfoStatus =
+    ndaVariablesData || uniqueReceivedKeys.includes("questionnaire_nda")
+      ? "completed"
+      : "unknown";
   const ndaDocumentSummaryItems = [
     {
       label: "Initiaux client",
@@ -1262,7 +1278,8 @@ export default async function DossierPage({ params }: PageProps) {
           </div>
         </div>
 
-        {relatedDossiers && relatedDossiers.length > 0 ? (
+        {relatedActiveDossiers.length > 0 ||
+        relatedArchivedDossiers.length > 0 ? (
           <SelenCard style={{ marginBottom: 16 }}>
             <SelenCardTitle>Autres dossiers du client</SelenCardTitle>
 
@@ -1273,7 +1290,7 @@ export default async function DossierPage({ params }: PageProps) {
                 flexWrap: "wrap",
               }}
             >
-              {relatedDossiers.map((related) => (
+              {[...relatedActiveDossiers, ...relatedArchivedDossiers].map((related) => (
                 <Link
                   key={related.id}
                   href={`/agent/dossiers/${related.id}`}
@@ -1286,6 +1303,7 @@ export default async function DossierPage({ params }: PageProps) {
                     borderRadius: "var(--radius-md)",
                     padding: "12px 14px",
                     color: "var(--selen-text)",
+                    opacity: related.status === "archived" ? 0.72 : 1,
                   }}
                 >
                   <div
@@ -1333,7 +1351,10 @@ export default async function DossierPage({ params }: PageProps) {
 
               {isNdaDossier ? (
                 <>
-                  <NdaChecklist receivedKeys={receivedKeys} />
+                  <NdaChecklist
+                    receivedKeys={receivedKeys}
+                    phase1InfoStatus={phase1InfoStatus}
+                  />
                   <div
                     style={{
                       display: "grid",
@@ -1519,9 +1540,6 @@ export default async function DossierPage({ params }: PageProps) {
                       <option value="programme_formation">Programme</option>
                       <option value="avis_insee">Avis INSEE</option>
                       <option value="diplomes_formateur_principal">Diplôme</option>
-                      <option value="questionnaire_nda">
-                        Questionnaire NDA
-                      </option>
                       <option value="kbis">KBis</option>
                       <option value="casier_judiciaire_n3">
                         Casier judiciaire
