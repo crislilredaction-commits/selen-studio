@@ -13,6 +13,7 @@ import {
   extractTrainingTitle,
   getRegionFromPostalCode,
 } from "@/lib/documentText";
+import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
 
 type DocRow = {
   id: string;
@@ -40,11 +41,15 @@ function pickPreferredDoc(
   wantedTypes: string[],
 ): DocRow | undefined {
   const dossierMatch = sortNewestFirst(
-    dossierDocs.filter((d) => wantedTypes.includes(d.document_type)),
+    dossierDocs.filter((d) =>
+      wantedTypes.includes(normalizeNdaDocumentType(d.document_type)),
+    ),
   )[0];
   if (dossierMatch) return dossierMatch;
   return sortNewestFirst(
-    globalDocs.filter((d) => wantedTypes.includes(d.document_type)),
+    globalDocs.filter((d) =>
+      wantedTypes.includes(normalizeNdaDocumentType(d.document_type)),
+    ),
   )[0];
 }
 

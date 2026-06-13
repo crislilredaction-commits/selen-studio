@@ -25,6 +25,8 @@ import AnalyzeNdaButton from "@/components/nda/AnalyzeNdaButton";
 import AgentMessagingDrawer from "@/components/AgentMessagingDrawer";
 import AnalyzeProgramButton from "@/components/program/AnalyzeProgramButton";
 import AgentProgramEditor from "@/components/program/AgentProgramEditor";
+import { getVitrineClientUrl } from "@/lib/vitrineLinks";
+import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
 
 type PageProps = {
   params: Promise<{
@@ -148,27 +150,12 @@ function getStatusBadgeVariant(status: string) {
   return "status";
 }
 
-function isReviewDossierType(type: string) {
-  return type === "review" || type === "audit_blanc";
-}
-
 function isPreauditDossierType(type: string) {
   return type === "preaudit";
 }
 
-function getVitrineBaseUrl() {
-  return (
-    process.env.NEXT_PUBLIC_VITRINE_URL ??
-    process.env.NEXT_PUBLIC_CLIENT_APP_URL ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    "http://localhost:3000"
-  ).replace(/\/+$/, "");
-}
-
-function getClientPathForDossier(type: string, id: string) {
-  if (isPreauditDossierType(type)) return "/client";
-  if (isReviewDossierType(type)) return "/client/audit-blanc";
-  return `/client/dossier/${id}`;
+function isReviewDossierType(type: string) {
+  return type === "review" || type === "audit_blanc";
 }
 
 function formatReviewStatus(status?: string | null, reportStatus?: string | null) {
@@ -563,7 +550,9 @@ export default async function DossierPage({ params }: PageProps) {
     "use server";
 
     const docId = formData.get("doc_id") as string;
-    const documentType = formData.get("document_type") as string;
+    const documentType = normalizeNdaDocumentType(
+      formData.get("document_type") as string,
+    );
     const dossierId = formData.get("dossier_id") as string;
 
     const supabase = await createClient();
@@ -655,10 +644,7 @@ export default async function DossierPage({ params }: PageProps) {
   const isNdaDossier = dossier.type === "nda";
   const isPreauditDossier = isPreauditDossierType(dossier.type);
   const isReviewDossier = isReviewDossierType(dossier.type);
-  const resolvedClientUrl = `${getVitrineBaseUrl()}${getClientPathForDossier(
-    dossier.type,
-    dossier.id,
-  )}`;
+  const resolvedClientUrl = getVitrineClientUrl(dossier.type, dossier.id);
 
   const { data: assignments, error: assignmentsError } = await supabase
     .from("dossier_assignments")
@@ -828,7 +814,9 @@ export default async function DossierPage({ params }: PageProps) {
   const receivedKeys = [
     ...(documentsData ?? []).map((d) => d.document_type),
     ...((clientDocuments ?? []) as DbDocumentRow[]).map((d) => d.document_type),
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .map((documentType) => normalizeNdaDocumentType(documentType));
 
   const canRunAutoAnalysis =
     receivedKeys.includes("cv_formateur") &&
@@ -1242,7 +1230,7 @@ export default async function DossierPage({ params }: PageProps) {
 
                   <select
                     name="document_type"
-                    defaultValue={doc.document_type}
+                    defaultValue={normalizeNdaDocumentType(doc.document_type)}
                     style={{
                       fontSize: 11,
                       background: "var(--selen-bg3)",
@@ -1257,9 +1245,9 @@ export default async function DossierPage({ params }: PageProps) {
                     <option value="cv_formateur">CV formateur</option>
                     <option value="programme_formation">Programme</option>
                     <option value="avis_insee">Avis INSEE</option>
-                    <option value="diplome_formateur">Diplôme</option>
+                    <option value="diplomes_formateur_principal">Diplôme</option>
                     <option value="kbis">KBis</option>
-                    <option value="casier_judiciaire">Casier judiciaire</option>
+                    <option value="casier_judiciaire_n3">Casier judiciaire</option>
                     <option value="convention_signee">Convention signée</option>
                   </select>
 
@@ -1312,7 +1300,7 @@ export default async function DossierPage({ params }: PageProps) {
 
                     <select
                       name="document_type"
-                      defaultValue={doc.document_type}
+                      defaultValue={normalizeNdaDocumentType(doc.document_type)}
                       style={{
                         fontSize: 11,
                         background: "var(--selen-bg3)",
@@ -1327,12 +1315,12 @@ export default async function DossierPage({ params }: PageProps) {
                       <option value="cv_formateur">CV formateur</option>
                       <option value="programme_formation">Programme</option>
                       <option value="avis_insee">Avis INSEE</option>
-                      <option value="diplome_formateur">Diplôme</option>
+                      <option value="diplomes_formateur_principal">Diplôme</option>
                       <option value="questionnaire_nda">
                         Questionnaire NDA
                       </option>
                       <option value="kbis">KBis</option>
-                      <option value="casier_judiciaire">
+                      <option value="casier_judiciaire_n3">
                         Casier judiciaire
                       </option>
                       <option value="convention_signee">

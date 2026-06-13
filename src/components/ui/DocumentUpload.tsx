@@ -2,28 +2,7 @@
 
 import { useRef, useState } from "react";
 import SelenButton from "@/components/ui/SelenButton";
-
-const NDA_DOCUMENT_TYPES = [
-  { value: "cv_formateur", label: "CV du formateur" },
-  { value: "programme_formation", label: "Programme de formation" },
-  { value: "avis_insee", label: "Avis INSEE" },
-  {
-    value: "diplomes_formateur_principal",
-    label: "Diplômes du formateur principal",
-  },
-  { value: "questionnaire_nda", label: "Questionnaire NDA" },
-  { value: "convention_signee", label: "Convention signée" },
-  {
-    value: "liste_formateurs_signee",
-    label: "Liste des formateurs signée",
-  },
-  { value: "kbis", label: "Extrait KBIS" },
-  {
-    value: "statut_activite_formation_adulte",
-    label: "Statut activité formation adulte",
-  },
-  { value: "casier_judiciaire_n3", label: "Casier judiciaire n°3" },
-];
+import { NDA_DOCUMENT_TYPE_OPTIONS } from "@/lib/ndaDocumentTypes";
 
 export default function DocumentUpload({
   dossierId,
@@ -101,7 +80,7 @@ export default function DocumentUpload({
           outline: "none",
         }}
       >
-        {NDA_DOCUMENT_TYPES.map((item) => (
+        {NDA_DOCUMENT_TYPE_OPTIONS.map((item) => (
           <option key={item.value} value={item.value}>
             {item.label}
           </option>

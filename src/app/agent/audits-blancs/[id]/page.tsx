@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import AuditGrimoire from "@/components/agent/AuditGrimoire";
+import { getVitrineClientUrl } from "@/lib/vitrineLinks";
 
 type AuditBlancCase = {
   id: string;
@@ -532,6 +533,7 @@ export default function AgentAuditBlancDetailPage() {
   const applicableIndicators = auditCase?.applicable_indicators ?? [];
   const excludedIndicators = auditCase?.excluded_indicators ?? [];
   const firstApplicableIndicator = applicableIndicators[0] ?? null;
+  const auditBlancClientUrl = getVitrineClientUrl("audit_blanc", caseId);
   const allIndicatorNumbers = Array.from({ length: 32 }, (_, index) => index + 1);
   const needsIndicatorRecalculation =
     applicableIndicators.length === allIndicatorNumbers.length &&
@@ -2195,7 +2197,7 @@ export default function AgentAuditBlancDetailPage() {
                   </Link>
 
                   <Link
-                    href="/client/audit-blanc"
+                    href={auditBlancClientUrl}
                     style={s.navLink}
                     className="sel-nav-link"
                   >

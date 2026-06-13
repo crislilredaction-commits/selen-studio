@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { getVitrineClientUrl } from "@/lib/vitrineLinks";
 
 function getAdminSupabase() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -21,10 +22,6 @@ function getAdminSupabase() {
       },
     },
   );
-}
-
-function getAppUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 }
 
 function getResendClient() {
@@ -163,7 +160,7 @@ export async function POST(req: Request) {
 
     if (clientEmail) {
       const resend = getResendClient();
-      const clientUrl = `${getAppUrl()}/client/dossier/${dossierId}`;
+      const clientUrl = getVitrineClientUrl("nda", dossierId);
 
       const recipientName = organisation?.name || "bonjour";
 

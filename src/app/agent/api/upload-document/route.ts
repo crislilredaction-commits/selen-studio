@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
 
 export async function POST(req: Request) {
   try {
@@ -50,10 +51,11 @@ export async function POST(req: Request) {
         ? rawOrganisationId.trim()
         : null;
 
-    const document_type =
+    const document_type = normalizeNdaDocumentType(
       typeof rawDocumentType === "string" && rawDocumentType.trim() !== ""
         ? rawDocumentType.trim()
-        : "document_libre";
+        : "document_libre",
+    );
 
     if (!file || !organisation_id) {
       return NextResponse.json(

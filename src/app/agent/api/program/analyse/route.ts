@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -121,13 +122,15 @@ function pickPreferredDoc(
   wantedTypes: string[],
   dossierId: string,
 ) {
-  const normalizedWanted = wantedTypes.map((type) => type.toLowerCase());
+  const normalizedWanted = wantedTypes.map((type) =>
+    normalizeNdaDocumentType(type),
+  );
 
   const dossierDocs = sortNewestFirst(
     allDocs.filter(
       (doc) =>
         doc.dossier_id === dossierId &&
-        normalizedWanted.includes((doc.document_type ?? "").toLowerCase()),
+        normalizedWanted.includes(normalizeNdaDocumentType(doc.document_type)),
     ),
   );
 
@@ -139,7 +142,7 @@ function pickPreferredDoc(
     allDocs.filter(
       (doc) =>
         !doc.dossier_id &&
-        normalizedWanted.includes((doc.document_type ?? "").toLowerCase()),
+        normalizedWanted.includes(normalizeNdaDocumentType(doc.document_type)),
     ),
   );
 

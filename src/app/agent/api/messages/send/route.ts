@@ -2,24 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { Resend } from "resend";
 import { createAgentNotification } from "@/lib/server/notifications";
+import { getVitrineClientUrl } from "@/lib/vitrineLinks";
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
-
-function getVitrineBaseUrl() {
-  return (
-    process.env.NEXT_PUBLIC_VITRINE_URL ??
-    process.env.NEXT_PUBLIC_CLIENT_APP_URL ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    "http://localhost:3000"
-  ).replace(/\/+$/, "");
-}
-
-function getClientPathForDossier(type?: string | null, id?: string | null) {
-  if (type === "preaudit") return "/client";
-  if (type === "review" || type === "audit_blanc") return "/client/audit-blanc";
-  return `/client/dossier/${id ?? ""}`;
-}
 
 export async function POST(req: Request) {
   try {
@@ -93,10 +79,7 @@ export async function POST(req: Request) {
           .single();
 
         if (organisation?.email) {
-          const clientUrl = `${getVitrineBaseUrl()}${getClientPathForDossier(
-            dossier.type,
-            dossier.id,
-          )}`;
+          const clientUrl = getVitrineClientUrl(dossier.type, dossier.id);
 
           await resend.emails.send({
             from: "Selen ✨ <hello@selen-editions.fr>",

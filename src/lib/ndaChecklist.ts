@@ -1,16 +1,8 @@
+import type { NdaDocumentType } from "@/lib/ndaDocumentTypes";
+
 export type NdaPhase = 1 | 2;
 
-export type NdaDocumentKey =
-  | "cv_formateur"
-  | "programme_formation"
-  | "avis_insee"
-  | "diplomes_formateur_principal"
-  | "questionnaire_nda"
-  | "convention_signee"
-  | "liste_formateurs_signee"
-  | "kbis"
-  | "statut_activite_formation_adulte"
-  | "casier_judiciaire_n3";
+export type NdaDocumentKey = NdaDocumentType;
 
 export type NdaChecklistItem = {
   key: NdaDocumentKey;
