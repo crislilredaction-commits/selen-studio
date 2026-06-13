@@ -23,6 +23,37 @@ export const NDA_DOCUMENT_TYPE_OPTIONS = [
 export type NdaDocumentType =
   (typeof NDA_DOCUMENT_TYPE_OPTIONS)[number]["value"];
 
+export const NDA_DOCUMENT_ROLE_OPTIONS = [
+  "initial_client_document",
+  "agent_uploaded_document",
+  "generated_document",
+  "client_to_complete",
+  "client_returned_document",
+  "supporting_evidence",
+  "internal_working_file",
+  "final_validated_file",
+  "maf_procedure",
+  "dreets_complement_request",
+  "dreets_refusal_letter",
+  "corrected_after_refusal",
+] as const;
+
+export type NdaDocumentRole = (typeof NDA_DOCUMENT_ROLE_OPTIONS)[number];
+
+export const NDA_DOCUMENT_REVIEW_STATUS_OPTIONS = [
+  "not_reviewed",
+  "pending_client",
+  "received",
+  "to_correct",
+  "validated",
+  "rejected",
+  "archived",
+  "superseded",
+] as const;
+
+export type NdaDocumentReviewStatus =
+  (typeof NDA_DOCUMENT_REVIEW_STATUS_OPTIONS)[number];
+
 const NDA_DOCUMENT_TYPE_ALIASES: Record<string, NdaDocumentType> = {
   diplome_formateur: "diplomes_formateur_principal",
   casier_judiciaire: "casier_judiciaire_n3",
@@ -40,4 +71,59 @@ export function normalizeNdaDocumentType(
   }
 
   return NDA_DOCUMENT_TYPE_ALIASES[normalized] ?? normalized;
+}
+
+export function inferNdaDocumentRole(args: {
+  documentRole?: string | null;
+  source?: string | null;
+}): NdaDocumentRole {
+  if (
+    args.documentRole &&
+    NDA_DOCUMENT_ROLE_OPTIONS.includes(args.documentRole as NdaDocumentRole)
+  ) {
+    return args.documentRole as NdaDocumentRole;
+  }
+
+  if (args.source === "client_upload") {
+    return "initial_client_document";
+  }
+
+  if (args.source === "generated") {
+    return "generated_document";
+  }
+
+  return "agent_uploaded_document";
+}
+
+export function inferNdaDocumentReviewStatus(args: {
+  reviewStatus?: string | null;
+  status?: string | null;
+  source?: string | null;
+}): NdaDocumentReviewStatus {
+  if (
+    args.reviewStatus &&
+    NDA_DOCUMENT_REVIEW_STATUS_OPTIONS.includes(
+      args.reviewStatus as NdaDocumentReviewStatus,
+    )
+  ) {
+    return args.reviewStatus as NdaDocumentReviewStatus;
+  }
+
+  if (args.status === "validated" || args.status === "signed") {
+    return "validated";
+  }
+
+  if (args.status === "to_correct") {
+    return "to_correct";
+  }
+
+  if (args.status === "archived") {
+    return "archived";
+  }
+
+  if (args.source === "client_upload") {
+    return "received";
+  }
+
+  return "not_reviewed";
 }

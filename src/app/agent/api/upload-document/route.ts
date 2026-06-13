@@ -112,10 +112,15 @@ export async function POST(req: Request) {
       document_type,
       status: "uploaded",
       source: "agent_upload",
+      document_role: "agent_uploaded_document",
+      review_status: "not_reviewed",
+      is_visible_to_client: false,
+      requires_client_action: false,
       storage_path: filePath,
       organisation_id,
       dossier_id,
       scope: dossier_id ? "dossier" : "client",
+      metadata: {},
     });
 
     if (dbError) {

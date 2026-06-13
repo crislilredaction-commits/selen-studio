@@ -26,7 +26,13 @@ import AgentMessagingDrawer from "@/components/AgentMessagingDrawer";
 import AnalyzeProgramButton from "@/components/program/AnalyzeProgramButton";
 import AgentProgramEditor from "@/components/program/AgentProgramEditor";
 import { getVitrineClientUrl } from "@/lib/vitrineLinks";
-import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
+import {
+  inferNdaDocumentReviewStatus,
+  inferNdaDocumentRole,
+  normalizeNdaDocumentType,
+  type NdaDocumentReviewStatus,
+  type NdaDocumentRole,
+} from "@/lib/ndaDocumentTypes";
 
 type PageProps = {
   params: Promise<{
@@ -80,6 +86,17 @@ type DbDocumentRow = {
     | "archived";
   source: "agent_upload" | "client_upload" | "generated";
   created_at: string;
+  is_visible_to_client?: boolean | null;
+  document_role?: NdaDocumentRole | string | null;
+  review_status?: NdaDocumentReviewStatus | string | null;
+  generated_from_model?: string | null;
+  version_group?: string | null;
+  parent_document_id?: string | null;
+  requires_client_action?: boolean | null;
+  validated_at?: string | null;
+  validated_by?: string | null;
+  visible_to_client_at?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type MessageRow = {
@@ -208,6 +225,59 @@ function mapDbDocumentToItem(doc: DbDocumentRow): DocumentItem {
     fileType,
     status,
   };
+}
+
+function getDocumentRoleLabel(role: NdaDocumentRole) {
+  const labels: Record<NdaDocumentRole, string> = {
+    initial_client_document: "Document initial client",
+    agent_uploaded_document: "Document agent",
+    generated_document: "Document généré",
+    client_to_complete: "À compléter par le client",
+    client_returned_document: "Retour client",
+    supporting_evidence: "Pièce justificative",
+    internal_working_file: "Interne agent",
+    final_validated_file: "Dossier final validé",
+    maf_procedure: "Procédure MAF",
+    dreets_complement_request: "Demande complémentaire DREETS",
+    dreets_refusal_letter: "Lettre de refus DREETS",
+    corrected_after_refusal: "Dossier corrigé après refus",
+  };
+
+  return labels[role];
+}
+
+function getDocumentReviewStatusLabel(status: NdaDocumentReviewStatus) {
+  const labels: Record<NdaDocumentReviewStatus, string> = {
+    not_reviewed: "À vérifier",
+    pending_client: "En attente client",
+    received: "Reçu",
+    to_correct: "À corriger",
+    validated: "Validé",
+    rejected: "Refusé",
+    archived: "Archivé",
+    superseded: "Remplacé",
+  };
+
+  return labels[status];
+}
+
+function getDocumentWorkflowMeta(doc: DbDocumentRow) {
+  const role = inferNdaDocumentRole({
+    documentRole: doc.document_role,
+    source: doc.source,
+  });
+  const reviewStatus = inferNdaDocumentReviewStatus({
+    reviewStatus: doc.review_status,
+    status: doc.status,
+    source: doc.source,
+  });
+  const visibility = doc.is_visible_to_client
+    ? "visible client"
+    : "interne Studio";
+
+  return `${getDocumentRoleLabel(role)} · ${getDocumentReviewStatusLabel(
+    reviewStatus,
+  )} · ${visibility}`;
 }
 
 function extractPostalCodeAndCity(address?: string | null) {
@@ -739,7 +809,9 @@ export default async function DossierPage({ params }: PageProps) {
 
   const { data: documentsData, error: documentsError } = await supabase
     .from("documents")
-    .select("id, name, document_type, status, source, created_at, storage_path")
+    .select(
+      "id, name, document_type, status, source, created_at, storage_path, is_visible_to_client, document_role, review_status, generated_from_model, version_group, parent_document_id, requires_client_action, validated_at, validated_by, visible_to_client_at, metadata",
+    )
     .eq("dossier_id", dossier.id)
     .order("created_at", { ascending: true });
 
@@ -837,6 +909,43 @@ export default async function DossierPage({ params }: PageProps) {
   const clientDocumentsItems = ((clientDocuments ?? []) as DbDocumentRow[]).map(
     mapDbDocumentToItem,
   );
+  const allNdaDocuments = [
+    ...((documentsData ?? []) as DbDocumentRow[]),
+    ...((clientDocuments ?? []) as DbDocumentRow[]),
+  ];
+  const initialClientDocuments = allNdaDocuments.filter(
+    (doc) =>
+      inferNdaDocumentRole({
+        documentRole: doc.document_role,
+        source: doc.source,
+      }) === "initial_client_document",
+  );
+  const agentDocuments = allNdaDocuments.filter(
+    (doc) =>
+      inferNdaDocumentRole({
+        documentRole: doc.document_role,
+        source: doc.source,
+      }) === "agent_uploaded_document",
+  );
+  const generatedDocuments = allNdaDocuments.filter(
+    (doc) =>
+      inferNdaDocumentRole({
+        documentRole: doc.document_role,
+        source: doc.source,
+      }) === "generated_document",
+  );
+  const visibleClientDocuments = allNdaDocuments.filter(
+    (doc) => doc.is_visible_to_client,
+  );
+  const documentsToReview = allNdaDocuments.filter((doc) => {
+    const reviewStatus = inferNdaDocumentReviewStatus({
+      reviewStatus: doc.review_status,
+      status: doc.status,
+      source: doc.source,
+    });
+
+    return reviewStatus === "not_reviewed" || reviewStatus === "to_correct";
+  });
 
   const primaryAssignment =
     ((assignments ?? []) as AssignmentRow[]).find((a) => a.is_primary) ??
@@ -914,6 +1023,33 @@ export default async function DossierPage({ params }: PageProps) {
     uniqueReceivedKeys.includes(item.key),
   ).length;
   const docsTotal = NDA_CHECKLIST.length;
+  const ndaDocumentSummaryItems = [
+    {
+      label: "Initiaux client",
+      value: initialClientDocuments.length,
+      hint: "Documents déposés par le client ou repris comme tels.",
+    },
+    {
+      label: "Agent",
+      value: agentDocuments.length,
+      hint: "Documents importés côté Studio, invisibles client par défaut.",
+    },
+    {
+      label: "Générés",
+      value: generatedDocuments.length,
+      hint: "Documents produits par Selen, pas encore branchés pour le NDA.",
+    },
+    {
+      label: "Visibles client",
+      value: visibleClientDocuments.length,
+      hint: "Documents explicitement publiés côté Vitrine.",
+    },
+    {
+      label: "À vérifier",
+      value: documentsToReview.length,
+      hint: "Documents non revus ou marqués à corriger.",
+    },
+  ];
 
   const extractedAddress = extractPostalCodeAndCity(organisation?.address);
 
@@ -1196,7 +1332,49 @@ export default async function DossierPage({ params }: PageProps) {
               </SelenCardTitle>
 
               {isNdaDossier ? (
-                <NdaChecklist receivedKeys={receivedKeys} />
+                <>
+                  <NdaChecklist receivedKeys={receivedKeys} />
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(120px, 1fr))",
+                      gap: 8,
+                      margin: "12px 0",
+                    }}
+                  >
+                    {ndaDocumentSummaryItems.map((item) => (
+                      <div
+                        key={item.label}
+                        title={item.hint}
+                        style={{
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: 8,
+                          background: "rgba(255, 248, 232, 0.55)",
+                          padding: "8px 10px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "var(--selen-text3)",
+                          }}
+                        >
+                          {item.label}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 700,
+                            color: "var(--selen-text)",
+                          }}
+                        >
+                          {item.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
               ) : (
                 <p
                   style={{
@@ -1226,7 +1404,20 @@ export default async function DossierPage({ params }: PageProps) {
                   <input type="hidden" name="doc_id" value={doc.id} />
                   <input type="hidden" name="dossier_id" value={dossier.id} />
 
-                  <div style={{ flex: 1, fontSize: 12 }}>{doc.name}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12 }}>{doc.name}</div>
+                    {isNdaDossier ? (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "var(--selen-text3)",
+                          marginTop: 2,
+                        }}
+                      >
+                        {getDocumentWorkflowMeta(doc as DbDocumentRow)}
+                      </div>
+                    ) : null}
+                  </div>
 
                   <select
                     name="document_type"
@@ -1288,14 +1479,26 @@ export default async function DossierPage({ params }: PageProps) {
 
                     <OpenDocumentButton docId={doc.id} />
 
-                    <div
-                      style={{
-                        flex: 1,
-                        fontSize: 12,
-                        color: "var(--selen-text)",
-                      }}
-                    >
-                      {doc.name}
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "var(--selen-text)",
+                        }}
+                      >
+                        {doc.name}
+                      </div>
+                      {isNdaDossier ? (
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "var(--selen-text3)",
+                            marginTop: 2,
+                          }}
+                        >
+                          {getDocumentWorkflowMeta(doc as DbDocumentRow)}
+                        </div>
+                      ) : null}
                     </div>
 
                     <select
