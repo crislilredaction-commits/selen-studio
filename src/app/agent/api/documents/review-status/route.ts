@@ -1,0 +1,163 @@
+import { NextResponse } from "next/server";
+import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import { createClient as createSessionClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
+
+const ALLOWED_REVIEW_STATUSES = [
+  "not_reviewed",
+  "validated",
+  "to_correct",
+] as const;
+
+type AllowedReviewStatus = (typeof ALLOWED_REVIEW_STATUSES)[number];
+
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error(
+      "Configuration Supabase manquante : NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY.",
+    );
+  }
+
+  return createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
+function isAllowedReviewStatus(value: unknown): value is AllowedReviewStatus {
+  return (
+    typeof value === "string" &&
+    ALLOWED_REVIEW_STATUSES.includes(value as AllowedReviewStatus)
+  );
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+async function requireAgent() {
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.SELEN_DEV_ADMIN_BYPASS === "true"
+  ) {
+    return { ok: true as const, userId: null as string | null };
+  }
+
+  const sessionClient = await createSessionClient();
+  const {
+    data: { user },
+    error,
+  } = await sessionClient.auth.getUser();
+
+  if (error || !user?.id) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Vous devez être connecté côté agent." },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const admin = getAdminClient();
+  const { data: adminUser, error: adminError } = await admin
+    .from("selen_admin_users")
+    .select("id, user_id, is_active")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (adminError) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: `Impossible de vérifier les droits agent. ${adminError.message}` },
+        { status: 500 },
+      ),
+    };
+  }
+
+  if (!adminUser) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Accès agent non autorisé." },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return { ok: true as const, userId: user.id };
+}
+
+export async function POST(req: Request) {
+  try {
+    const auth = await requireAgent();
+    if (!auth.ok) {
+      return auth.response;
+    }
+
+    const body = await req.json().catch(() => null);
+    const documentId = body?.documentId;
+    const reviewStatus = body?.reviewStatus;
+    const rawNotes = body?.notes;
+
+    if (!documentId || typeof documentId !== "string") {
+      return NextResponse.json(
+        { error: "documentId manquant ou invalide." },
+        { status: 400 },
+      );
+    }
+
+    if (!isAllowedReviewStatus(reviewStatus)) {
+      return NextResponse.json(
+        { error: "reviewStatus invalide." },
+        { status: 400 },
+      );
+    }
+
+    const notes =
+      typeof rawNotes === "string" ? rawNotes.trim() : undefined;
+
+    const updatePayload: Record<string, unknown> = {
+      review_status: reviewStatus,
+    };
+
+    if (notes !== undefined) {
+      updatePayload.notes = notes.length > 0 ? notes : null;
+    }
+
+    if (reviewStatus === "validated") {
+      updatePayload.validated_at = new Date().toISOString();
+      updatePayload.validated_by =
+        auth.userId && isUuid(auth.userId) ? auth.userId : null;
+    }
+
+    const admin = getAdminClient();
+    const { error } = await admin
+      .from("documents")
+      .update(updatePayload)
+      .eq("id", documentId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Erreur inconnue.",
+      },
+      { status: 500 },
+    );
+  }
+}

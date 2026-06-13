@@ -17,6 +17,7 @@ import DossierHistorique, {
 } from "@/components/ui/DossierHistorique";
 import NdaChecklist from "@/components/nda/NdaChecklist";
 import { NDA_REQUIRED_DOCUMENT_KEYS } from "@/lib/ndaChecklist";
+import DocumentReviewActions from "@/components/nda/DocumentReviewActions";
 import SubmitButton from "@/components/ui/SubmitButton";
 import NdaVariablesCard from "@/components/nda/NdaVariablesCard";
 import OpenDocumentButton from "@/components/ui/OpenDocumentButton";
@@ -97,6 +98,7 @@ type DbDocumentRow = {
   validated_by?: string | null;
   visible_to_client_at?: string | null;
   metadata?: Record<string, unknown> | null;
+  notes?: string | null;
 };
 
 type MessageRow = {
@@ -810,7 +812,7 @@ export default async function DossierPage({ params }: PageProps) {
   const { data: documentsData, error: documentsError } = await supabase
     .from("documents")
     .select(
-      "id, name, document_type, status, source, created_at, storage_path, is_visible_to_client, document_role, review_status, generated_from_model, version_group, parent_document_id, requires_client_action, validated_at, validated_by, visible_to_client_at, metadata",
+      "id, name, document_type, status, source, created_at, storage_path, is_visible_to_client, document_role, review_status, generated_from_model, version_group, parent_document_id, requires_client_action, validated_at, validated_by, visible_to_client_at, metadata, notes",
     )
     .eq("dossier_id", dossier.id)
     .order("created_at", { ascending: true });
@@ -1438,6 +1440,17 @@ export default async function DossierPage({ params }: PageProps) {
                         {getDocumentWorkflowMeta(doc as DbDocumentRow)}
                       </div>
                     ) : null}
+                    {isNdaDossier && (doc as DbDocumentRow).notes ? (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "var(--selen-text3)",
+                          marginTop: 2,
+                        }}
+                      >
+                        Note agent : {(doc as DbDocumentRow).notes}
+                      </div>
+                    ) : null}
                   </div>
 
                   <select
@@ -1467,6 +1480,16 @@ export default async function DossierPage({ params }: PageProps) {
                     style={{ display: "flex", alignItems: "center", gap: 8 }}
                   >
                     <SubmitButton label="OK" pendingLabel="..." />
+                    {isNdaDossier ? (
+                      <DocumentReviewActions
+                        documentId={doc.id}
+                        currentStatus={inferNdaDocumentReviewStatus({
+                          reviewStatus: (doc as DbDocumentRow).review_status,
+                          status: (doc as DbDocumentRow).status,
+                          source: (doc as DbDocumentRow).source,
+                        })}
+                      />
+                    ) : null}
                     <DeleteDocumentButton
                       documentId={doc.id}
                       documentName={doc.name}
