@@ -128,6 +128,33 @@ type ReviewCaseSummary = {
   updated_at: string | null;
 };
 
+type NdaVariablesRow = {
+  dossier_id?: string | null;
+  organisation_id?: string | null;
+  formateur_nom?: string | null;
+  formateur_prenom?: string | null;
+  formateur_email?: string | null;
+  intitule_formation?: string | null;
+  duree_formation?: string | null;
+  modalite?: string | null;
+  nb_formateurs?: number | string | null;
+  ville?: string | null;
+  code_postal?: string | null;
+  region?: string | null;
+  siret?: string | null;
+  representant_prenom?: string | null;
+  representant_nom?: string | null;
+  tarif_formation?: string | number | null;
+  stagiaire_prenom?: string | null;
+  stagiaire_nom?: string | null;
+  stagiaire_adresse?: string | null;
+  stagiaire_email?: string | null;
+  stagiaire_telephone?: string | null;
+  client_siret?: string | null;
+  date_formation_prevue?: string | null;
+  lieu_formation?: string | null;
+};
+
 function getTypeLabel(type: string): string {
   const map: Record<string, string> = {
     nda: "NDA",
@@ -177,7 +204,10 @@ function isReviewDossierType(type: string) {
   return type === "review" || type === "audit_blanc";
 }
 
-function formatReviewStatus(status?: string | null, reportStatus?: string | null) {
+function formatReviewStatus(
+  status?: string | null,
+  reportStatus?: string | null,
+) {
   if (reportStatus === "sent") return "Rapport envoyé";
   if (status === "report_ready") return "Rapport prêt";
   if (status) return getStatusLabel(status);
@@ -280,6 +310,213 @@ function getDocumentWorkflowMeta(doc: DbDocumentRow) {
   return `${getDocumentRoleLabel(role)} · ${getDocumentReviewStatusLabel(
     reviewStatus,
   )} · ${visibility}`;
+}
+
+function formatNdaValue(value?: string | number | null) {
+  const normalized = String(value ?? "").trim();
+  return normalized || "—";
+}
+
+function formatNdaDate(value?: string | null) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString("fr-FR");
+}
+
+function formatNdaPerson(firstName?: string | null, lastName?: string | null) {
+  return [firstName, lastName].filter(Boolean).join(" ").trim() || "—";
+}
+
+function MaybeCollapsed({
+  collapsed,
+  title,
+  children,
+}: {
+  collapsed: boolean;
+  title: string;
+  children: React.ReactNode;
+}) {
+  if (!collapsed) {
+    return <>{children}</>;
+  }
+
+  return (
+    <details
+      style={{
+        border: "1px solid var(--selen-border)",
+        borderRadius: "var(--radius-md)",
+        background: "rgba(255, 248, 232, 0.42)",
+        padding: 12,
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 700,
+          color: "var(--selen-gold2)",
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+        }}
+      >
+        {title}
+      </summary>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+          marginTop: 12,
+        }}
+      >
+        {children}
+      </div>
+    </details>
+  );
+}
+
+function NdaStep2StudioCard({
+  variables,
+}: {
+  variables: NdaVariablesRow | null;
+}) {
+  const fields = [
+    {
+      label: "Stagiaire",
+      value: formatNdaPerson(
+        variables?.stagiaire_prenom,
+        variables?.stagiaire_nom,
+      ),
+    },
+    {
+      label: "Email stagiaire",
+      value: formatNdaValue(variables?.stagiaire_email),
+    },
+    {
+      label: "Téléphone stagiaire",
+      value: formatNdaValue(variables?.stagiaire_telephone),
+    },
+    {
+      label: "Adresse stagiaire",
+      value: formatNdaValue(variables?.stagiaire_adresse),
+    },
+    {
+      label: "SIRET client",
+      value: formatNdaValue(variables?.client_siret),
+    },
+    {
+      label: "Date prévue",
+      value: formatNdaDate(variables?.date_formation_prevue),
+    },
+    {
+      label: "Lieu / lien",
+      value: formatNdaValue(variables?.lieu_formation),
+    },
+    {
+      label: "Formation validée",
+      value: formatNdaValue(variables?.intitule_formation),
+    },
+    {
+      label: "Durée",
+      value: formatNdaValue(variables?.duree_formation),
+    },
+    {
+      label: "Modalité",
+      value: formatNdaValue(variables?.modalite),
+    },
+    {
+      label: "Tarif",
+      value: formatNdaValue(variables?.tarif_formation),
+    },
+  ];
+
+  return (
+    <SelenCard>
+      <SelenCardTitle>
+        Premier client / première action de formation
+      </SelenCardTitle>
+
+      <p
+        style={{
+          fontSize: 13,
+          color: "var(--selen-text3)",
+          lineHeight: 1.55,
+          margin: "0 0 14px",
+        }}
+      >
+        Le programme a été validé par le client. Cette section regroupe les
+        informations utiles pour préparer la suite du dossier NDA.
+      </p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+          gap: 10,
+        }}
+      >
+        {fields.map((field) => (
+          <div
+            key={field.label}
+            style={{
+              border: "1px solid var(--selen-border)",
+              borderRadius: "var(--radius-sm)",
+              background: "var(--selen-bg3)",
+              padding: "10px 12px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "var(--selen-text3)",
+                marginBottom: 5,
+              }}
+            >
+              {field.label}
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color:
+                  field.value === "—"
+                    ? "var(--selen-text3)"
+                    : "var(--selen-text)",
+                fontWeight: field.value === "—" ? 400 : 600,
+                lineHeight: 1.35,
+              }}
+            >
+              {field.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {!variables?.client_siret ||
+      !variables?.date_formation_prevue ||
+      !variables?.lieu_formation ? (
+        <p
+          style={{
+            fontSize: 12,
+            color: "var(--selen-warning)",
+            margin: "14px 0 0",
+            lineHeight: 1.5,
+          }}
+        >
+          Certains éléments de l’action prévue sont encore incomplets. Ils
+          devront être vérifiés avant la génération des documents NDA.
+        </p>
+      ) : null}
+    </SelenCard>
+  );
 }
 
 function extractPostalCodeAndCity(address?: string | null) {
@@ -784,21 +1021,22 @@ export default async function DossierPage({ params }: PageProps) {
     ? await getPreauditIndicatorAnswerCount(preauditSession)
     : 0;
 
-  const { data: reviewCaseRaw } =
-    isReviewDossier
-      ? await supabase
-          .from("audit_blanc_cases")
-          .select("id, status, report_status, client_email, updated_at")
-          .eq("dossier_id", dossier.id)
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      : { data: null };
+  const { data: reviewCaseRaw } = isReviewDossier
+    ? await supabase
+        .from("audit_blanc_cases")
+        .select("id, status, report_status, client_email, updated_at")
+        .eq("dossier_id", dossier.id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
 
   const reviewCase = reviewCaseRaw as ReviewCaseSummary | null;
-  const showGenericGenerateButton = !["preaudit", "review", "audit_blanc"].includes(
-    dossier.type,
-  );
+  const showGenericGenerateButton = ![
+    "preaudit",
+    "review",
+    "audit_blanc",
+  ].includes(dossier.type);
 
   const { data: relatedDossiers } = organisation
     ? await supabase
@@ -884,6 +1122,26 @@ export default async function DossierPage({ params }: PageProps) {
       </main>
     );
   }
+
+  const ndaVariables = (ndaVariablesData ?? null) as NdaVariablesRow | null;
+
+  const isNdaProgramValidated =
+    isNdaDossier && latestClientDecision?.client_decision === "validated";
+
+  const hasNdaStep2Info = Boolean(
+    ndaVariables?.stagiaire_prenom ||
+    ndaVariables?.stagiaire_nom ||
+    ndaVariables?.stagiaire_adresse ||
+    ndaVariables?.stagiaire_email ||
+    ndaVariables?.stagiaire_telephone ||
+    ndaVariables?.client_siret ||
+    ndaVariables?.date_formation_prevue ||
+    ndaVariables?.lieu_formation,
+  );
+
+  const shouldShowNdaStep2Summary = isNdaProgramValidated && hasNdaStep2Info;
+
+  const shouldCondenseNdaHistory = shouldShowNdaStep2Summary;
 
   const receivedKeys = [
     ...(documentsData ?? []).map((d) => d.document_type),
@@ -1110,7 +1368,11 @@ export default async function DossierPage({ params }: PageProps) {
     historyItems.push({ id, label, rawDate });
   }
 
-  addHistoryItem(`dossier-created-${dossier.id}`, "Dossier créé", dossier.created_at);
+  addHistoryItem(
+    `dossier-created-${dossier.id}`,
+    "Dossier créé",
+    dossier.created_at,
+  );
 
   if (dossier.updated_at !== dossier.created_at) {
     addHistoryItem(
@@ -1292,42 +1554,44 @@ export default async function DossierPage({ params }: PageProps) {
                 flexWrap: "wrap",
               }}
             >
-              {[...relatedActiveDossiers, ...relatedArchivedDossiers].map((related) => (
-                <Link
-                  key={related.id}
-                  href={`/agent/dossiers/${related.id}`}
-                  style={{
-                    display: "block",
-                    minWidth: 220,
-                    textDecoration: "none",
-                    background: "var(--selen-bg3)",
-                    border: "1px solid var(--selen-border)",
-                    borderRadius: "var(--radius-md)",
-                    padding: "12px 14px",
-                    color: "var(--selen-text)",
-                    opacity: related.status === "archived" ? 0.72 : 1,
-                  }}
-                >
-                  <div
+              {[...relatedActiveDossiers, ...relatedArchivedDossiers].map(
+                (related) => (
+                  <Link
+                    key={related.id}
+                    href={`/agent/dossiers/${related.id}`}
                     style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      marginBottom: 6,
+                      display: "block",
+                      minWidth: 220,
+                      textDecoration: "none",
+                      background: "var(--selen-bg3)",
+                      border: "1px solid var(--selen-border)",
+                      borderRadius: "var(--radius-md)",
+                      padding: "12px 14px",
+                      color: "var(--selen-text)",
+                      opacity: related.status === "archived" ? 0.72 : 1,
                     }}
                   >
-                    {related.title}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "var(--selen-text3)",
-                    }}
-                  >
-                    {getTypeLabel(related.type)} ·{" "}
-                    {getStatusLabel(related.status)}
-                  </div>
-                </Link>
-              ))}
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        marginBottom: 6,
+                      }}
+                    >
+                      {related.title}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "var(--selen-text3)",
+                      }}
+                    >
+                      {getTypeLabel(related.type)} ·{" "}
+                      {getStatusLabel(related.status)}
+                    </div>
+                  </Link>
+                ),
+              )}
             </div>
           </SelenCard>
         ) : null}
@@ -1346,167 +1610,84 @@ export default async function DossierPage({ params }: PageProps) {
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <SelenCard>
-              <SelenCardTitle>
-                {isNdaDossier ? "Documents attendus" : "Documents complémentaires"}
-              </SelenCardTitle>
+            {shouldShowNdaStep2Summary ? (
+              <NdaStep2StudioCard variables={ndaVariables} />
+            ) : null}
 
-              {isNdaDossier ? (
-                <>
-                  <NdaChecklist
-                    receivedKeys={receivedKeys}
-                    phase1InfoStatus={phase1InfoStatus}
-                  />
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fit, minmax(120px, 1fr))",
-                      gap: 8,
-                      margin: "12px 0",
-                    }}
-                  >
-                    {ndaDocumentSummaryItems.map((item) => (
-                      <div
-                        key={item.label}
-                        title={item.hint}
-                        style={{
-                          border: "1px solid var(--selen-border)",
-                          borderRadius: 8,
-                          background: "rgba(255, 248, 232, 0.55)",
-                          padding: "8px 10px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "var(--selen-text3)",
-                          }}
-                        >
-                          {item.label}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 18,
-                            fontWeight: 700,
-                            color: "var(--selen-text)",
-                          }}
-                        >
-                          {item.value}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p
-                  style={{
-                    fontSize: 13,
-                    color: "var(--selen-text3)",
-                    lineHeight: 1.5,
-                    margin: "0 0 10px",
-                  }}
-                >
-                  Les pièces NDA ne sont pas attendues pour ce type de dossier.
-                  Ajoutez ici seulement les documents utiles au suivi agent.
-                </p>
-              )}
+            <MaybeCollapsed
+              collapsed={shouldCondenseNdaHistory}
+              title="Historique — dépôt initial et documents"
+            >
+              <SelenCard>
+                <SelenCardTitle>
+                  {isNdaDossier
+                    ? "Documents attendus"
+                    : "Documents complémentaires"}
+                </SelenCardTitle>
 
-              {documentsData?.map((doc) => (
-                <form
-                  key={doc.id}
-                  action={updateDocumentType}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 0",
-                    borderBottom: "1px solid var(--selen-border)",
-                  }}
-                >
-                  <input type="hidden" name="doc_id" value={doc.id} />
-                  <input type="hidden" name="dossier_id" value={dossier.id} />
-
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12 }}>{doc.name}</div>
-                    {isNdaDossier ? (
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: "var(--selen-text3)",
-                          marginTop: 2,
-                        }}
-                      >
-                        {getDocumentWorkflowMeta(doc as DbDocumentRow)}
-                      </div>
-                    ) : null}
-                    {isNdaDossier && (doc as DbDocumentRow).notes ? (
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: "var(--selen-text3)",
-                          marginTop: 2,
-                        }}
-                      >
-                        Note agent : {(doc as DbDocumentRow).notes}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <select
-                    name="document_type"
-                    defaultValue={normalizeNdaDocumentType(doc.document_type)}
-                    style={{
-                      fontSize: 11,
-                      background: "var(--selen-bg3)",
-                      border: "1px solid var(--selen-border)",
-                      borderRadius: 6,
-                      padding: "4px 6px",
-                      color: "var(--selen-text)",
-                      fontFamily: "var(--font-body)",
-                    }}
-                  >
-                    <option value="document_libre">Libre</option>
-                    <option value="cv_formateur">CV formateur</option>
-                    <option value="programme_formation">Programme</option>
-                    <option value="avis_insee">Avis INSEE</option>
-                    <option value="diplomes_formateur_principal">Diplôme</option>
-                    <option value="kbis">KBis</option>
-                    <option value="casier_judiciaire_n3">Casier judiciaire</option>
-                    <option value="convention_signee">Convention signée</option>
-                  </select>
-
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 8 }}
-                  >
-                    <SubmitButton label="OK" pendingLabel="..." />
-                    {isNdaDossier ? (
-                      <DocumentReviewActions
-                        documentId={doc.id}
-                        currentStatus={inferNdaDocumentReviewStatus({
-                          reviewStatus: (doc as DbDocumentRow).review_status,
-                          status: (doc as DbDocumentRow).status,
-                          source: (doc as DbDocumentRow).source,
-                        })}
-                      />
-                    ) : null}
-                    <DeleteDocumentButton
-                      documentId={doc.id}
-                      documentName={doc.name}
+                {isNdaDossier ? (
+                  <>
+                    <NdaChecklist
+                      receivedKeys={receivedKeys}
+                      phase1InfoStatus={phase1InfoStatus}
                     />
-                  </div>
-                </form>
-              ))}
-            </SelenCard>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(120px, 1fr))",
+                        gap: 8,
+                        margin: "12px 0",
+                      }}
+                    >
+                      {ndaDocumentSummaryItems.map((item) => (
+                        <div
+                          key={item.label}
+                          title={item.hint}
+                          style={{
+                            border: "1px solid var(--selen-border)",
+                            borderRadius: 8,
+                            background: "rgba(255, 248, 232, 0.55)",
+                            padding: "8px 10px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: "var(--selen-text3)",
+                            }}
+                          >
+                            {item.label}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 18,
+                              fontWeight: 700,
+                              color: "var(--selen-text)",
+                            }}
+                          >
+                            {item.value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p
+                    style={{
+                      fontSize: 13,
+                      color: "var(--selen-text3)",
+                      lineHeight: 1.5,
+                      margin: "0 0 10px",
+                    }}
+                  >
+                    Les pièces NDA ne sont pas attendues pour ce type de
+                    dossier. Ajoutez ici seulement les documents utiles au suivi
+                    agent.
+                  </p>
+                )}
 
-            <SelenCard>
-              <SelenCardTitle>Documents client</SelenCardTitle>
-              <DocumentUpload
-                dossierId={dossier.id}
-                organisationId={organisation?.id}
-              />
-              {clientDocuments?.length ? (
-                clientDocuments.map((doc) => (
+                {documentsData?.map((doc) => (
                   <form
                     key={doc.id}
                     action={updateDocumentType}
@@ -1521,17 +1702,8 @@ export default async function DossierPage({ params }: PageProps) {
                     <input type="hidden" name="doc_id" value={doc.id} />
                     <input type="hidden" name="dossier_id" value={dossier.id} />
 
-                    <OpenDocumentButton docId={doc.id} />
-
                     <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "var(--selen-text)",
-                        }}
-                      >
-                        {doc.name}
-                      </div>
+                      <div style={{ fontSize: 12 }}>{doc.name}</div>
                       {isNdaDossier ? (
                         <div
                           style={{
@@ -1541,6 +1713,17 @@ export default async function DossierPage({ params }: PageProps) {
                           }}
                         >
                           {getDocumentWorkflowMeta(doc as DbDocumentRow)}
+                        </div>
+                      ) : null}
+                      {isNdaDossier && (doc as DbDocumentRow).notes ? (
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "var(--selen-text3)",
+                            marginTop: 2,
+                          }}
+                        >
+                          Note agent : {(doc as DbDocumentRow).notes}
                         </div>
                       ) : null}
                     </div>
@@ -1562,7 +1745,9 @@ export default async function DossierPage({ params }: PageProps) {
                       <option value="cv_formateur">CV formateur</option>
                       <option value="programme_formation">Programme</option>
                       <option value="avis_insee">Avis INSEE</option>
-                      <option value="diplomes_formateur_principal">Diplôme</option>
+                      <option value="diplomes_formateur_principal">
+                        Diplôme
+                      </option>
                       <option value="kbis">KBis</option>
                       <option value="casier_judiciaire_n3">
                         Casier judiciaire
@@ -1570,34 +1755,143 @@ export default async function DossierPage({ params }: PageProps) {
                       <option value="convention_signee">
                         Convention signée
                       </option>
-                      <option value="liste_formateurs_signee">
-                        Liste des formateurs signée
-                      </option>
                     </select>
 
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 8 }}
                     >
                       <SubmitButton label="OK" pendingLabel="..." />
+                      {isNdaDossier ? (
+                        <DocumentReviewActions
+                          documentId={doc.id}
+                          currentStatus={inferNdaDocumentReviewStatus({
+                            reviewStatus: (doc as DbDocumentRow).review_status,
+                            status: (doc as DbDocumentRow).status,
+                            source: (doc as DbDocumentRow).source,
+                          })}
+                        />
+                      ) : null}
                       <DeleteDocumentButton
                         documentId={doc.id}
                         documentName={doc.name}
                       />
                     </div>
                   </form>
-                ))
-              ) : (
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--selen-text3)",
-                    padding: "6px 2px 2px",
-                  }}
-                >
-                  Aucun document client pour le moment.
-                </div>
-              )}
-            </SelenCard>
+                ))}
+              </SelenCard>
+
+              <SelenCard>
+                <SelenCardTitle>Documents client</SelenCardTitle>
+                <DocumentUpload
+                  dossierId={dossier.id}
+                  organisationId={organisation?.id}
+                />
+                {clientDocuments?.length ? (
+                  clientDocuments.map((doc) => (
+                    <form
+                      key={doc.id}
+                      action={updateDocumentType}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "8px 0",
+                        borderBottom: "1px solid var(--selen-border)",
+                      }}
+                    >
+                      <input type="hidden" name="doc_id" value={doc.id} />
+                      <input
+                        type="hidden"
+                        name="dossier_id"
+                        value={dossier.id}
+                      />
+
+                      <OpenDocumentButton docId={doc.id} />
+
+                      <div style={{ flex: 1 }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "var(--selen-text)",
+                          }}
+                        >
+                          {doc.name}
+                        </div>
+                        {isNdaDossier ? (
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: "var(--selen-text3)",
+                              marginTop: 2,
+                            }}
+                          >
+                            {getDocumentWorkflowMeta(doc as DbDocumentRow)}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <select
+                        name="document_type"
+                        defaultValue={normalizeNdaDocumentType(
+                          doc.document_type,
+                        )}
+                        style={{
+                          fontSize: 11,
+                          background: "var(--selen-bg3)",
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: 6,
+                          padding: "4px 6px",
+                          color: "var(--selen-text)",
+                          fontFamily: "var(--font-body)",
+                        }}
+                      >
+                        <option value="document_libre">Libre</option>
+                        <option value="cv_formateur">CV formateur</option>
+                        <option value="programme_formation">Programme</option>
+                        <option value="avis_insee">Avis INSEE</option>
+                        <option value="diplomes_formateur_principal">
+                          Diplôme
+                        </option>
+                        <option value="kbis">KBis</option>
+                        <option value="casier_judiciaire_n3">
+                          Casier judiciaire
+                        </option>
+                        <option value="convention_signee">
+                          Convention signée
+                        </option>
+                        <option value="liste_formateurs_signee">
+                          Liste des formateurs signée
+                        </option>
+                      </select>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <SubmitButton label="OK" pendingLabel="..." />
+                        <DeleteDocumentButton
+                          documentId={doc.id}
+                          documentName={doc.name}
+                        />
+                      </div>
+                    </form>
+                  ))
+                ) : (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--selen-text3)",
+                      padding: "6px 2px 2px",
+                    }}
+                  >
+                    Aucun document client pour le moment.
+                  </div>
+                )}
+              </SelenCard>
+            </MaybeCollapsed>
 
             <SelenCard>
               <SelenCardTitle>Changer le statut</SelenCardTitle>
@@ -1647,35 +1941,40 @@ export default async function DossierPage({ params }: PageProps) {
               unreadCount={unreadCount}
             />
 
-            {dossier.type === "nda" ? (
-              <AnalyzeProgramButton
-                dossierId={dossier.id}
-                initialAnalysis={latestProgramAnalysis}
-              />
-            ) : null}
+            <MaybeCollapsed
+              collapsed={shouldCondenseNdaHistory}
+              title="Historique — analyse et validation du programme"
+            >
+              {dossier.type === "nda" ? (
+                <AnalyzeProgramButton
+                  dossierId={dossier.id}
+                  initialAnalysis={latestProgramAnalysis}
+                />
+              ) : null}
 
-            {latestClientDecision ? (
-              <SelenCard>
-                <SelenCardTitle>
-                  Retour du client sur le programme
-                </SelenCardTitle>
+              {latestClientDecision ? (
+                <SelenCard>
+                  <SelenCardTitle>
+                    Retour du client sur le programme
+                  </SelenCardTitle>
 
-                <div style={{ fontSize: 13, color: "var(--selen-text)" }}>
-                  <strong>Décision :</strong>{" "}
-                  {latestClientDecision.client_decision === "validated"
-                    ? "Programme validé"
-                    : "Programme refusé / à corriger"}
-                </div>
-              </SelenCard>
-            ) : null}
+                  <div style={{ fontSize: 13, color: "var(--selen-text)" }}>
+                    <strong>Décision :</strong>{" "}
+                    {latestClientDecision.client_decision === "validated"
+                      ? "Programme validé"
+                      : "Programme refusé / à corriger"}
+                  </div>
+                </SelenCard>
+              ) : null}
 
-            {dossier.type === "nda" ? (
-              <AgentProgramEditor
-                dossierId={dossier.id}
-                initialAnalysis={latestProgramAnalysis}
-                initialVersion={latestProgramVersion}
-              />
-            ) : null}
+              {dossier.type === "nda" ? (
+                <AgentProgramEditor
+                  dossierId={dossier.id}
+                  initialAnalysis={latestProgramAnalysis}
+                  initialVersion={latestProgramVersion}
+                />
+              ) : null}
+            </MaybeCollapsed>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
