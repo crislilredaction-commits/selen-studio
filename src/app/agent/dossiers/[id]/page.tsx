@@ -28,6 +28,11 @@ import AgentMessagingDrawer from "@/components/AgentMessagingDrawer";
 import AnalyzeProgramButton from "@/components/program/AnalyzeProgramButton";
 import AgentProgramEditor from "@/components/program/AgentProgramEditor";
 import { getVitrineClientUrl } from "@/lib/vitrineLinks";
+import { hasNdaProgramDocumentContent } from "@/lib/server/ndaProgramDocumentHtml";
+import {
+  syncNdaDossierStatus,
+  type NdaWorkflowStatusTone,
+} from "@/lib/server/ndaAgentWorkflow";
 import {
   inferNdaDocumentReviewStatus,
   inferNdaDocumentRole,
@@ -41,6 +46,10 @@ type PageProps = {
     id: string;
   }>;
 };
+
+type SelenBadgeVariant = NonNullable<
+  React.ComponentProps<typeof SelenBadge>["variant"]
+>;
 
 type OrganisationRow = {
   id?: string;
@@ -198,7 +207,9 @@ function getStatusLabel(status: string): string {
   return map[status] ?? status;
 }
 
-function getStatusBadgeVariant(status: string) {
+function getStatusBadgeVariant(
+  status: string,
+): SelenBadgeVariant {
   if (status === "compliant" || status === "generated") return "success";
   if (status === "waiting_client" || status === "to_complete") return "warn";
   if (status === "in_progress" || status === "collecting_documents")
@@ -321,6 +332,220 @@ function getDocumentWorkflowMeta(doc: DbDocumentRow) {
   return `${getDocumentRoleLabel(role)} · ${getDocumentReviewStatusLabel(
     reviewStatus,
   )} · ${visibility}`;
+}
+
+const NDA_AGENT_WORKFLOW_STEPS = [
+  { label: "Dépôt\ninitial" },
+  { label: "Analyse\nprogramme" },
+  { label: "Coordonnées\nclient" },
+  { label: "Documents\nà signer" },
+  { label: "Retours\nsignés" },
+  { label: "Contrôle\nfinal" },
+  { label: "Prêt\ndépôt NDA" },
+];
+
+const NDA_FINAL_REQUIRED_DOCUMENT_TYPES = [
+  "convention_signee",
+  "programme_formation_signe",
+  "diplomes_formateur_principal",
+  "casier_judiciaire_n3",
+  "statut_activite_formation_adulte",
+];
+
+const NDA_FINAL_OPTIONAL_DOCUMENT_TYPES = ["liste_formateurs_signee"];
+
+const NDA_FINAL_DOCUMENT_LABELS: Record<string, string> = {
+  convention_signee: "Convention de formation signée",
+  programme_formation_signe: "Programme de formation signé",
+  diplomes_formateur_principal:
+    "Copies des diplômes / attestations de formation",
+  casier_judiciaire_n3: "Casier judiciaire n°3",
+  statut_activite_formation_adulte:
+    "Justificatif / statut activité de formation adulte",
+  liste_formateurs_signee: "Liste des formateurs signée",
+};
+
+function getNdaFinalDocumentLabel(documentType: string) {
+  return NDA_FINAL_DOCUMENT_LABELS[documentType] ?? documentType;
+}
+
+function isNdaFinalReturnedDocument(doc: DbDocumentRow) {
+  const role = inferNdaDocumentRole({
+    documentRole: doc.document_role,
+    source: doc.source,
+  });
+  const documentType = normalizeNdaDocumentType(doc.document_type);
+
+  return (
+    role === "client_returned_document" &&
+    [
+      ...NDA_FINAL_REQUIRED_DOCUMENT_TYPES,
+      ...NDA_FINAL_OPTIONAL_DOCUMENT_TYPES,
+    ].includes(documentType)
+  );
+}
+
+function isNdaGeneratedSigningDocument(doc: DbDocumentRow) {
+  const documentType = normalizeNdaDocumentType(doc.document_type);
+
+  return (
+    doc.document_role === "client_to_complete" &&
+    doc.review_status === "pending_client" &&
+    doc.is_visible_to_client === true &&
+    doc.requires_client_action === true &&
+    ["programme_formation", "convention_formation"].includes(documentType)
+  );
+}
+
+function hasNdaRequiredVariables(variables: NdaVariablesRow | null) {
+  if (!variables) return false;
+
+  return Boolean(
+    variables.client_nom &&
+      variables.client_adresse &&
+      variables.client_representant_prenom &&
+      variables.client_representant_nom &&
+      (variables.stagiaire_prenom || variables.stagiaire_nom) &&
+      variables.stagiaire_fonction &&
+      variables.intitule_formation &&
+      variables.duree_formation &&
+      variables.modalite &&
+      variables.date_formation_prevue &&
+      variables.date_fin_formation &&
+      variables.lieu_formation &&
+      variables.tarif_formation &&
+      variables.lieu_signature_convention &&
+      variables.date_signature_convention,
+  );
+}
+
+function getNdaAgentWorkflowState(args: {
+  initialDepositComplete: boolean;
+  programReady: boolean;
+  variablesReady: boolean;
+  signingDocumentsGenerated: boolean;
+  finalReturnedDocuments: DbDocumentRow[];
+  missingFinalRequiredTypes: string[];
+}) {
+  const finalStatuses = args.finalReturnedDocuments.map((doc) =>
+    inferNdaDocumentReviewStatus({
+      reviewStatus: doc.review_status,
+      status: doc.status,
+      source: doc.source,
+    }),
+  );
+  const hasCorrections = finalStatuses.some(
+    (status) => status === "to_correct" || status === "rejected",
+  );
+  const allFinalReceived = args.missingFinalRequiredTypes.length === 0;
+  const allFinalValidated =
+    allFinalReceived &&
+    args.finalReturnedDocuments.length > 0 &&
+    finalStatuses.every((status) => status === "validated");
+
+  if (!args.initialDepositComplete) {
+    return {
+      currentStep: 0,
+      statusLabel: "Dépôt initial attendu",
+      actionLabel: "Le client doit déposer les pièces initiales.",
+      agentStatusDescription: "Le dossier attend encore le dépôt initial client.",
+      statusTone: "info" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "collecting_documents",
+    };
+  }
+
+  if (!args.programReady) {
+    return {
+      currentStep: 1,
+      statusLabel: "Programme à analyser",
+      actionLabel: "L'agent doit analyser ou préparer le programme.",
+      agentStatusDescription: "Le dossier est côté agent pour analyse du programme.",
+      statusTone: "status" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "under_review",
+    };
+  }
+
+  if (!args.variablesReady) {
+    return {
+      currentStep: 2,
+      statusLabel: "Coordonnées client attendues",
+      actionLabel: "Compléter les informations de génération NDA.",
+      agentStatusDescription:
+        "Les informations client et stagiaire nécessaires sont attendues.",
+      statusTone: "warn" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "waiting_client",
+    };
+  }
+
+  if (!args.signingDocumentsGenerated) {
+    return {
+      currentStep: 3,
+      statusLabel: "Documents à signer à générer",
+      actionLabel: "Générer le pack à signer pour le client.",
+      agentStatusDescription:
+        "Le contexte est prêt, le pack de documents doit être généré côté agent.",
+      statusTone: "status" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "under_review",
+    };
+  }
+
+  if (hasCorrections) {
+    return {
+      currentStep: 5,
+      statusLabel: "Corrections client attendues",
+      actionLabel: "Des pièces finales doivent être corrigées.",
+      agentStatusDescription:
+        "Au moins une pièce finale a été refusée ou marquée à corriger.",
+      statusTone: "danger" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "to_complete",
+    };
+  }
+
+  if (allFinalValidated) {
+    return {
+      currentStep: 6,
+      statusLabel: "Dossier prêt pour dépôt NDA",
+      actionLabel: "Toutes les pièces finales sont validées.",
+      agentStatusDescription:
+        "Toutes les pièces finales attendues sont reçues et validées.",
+      statusTone: "success" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "compliant",
+    };
+  }
+
+  if (allFinalReceived) {
+    return {
+      currentStep: 5,
+      statusLabel: "Contrôle final agent à réaliser",
+      actionLabel: "Vérifier les pièces finales retournées.",
+      agentStatusDescription:
+        "Toutes les pièces finales sont reçues et attendent le contrôle agent.",
+      statusTone: "status" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "under_review",
+    };
+  }
+
+  if (args.finalReturnedDocuments.length > 0) {
+    return {
+      currentStep: 4,
+      statusLabel: "Documents finaux partiellement reçus",
+      actionLabel: "Attendre les pièces manquantes ou relancer le client.",
+      agentStatusDescription:
+        "Une partie des pièces finales est reçue, mais le dossier reste incomplet.",
+      statusTone: "info" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "collecting_documents",
+    };
+  }
+
+  return {
+    currentStep: 4,
+    statusLabel: "En attente du retour signé client",
+    actionLabel: "Le client doit retourner les documents signés.",
+    agentStatusDescription:
+      "Les documents à signer sont disponibles côté client et attendent un retour.",
+    statusTone: "warn" satisfies NdaWorkflowStatusTone,
+    targetDossierStatus: "waiting_client",
+  };
 }
 
 function formatNdaValue(value?: string | number | null) {
@@ -1393,7 +1618,7 @@ export default async function DossierPage({ params }: PageProps) {
       inferNdaDocumentRole({
         documentRole: doc.document_role,
         source: doc.source,
-      }) === "generated_document",
+      }) === "generated_document" || isNdaGeneratedSigningDocument(doc),
   );
   const visibleClientDocuments = allNdaDocuments.filter(
     (doc) => doc.is_visible_to_client,
@@ -1407,6 +1632,79 @@ export default async function DossierPage({ params }: PageProps) {
 
     return reviewStatus === "not_reviewed" || reviewStatus === "to_correct";
   });
+  const finalReturnedDocuments = allNdaDocuments.filter(isNdaFinalReturnedDocument);
+  const finalReturnedKeys = Array.from(
+    new Set(
+      finalReturnedDocuments.map((doc) =>
+        normalizeNdaDocumentType(doc.document_type),
+      ),
+    ),
+  );
+  const missingFinalRequiredTypes = NDA_FINAL_REQUIRED_DOCUMENT_TYPES.filter(
+    (documentType) => !finalReturnedKeys.includes(documentType),
+  );
+  const finalReturnedByType = new Map(
+    finalReturnedDocuments.map((doc) => [
+      normalizeNdaDocumentType(doc.document_type),
+      doc,
+    ]),
+  );
+  const generatedSigningDocuments = allNdaDocuments.filter(
+    isNdaGeneratedSigningDocument,
+  );
+  const generatedSigningTypes = Array.from(
+    new Set(
+      generatedSigningDocuments.map((doc) =>
+        normalizeNdaDocumentType(doc.document_type),
+      ),
+    ),
+  );
+  const signingDocumentsGenerated =
+    generatedSigningTypes.includes("programme_formation") &&
+    generatedSigningTypes.includes("convention_formation");
+  const initialReceivedKeys = Array.from(
+    new Set(
+      initialClientDocuments.map((doc) =>
+        normalizeNdaDocumentType(doc.document_type),
+      ),
+    ),
+  );
+  const initialDepositComplete =
+    initialReceivedKeys.includes("cv_formateur") &&
+    initialReceivedKeys.includes("programme_formation") &&
+    (initialReceivedKeys.includes("avis_insee") ||
+      initialReceivedKeys.includes("kbis"));
+  const programReady = Boolean(
+    latestProgramVersion && hasNdaProgramDocumentContent(latestProgramVersion),
+  );
+  const variablesReady = hasNdaRequiredVariables(ndaVariables);
+  const ndaAgentWorkflowState = getNdaAgentWorkflowState({
+    initialDepositComplete,
+    programReady,
+    variablesReady,
+    signingDocumentsGenerated,
+    finalReturnedDocuments,
+    missingFinalRequiredTypes,
+  });
+  const syncedDossierStatus =
+    isNdaDossier && ndaAgentWorkflowState.targetDossierStatus
+      ? await syncNdaDossierStatus({
+          admin: getSupabaseAdminClient(),
+          dossierId: dossier.id,
+          currentStatus: dossier.status,
+          targetStatus: ndaAgentWorkflowState.targetDossierStatus,
+        }).catch((error) => {
+          console.error("NDA status sync failed:", error);
+          return { updated: false, status: dossier.status };
+        })
+      : { updated: false, status: dossier.status };
+  const displayDossierStatus = syncedDossierStatus.status ?? dossier.status;
+  const visibleDossierStatusLabel = isNdaDossier
+    ? ndaAgentWorkflowState.statusLabel
+    : getStatusLabel(displayDossierStatus);
+  const visibleDossierStatusVariant: SelenBadgeVariant = isNdaDossier
+    ? (ndaAgentWorkflowState.statusTone as SelenBadgeVariant)
+    : getStatusBadgeVariant(displayDossierStatus);
 
   const primaryAssignment =
     ((assignments ?? []) as AssignmentRow[]).find((a) => a.is_primary) ??
@@ -1447,7 +1745,7 @@ export default async function DossierPage({ params }: PageProps) {
     { label: "Clôturé" },
   ];
 
-  const currentStep = statusToStepIndex(dossier.status);
+  const currentStep = statusToStepIndex(displayDossierStatus);
   const preauditCurrentStep = preauditSession
     ? preauditIndicatorAnswerCount > 0
       ? 3
@@ -1472,12 +1770,16 @@ export default async function DossierPage({ params }: PageProps) {
     ? preauditTimelineSteps
     : isReviewDossier
       ? reviewTimelineSteps
-      : undefined;
+      : isNdaDossier
+        ? NDA_AGENT_WORKFLOW_STEPS
+        : undefined;
   const dossierCurrentStep = isPreauditDossier
     ? preauditCurrentStep
     : isReviewDossier
       ? reviewCurrentStep
-      : currentStep;
+      : isNdaDossier
+        ? ndaAgentWorkflowState.currentStep
+        : currentStep;
 
   const uniqueReceivedKeys = Array.from(new Set(receivedKeys));
   const docsReceived = NDA_REQUIRED_DOCUMENT_KEYS.filter((key) =>
@@ -1719,8 +2021,8 @@ export default async function DossierPage({ params }: PageProps) {
               {getTypeLabel(dossier.type)}
             </SelenBadge>
 
-            <SelenBadge variant={getStatusBadgeVariant(dossier.status)} dot>
-              {getStatusLabel(dossier.status)}
+            <SelenBadge variant={visibleDossierStatusVariant} dot>
+              {visibleDossierStatusLabel}
             </SelenBadge>
 
             {organisation?.name ? (
@@ -1790,6 +2092,49 @@ export default async function DossierPage({ params }: PageProps) {
           steps={dossierTimelineSteps}
         />
 
+        {isNdaDossier ? (
+          <div
+            style={{
+              background: "var(--selen-card)",
+              border: "1px solid var(--selen-border)",
+              borderRadius: "var(--radius-md)",
+              padding: "12px 16px",
+              marginTop: -10,
+              marginBottom: 20,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: "var(--selen-text)",
+                marginBottom: 4,
+              }}
+            >
+              {ndaAgentWorkflowState.statusLabel}
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--selen-text3)",
+                lineHeight: 1.5,
+              }}
+            >
+              {ndaAgentWorkflowState.agentStatusDescription}
+              <span
+                style={{
+                  display: "block",
+                  marginTop: 4,
+                  fontSize: 11,
+                  color: "var(--selen-text3)",
+                }}
+              >
+                Statut technique : {getStatusLabel(displayDossierStatus)}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         <div
           style={{
             display: "grid",
@@ -1804,6 +2149,169 @@ export default async function DossierPage({ params }: PageProps) {
                 dossierId={dossier.id}
                 initialValues={ndaVariablesInitialValues}
               />
+            ) : null}
+
+            {isNdaDossier ? (
+              <MaybeCollapsed
+                collapsed={finalReturnedDocuments.length === 0}
+                title="Documents finaux retournés par le client"
+              >
+                <SelenCard>
+                  <SelenCardTitle>
+                    Documents finaux retournés par le client
+                  </SelenCardTitle>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(150px, 1fr))",
+                      gap: 8,
+                      marginBottom: 12,
+                    }}
+                  >
+                    {[
+                      {
+                        label: "Reçus",
+                        value: finalReturnedDocuments.length,
+                      },
+                      {
+                        label: "Attendus V1",
+                        value: NDA_FINAL_REQUIRED_DOCUMENT_TYPES.length,
+                      },
+                      {
+                        label: "Manquants",
+                        value: missingFinalRequiredTypes.length,
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        style={{
+                          border: "1px solid var(--selen-border)",
+                          borderRadius: 8,
+                          background: "rgba(255, 248, 232, 0.55)",
+                          padding: "8px 10px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "var(--selen-text3)",
+                          }}
+                        >
+                          {item.label}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 700,
+                            color: "var(--selen-text)",
+                          }}
+                        >
+                          {item.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {missingFinalRequiredTypes.length > 0 ? (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--selen-text3)",
+                        lineHeight: 1.5,
+                        marginBottom: 12,
+                      }}
+                    >
+                      Pièces manquantes :{" "}
+                      {missingFinalRequiredTypes
+                        .map(getNdaFinalDocumentLabel)
+                        .join(", ")}
+                    </div>
+                  ) : null}
+
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {[
+                      ...NDA_FINAL_REQUIRED_DOCUMENT_TYPES,
+                      ...NDA_FINAL_OPTIONAL_DOCUMENT_TYPES,
+                    ].map((documentType) => {
+                      const doc = finalReturnedByType.get(documentType);
+                      const reviewStatus = doc
+                        ? inferNdaDocumentReviewStatus({
+                            reviewStatus: doc.review_status,
+                            status: doc.status,
+                            source: doc.source,
+                          })
+                        : null;
+
+                      return (
+                        <div
+                          key={documentType}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            border: "1px solid var(--selen-border)",
+                            borderRadius: "var(--radius-sm)",
+                            background: "var(--selen-bg3)",
+                            padding: "10px 12px",
+                          }}
+                        >
+                          {doc?.storage_path ? (
+                            <OpenDocumentButton docId={doc.id} />
+                          ) : (
+                            <span
+                              style={{
+                                minWidth: 58,
+                                fontSize: 11,
+                                color: "var(--selen-text3)",
+                              }}
+                            >
+                              -
+                            </span>
+                          )}
+
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontSize: 13,
+                                color: "var(--selen-text)",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {getNdaFinalDocumentLabel(documentType)}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: "var(--selen-text3)",
+                                marginTop: 2,
+                              }}
+                            >
+                              {doc
+                                ? `${doc.name} · ${
+                                    reviewStatus
+                                      ? getDocumentReviewStatusLabel(reviewStatus)
+                                      : "Reçu"
+                                  }`
+                                : documentType === "liste_formateurs_signee"
+                                  ? "Prévu plus tard"
+                                  : "Manquant"}
+                            </div>
+                          </div>
+
+                          {doc && reviewStatus ? (
+                            <DocumentReviewActions
+                              documentId={doc.id}
+                              currentStatus={reviewStatus}
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </SelenCard>
+              </MaybeCollapsed>
             ) : null}
 
             <MaybeCollapsed
@@ -1879,7 +2387,9 @@ export default async function DossierPage({ params }: PageProps) {
                   </p>
                 )}
 
-                {documentsData?.map((doc) => (
+                {documentsData
+                  ?.filter((doc) => !isNdaDossier || !isNdaFinalReturnedDocument(doc as DbDocumentRow))
+                  .map((doc) => (
                   <form
                     key={doc.id}
                     action={updateDocumentType}
@@ -1950,6 +2460,12 @@ export default async function DossierPage({ params }: PageProps) {
                       <option value="document_libre">Libre</option>
                       <option value="cv_formateur">CV formateur</option>
                       <option value="programme_formation">Programme</option>
+                      <option value="programme_formation_signe">
+                        Programme signé
+                      </option>
+                      <option value="convention_formation">
+                        Convention à signer
+                      </option>
                       <option value="avis_insee">Avis INSEE</option>
                       <option value="diplomes_formateur_principal">
                         Diplôme
@@ -1993,7 +2509,9 @@ export default async function DossierPage({ params }: PageProps) {
                   organisationId={organisation?.id}
                 />
                 {clientDocuments?.length ? (
-                  clientDocuments.map((doc) => (
+                  clientDocuments
+                    .filter((doc) => !isNdaDossier || !isNdaFinalReturnedDocument(doc as DbDocumentRow))
+                    .map((doc) => (
                     <form
                       key={doc.id}
                       action={updateDocumentType}
@@ -2066,6 +2584,12 @@ export default async function DossierPage({ params }: PageProps) {
                         <option value="document_libre">Libre</option>
                         <option value="cv_formateur">CV formateur</option>
                         <option value="programme_formation">Programme</option>
+                        <option value="programme_formation_signe">
+                          Programme signé
+                        </option>
+                        <option value="convention_formation">
+                          Convention à signer
+                        </option>
                         <option value="avis_insee">Avis INSEE</option>
                         <option value="diplomes_formateur_principal">
                           Diplôme
@@ -2117,7 +2641,7 @@ export default async function DossierPage({ params }: PageProps) {
                 <input type="hidden" name="dossier_id" value={dossier.id} />
                 <select
                   name="status"
-                  defaultValue={dossier.status}
+                  defaultValue={displayDossierStatus}
                   style={{
                     flex: 1,
                     background: "var(--selen-bg3)",

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { createClient as createSessionClient } from "@/lib/supabase/server";
+import {
+  getNdaAgentWorkflowState,
+  syncNdaDossierStatus,
+} from "@/lib/server/ndaAgentWorkflow";
+import { hasNdaProgramDocumentContent } from "@/lib/server/ndaProgramDocumentHtml";
 
 export const dynamic = "force-dynamic";
 
@@ -149,6 +154,64 @@ export async function POST(req: Request) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    try {
+      const { data: document } = await admin
+        .from("documents")
+        .select("dossier_id")
+        .eq("id", documentId)
+        .maybeSingle();
+
+      if (document?.dossier_id) {
+        const { data: dossier } = await admin
+          .from("dossiers")
+          .select("id, type, status")
+          .eq("id", document.dossier_id)
+          .maybeSingle();
+
+        if (dossier?.type === "nda") {
+          const [
+            { data: documents },
+            { data: variables },
+            { data: versions },
+          ] = await Promise.all([
+            admin
+              .from("documents")
+              .select(
+                "id, document_type, document_role, review_status, status, source, is_visible_to_client, requires_client_action",
+              )
+              .eq("dossier_id", dossier.id),
+            admin
+              .from("nda_variables")
+              .select("*")
+              .eq("dossier_id", dossier.id)
+              .maybeSingle(),
+            admin
+              .from("dossier_program_versions")
+              .select("*")
+              .eq("dossier_id", dossier.id)
+              .order("created_at", { ascending: false })
+              .limit(30),
+          ]);
+
+          const workflowState = getNdaAgentWorkflowState({
+            documents: documents ?? [],
+            variables: variables ?? null,
+            latestProgramVersion:
+              (versions ?? []).find(hasNdaProgramDocumentContent) ?? null,
+          });
+
+          await syncNdaDossierStatus({
+            admin,
+            dossierId: dossier.id,
+            currentStatus: dossier.status,
+            targetStatus: workflowState.targetDossierStatus,
+          });
+        }
+      }
+    } catch (syncError) {
+      console.error("NDA status sync after document review failed:", syncError);
     }
 
     return NextResponse.json({ success: true });

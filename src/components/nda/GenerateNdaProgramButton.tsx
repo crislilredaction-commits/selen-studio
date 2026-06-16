@@ -4,10 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import SelenButton from "@/components/ui/SelenButton";
 
-type GenerateProgramResponse = {
+type GenerateSigningDocumentsResponse = {
   ok?: boolean;
-  documentId?: string;
-  storagePath?: string;
+  documents?: Array<{
+    id: string;
+    name: string;
+    document_type: string;
+  }>;
   error?: string;
   message?: string;
   missingRequiredFields?: string[];
@@ -23,6 +26,7 @@ function formatMissingField(field: string) {
   const labels: Record<string, string> = {
     latestProgramVersion: "programme validé",
     organisation_id: "organisation",
+    organisme_adresse: "adresse de l’organisme",
     client_nom: "nom du client professionnel",
     client_adresse: "adresse du client professionnel",
     client_representant_prenom: "prénom du représentant client",
@@ -60,17 +64,20 @@ export default function GenerateNdaProgramButton({ dossierId }: Props) {
       setError(null);
       setMissingFields([]);
 
-      const response = await fetch("/agent/api/nda/generate-program", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        "/agent/api/nda/generate-signing-documents",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ dossierId }),
         },
-        body: JSON.stringify({ dossierId }),
-      });
+      );
 
       const data = (await response
         .json()
-        .catch(() => null)) as GenerateProgramResponse | null;
+        .catch(() => null)) as GenerateSigningDocumentsResponse | null;
 
       if (!response.ok) {
         if (data?.error === "missing_generation_context") {
@@ -82,21 +89,16 @@ export default function GenerateNdaProgramButton({ dossierId }: Props) {
         }
 
         if (data?.error === "missing_program_content") {
-          console.info("Génération programme NDA refusée :", data);
           setError(
-            "Le programme validé ne contient pas encore de déroulé pédagogique exploitable. Vérifiez que les modules sont bien enregistrés avant de générer le document.",
+            "Le programme validé ne contient pas encore de déroulé pédagogique exploitable. Vérifiez que les modules sont bien enregistrés avant de générer les documents.",
           );
           return;
         }
 
         if (data?.error === "duration_mismatch") {
-          console.info(
-            "Génération programme NDA refusée : incohérence de durée",
-            data,
-          );
           setError(
             data.message ??
-              "La durée totale déclarée ne correspond pas à la durée totale des modules. Corrigez la durée ou les modules avant de générer le programme.",
+              "La durée totale déclarée ne correspond pas à la durée totale des modules. Corrigez la durée ou les modules avant de générer les documents.",
           );
           return;
         }
@@ -104,23 +106,28 @@ export default function GenerateNdaProgramButton({ dossierId }: Props) {
         setError(
           data?.message ??
             data?.error ??
-            "Impossible de générer le programme pour le moment.",
+            "Impossible de générer les documents pour le moment.",
         );
         return;
       }
 
       if (!data?.ok) {
-        setError("Impossible de générer le programme pour le moment.");
+        setError("Impossible de générer les documents pour le moment.");
         return;
       }
 
+      const count = data.documents?.length ?? 0;
+
       setSuccess(
-        "Programme final généré. La liste des documents se met à jour.",
+        count > 1
+          ? `${count} documents générés. La liste des documents se met à jour.`
+          : "Document généré. La liste des documents se met à jour.",
       );
+
       router.refresh();
     } catch (err) {
       console.error(err);
-      setError("Impossible de générer le programme pour le moment.");
+      setError("Impossible de générer les documents pour le moment.");
     } finally {
       setLoading(false);
     }
@@ -145,8 +152,8 @@ export default function GenerateNdaProgramButton({ dossierId }: Props) {
         }}
       >
         {loading
-          ? "Génération du programme..."
-          : "Générer le programme final à signer"}
+          ? "Génération des documents..."
+          : "Générer les documents à signer"}
       </SelenButton>
 
       {success ? (

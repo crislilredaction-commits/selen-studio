@@ -1,6 +1,8 @@
 export const NDA_DOCUMENT_TYPE_OPTIONS = [
   { value: "cv_formateur", label: "CV du formateur" },
   { value: "programme_formation", label: "Programme de formation" },
+  { value: "programme_formation_signe", label: "Programme de formation signé" },
+  { value: "convention_formation", label: "Convention de formation" },
   { value: "avis_insee", label: "Avis INSEE" },
   {
     value: "diplomes_formateur_principal",
@@ -62,6 +64,8 @@ const NDA_DOCUMENT_TYPE_ALIASES: Record<string, NdaDocumentType> = {
   diplome_formateur: "diplomes_formateur_principal",
   casier_judiciaire: "casier_judiciaire_n3",
   programme: "programme_formation",
+  programme_signe: "programme_formation_signe",
+  programme_formation_signee: "programme_formation_signe",
   programme_client: "programme_formation",
   programme_client_corrige: "programme_formation",
   programme_reformule: "programme_formation",
