@@ -63,6 +63,8 @@ const NDA_DOCUMENT_TYPE_ALIASES: Record<string, NdaDocumentType> = {
   casier_judiciaire: "casier_judiciaire_n3",
   programme: "programme_formation",
   programme_client: "programme_formation",
+  programme_client_corrige: "programme_formation",
+  programme_reformule: "programme_formation",
 };
 
 export function normalizeNdaDocumentType(

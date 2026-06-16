@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { FileText } from "lucide-react";
 import AgentSidebarMessaging from "@/components/layout/AgentSidebarMessaging";
 
 const links = [
@@ -120,6 +121,11 @@ const links = [
         />
       </svg>
     ),
+  },
+  {
+    href: "/agent/articles",
+    label: "Articles",
+    icon: <FileText size={16} strokeWidth={1.5} />,
   },
   {
     href: "/agent/profil",

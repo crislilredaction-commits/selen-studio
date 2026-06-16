@@ -33,6 +33,8 @@ type DocumentRow = {
   created_at: string;
   dossier_id?: string | null;
   organisation_id?: string | null;
+  document_role?: string | null;
+  review_status?: string | null;
 };
 
 function buildPrompt(args: {
@@ -149,6 +151,77 @@ function pickPreferredDoc(
   return globalDocs[0];
 }
 
+function getNormalizedDocType(doc: DocumentRow) {
+  return normalizeNdaDocumentType(doc.document_type);
+}
+
+function getRawDocType(doc: DocumentRow) {
+  return doc.document_type?.trim().toLowerCase() ?? "";
+}
+
+function isProgramDoc(doc: DocumentRow) {
+  const normalizedType = getNormalizedDocType(doc);
+  const rawType = getRawDocType(doc);
+
+  return (
+    normalizedType === "programme_formation" ||
+    rawType === "programme" ||
+    rawType === "programme_client" ||
+    rawType === "programme_client_corrige" ||
+    rawType === "programme_reformule"
+  );
+}
+
+function isClientReturnedProgramDoc(doc: DocumentRow) {
+  const rawType = getRawDocType(doc);
+
+  if (rawType === "programme_client_corrige") return true;
+
+  if (
+    (doc.document_role === "client_returned_document" ||
+      doc.document_role === "corrected_after_refusal") &&
+    isProgramDoc(doc)
+  ) {
+    return true;
+  }
+
+  if (
+    doc.source === "client_upload" &&
+    doc.review_status === "received" &&
+    isProgramDoc(doc)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function pickPreferredProgramDoc(allDocs: DocumentRow[], dossierId: string) {
+  const docsForDossier = sortNewestFirst(
+    allDocs.filter((doc) => doc.dossier_id === dossierId && isProgramDoc(doc)),
+  );
+
+  const clientReturnedProgram = docsForDossier.find(isClientReturnedProgramDoc);
+
+  if (clientReturnedProgram) {
+    return clientReturnedProgram;
+  }
+
+  const initialProgram = docsForDossier.find(
+    (doc) => getNormalizedDocType(doc) === "programme_formation",
+  );
+
+  if (initialProgram) {
+    return initialProgram;
+  }
+
+  return pickPreferredDoc(
+    allDocs,
+    ["programme_formation", "programme", "programme_client"],
+    dossierId,
+  );
+}
+
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -224,7 +297,7 @@ export async function POST(req: Request) {
     const { data: documents, error: docsError } = await supabase
       .from("documents")
       .select(
-        "id, name, document_type, extracted_text, storage_path, status, source, created_at, dossier_id, organisation_id",
+        "id, name, document_type, extracted_text, storage_path, status, source, created_at, dossier_id, organisation_id, document_role, review_status",
       )
       .or(
         `dossier_id.eq.${dossierId},and(organisation_id.eq.${dossier.organisation_id},dossier_id.is.null)`,
@@ -237,11 +310,7 @@ export async function POST(req: Request) {
 
     const docs = (documents ?? []) as DocumentRow[];
 
-    const selectedProgramDoc = pickPreferredDoc(
-      docs,
-      ["programme_formation", "programme", "programme_client"],
-      dossierId,
-    );
+    const selectedProgramDoc = pickPreferredProgramDoc(docs, dossierId);
 
     const selectedCvDoc = pickPreferredDoc(
       docs,
@@ -450,6 +519,8 @@ export async function POST(req: Request) {
       analysis: savedAnalysis,
       debug: {
         selectedProgramDocName: selectedProgramDoc?.name ?? null,
+        selectedProgramDocType: selectedProgramDoc?.document_type ?? null,
+        selectedProgramDocRole: selectedProgramDoc?.document_role ?? null,
         selectedCvDocName: selectedCvDoc?.name ?? null,
         programTextLength: programText.length,
         cvTextLength: cvText.length,
