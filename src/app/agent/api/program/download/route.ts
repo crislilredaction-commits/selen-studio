@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { buildNdaProgramDocumentHtml } from "@/lib/server/ndaProgramDocumentHtml";
 
 function getAdminSupabase() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -22,15 +23,6 @@ function getAdminSupabase() {
   );
 }
 
-function escapeHtml(input: string) {
-  return input
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
 export async function GET(req: Request) {
   try {
     const supabase = getAdminSupabase();
@@ -46,125 +38,65 @@ export async function GET(req: Request) {
       );
     }
 
-    const { data: version, error } = await supabase
+    const { data: version, error: versionError } = await supabase
       .from("dossier_program_versions")
       .select("*")
       .eq("id", programVersionId)
       .eq("dossier_id", dossierId)
       .maybeSingle();
 
-    if (error || !version) {
+    if (versionError || !version) {
       return NextResponse.json(
         { error: "Programme introuvable." },
         { status: 404 },
       );
     }
 
-    const modules = Array.isArray(version.modules) ? version.modules : [];
-    const vigilancePoints = Array.isArray(version.vigilance_points)
-      ? version.vigilance_points
-      : [];
+    const [{ data: dossier, error: dossierError }, { data: variables }] =
+      await Promise.all([
+        supabase
+          .from("dossiers")
+          .select(
+            `
+            id,
+            organisations:organisation_id (
+              name,
+              address,
+              email,
+              phone,
+              siret,
+              nda_number
+            )
+          `,
+          )
+          .eq("id", dossierId)
+          .maybeSingle(),
+        supabase
+          .from("nda_variables")
+          .select(
+            "formateur_nom, formateur_prenom, duree_formation, modalite, lieu_formation, date_formation_prevue, stagiaire_prenom, stagiaire_nom, intitule_formation",
+          )
+          .eq("dossier_id", dossierId)
+          .maybeSingle(),
+      ]);
 
-    const modulesHtml = modules
-      .map((module: any, index: number) => {
-        const chaptersHtml = Array.isArray(module.chapters)
-          ? module.chapters
-              .map(
-                (chapter: any) => `<li>${escapeHtml(chapter.title ?? "")}</li>`,
-              )
-              .join("")
-          : "";
+    if (dossierError) {
+      return NextResponse.json(
+        { error: "Impossible de charger l'organisme du dossier." },
+        { status: 500 },
+      );
+    }
 
-        return `
-          <h2>Module ${index + 1} — ${escapeHtml(module.title ?? "")}</h2>
-          <p><strong>Durée :</strong> ${escapeHtml(module.duration ?? "")}</p>
-          <p><strong>Objectif :</strong> ${escapeHtml(module.objective ?? "")}</p>
-          ${
-            chaptersHtml
-              ? `<p><strong>Chapitres :</strong></p><ul>${chaptersHtml}</ul>`
-              : ""
-          }
-        `;
-      })
-      .join("");
+    const organisation = Array.isArray(dossier?.organisations)
+      ? dossier.organisations[0]
+      : dossier?.organisations;
 
-    const vigilanceHtml = vigilancePoints.length
-      ? `<h2>Points de vigilance</h2><ul>${vigilancePoints
-          .map((point: string) => `<li>${escapeHtml(point)}</li>`)
-          .join("")}</ul>`
-      : "";
-
-    const agentCommentHtml = version.agent_comment
-      ? `
-        <h2>Commentaire du conseiller</h2>
-        <p>${escapeHtml(version.agent_comment)}</p>
-      `
-      : "";
-
-    const html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office"
-            xmlns:w="urn:schemas-microsoft-com:office:word"
-            xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-          <meta charset="utf-8" />
-          <title>${escapeHtml(version.title ?? "Programme")}</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              color: #222;
-              line-height: 1.5;
-              margin: 40px;
-            }
-            h1 {
-              font-size: 22px;
-              margin-bottom: 16px;
-            }
-            h2 {
-              font-size: 16px;
-              margin-top: 22px;
-              margin-bottom: 8px;
-            }
-            p {
-              margin: 6px 0;
-            }
-            ul {
-              margin: 8px 0 8px 18px;
-            }
-          </style>
-        </head>
-        <body>
-          <h1>${escapeHtml(version.title ?? "Programme de formation")}</h1>
-
-          ${
-            version.target_audience
-              ? `<p><strong>Public visé :</strong> ${escapeHtml(version.target_audience)}</p>`
-              : ""
-          }
-
-          ${
-            version.overall_objective
-              ? `<p><strong>Objectif global :</strong> ${escapeHtml(version.overall_objective)}</p>`
-              : ""
-          }
-
-          ${
-            version.recommended_positioning
-              ? `<p><strong>Positionnement recommandé :</strong> ${escapeHtml(version.recommended_positioning)}</p>`
-              : ""
-          }
-
-          ${
-            version.justification
-              ? `<p><strong>Justification :</strong> ${escapeHtml(version.justification)}</p>`
-              : ""
-          }
-
-          ${modulesHtml}
-          ${vigilanceHtml}
-          ${agentCommentHtml}
-        </body>
-      </html>
-    `;
+    const html = buildNdaProgramDocumentHtml({
+      kind: "proposal",
+      version,
+      organisation: organisation ?? null,
+      variables: variables ?? null,
+    });
 
     return new NextResponse(html, {
       status: 200,
