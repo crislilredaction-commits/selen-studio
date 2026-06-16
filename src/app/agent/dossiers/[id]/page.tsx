@@ -150,9 +150,16 @@ type NdaVariablesRow = {
   stagiaire_adresse?: string | null;
   stagiaire_email?: string | null;
   stagiaire_telephone?: string | null;
+  stagiaire_fonction?: string | null;
+  client_nom?: string | null;
+  client_adresse?: string | null;
+  client_representant_prenom?: string | null;
+  client_representant_nom?: string | null;
   client_siret?: string | null;
   date_formation_prevue?: string | null;
   lieu_formation?: string | null;
+  lieu_signature_convention?: string | null;
+  date_signature_convention?: string | null;
 };
 
 function getTypeLabel(type: string): string {
@@ -437,6 +444,103 @@ function NdaStep2StudioCard({
     },
   ];
 
+  const sections = [
+    {
+      title: "Client professionnel",
+      fields: [
+        { label: "Nom client", value: formatNdaValue(variables?.client_nom) },
+        { label: "SIRET client", value: formatNdaValue(variables?.client_siret) },
+        {
+          label: "Adresse client",
+          value: formatNdaValue(variables?.client_adresse),
+        },
+        {
+          label: "Representant client",
+          value: formatNdaPerson(
+            variables?.client_representant_prenom,
+            variables?.client_representant_nom,
+          ),
+        },
+      ],
+    },
+    {
+      title: "Stagiaire",
+      fields: [
+        {
+          label: "Stagiaire",
+          value: formatNdaPerson(
+            variables?.stagiaire_prenom,
+            variables?.stagiaire_nom,
+          ),
+        },
+        {
+          label: "Fonction",
+          value: formatNdaValue(variables?.stagiaire_fonction),
+        },
+        {
+          label: "Adresse stagiaire",
+          value: formatNdaValue(variables?.stagiaire_adresse),
+        },
+        {
+          label: "Email stagiaire",
+          value: formatNdaValue(variables?.stagiaire_email),
+        },
+        {
+          label: "Telephone stagiaire",
+          value: formatNdaValue(variables?.stagiaire_telephone),
+        },
+      ],
+    },
+    {
+      title: "Action",
+      fields: [
+        {
+          label: "Formation validee",
+          value: formatNdaValue(variables?.intitule_formation),
+        },
+        { label: "Duree", value: formatNdaValue(variables?.duree_formation) },
+        { label: "Modalite", value: formatNdaValue(variables?.modalite) },
+        {
+          label: "Date de debut",
+          value: formatNdaDate(variables?.date_formation_prevue),
+        },
+        {
+          label: "Lieu / lien",
+          value: formatNdaValue(variables?.lieu_formation),
+        },
+        {
+          label: "Tarif TTC",
+          value: formatNdaValue(variables?.tarif_formation),
+        },
+      ],
+    },
+    {
+      title: "Convention",
+      fields: [
+        {
+          label: "Lieu de signature",
+          value: formatNdaValue(variables?.lieu_signature_convention),
+        },
+        {
+          label: "Date de signature",
+          value: formatNdaDate(variables?.date_signature_convention),
+        },
+      ],
+    },
+  ];
+
+  const isConventionContextIncomplete =
+    !variables?.client_nom ||
+    !variables?.client_adresse ||
+    !variables?.client_representant_prenom ||
+    !variables?.client_representant_nom ||
+    !variables?.client_siret ||
+    !variables?.stagiaire_fonction ||
+    !variables?.date_formation_prevue ||
+    !variables?.lieu_formation ||
+    !variables?.lieu_signature_convention ||
+    !variables?.date_signature_convention;
+
   return (
     <SelenCard>
       <SelenCardTitle>
@@ -455,6 +559,68 @@ function NdaStep2StudioCard({
         informations utiles pour préparer la suite du dossier NDA.
       </p>
 
+      <div style={{ display: "grid", gap: 16 }}>
+        {sections.map((section) => (
+          <section key={section.title}>
+            <h3
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: 13,
+                color: "var(--selen-gold2)",
+                marginBottom: 10,
+              }}
+            >
+              {section.title}
+            </h3>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                gap: 10,
+              }}
+            >
+              {section.fields.map((field) => (
+                <div
+                  key={`${section.title}-${field.label}`}
+                  style={{
+                    border: "1px solid var(--selen-border)",
+                    borderRadius: "var(--radius-sm)",
+                    background: "var(--selen-bg3)",
+                    padding: "10px 12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 9,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      color: "var(--selen-text3)",
+                      marginBottom: 5,
+                    }}
+                  >
+                    {field.label}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color:
+                        field.value === "â€”"
+                          ? "var(--selen-text3)"
+                          : "var(--selen-text)",
+                      fontWeight: field.value === "â€”" ? 400 : 600,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {field.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+
       <div
         style={{
           display: "grid",
@@ -462,7 +628,7 @@ function NdaStep2StudioCard({
           gap: 10,
         }}
       >
-        {fields.map((field) => (
+        {false && fields.map((field) => (
           <div
             key={field.label}
             style={{
@@ -500,9 +666,7 @@ function NdaStep2StudioCard({
         ))}
       </div>
 
-      {!variables?.client_siret ||
-      !variables?.date_formation_prevue ||
-      !variables?.lieu_formation ? (
+      {isConventionContextIncomplete ? (
         <p
           style={{
             fontSize: 12,
@@ -511,8 +675,8 @@ function NdaStep2StudioCard({
             lineHeight: 1.5,
           }}
         >
-          Certains éléments de l’action prévue sont encore incomplets. Ils
-          devront être vérifiés avant la génération des documents NDA.
+          Certaines informations necessaires a la generation de la convention
+          sont manquantes.
         </p>
       ) : null}
     </SelenCard>
@@ -1134,9 +1298,16 @@ export default async function DossierPage({ params }: PageProps) {
     ndaVariables?.stagiaire_adresse ||
     ndaVariables?.stagiaire_email ||
     ndaVariables?.stagiaire_telephone ||
+    ndaVariables?.stagiaire_fonction ||
+    ndaVariables?.client_nom ||
+    ndaVariables?.client_adresse ||
+    ndaVariables?.client_representant_prenom ||
+    ndaVariables?.client_representant_nom ||
     ndaVariables?.client_siret ||
     ndaVariables?.date_formation_prevue ||
-    ndaVariables?.lieu_formation,
+    ndaVariables?.lieu_formation ||
+    ndaVariables?.lieu_signature_convention ||
+    ndaVariables?.date_signature_convention,
   );
 
   const shouldShowNdaStep2Summary = isNdaProgramValidated && hasNdaStep2Info;
