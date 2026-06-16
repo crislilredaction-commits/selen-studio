@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
+import { getOrExtractDocumentText } from "@/lib/server/documentTextExtraction";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -35,6 +36,12 @@ type DocumentRow = {
   organisation_id?: string | null;
   document_role?: string | null;
   review_status?: string | null;
+};
+
+type PreviousProgramAnalysisRow = {
+  source_cv_text: string | null;
+  source_program_text: string | null;
+  created_at: string;
 };
 
 function buildPrompt(args: {
@@ -162,13 +169,15 @@ function getRawDocType(doc: DocumentRow) {
 function isProgramDoc(doc: DocumentRow) {
   const normalizedType = getNormalizedDocType(doc);
   const rawType = getRawDocType(doc);
+  const storagePath = doc.storage_path?.toLowerCase() ?? "";
 
   return (
     normalizedType === "programme_formation" ||
     rawType === "programme" ||
     rawType === "programme_client" ||
     rawType === "programme_client_corrige" ||
-    rawType === "programme_reformule"
+    rawType === "programme_reformule" ||
+    storagePath.includes("program-versions")
   );
 }
 
@@ -187,7 +196,7 @@ function isClientReturnedProgramDoc(doc: DocumentRow) {
 
   if (
     doc.source === "client_upload" &&
-    doc.review_status === "received" &&
+    (doc.review_status === "received" || doc.review_status === "validated") &&
     isProgramDoc(doc)
   ) {
     return true;
@@ -196,10 +205,24 @@ function isClientReturnedProgramDoc(doc: DocumentRow) {
   return false;
 }
 
-function pickPreferredProgramDoc(allDocs: DocumentRow[], dossierId: string) {
-  const docsForDossier = sortNewestFirst(
+function getProgramCandidates(allDocs: DocumentRow[], dossierId: string) {
+  return sortNewestFirst(
     allDocs.filter((doc) => doc.dossier_id === dossierId && isProgramDoc(doc)),
   );
+}
+
+function getCvCandidates(allDocs: DocumentRow[], dossierId: string) {
+  return sortNewestFirst(
+    allDocs.filter(
+      (doc) =>
+        doc.dossier_id === dossierId &&
+        ["cv_formateur", "cv"].includes(normalizeNdaDocumentType(doc.document_type)),
+    ),
+  );
+}
+
+function pickPreferredProgramDoc(allDocs: DocumentRow[], dossierId: string) {
+  const docsForDossier = getProgramCandidates(allDocs, dossierId);
 
   const clientReturnedProgram = docsForDossier.find(isClientReturnedProgramDoc);
 
@@ -220,6 +243,26 @@ function pickPreferredProgramDoc(allDocs: DocumentRow[], dossierId: string) {
     ["programme_formation", "programme", "programme_client"],
     dossierId,
   );
+}
+
+function getNdaVariablesFallbackText(ndaVariables: NdaVariablesRow | null) {
+  if (!ndaVariables) return "";
+
+  const lines = [
+    ndaVariables.formateur_prenom || ndaVariables.formateur_nom
+      ? `Formateur: ${[ndaVariables.formateur_prenom, ndaVariables.formateur_nom]
+          .filter(Boolean)
+          .join(" ")}`
+      : "",
+    ndaVariables.formateur_email ? `Email: ${ndaVariables.formateur_email}` : "",
+    ndaVariables.intitule_formation
+      ? `Formation: ${ndaVariables.intitule_formation}`
+      : "",
+    ndaVariables.duree_formation ? `Duree: ${ndaVariables.duree_formation}` : "",
+    ndaVariables.modalite ? `Modalite: ${ndaVariables.modalite}` : "",
+  ].filter(Boolean);
+
+  return lines.join("\n");
 }
 
 export async function POST(req: Request) {
@@ -281,7 +324,6 @@ export async function POST(req: Request) {
 
     const { createClient: createServiceClient } =
       await import("@supabase/supabase-js");
-    const { extractTextFromBuffer } = await import("@/lib/documentText");
 
     const serviceSupabase = createServiceClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -309,6 +351,31 @@ export async function POST(req: Request) {
     }
 
     const docs = (documents ?? []) as DocumentRow[];
+    const cvCandidates = getCvCandidates(docs, dossierId);
+    const programCandidates = getProgramCandidates(docs, dossierId);
+
+    const { data: previousAnalyses, error: previousAnalysesError } =
+      await supabase
+        .from("program_ai_analyses")
+        .select("source_cv_text, source_program_text, created_at")
+        .eq("dossier_id", dossierId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+    if (previousAnalysesError) {
+      return NextResponse.json(
+        { error: previousAnalysesError.message },
+        { status: 500 },
+      );
+    }
+
+    const previousAnalysis = (
+      (previousAnalyses ?? []) as PreviousProgramAnalysisRow[]
+    ).find(
+      (analysis) =>
+        (analysis.source_cv_text?.trim().length ?? 0) > 20 ||
+        (analysis.source_program_text?.trim().length ?? 0) > 20,
+    );
 
     const selectedProgramDoc = pickPreferredProgramDoc(docs, dossierId);
 
@@ -318,66 +385,109 @@ export async function POST(req: Request) {
       dossierId,
     );
 
-    async function resolveDocText(doc: DocumentRow | undefined) {
-      if (!doc) return "";
+    const [programTextResult, cvTextResult] = await Promise.all([
+      getOrExtractDocumentText(serviceSupabase, selectedProgramDoc),
+      getOrExtractDocumentText(serviceSupabase, selectedCvDoc),
+    ]);
+    let programText = programTextResult.text;
+    let cvText = cvTextResult.text;
+    let programTextSource: string = programTextResult.source;
+    let cvTextSource: string = cvTextResult.source;
+    let programTextError = programTextResult.error;
+    let cvTextError = cvTextResult.error;
 
-      if (doc.extracted_text?.trim()) {
-        return doc.extracted_text.trim();
-      }
+    if (!programText.trim() && previousAnalysis?.source_program_text?.trim()) {
+      programText = previousAnalysis.source_program_text.trim();
+      programTextSource = "previous_analysis";
+      programTextError = null;
 
-      if (!doc.storage_path) {
-        return "";
-      }
-
-      const { data, error } = await serviceSupabase.storage
-        .from("documents")
-        .download(doc.storage_path);
-
-      if (error || !data) {
-        console.error("download error", {
-          docId: doc.id,
-          name: doc.name,
-          storagePath: doc.storage_path,
-          error: error?.message ?? null,
-        });
-        return "";
-      }
-
-      try {
-        const arrayBuffer = await data.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        const extracted = await extractTextFromBuffer(
-          buffer,
-          doc.name ?? "document",
-        );
-
-        if (extracted?.trim()) {
-          await supabase
-            .from("documents")
-            .update({ extracted_text: extracted })
-            .eq("id", doc.id);
-        }
-
-        return extracted?.trim() ?? "";
-      } catch (error) {
-        console.error("extractTextFromBuffer error", {
-          docId: doc.id,
-          name: doc.name,
-          error: error instanceof Error ? error.message : "Erreur inconnue",
-        });
-        return "";
+      if (selectedProgramDoc) {
+        await serviceSupabase
+          .from("documents")
+          .update({ extracted_text: programText })
+          .eq("id", selectedProgramDoc.id);
       }
     }
 
-    const [programText, cvText] = await Promise.all([
-      resolveDocText(selectedProgramDoc),
-      resolveDocText(selectedCvDoc),
-    ]);
+    if (!cvText.trim() && previousAnalysis?.source_cv_text?.trim()) {
+      cvText = previousAnalysis.source_cv_text.trim();
+      cvTextSource = "previous_analysis";
+      cvTextError = null;
+
+      if (selectedCvDoc) {
+        await serviceSupabase
+          .from("documents")
+          .update({ extracted_text: cvText })
+          .eq("id", selectedCvDoc.id);
+      }
+    }
+
+    if (!cvText.trim()) {
+      const ndaVariablesFallbackText = getNdaVariablesFallbackText(
+        (ndaVariables as NdaVariablesRow | null) ?? null,
+      );
+
+      if (ndaVariablesFallbackText.trim().length > 20) {
+        cvText = ndaVariablesFallbackText;
+        cvTextSource = "nda_variables";
+        cvTextError = null;
+      }
+    }
 
     console.log("PROGRAM DOC SELECTED:", selectedProgramDoc?.name ?? null);
     console.log("CV DOC SELECTED:", selectedCvDoc?.name ?? null);
     console.log("PROGRAM TEXT LENGTH:", programText.length);
     console.log("CV TEXT LENGTH:", cvText.length);
+
+    if (!selectedProgramDoc || !programText.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "Le programme sélectionné existe, mais aucun texte n’a pu être extrait. Merci de réimporter un fichier Word/PDF lisible ou de corriger le format du document.",
+          debug: {
+            cvCandidatesCount: cvCandidates.length,
+            programCandidatesCount: programCandidates.length,
+            selectedProgramDocName: selectedProgramDoc?.name ?? null,
+            selectedProgramDocType: selectedProgramDoc?.document_type ?? null,
+            selectedProgramDocRole: selectedProgramDoc?.document_role ?? null,
+            selectedProgramReviewStatus:
+              selectedProgramDoc?.review_status ?? null,
+            selectedProgramStoragePath: selectedProgramDoc?.storage_path ?? null,
+            selectedProgramExtractionSource: programTextSource,
+            selectedProgramExtractionError: programTextError,
+            programTextLength: programText.length,
+          },
+        },
+        { status: 422 },
+      );
+    }
+
+    if (!selectedCvDoc || !cvText.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "Le CV sélectionné existe, mais aucun texte n’a pu être extrait. Merci de réimporter un fichier Word/PDF lisible ou de corriger le format du document.",
+          debug: {
+            cvCandidatesCount: cvCandidates.length,
+            programCandidatesCount: programCandidates.length,
+            selectedProgramDocName: selectedProgramDoc?.name ?? null,
+            selectedProgramDocType: selectedProgramDoc?.document_type ?? null,
+            selectedProgramDocRole: selectedProgramDoc?.document_role ?? null,
+            selectedProgramReviewStatus:
+              selectedProgramDoc?.review_status ?? null,
+            selectedProgramStoragePath: selectedProgramDoc?.storage_path ?? null,
+            selectedProgramExtractionSource: programTextSource,
+            selectedProgramExtractionError: programTextError,
+            programTextLength: programText.length,
+            selectedCvDocName: selectedCvDoc?.name ?? null,
+            selectedCvExtractionSource: cvTextSource,
+            selectedCvExtractionError: cvTextError,
+            cvTextLength: cvText.length,
+          },
+        },
+        { status: 422 },
+      );
+    }
 
     const prompt = buildPrompt({
       ndaVariables: (ndaVariables as NdaVariablesRow | null) ?? null,
@@ -518,10 +628,18 @@ export async function POST(req: Request) {
       success: true,
       analysis: savedAnalysis,
       debug: {
+        cvCandidatesCount: cvCandidates.length,
+        programCandidatesCount: programCandidates.length,
         selectedProgramDocName: selectedProgramDoc?.name ?? null,
         selectedProgramDocType: selectedProgramDoc?.document_type ?? null,
         selectedProgramDocRole: selectedProgramDoc?.document_role ?? null,
+        selectedProgramReviewStatus: selectedProgramDoc?.review_status ?? null,
+        selectedProgramStoragePath: selectedProgramDoc?.storage_path ?? null,
+        selectedProgramExtractionSource: programTextSource,
+        selectedProgramExtractionError: programTextError,
         selectedCvDocName: selectedCvDoc?.name ?? null,
+        selectedCvExtractionSource: cvTextSource,
+        selectedCvExtractionError: cvTextError,
         programTextLength: programText.length,
         cvTextLength: cvText.length,
       },

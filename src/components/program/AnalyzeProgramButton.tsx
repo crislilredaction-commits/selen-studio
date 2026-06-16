@@ -61,8 +61,18 @@ export default function AnalyzeProgramButton({
     initialAnalysis,
   );
   const [debugInfo, setDebugInfo] = useState<{
+    cvCandidatesCount?: number;
+    programCandidatesCount?: number;
     selectedProgramDocName?: string | null;
+    selectedProgramDocType?: string | null;
+    selectedProgramDocRole?: string | null;
+    selectedProgramReviewStatus?: string | null;
+    selectedProgramStoragePath?: string | null;
+    selectedProgramExtractionSource?: string | null;
+    selectedProgramExtractionError?: string | null;
     selectedCvDocName?: string | null;
+    selectedCvExtractionSource?: string | null;
+    selectedCvExtractionError?: string | null;
     programTextLength?: number;
     cvTextLength?: number;
   } | null>(null);
@@ -83,6 +93,7 @@ export default function AnalyzeProgramButton({
       });
 
       const data = await res.json().catch(() => null);
+      if (!res.ok) setDebugInfo(data?.debug ?? null);
 
       if (!res.ok) {
         throw new Error(data?.error ?? "Erreur lors de l’analyse IA.");
@@ -196,13 +207,57 @@ export default function AnalyzeProgramButton({
           }}
         >
           <div>
+            <strong>Candidats CV trouvés :</strong>{" "}
+            {debugInfo.cvCandidatesCount ?? 0}
+          </div>
+          <div>
             <strong>CV choisi :</strong>{" "}
             {debugInfo.selectedCvDocName ?? "aucun"}
+          </div>
+          <div>
+            <strong>Source extraction CV :</strong>{" "}
+            {debugInfo.selectedCvExtractionSource ?? "non renseignée"}
+          </div>
+          {debugInfo.selectedCvExtractionError ? (
+            <div>
+              <strong>Erreur extraction CV :</strong>{" "}
+              {debugInfo.selectedCvExtractionError}
+            </div>
+          ) : null}
+          <div>
+            <strong>Candidats programme trouvés :</strong>{" "}
+            {debugInfo.programCandidatesCount ?? 0}
           </div>
           <div>
             <strong>Programme choisi :</strong>{" "}
             {debugInfo.selectedProgramDocName ?? "aucun"}
           </div>
+          <div>
+            <strong>Type programme :</strong>{" "}
+            {debugInfo.selectedProgramDocType ?? "non renseigné"}
+          </div>
+          <div>
+            <strong>Rôle programme :</strong>{" "}
+            {debugInfo.selectedProgramDocRole ?? "non renseigné"}
+          </div>
+          <div>
+            <strong>Statut revue programme :</strong>{" "}
+            {debugInfo.selectedProgramReviewStatus ?? "non renseigné"}
+          </div>
+          <div>
+            <strong>Storage programme :</strong>{" "}
+            {debugInfo.selectedProgramStoragePath ?? "non renseigné"}
+          </div>
+          <div>
+            <strong>Source extraction programme :</strong>{" "}
+            {debugInfo.selectedProgramExtractionSource ?? "non renseignée"}
+          </div>
+          {debugInfo.selectedProgramExtractionError ? (
+            <div>
+              <strong>Erreur extraction programme :</strong>{" "}
+              {debugInfo.selectedProgramExtractionError}
+            </div>
+          ) : null}
           <div>
             <strong>Longueur texte CV :</strong> {debugInfo.cvTextLength ?? 0}
           </div>

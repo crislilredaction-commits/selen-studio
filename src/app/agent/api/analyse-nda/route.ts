@@ -7,22 +7,29 @@ import {
   extractEmail,
   extractPostalCode,
   extractSiret,
-  extractTextFromBuffer,
   extractTrainerNameFromCv,
   extractTrainerNameFromProgramme,
   extractTrainingTitle,
   getRegionFromPostalCode,
 } from "@/lib/documentText";
 import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
+import { getOrExtractDocumentText } from "@/lib/server/documentTextExtraction";
 
 type DocRow = {
   id: string;
   name: string;
   document_type: string;
   storage_path: string | null;
+  extracted_text?: string | null;
   dossier_id?: string | null;
   organisation_id?: string | null;
   created_at?: string | null;
+};
+
+type PreviousProgramAnalysisRow = {
+  source_cv_text: string | null;
+  source_program_text: string | null;
+  created_at: string;
 };
 
 function sortNewestFirst<T extends { created_at?: string | null }>(
@@ -112,13 +119,13 @@ export async function POST(req: Request) {
       supabase
         .from("documents")
         .select(
-          "id, name, document_type, storage_path, dossier_id, organisation_id, created_at",
+          "id, name, document_type, storage_path, extracted_text, dossier_id, organisation_id, created_at",
         )
         .eq("dossier_id", dossierId),
       supabase
         .from("documents")
         .select(
-          "id, name, document_type, storage_path, dossier_id, organisation_id, created_at",
+          "id, name, document_type, storage_path, extracted_text, dossier_id, organisation_id, created_at",
         )
         .eq("organisation_id", dossier.organisation_id)
         .is("dossier_id", null),
@@ -172,44 +179,107 @@ export async function POST(req: Request) {
       );
     }
 
-    async function getDocText(doc?: DocRow): Promise<string> {
-      if (!doc?.storage_path) return "";
+    const { data: previousAnalyses, error: previousAnalysesError } =
+      await supabase
+        .from("program_ai_analyses")
+        .select("source_cv_text, source_program_text, created_at")
+        .eq("dossier_id", dossierId)
+        .order("created_at", { ascending: false })
+        .limit(5);
 
-      const { data, error } = await serviceSupabase.storage
-        .from("documents")
-        .download(doc.storage_path);
-
-      if (error || !data) {
-        console.error("Storage download failed:", {
-          docName: doc.name,
-          storagePath: doc.storage_path,
-          error: error?.message,
-        });
-        return "";
-      }
-
-      try {
-        const arrayBuffer = await data.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        return await extractTextFromBuffer(buffer, doc.name);
-      } catch (err) {
-        console.error("Text extraction failed:", {
-          docName: doc.name,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return "";
-      }
+    if (previousAnalysesError) {
+      return NextResponse.json(
+        { error: previousAnalysesError.message },
+        { status: 500 },
+      );
     }
 
-    const [cvText, programmeText, entrepriseText] = await Promise.all([
-      getDocText(cvDoc),
-      getDocText(programmeDoc),
-      getDocText(entrepriseDoc),
-    ]);
+    const previousAnalysis = (
+      (previousAnalyses ?? []) as PreviousProgramAnalysisRow[]
+    ).find(
+      (analysis) =>
+        (analysis.source_cv_text?.trim().length ?? 0) > 20 ||
+        (analysis.source_program_text?.trim().length ?? 0) > 20,
+    );
+
+    const [cvTextResult, programmeTextResult, entrepriseTextResult] =
+      await Promise.all([
+        getOrExtractDocumentText(serviceSupabase, cvDoc),
+        getOrExtractDocumentText(serviceSupabase, programmeDoc),
+        getOrExtractDocumentText(serviceSupabase, entrepriseDoc),
+      ]);
+
+    let cvText = cvTextResult.text;
+    let programmeText = programmeTextResult.text;
+    const entrepriseText = entrepriseTextResult.text;
+
+    if (!cvText.trim() && previousAnalysis?.source_cv_text?.trim()) {
+      cvText = previousAnalysis.source_cv_text.trim();
+      await serviceSupabase
+        .from("documents")
+        .update({ extracted_text: cvText })
+        .eq("id", cvDoc.id);
+    }
+
+    if (!programmeText.trim() && previousAnalysis?.source_program_text?.trim()) {
+      programmeText = previousAnalysis.source_program_text.trim();
+      await serviceSupabase
+        .from("documents")
+        .update({ extracted_text: programmeText })
+        .eq("id", programmeDoc.id);
+    }
+
+    if (!cvText.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "Le CV sélectionné existe, mais aucun texte n’a pu être extrait. Merci de réimporter un fichier Word/PDF lisible ou de corriger le format du document.",
+          debug: {
+            selectedCvDocName: cvDoc.name,
+            selectedCvExtractionError: cvTextResult.error,
+            cvTextLength: cvText.length,
+          },
+        },
+        { status: 422 },
+      );
+    }
+
+    if (!programmeText.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "Le programme sélectionné existe, mais aucun texte n’a pu être extrait. Merci de réimporter un fichier Word/PDF lisible ou de corriger le format du document.",
+          debug: {
+            selectedProgrammeDocName: programmeDoc.name,
+            selectedProgrammeExtractionError: programmeTextResult.error,
+            programmeTextLength: programmeText.length,
+          },
+        },
+        { status: 422 },
+      );
+    }
+
+    if (!entrepriseText.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "Le document entreprise sélectionné existe, mais aucun texte n’a pu être extrait. Merci de réimporter un KBIS ou avis INSEE lisible.",
+          debug: {
+            selectedEntrepriseDocName: entrepriseDoc.name,
+            selectedEntrepriseExtractionError: entrepriseTextResult.error,
+            entrepriseTextLength: entrepriseText.length,
+          },
+        },
+        { status: 422 },
+      );
+    }
 
     console.log("CV TEXT LENGTH:", cvText.length);
     console.log("PROGRAMME TEXT LENGTH:", programmeText.length);
     console.log("ENTREPRISE TEXT LENGTH:", entrepriseText.length);
+    console.log("CV EXTRACTION SOURCE:", cvTextResult.source);
+    console.log("PROGRAMME EXTRACTION SOURCE:", programmeTextResult.source);
+    console.log("ENTREPRISE EXTRACTION SOURCE:", entrepriseTextResult.source);
     console.log("CV TEXT PREVIEW:", cvText.slice(0, 300));
     console.log("PROGRAMME TEXT PREVIEW:", programmeText.slice(0, 300));
     console.log("ENTREPRISE TEXT PREVIEW:", entrepriseText.slice(0, 300));

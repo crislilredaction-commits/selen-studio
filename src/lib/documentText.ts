@@ -25,6 +25,46 @@ function stripControlChars(text: string): string {
   return text.replace(/\u0000/g, "").replace(/[^\S\r\n\t]+/g, " ");
 }
 
+function looksLikeHtml(buffer: Buffer) {
+  const preview = buffer.toString("utf8", 0, Math.min(buffer.length, 2048));
+  return /<!doctype html|<html[\s>]|<body[\s>]|xmlns:w="urn:schemas-microsoft-com:office:word"/i.test(
+    preview,
+  );
+}
+
+function decodeHtmlEntities(text: string) {
+  return text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#039;/gi, "'")
+    .replace(/&#39;/gi, "'")
+    .replace(/&eacute;/gi, "é")
+    .replace(/&egrave;/gi, "è")
+    .replace(/&ecirc;/gi, "ê")
+    .replace(/&agrave;/gi, "à")
+    .replace(/&ccedil;/gi, "ç")
+    .replace(/&ocirc;/gi, "ô")
+    .replace(/&ucirc;/gi, "û");
+}
+
+function extractTextFromHtmlBuffer(buffer: Buffer) {
+  const html = buffer.toString("utf8");
+  const withBreaks = html
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/\s*(p|div|li|h[1-6]|tr|section|article)\s*>/gi, "\n")
+    .replace(/<\s*li[\s>]/gi, "\n- <li>");
+
+  const withoutTags = withBreaks
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ");
+
+  return normalizeExtractedText(decodeHtmlEntities(withoutTags));
+}
+
 // ---------------------------------------------------------------------------
 // Extracteur principal
 // ---------------------------------------------------------------------------
@@ -48,6 +88,10 @@ export async function extractTextFromBuffer(
   }
 
   if (ext === "docx" || ext === "doc") {
+    if (looksLikeHtml(buffer)) {
+      return extractTextFromHtmlBuffer(buffer);
+    }
+
     try {
       const result = await mammoth.extractRawText({ buffer });
       return normalizeExtractedText(result.value ?? "");
