@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { buildNdaProgramDocumentHtml } from "@/lib/server/ndaProgramDocumentHtml";
+import {
+  buildNdaProgramDocumentHtml,
+  hasNdaProgramDocumentContent,
+} from "@/lib/server/ndaProgramDocumentHtml";
 
 function getAdminSupabase() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -52,6 +55,47 @@ export async function GET(req: Request) {
       );
     }
 
+    let selectedVersion = version;
+
+    if (!hasNdaProgramDocumentContent(selectedVersion)) {
+      const { data: candidateVersions, error: candidatesError } = await supabase
+        .from("dossier_program_versions")
+        .select("*")
+        .eq("dossier_id", dossierId)
+        .order("created_at", { ascending: false })
+        .limit(30);
+
+      if (candidatesError) {
+        return NextResponse.json(
+          { error: candidatesError.message },
+          { status: 500 },
+        );
+      }
+
+      const versionsWithContent = (candidateVersions ?? []).filter(
+        hasNdaProgramDocumentContent,
+      );
+
+      selectedVersion =
+        versionsWithContent.find(
+          (candidate) =>
+            candidate.version_type === "client_sent" &&
+            candidate.client_decision === "validated",
+        ) ??
+        versionsWithContent.find(
+          (candidate) => candidate.version_type === "agent_draft",
+        ) ??
+        versionsWithContent[0] ??
+        null;
+
+      if (!selectedVersion) {
+        return NextResponse.json(
+          { ok: false, error: "missing_program_content" },
+          { status: 422 },
+        );
+      }
+    }
+
     const [{ data: dossier, error: dossierError }, { data: variables }] =
       await Promise.all([
         supabase
@@ -74,7 +118,7 @@ export async function GET(req: Request) {
         supabase
           .from("nda_variables")
           .select(
-            "formateur_nom, formateur_prenom, duree_formation, modalite, lieu_formation, date_formation_prevue, stagiaire_prenom, stagiaire_nom, intitule_formation",
+            "formateur_nom, formateur_prenom, duree_formation, tarif_formation, modalite, lieu_formation, date_formation_prevue, date_fin_formation, stagiaire_prenom, stagiaire_nom, intitule_formation, siret",
           )
           .eq("dossier_id", dossierId)
           .maybeSingle(),
@@ -93,7 +137,7 @@ export async function GET(req: Request) {
 
     const html = buildNdaProgramDocumentHtml({
       kind: "proposal",
-      version,
+      version: selectedVersion,
       organisation: organisation ?? null,
       variables: variables ?? null,
     });

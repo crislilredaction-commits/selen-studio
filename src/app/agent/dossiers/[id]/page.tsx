@@ -23,6 +23,7 @@ import NdaVariablesCard from "@/components/nda/NdaVariablesCard";
 import OpenDocumentButton from "@/components/ui/OpenDocumentButton";
 import DeleteDocumentButton from "@/components/ui/DeleteDocumentButton";
 import AnalyzeNdaButton from "@/components/nda/AnalyzeNdaButton";
+import GenerateNdaProgramButton from "@/components/nda/GenerateNdaProgramButton";
 import AgentMessagingDrawer from "@/components/AgentMessagingDrawer";
 import AnalyzeProgramButton from "@/components/program/AnalyzeProgramButton";
 import AgentProgramEditor from "@/components/program/AgentProgramEditor";
@@ -145,6 +146,8 @@ type NdaVariablesRow = {
   representant_prenom?: string | null;
   representant_nom?: string | null;
   tarif_formation?: string | number | null;
+  prerequis_formation?: string | null;
+  organisme_adresse?: string | null;
   stagiaire_prenom?: string | null;
   stagiaire_nom?: string | null;
   stagiaire_adresse?: string | null;
@@ -157,6 +160,7 @@ type NdaVariablesRow = {
   client_representant_nom?: string | null;
   client_siret?: string | null;
   date_formation_prevue?: string | null;
+  date_fin_formation?: string | null;
   lieu_formation?: string | null;
   lieu_signature_convention?: string | null;
   date_signature_convention?: string | null;
@@ -390,8 +394,10 @@ function MaybeCollapsed({
 }
 
 function NdaStep2StudioCard({
+  dossierId,
   variables,
 }: {
+  dossierId: string;
   variables: NdaVariablesRow | null;
 }) {
   const fields = [
@@ -449,7 +455,10 @@ function NdaStep2StudioCard({
       title: "Client professionnel",
       fields: [
         { label: "Nom client", value: formatNdaValue(variables?.client_nom) },
-        { label: "SIRET client", value: formatNdaValue(variables?.client_siret) },
+        {
+          label: "SIRET client",
+          value: formatNdaValue(variables?.client_siret),
+        },
         {
           label: "Adresse client",
           value: formatNdaValue(variables?.client_adresse),
@@ -505,6 +514,10 @@ function NdaStep2StudioCard({
           value: formatNdaDate(variables?.date_formation_prevue),
         },
         {
+          label: "Date de fin",
+          value: formatNdaDate(variables?.date_fin_formation),
+        },
+        {
           label: "Lieu / lien",
           value: formatNdaValue(variables?.lieu_formation),
         },
@@ -537,7 +550,9 @@ function NdaStep2StudioCard({
     !variables?.client_siret ||
     !variables?.stagiaire_fonction ||
     !variables?.date_formation_prevue ||
+    !variables?.date_fin_formation ||
     !variables?.lieu_formation ||
+    !variables?.tarif_formation ||
     !variables?.lieu_signature_convention ||
     !variables?.date_signature_convention;
 
@@ -628,42 +643,43 @@ function NdaStep2StudioCard({
           gap: 10,
         }}
       >
-        {false && fields.map((field) => (
-          <div
-            key={field.label}
-            style={{
-              border: "1px solid var(--selen-border)",
-              borderRadius: "var(--radius-sm)",
-              background: "var(--selen-bg3)",
-              padding: "10px 12px",
-            }}
-          >
+        {false &&
+          fields.map((field) => (
             <div
+              key={field.label}
               style={{
-                fontSize: 9,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: "var(--selen-text3)",
-                marginBottom: 5,
+                border: "1px solid var(--selen-border)",
+                borderRadius: "var(--radius-sm)",
+                background: "var(--selen-bg3)",
+                padding: "10px 12px",
               }}
             >
-              {field.label}
+              <div
+                style={{
+                  fontSize: 9,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: "var(--selen-text3)",
+                  marginBottom: 5,
+                }}
+              >
+                {field.label}
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color:
+                    field.value === "—"
+                      ? "var(--selen-text3)"
+                      : "var(--selen-text)",
+                  fontWeight: field.value === "—" ? 400 : 600,
+                  lineHeight: 1.35,
+                }}
+              >
+                {field.value}
+              </div>
             </div>
-            <div
-              style={{
-                fontSize: 13,
-                color:
-                  field.value === "—"
-                    ? "var(--selen-text3)"
-                    : "var(--selen-text)",
-                fontWeight: field.value === "—" ? 400 : 600,
-                lineHeight: 1.35,
-              }}
-            >
-              {field.value}
-            </div>
-          </div>
-        ))}
+          ))}
       </div>
 
       {isConventionContextIncomplete ? (
@@ -675,10 +691,11 @@ function NdaStep2StudioCard({
             lineHeight: 1.5,
           }}
         >
-          Certaines informations necessaires a la generation de la convention
-          sont manquantes.
+          Certaines informations necessaires a la generation sont manquantes.
         </p>
       ) : null}
+
+      <GenerateNdaProgramButton dossierId={dossierId} />
     </SelenCard>
   );
 }
@@ -1305,6 +1322,7 @@ export default async function DossierPage({ params }: PageProps) {
     ndaVariables?.client_representant_nom ||
     ndaVariables?.client_siret ||
     ndaVariables?.date_formation_prevue ||
+    ndaVariables?.date_fin_formation ||
     ndaVariables?.lieu_formation ||
     ndaVariables?.lieu_signature_convention ||
     ndaVariables?.date_signature_convention,
@@ -1503,9 +1521,9 @@ export default async function DossierPage({ params }: PageProps) {
   const ndaVariablesInitialValues = {
     ...ndaVariablesData,
     siret: ndaVariablesData?.siret ?? organisation?.siret ?? "",
-    code_postal:
-      ndaVariablesData?.code_postal ?? extractedAddress.code_postal ?? "",
-    ville: ndaVariablesData?.ville ?? extractedAddress.ville ?? "",
+    organisme_adresse:
+      ndaVariablesData?.organisme_adresse ?? organisation?.address ?? "",
+
     region:
       ndaVariablesData?.region ??
       getRegionFromPostalCode(
@@ -1781,8 +1799,11 @@ export default async function DossierPage({ params }: PageProps) {
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {shouldShowNdaStep2Summary ? (
-              <NdaStep2StudioCard variables={ndaVariables} />
+            {isNdaDossier ? (
+              <NdaVariablesCard
+                dossierId={dossier.id}
+                initialValues={ndaVariablesInitialValues}
+              />
             ) : null}
 
             <MaybeCollapsed
@@ -1872,6 +1893,20 @@ export default async function DossierPage({ params }: PageProps) {
                   >
                     <input type="hidden" name="doc_id" value={doc.id} />
                     <input type="hidden" name="dossier_id" value={dossier.id} />
+
+                    {doc.storage_path ? (
+                      <OpenDocumentButton docId={doc.id} />
+                    ) : (
+                      <span
+                        style={{
+                          minWidth: 92,
+                          fontSize: 11,
+                          color: "var(--selen-text3)",
+                        }}
+                      >
+                        Fichier indisponible
+                      </span>
+                    )}
 
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 12 }}>{doc.name}</div>
@@ -1977,7 +2012,19 @@ export default async function DossierPage({ params }: PageProps) {
                         value={dossier.id}
                       />
 
-                      <OpenDocumentButton docId={doc.id} />
+                      {doc.storage_path ? (
+                        <OpenDocumentButton docId={doc.id} />
+                      ) : (
+                        <span
+                          style={{
+                            minWidth: 92,
+                            fontSize: 11,
+                            color: "var(--selen-text3)",
+                          }}
+                        >
+                          Fichier indisponible
+                        </span>
+                      )}
 
                       <div style={{ flex: 1 }}>
                         <div
@@ -2770,16 +2817,8 @@ export default async function DossierPage({ params }: PageProps) {
               </SelenCard>
             ) : null}
 
-            {dossier.type === "nda" ? (
-              <>
-                <NdaVariablesCard
-                  dossierId={dossier.id}
-                  initialValues={ndaVariablesInitialValues}
-                />
-                {canRunAutoAnalysis && (
-                  <AnalyzeNdaButton dossierId={dossier.id} />
-                )}
-              </>
+            {dossier.type === "nda" && canRunAutoAnalysis ? (
+              <AnalyzeNdaButton dossierId={dossier.id} />
             ) : null}
 
             <SelenCard>

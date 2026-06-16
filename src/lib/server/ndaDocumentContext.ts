@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { hasNdaProgramDocumentContent } from "@/lib/server/ndaProgramDocumentHtml";
 
 export type NdaDocumentContextDossier = {
   id: string;
@@ -29,12 +30,12 @@ export type NdaDocumentContextVariables = {
   intitule_formation: string | null;
   duree_formation: string | null;
   tarif_formation: string | number | null;
+  prerequis_formation: string | null;
   modalite: string | null;
   nb_formateurs: number | string | null;
-  ville: string | null;
-  code_postal: string | null;
   region: string | null;
   siret: string | null;
+  organisme_adresse: string | null;
   stagiaire_prenom: string | null;
   stagiaire_nom: string | null;
   stagiaire_adresse: string | null;
@@ -47,6 +48,7 @@ export type NdaDocumentContextVariables = {
   client_representant_nom: string | null;
   client_siret: string | null;
   date_formation_prevue: string | null;
+  date_fin_formation: string | null;
   lieu_formation: string | null;
   lieu_signature_convention: string | null;
   date_signature_convention: string | null;
@@ -117,6 +119,10 @@ function getMissingRequiredFields(args: {
     missing.push("organisation.name ou siret");
   }
 
+  if (!hasAnyValue(organisation?.address, variables?.organisme_adresse)) {
+    missing.push("organisme_adresse");
+  }
+
   if (!hasValue(variables?.client_nom)) {
     missing.push("client_nom");
   }
@@ -173,8 +179,16 @@ function getMissingRequiredFields(args: {
     missing.push("date_formation_prevue");
   }
 
+  if (!hasValue(variables?.date_fin_formation)) {
+    missing.push("date_fin_formation");
+  }
+
   if (!hasValue(variables?.lieu_formation)) {
     missing.push("lieu_formation");
+  }
+
+  if (!hasValue(variables?.tarif_formation)) {
+    missing.push("tarif_formation");
   }
 
   if (!hasValue(variables?.lieu_signature_convention)) {
@@ -206,6 +220,7 @@ function hasStep2Info(variables: NdaDocumentContextVariables | null) {
     variables?.client_representant_nom,
     variables?.client_siret,
     variables?.date_formation_prevue,
+    variables?.date_fin_formation,
     variables?.lieu_formation,
     variables?.lieu_signature_convention,
     variables?.date_signature_convention,
@@ -216,39 +231,31 @@ async function getLatestProgramVersion(
   supabase: Awaited<ReturnType<typeof createClient>>,
   dossierId: string,
 ) {
-  const { data: validatedProgram, error: validatedProgramError } =
-    await supabase
-      .from("dossier_program_versions")
-      .select("*")
-      .eq("dossier_id", dossierId)
-      .eq("version_type", "client_sent")
-      .eq("client_decision", "validated")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-  if (validatedProgramError) {
-    throw new Error(validatedProgramError.message);
-  }
-
-  if (validatedProgram) {
-    return validatedProgram as NdaDocumentContextProgramVersion;
-  }
-
-  const { data: agentDraft, error: agentDraftError } = await supabase
+  const { data: versions, error } = await supabase
     .from("dossier_program_versions")
     .select("*")
     .eq("dossier_id", dossierId)
-    .eq("version_type", "agent_draft")
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(30);
 
-  if (agentDraftError) {
-    throw new Error(agentDraftError.message);
+  if (error) {
+    throw new Error(error.message);
   }
 
-  return (agentDraft ?? null) as NdaDocumentContextProgramVersion | null;
+  const programVersions = (versions ??
+    []) as NdaDocumentContextProgramVersion[];
+  const withContent = programVersions.filter(hasNdaProgramDocumentContent);
+
+  return (
+    withContent.find(
+      (version) =>
+        version.version_type === "client_sent" &&
+        version.client_decision === "validated",
+    ) ??
+    withContent.find((version) => version.version_type === "agent_draft") ??
+    withContent[0] ??
+    null
+  );
 }
 
 export async function getNdaDocumentContext(
@@ -318,7 +325,7 @@ export async function getNdaDocumentContext(
     supabase
       .from("nda_variables")
       .select(
-        "representant_prenom, representant_nom, formateur_nom, formateur_prenom, formateur_email, intitule_formation, duree_formation, tarif_formation, modalite, nb_formateurs, ville, code_postal, region, siret, stagiaire_prenom, stagiaire_nom, stagiaire_adresse, stagiaire_email, stagiaire_telephone, stagiaire_fonction, client_nom, client_adresse, client_representant_prenom, client_representant_nom, client_siret, date_formation_prevue, lieu_formation, lieu_signature_convention, date_signature_convention",
+        "representant_prenom, representant_nom, formateur_nom, formateur_prenom, formateur_email, intitule_formation, duree_formation, tarif_formation, prerequis_formation, modalite, nb_formateurs, region, siret, organisme_adresse, stagiaire_prenom, stagiaire_nom, stagiaire_adresse, stagiaire_email, stagiaire_telephone, stagiaire_fonction, client_nom, client_adresse, client_representant_prenom, client_representant_nom, client_siret, date_formation_prevue, date_fin_formation, lieu_formation, lieu_signature_convention, date_signature_convention",
       )
       .eq("dossier_id", dossierId)
       .maybeSingle(),

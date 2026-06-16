@@ -48,13 +48,13 @@ function getFileTypeStyles(fileType?: DocumentItem["fileType"]): CSSProperties {
 function getStatusLabel(status?: DocumentItem["status"]) {
   switch (status) {
     case "ok":
-      return "Reçu";
+      return "Recu";
     case "pending":
       return "Attendu";
     case "missing":
       return "Manquant";
     default:
-      return "—";
+      return "-";
   }
 }
 
@@ -80,6 +80,21 @@ function getStatusStyles(status?: DocumentItem["status"]): CSSProperties {
         background: "rgba(255,255,255,0.04)",
         color: "var(--selen-text3)",
       };
+  }
+}
+
+function getOpenDocumentErrorMessage(error?: string) {
+  switch (error) {
+    case "document_not_found":
+      return "Document introuvable.";
+    case "missing_storage_path":
+      return "Ce document n'a pas de fichier associe.";
+    case "signed_url_failed":
+      return "Impossible de generer le lien de telechargement.";
+    case "unauthorized":
+      return "Acces non autorise.";
+    default:
+      return "Document indisponible.";
   }
 }
 
@@ -114,27 +129,38 @@ export default function DocumentsList({ documents }: DocumentsListProps) {
   }
 
   async function handleOpen(documentId: string) {
-    const res = await fetch("/agent/api/open-document", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ documentId }),
-    });
+    const targetWindow = window.open("", "_blank");
+    if (targetWindow) {
+      targetWindow.opener = null;
+    }
 
-    if (!res.ok) {
+    try {
+      const res = await fetch("/agent/api/open-document", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentId }),
+      });
+
       const data = await res.json().catch(() => null);
-      alert(data?.error ?? "Impossible d’ouvrir le document");
-      return;
-    }
 
-    const data = await res.json();
-    if (!data?.url) {
-      alert("Lien sécurisé introuvable");
-      return;
-    }
+      if (!res.ok || !data?.ok || !data?.url) {
+        targetWindow?.close();
+        alert(getOpenDocumentErrorMessage(data?.error));
+        return;
+      }
 
-    window.open(data.url, "_blank", "noopener,noreferrer");
+      if (targetWindow) {
+        targetWindow.location.href = data.url;
+      } else {
+        window.open(data.url, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      targetWindow?.close();
+      console.error(error);
+      alert("Document indisponible.");
+    }
   }
 
   return (
@@ -198,7 +224,7 @@ export default function DocumentsList({ documents }: DocumentsListProps) {
                 fontFamily: "var(--font-body)",
               }}
             >
-              {doc.meta ?? "—"}
+              {doc.meta ?? "-"}
             </div>
 
             <button
@@ -216,7 +242,7 @@ export default function DocumentsList({ documents }: DocumentsListProps) {
                 cursor: "pointer",
               }}
             >
-              Ouvrir / télécharger
+              Ouvrir / telecharger
             </button>
           </div>
 

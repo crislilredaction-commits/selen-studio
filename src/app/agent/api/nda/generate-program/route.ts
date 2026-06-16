@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
-import { buildNdaProgramDocumentHtml } from "@/lib/server/ndaProgramDocumentHtml";
+import {
+  buildNdaProgramDocumentHtml,
+  hasNdaProgramDocumentContent,
+  validateNdaProgramDurationConsistency,
+} from "@/lib/server/ndaProgramDocumentHtml";
 import { getNdaDocumentContext } from "@/lib/server/ndaDocumentContext";
 import { createClient as createSessionClient } from "@/lib/supabase/server";
 
@@ -105,7 +109,9 @@ export async function POST(req: Request) {
     }
 
     const context = await getNdaDocumentContext(dossierId.trim());
-    const missingRequiredFields = [...context.flags.missingRequiredFields];
+    const missingRequiredFields = context.flags.missingRequiredFields.filter(
+      (field) => field !== "latestProgramVersion",
+    );
 
     if (!context.dossier.organisation_id) {
       missingRequiredFields.push("organisation_id");
@@ -125,11 +131,48 @@ export async function POST(req: Request) {
     const latestProgramVersion = context.latestProgramVersion;
 
     if (!latestProgramVersion) {
+      console.log("NDA PROGRAM GENERATION missing content:", {
+        dossierId: context.dossier.id,
+        reason: "no_program_version_with_pedagogical_content",
+      });
+
+      return NextResponse.json(
+        { ok: false, error: "missing_program_content" },
+        { status: 422 },
+      );
+    }
+
+    if (!hasNdaProgramDocumentContent(latestProgramVersion)) {
+      console.log("NDA PROGRAM GENERATION missing content:", {
+        dossierId: context.dossier.id,
+        versionId: latestProgramVersion.id,
+        versionType: latestProgramVersion.version_type,
+        keys: Object.keys(latestProgramVersion),
+        hasModulesArray: Array.isArray(latestProgramVersion.modules),
+        modulesLength: Array.isArray(latestProgramVersion.modules)
+          ? latestProgramVersion.modules.length
+          : null,
+      });
+
+      return NextResponse.json(
+        { ok: false, error: "missing_program_content" },
+        { status: 422 },
+      );
+    }
+
+    const durationConsistency = validateNdaProgramDurationConsistency(
+      latestProgramVersion,
+      context.variables,
+    );
+
+    if (!durationConsistency.ok) {
       return NextResponse.json(
         {
           ok: false,
-          error: "missing_generation_context",
-          missingRequiredFields: ["latestProgramVersion"],
+          error: "duration_mismatch",
+          message: durationConsistency.message,
+          declaredHours: durationConsistency.declaredHours,
+          modulesTotalHours: durationConsistency.modulesTotalHours,
         },
         { status: 422 },
       );
@@ -225,9 +268,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error: `Database: ${
-            insertError?.message ?? "document non créé"
-          }`,
+          error: `Database: ${insertError?.message ?? "document non créé"}`,
         },
         { status: 500 },
       );

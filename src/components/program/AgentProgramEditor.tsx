@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import SelenBadge from "@/components/ui/SelenBadge";
@@ -51,6 +51,20 @@ type Props = {
   initialVersion?: ProgramVersion | null;
 };
 
+type EditorState = {
+  sourceAnalysisId: string | null;
+  title: string;
+  targetAudience: string;
+  overallObjective: string;
+  recommendedPositioning: string;
+  justification: string;
+  agentComment: string;
+  vigilancePointsText: string;
+  modulesText: string;
+};
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
 function toPrettyModules(modules: ProgramModule[] | null | undefined): string {
   if (!modules?.length) return "";
 
@@ -58,10 +72,15 @@ function toPrettyModules(modules: ProgramModule[] | null | undefined): string {
     .map((module, index) => {
       const chaptersText = module.chapters?.length
         ? module.chapters
-            .map(
-              (chapter, chapterIndex) =>
-                `    ${chapterIndex + 1}. ${chapter.title}`,
-            )
+            .map((chapter, chapterIndex) => {
+              const lines = [`    ${chapterIndex + 1}. ${chapter.title}`];
+
+              if (chapter.objective?.trim()) {
+                lines.push(`       Objectif : ${chapter.objective.trim()}`);
+              }
+
+              return lines.join("\n");
+            })
             .join("\n")
         : "    Aucun chapitre";
 
@@ -85,49 +104,105 @@ function parseModulesFromText(input: string): ProgramModule[] {
     .map((block) => block.trim())
     .filter(Boolean);
 
-  return blocks.map((block) => {
-    const lines = block.split("\n").map((line) => line.trim());
+  return blocks
+    .map((block) => {
+      const lines = block.split("\n").map((line) => line.trim());
 
-    const title =
-      lines
-        .find((line) => /^MODULE\s+\d+\s*:/i.test(line))
-        ?.replace(/^MODULE\s+\d+\s*:\s*/i, "") ?? "";
+      const title =
+        lines
+          .find((line) => /^MODULE\s+\d+\s*:/i.test(line))
+          ?.replace(/^MODULE\s+\d+\s*:\s*/i, "") ?? "";
 
-    const duration =
-      lines
-        .find((line) => /^Durée\s*:/i.test(line))
-        ?.replace(/^Durée\s*:\s*/i, "") ?? "";
+      const duration =
+        lines
+          .find((line) => /^Durée\s*:/i.test(line))
+          ?.replace(/^Durée\s*:\s*/i, "") ?? "";
 
-    const objective =
-      lines
-        .find((line) => /^Objectif\s*:/i.test(line))
-        ?.replace(/^Objectif\s*:\s*/i, "") ?? "";
+      const objective =
+        lines
+          .find((line) => /^Objectif\s*:/i.test(line))
+          ?.replace(/^Objectif\s*:\s*/i, "") ?? "";
 
-    const chapterLines = lines.filter((line) => /^\d+\.\s+/i.test(line));
-    const chapters: ProgramChapter[] = [];
+      const chapters: ProgramChapter[] = [];
 
-    for (let i = 0; i < chapterLines.length; i++) {
-      const currentLine = chapterLines[i];
-      const chapterTitle = currentLine.replace(/^\d+\.\s+/i, "").trim();
+      for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index] ?? "";
 
-      const currentIndex = lines.findIndex((line) => line === currentLine);
-      const nextLine = currentIndex >= 0 ? lines[currentIndex + 1] : "";
-      const chapterObjective =
-        nextLine?.replace(/^Objectif\s*:\s*/i, "").trim() ?? "";
+        if (!/^\d+\.\s+/i.test(line)) {
+          continue;
+        }
 
-      chapters.push({
-        title: chapterTitle,
-        objective: chapterObjective,
-      });
-    }
+        const chapterTitle = line.replace(/^\d+\.\s+/i, "").trim();
+        const nextLine = lines[index + 1] ?? "";
+        const chapterObjective = /^Objectif\s*:/i.test(nextLine)
+          ? nextLine.replace(/^Objectif\s*:\s*/i, "").trim()
+          : "";
 
+        chapters.push({
+          title: chapterTitle,
+          objective: chapterObjective,
+        });
+      }
+
+      return {
+        title,
+        duration,
+        objective,
+        chapters,
+      };
+    })
+    .filter(
+      (module) =>
+        module.title ||
+        module.duration ||
+        module.objective ||
+        module.chapters.length,
+    );
+}
+
+function buildInitialState(
+  initialAnalysis: ProgramAnalysis | null,
+  initialVersion: ProgramVersion | null,
+): EditorState {
+  if (initialVersion) {
     return {
-      title,
-      duration,
-      objective,
-      chapters,
+      sourceAnalysisId: initialVersion.source_analysis_id,
+      title: initialVersion.title ?? "",
+      targetAudience: initialVersion.target_audience ?? "",
+      overallObjective: initialVersion.overall_objective ?? "",
+      recommendedPositioning: initialVersion.recommended_positioning ?? "",
+      justification: initialVersion.justification ?? "",
+      agentComment: initialVersion.agent_comment ?? "",
+      vigilancePointsText: (initialVersion.vigilance_points ?? []).join("\n"),
+      modulesText: toPrettyModules(initialVersion.modules ?? []),
     };
-  });
+  }
+
+  if (initialAnalysis) {
+    return {
+      sourceAnalysisId: initialAnalysis.id,
+      title: initialAnalysis.reformulated_title ?? "",
+      targetAudience: initialAnalysis.target_audience ?? "",
+      overallObjective: initialAnalysis.overall_objective ?? "",
+      recommendedPositioning: initialAnalysis.recommended_positioning ?? "",
+      justification: initialAnalysis.justification ?? "",
+      agentComment: "",
+      vigilancePointsText: (initialAnalysis.vigilance_points ?? []).join("\n"),
+      modulesText: toPrettyModules(initialAnalysis.modules ?? []),
+    };
+  }
+
+  return {
+    sourceAnalysisId: null,
+    title: "",
+    targetAudience: "",
+    overallObjective: "",
+    recommendedPositioning: "",
+    justification: "",
+    agentComment: "",
+    vigilancePointsText: "",
+    modulesText: "",
+  };
 }
 
 export default function AgentProgramEditor({
@@ -135,84 +210,37 @@ export default function AgentProgramEditor({
   initialAnalysis = null,
   initialVersion = null,
 }: Props) {
-  const initialState = useMemo(() => {
-    if (initialVersion) {
-      return {
-        sourceAnalysisId: initialVersion.source_analysis_id,
-        title: initialVersion.title ?? "",
-        targetAudience: initialVersion.target_audience ?? "",
-        overallObjective: initialVersion.overall_objective ?? "",
-        recommendedPositioning: initialVersion.recommended_positioning ?? "",
-        justification: initialVersion.justification ?? "",
-        agentComment: initialVersion.agent_comment ?? "",
-        vigilancePointsText: (initialVersion.vigilance_points ?? []).join("\n"),
-        modulesText: toPrettyModules(initialVersion.modules ?? []),
-      };
-    }
+  const initialState = useMemo(
+    () => buildInitialState(initialAnalysis, initialVersion),
+    [initialAnalysis, initialVersion],
+  );
 
-    if (initialAnalysis) {
-      return {
-        sourceAnalysisId: initialAnalysis.id,
-        title: initialAnalysis.reformulated_title ?? "",
-        targetAudience: initialAnalysis.target_audience ?? "",
-        overallObjective: initialAnalysis.overall_objective ?? "",
-        recommendedPositioning: initialAnalysis.recommended_positioning ?? "",
-        justification: initialAnalysis.justification ?? "",
-        agentComment: "",
-        vigilancePointsText: (initialAnalysis.vigilance_points ?? []).join(
-          "\n",
-        ),
-        modulesText: toPrettyModules(initialAnalysis.modules ?? []),
-      };
-    }
-
-    return {
-      sourceAnalysisId: null as string | null,
-      title: "",
-      targetAudience: "",
-      overallObjective: "",
-      recommendedPositioning: "",
-      justification: "",
-      agentComment: "",
-      vigilancePointsText: "",
-      modulesText: "",
-    };
-  }, [initialAnalysis, initialVersion]);
-
-  const [title, setTitle] = useState(initialState.title);
-  const [targetAudience, setTargetAudience] = useState(
-    initialState.targetAudience,
-  );
-  const [overallObjective, setOverallObjective] = useState(
-    initialState.overallObjective,
-  );
-  const [recommendedPositioning, setRecommendedPositioning] = useState(
-    initialState.recommendedPositioning,
-  );
-  const [justification, setJustification] = useState(
-    initialState.justification,
-  );
-  const [agentComment, setAgentComment] = useState(initialState.agentComment);
-  const [vigilancePointsText, setVigilancePointsText] = useState(
-    initialState.vigilancePointsText,
-  );
-  const [modulesText, setModulesText] = useState(initialState.modulesText);
-
+  const [editorState, setEditorState] = useState<EditorState>(initialState);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saving, setSaving] = useState(false);
   const [sendingToClient, setSendingToClient] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
+  const latestStateRef = useRef<EditorState>(initialState);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    setTitle(initialState.title);
-    setTargetAudience(initialState.targetAudience);
-    setOverallObjective(initialState.overallObjective);
-    setRecommendedPositioning(initialState.recommendedPositioning);
-    setJustification(initialState.justification);
-    setAgentComment(initialState.agentComment);
-    setVigilancePointsText(initialState.vigilancePointsText);
-    setModulesText(initialState.modulesText);
+    latestStateRef.current = editorState;
+  }, [editorState]);
+
+  useEffect(() => {
+    setEditorState(initialState);
+    latestStateRef.current = initialState;
+    setSaveStatus("idle");
+    setSuccessMessage(null);
+    setErrorMessage(null);
+
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
   }, [initialState]);
 
   useEffect(() => {
@@ -221,57 +249,126 @@ export default function AgentProgramEditor({
     }
   }, [initialAnalysis, initialVersion]);
 
-  function buildPayload() {
-    const vigilancePoints = vigilancePointsText
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, []);
+
+  function buildPayload(state: EditorState) {
+    const vigilancePoints = state.vigilancePointsText
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
 
-    const modules = parseModulesFromText(modulesText);
+    const modules = parseModulesFromText(state.modulesText);
 
     return {
       dossierId,
-      sourceAnalysisId:
-        initialVersion?.source_analysis_id ?? initialAnalysis?.id ?? null,
-      title: title.trim() || null,
-      targetAudience: targetAudience.trim() || null,
-      overallObjective: overallObjective.trim() || null,
-      recommendedPositioning: recommendedPositioning.trim() || null,
-      justification: justification.trim() || null,
-      agentComment: agentComment.trim() || null,
+      sourceAnalysisId: state.sourceAnalysisId,
+      title: state.title.trim() || null,
+      targetAudience: state.targetAudience.trim() || null,
+      overallObjective: state.overallObjective.trim() || null,
+      recommendedPositioning: state.recommendedPositioning.trim() || null,
+      justification: state.justification.trim() || null,
+      agentComment: state.agentComment.trim() || null,
       vigilancePoints,
       modules,
     };
   }
 
-  async function handleSave() {
+  async function saveProgram(
+    stateToSave = latestStateRef.current,
+    options: { showSuccessMessage?: boolean } = {},
+  ) {
     try {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+
       setSaving(true);
-      setSuccessMessage(null);
+      setSaveStatus("saving");
       setErrorMessage(null);
+
+      if (options.showSuccessMessage) {
+        setSuccessMessage(null);
+      }
 
       const res = await fetch("/agent/api/program/save-version", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(buildPayload()),
+        body: JSON.stringify(buildPayload(stateToSave)),
       });
 
       const data = await res.json().catch(() => null);
 
-      if (!res.ok) {
+      if (!res.ok || data?.success === false) {
         throw new Error(data?.error ?? "Erreur lors de l’enregistrement.");
       }
 
-      setSuccessMessage("Version agent enregistrée avec succès.");
+      setSaveStatus("saved");
+
+      if (options.showSuccessMessage) {
+        setSuccessMessage("Version agent enregistrée avec succès.");
+      }
+
+      setTimeout(() => {
+        setSaveStatus((current) => (current === "saved" ? "idle" : current));
+      }, 1800);
+
+      return true;
     } catch (error) {
+      setSaveStatus("error");
       setErrorMessage(
         error instanceof Error ? error.message : "Erreur inconnue.",
       );
+      return false;
     } finally {
       setSaving(false);
     }
+  }
+
+  function scheduleAutoSave(stateToSave: EditorState) {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    debounceRef.current = setTimeout(() => {
+      void saveProgram(stateToSave);
+    }, 800);
+  }
+
+  function updateField(field: keyof EditorState, value: string) {
+    setEditorState((previous) => {
+      const next = {
+        ...previous,
+        [field]: value,
+      };
+
+      latestStateRef.current = next;
+      scheduleAutoSave(next);
+
+      return next;
+    });
+
+    setSuccessMessage(null);
+  }
+
+  function flushSave() {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+      void saveProgram(latestStateRef.current);
+    }
+  }
+
+  async function handleSave() {
+    await saveProgram(latestStateRef.current, { showSuccessMessage: true });
   }
 
   async function handleSendToClient() {
@@ -280,14 +377,18 @@ export default function AgentProgramEditor({
       setSuccessMessage(null);
       setErrorMessage(null);
 
-      console.log("DOSSIER ID envoyé =", dossierId);
+      const saved = await saveProgram(latestStateRef.current);
+
+      if (!saved) {
+        return;
+      }
 
       const res = await fetch("/agent/api/program/send-to-client", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(buildPayload()),
+        body: JSON.stringify(buildPayload(latestStateRef.current)),
       });
 
       const data = await res.json().catch(() => null);
@@ -305,6 +406,15 @@ export default function AgentProgramEditor({
       setSendingToClient(false);
     }
   }
+
+  const saveStatusLabel =
+    saveStatus === "saving"
+      ? "Enregistrement..."
+      : saveStatus === "saved"
+        ? "Enregistré"
+        : saveStatus === "error"
+          ? "Erreur d’enregistrement"
+          : "";
 
   const inputStyle: React.CSSProperties = {
     width: "100%",
@@ -349,6 +459,7 @@ export default function AgentProgramEditor({
           }}
         >
           <SelenCardTitle>Programme de formation</SelenCardTitle>
+
           {initialVersion ? (
             <SelenBadge variant="info" dot>
               Version agent chargée
@@ -362,6 +473,20 @@ export default function AgentProgramEditor({
               Vide
             </SelenBadge>
           )}
+
+          {saveStatusLabel ? (
+            <span
+              style={{
+                fontSize: 11,
+                color:
+                  saveStatus === "error"
+                    ? "var(--selen-danger)"
+                    : "var(--selen-text3)",
+              }}
+            >
+              {saveStatusLabel}
+            </span>
+          ) : null}
         </div>
 
         <button
@@ -392,7 +517,7 @@ export default function AgentProgramEditor({
         }}
       >
         Ici, l’agent peut relire, corriger et structurer le programme avant
-        envoi au client.
+        envoi au client. Les modifications sont enregistrées automatiquement.
       </p>
 
       {!isOpen ? null : (
@@ -408,8 +533,9 @@ export default function AgentProgramEditor({
             <div>
               <label style={labelStyle}>Intitulé</label>
               <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                value={editorState.title}
+                onChange={(e) => updateField("title", e.target.value)}
+                onBlur={flushSave}
                 style={inputStyle}
                 placeholder="Intitulé du programme"
               />
@@ -418,8 +544,9 @@ export default function AgentProgramEditor({
             <div>
               <label style={labelStyle}>Public visé</label>
               <input
-                value={targetAudience}
-                onChange={(e) => setTargetAudience(e.target.value)}
+                value={editorState.targetAudience}
+                onChange={(e) => updateField("targetAudience", e.target.value)}
+                onBlur={flushSave}
                 style={inputStyle}
                 placeholder="Professionnels..."
               />
@@ -429,8 +556,9 @@ export default function AgentProgramEditor({
           <div style={{ marginBottom: 12 }}>
             <label style={labelStyle}>Objectif global</label>
             <textarea
-              value={overallObjective}
-              onChange={(e) => setOverallObjective(e.target.value)}
+              value={editorState.overallObjective}
+              onChange={(e) => updateField("overallObjective", e.target.value)}
+              onBlur={flushSave}
               style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
               placeholder="Objectif global reformulé"
             />
@@ -439,8 +567,11 @@ export default function AgentProgramEditor({
           <div style={{ marginBottom: 12 }}>
             <label style={labelStyle}>Positionnement recommandé</label>
             <textarea
-              value={recommendedPositioning}
-              onChange={(e) => setRecommendedPositioning(e.target.value)}
+              value={editorState.recommendedPositioning}
+              onChange={(e) =>
+                updateField("recommendedPositioning", e.target.value)
+              }
+              onBlur={flushSave}
               style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
               placeholder="Repositionnement proposé si nécessaire"
             />
@@ -449,8 +580,9 @@ export default function AgentProgramEditor({
           <div style={{ marginBottom: 12 }}>
             <label style={labelStyle}>Justification</label>
             <textarea
-              value={justification}
-              onChange={(e) => setJustification(e.target.value)}
+              value={editorState.justification}
+              onChange={(e) => updateField("justification", e.target.value)}
+              onBlur={flushSave}
               style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
               placeholder="Pourquoi ce programme est reformulé ou repositionné"
             />
@@ -459,8 +591,9 @@ export default function AgentProgramEditor({
           <div style={{ marginBottom: 12 }}>
             <label style={labelStyle}>Commentaire agent</label>
             <textarea
-              value={agentComment}
-              onChange={(e) => setAgentComment(e.target.value)}
+              value={editorState.agentComment}
+              onChange={(e) => updateField("agentComment", e.target.value)}
+              onBlur={flushSave}
               style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
               placeholder="Commentaire à transmettre au client"
             />
@@ -471,8 +604,11 @@ export default function AgentProgramEditor({
               Points de vigilance (1 ligne = 1 point)
             </label>
             <textarea
-              value={vigilancePointsText}
-              onChange={(e) => setVigilancePointsText(e.target.value)}
+              value={editorState.vigilancePointsText}
+              onChange={(e) =>
+                updateField("vigilancePointsText", e.target.value)
+              }
+              onBlur={flushSave}
               style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
               placeholder={`Objectifs à préciser\nDurées à harmoniser\nVocabulaire à professionnaliser`}
             />
@@ -483,8 +619,9 @@ export default function AgentProgramEditor({
               Modules et chapitres (format texte éditable)
             </label>
             <textarea
-              value={modulesText}
-              onChange={(e) => setModulesText(e.target.value)}
+              value={editorState.modulesText}
+              onChange={(e) => updateField("modulesText", e.target.value)}
+              onBlur={flushSave}
               style={{
                 ...inputStyle,
                 minHeight: 360,
@@ -549,7 +686,7 @@ Chapitres :
               onClick={handleSave}
               disabled={saving || sendingToClient}
             >
-              {saving ? "Enregistrement..." : "💾 Enregistrer"}
+              {saving ? "Enregistrement..." : "💾 Enregistrer maintenant"}
             </SelenButton>
 
             <SelenButton
