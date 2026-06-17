@@ -10,6 +10,7 @@ type NotifyClientVisibleDocumentsArgs = {
   } | null;
   subject: string;
   message: string;
+  buttonLabel?: string;
 };
 
 function escapeHtml(value: string) {
@@ -27,6 +28,7 @@ export async function notifyClientVisibleDocuments({
   organisation,
   subject,
   message,
+  buttonLabel = "Accéder à mon espace client",
 }: NotifyClientVisibleDocumentsArgs) {
   const resendApiKey = process.env.RESEND_API_KEY;
   const from =
@@ -36,12 +38,17 @@ export async function notifyClientVisibleDocuments({
   const recipient = organisation?.email?.trim();
 
   if (!resendApiKey || !recipient) {
+    const error = !resendApiKey
+      ? "Configuration email Resend manquante."
+      : "Aucun email client fiable n'est renseigné pour ce dossier.";
+
     console.warn("Notification documents client ignorée.", {
       hasResendApiKey: Boolean(resendApiKey),
       hasRecipient: Boolean(recipient),
       dossierId,
     });
-    return { sent: false };
+
+    return { sent: false, error };
   }
 
   const resend = new Resend(resendApiKey);
@@ -57,15 +64,22 @@ export async function notifyClientVisibleDocuments({
         <p>Bonjour ${escapeHtml(recipientName)},</p>
         <p>${escapeHtml(message)}</p>
         <p>
-          <a href="${clientUrl}">Accéder à mon espace client</a>
+          <a href="${clientUrl}">${escapeHtml(buttonLabel)}</a>
         </p>
+        <p>Rappel : votre identifiant est l'email utilisé lors de l'achat.</p>
         <p>À très vite,<br />Selen Editions</p>
       `,
     });
 
-    return { sent: true };
+    return { sent: true, error: null };
   } catch (error) {
     console.error("Notification documents client échouée.", error);
-    return { sent: false };
+    return {
+      sent: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Erreur inconnue pendant l'envoi email.",
+    };
   }
 }

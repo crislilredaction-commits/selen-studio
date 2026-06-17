@@ -34,6 +34,9 @@ export type NdaWorkflowVariables = {
 };
 
 export type NdaWorkflowProgramVersion = {
+  version_type?: string | null;
+  status?: string | null;
+  client_decision?: string | null;
   modules?: unknown;
   title?: string | null;
   target_audience?: string | null;
@@ -167,6 +170,25 @@ export function getNdaAgentWorkflowState(args: {
     args.latestProgramVersion &&
       hasNdaProgramDocumentContent(args.latestProgramVersion),
   );
+  const latestProgramVersionType = args.latestProgramVersion?.version_type ?? null;
+  const latestProgramDecision = args.latestProgramVersion?.client_decision ?? null;
+  const latestProgramStatus = args.latestProgramVersion?.status ?? null;
+  const isProgramSentToClient =
+    latestProgramVersionType === "client_sent" ||
+    latestProgramStatus === "sent" ||
+    latestProgramStatus === "pending_client";
+  const isProgramPendingClientDecision =
+    programReady &&
+    isProgramSentToClient &&
+    !latestProgramDecision &&
+    latestProgramStatus !== "validated_by_client" &&
+    latestProgramStatus !== "refused_by_client";
+  const isProgramRefusedByClient =
+    latestProgramDecision === "refused" ||
+    latestProgramStatus === "refused_by_client";
+  const isProgramValidatedByClient =
+    latestProgramDecision === "validated" ||
+    latestProgramStatus === "validated_by_client";
   const variablesReady = hasNdaRequiredVariables(args.variables);
   const generatedSigningDocuments = args.documents.filter(
     isNdaGeneratedSigningDocument,
@@ -236,7 +258,49 @@ export function getNdaAgentWorkflowState(args: {
     };
   }
 
-  if (!variablesReady) {
+  if (isProgramRefusedByClient) {
+    return {
+      currentStep: 1,
+      statusLabel: "Correction programme a traiter",
+      actionLabel: "Le client a demande une correction du programme.",
+      agentStatusDescription:
+        "Le client a refuse la proposition de programme. L'agent doit relire le retour et preparer une nouvelle proposition.",
+      statusTone: "status" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "under_review",
+      finalReturnedDocuments,
+      missingFinalRequiredTypes,
+    };
+  }
+
+  if (isProgramPendingClientDecision) {
+    return {
+      currentStep: 1,
+      statusLabel: "Validation programme client attendue",
+      actionLabel: "Le client doit valider ou refuser le programme propose.",
+      agentStatusDescription:
+        "La proposition de programme a ete transmise au client et attend sa decision.",
+      statusTone: "warn" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "program_sent_to_client",
+      finalReturnedDocuments,
+      missingFinalRequiredTypes,
+    };
+  }
+
+  if (!isProgramValidatedByClient) {
+    return {
+      currentStep: 1,
+      statusLabel: "Programme a transmettre au client",
+      actionLabel: "L'agent doit envoyer la proposition de programme au client.",
+      agentStatusDescription:
+        "Le programme est pret cote agent, mais il n'a pas encore ete valide par le client.",
+      statusTone: "status" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "under_review",
+      finalReturnedDocuments,
+      missingFinalRequiredTypes,
+    };
+  }
+
+  if (isProgramValidatedByClient && !variablesReady) {
     return {
       currentStep: 2,
       statusLabel: "Coordonnées client attendues",

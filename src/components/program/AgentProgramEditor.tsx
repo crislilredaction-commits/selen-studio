@@ -397,7 +397,11 @@ export default function AgentProgramEditor({
         throw new Error(data?.error ?? "Erreur lors de l’envoi au client.");
       }
 
-      setSuccessMessage("Programme envoyé au client avec succès.");
+      setSuccessMessage(
+        data?.emailed
+          ? "Programme envoye au client avec succes. Email de validation envoye."
+          : "Programme enregistre, mais aucun email n'a ete envoye.",
+      );
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Erreur inconnue.",

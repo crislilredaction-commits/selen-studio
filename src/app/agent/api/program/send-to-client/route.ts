@@ -27,16 +27,12 @@ type OrganisationRow = {
   id: string;
   name: string | null;
   email: string | null;
-  representant_prenom?: string | null;
-  representant_nom?: string | null;
 };
 
 export async function POST(req: Request) {
   try {
     const supabase = getAdminSupabase();
     const body = await req.json();
-
-    console.log("SEND TO CLIENT BODY =", body);
 
     const {
       dossierId,
@@ -51,8 +47,6 @@ export async function POST(req: Request) {
       modules = [],
     } = body ?? {};
 
-    console.log("SEND TO CLIENT dossierId =", dossierId);
-
     if (!dossierId || typeof dossierId !== "string") {
       return NextResponse.json(
         { error: "dossierId manquant ou invalide." },
@@ -64,25 +58,19 @@ export async function POST(req: Request) {
       .from("dossiers")
       .select(
         `
-      id,
-      title,
-      status,
-      organisation_id,
-      organisations:organisation_id (
         id,
-        name,
-        email
-      )
-    `,
+        title,
+        status,
+        organisation_id,
+        organisations:organisation_id (
+          id,
+          name,
+          email
+        )
+      `,
       )
       .eq("id", dossierId)
       .maybeSingle();
-
-    console.log("SEND TO CLIENT dossier query result =", {
-      dossierId,
-      dossier,
-      dossierError,
-    });
 
     if (dossierError) {
       return NextResponse.json(
@@ -119,8 +107,6 @@ export async function POST(req: Request) {
       modules: Array.isArray(modules) ? modules : [],
     };
 
-    console.log("SEND TO CLIENT version payload =", payload);
-
     const { data: version, error: versionError } = await supabase
       .from("dossier_program_versions")
       .insert(payload)
@@ -136,9 +122,7 @@ export async function POST(req: Request) {
 
     const { error: dossierUpdateError } = await supabase
       .from("dossiers")
-      .update({
-        status: "under_review",
-      })
+      .update({ status: "program_sent_to_client" })
       .eq("id", dossierId);
 
     if (dossierUpdateError) {
@@ -152,15 +136,31 @@ export async function POST(req: Request) {
       dossierId,
       dossierType: "nda",
       organisation,
-      subject: "Votre proposition de programme est disponible",
+      subject: "Votre programme de formation est prêt à être validé",
       message:
-        "Votre conseiller a préparé une proposition de programme de formation pour votre dossier. Vous pouvez la consulter, la valider ou demander une modification depuis votre espace client.",
+        "Selen a préparé une proposition de programme à partir des éléments transmis. Merci de vous connecter à votre espace client pour la consulter. Vous pourrez la valider ou demander une correction.",
+      buttonLabel: "Consulter mon programme",
     });
+
+    if (!emailNotification.sent) {
+      return NextResponse.json(
+        {
+          success: false,
+          programSaved: true,
+          version,
+          emailed: false,
+          error:
+            emailNotification.error ??
+            "Le programme a été enregistré, mais l'email client n'a pas pu être envoyé.",
+        },
+        { status: 502 },
+      );
+    }
 
     return NextResponse.json({
       success: true,
       version,
-      emailed: emailNotification.sent,
+      emailed: true,
     });
   } catch (error) {
     console.error("SEND TO CLIENT fatal error =", error);

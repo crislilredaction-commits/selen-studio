@@ -461,6 +461,9 @@ function hasNdaRequiredVariables(variables: NdaVariablesRow | null) {
 function getNdaAgentWorkflowState(args: {
   initialDepositComplete: boolean;
   programReady: boolean;
+  programPendingClientDecision: boolean;
+  programRefusedByClient: boolean;
+  programValidatedByClient: boolean;
   variablesReady: boolean;
   signingDocumentsGenerated: boolean;
   finalReturnedDocuments: DbDocumentRow[];
@@ -501,6 +504,42 @@ function getNdaAgentWorkflowState(args: {
       actionLabel: "L'agent doit analyser ou préparer le programme.",
       agentStatusDescription:
         "Le dossier est côté agent pour analyse du programme.",
+      statusTone: "status" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "under_review",
+    };
+  }
+
+  if (args.programRefusedByClient) {
+    return {
+      currentStep: 1,
+      statusLabel: "Correction programme a traiter",
+      actionLabel: "Le client a demande une correction du programme.",
+      agentStatusDescription:
+        "Le client a refuse la proposition de programme. L'agent doit relire le retour et preparer une nouvelle proposition.",
+      statusTone: "status" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "under_review",
+    };
+  }
+
+  if (args.programPendingClientDecision) {
+    return {
+      currentStep: 1,
+      statusLabel: "Validation programme client attendue",
+      actionLabel: "Le client doit valider ou refuser le programme propose.",
+      agentStatusDescription:
+        "La proposition de programme a ete transmise au client et attend sa decision.",
+      statusTone: "warn" satisfies NdaWorkflowStatusTone,
+      targetDossierStatus: "program_sent_to_client",
+    };
+  }
+
+  if (!args.programValidatedByClient) {
+    return {
+      currentStep: 1,
+      statusLabel: "Programme a transmettre au client",
+      actionLabel: "L'agent doit envoyer la proposition de programme au client.",
+      agentStatusDescription:
+        "Le programme est pret cote agent, mais il n'a pas encore ete valide par le client.",
       statusTone: "status" satisfies NdaWorkflowStatusTone,
       targetDossierStatus: "under_review",
     };
@@ -1921,6 +1960,26 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
     );
   }
 
+  const {
+    data: latestClientProgramVersion,
+    error: latestClientProgramVersionError,
+  } = await supabase
+    .from("dossier_program_versions")
+    .select("*")
+    .eq("dossier_id", dossier.id)
+    .eq("version_type", "client_sent")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latestClientProgramVersionError) {
+    return (
+      <main className="p-10" style={{ color: "var(--selen-danger)" }}>
+        <pre>{JSON.stringify(latestClientProgramVersionError, null, 2)}</pre>
+      </main>
+    );
+  }
+
   const { data: latestClientDecision, error: latestClientDecisionError } =
     await supabase
       .from("dossier_program_versions")
@@ -2083,13 +2142,37 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
     uniqueReceivedKeys.includes("cv_formateur") &&
     uniqueReceivedKeys.includes("programme_formation") &&
     uniqueReceivedKeys.includes("avis_insee");
+  const workflowProgramVersion =
+    latestClientProgramVersion ?? latestProgramVersion;
   const programReady = Boolean(
-    latestProgramVersion && hasNdaProgramDocumentContent(latestProgramVersion),
+    workflowProgramVersion &&
+      hasNdaProgramDocumentContent(workflowProgramVersion),
   );
+  const workflowProgramStatus = workflowProgramVersion?.status ?? null;
+  const workflowProgramDecision =
+    workflowProgramVersion?.client_decision ?? null;
+  const workflowProgramSentToClient =
+    workflowProgramVersion?.version_type === "client_sent" ||
+    workflowProgramStatus === "sent" ||
+    workflowProgramStatus === "pending_client";
+  const programRefusedByClient =
+    workflowProgramDecision === "refused" ||
+    workflowProgramStatus === "refused_by_client";
+  const programValidatedByClient =
+    workflowProgramDecision === "validated" ||
+    workflowProgramStatus === "validated_by_client";
+  const programPendingClientDecision =
+    programReady &&
+    workflowProgramSentToClient &&
+    !programRefusedByClient &&
+    !programValidatedByClient;
   const variablesReady = hasNdaRequiredVariables(ndaVariables);
   const ndaAgentWorkflowState = getNdaAgentWorkflowState({
     initialDepositComplete,
     programReady,
+    programPendingClientDecision,
+    programRefusedByClient,
+    programValidatedByClient,
     variablesReady,
     signingDocumentsGenerated,
     finalReturnedDocuments,
