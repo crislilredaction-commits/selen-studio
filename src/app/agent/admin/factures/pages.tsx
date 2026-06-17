@@ -430,24 +430,24 @@ export default function AdminAgentInvoicesPage() {
 }
 
 const C = {
-  bg: "#1a1510",
-  surface: "#221c14",
-  border: "rgba(196,169,106,0.15)",
-  borderStrong: "rgba(196,169,106,0.28)",
-  gold: "#c4a96a",
-  text: "rgba(255,255,255,0.88)",
-  textSoft: "rgba(255,255,255,0.55)",
-  textFaint: "rgba(255,255,255,0.28)",
-  error: "#c97a7a",
-  success: "#7ec97e",
+  bg: "var(--selen-bg)",
+  surface: "var(--selen-card-texture), var(--selen-card)",
+  border: "var(--selen-border)",
+  borderStrong: "var(--selen-border2)",
+  gold: "var(--selen-gold)",
+  text: "var(--selen-text-oncard)",
+  textSoft: "var(--selen-text2-oncard)",
+  textFaint: "var(--selen-text3-oncard)",
+  error: "var(--selen-danger)",
+  success: "var(--selen-success)",
 };
 
 const s: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
     background: C.bg,
-    color: C.text,
-    fontFamily: "Georgia, 'Times New Roman', serif",
+    color: "var(--selen-text)",
+    fontFamily: "var(--font-body)",
   },
   container: {
     maxWidth: 1180,
@@ -586,7 +586,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     padding: "0.65rem 1rem",
     background: C.gold,
-    color: "#1a1510",
+    color: "var(--selen-ink)",
     fontWeight: 800,
     fontFamily: "sans-serif",
     textDecoration: "none",

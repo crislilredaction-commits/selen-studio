@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     const { data: insertedMessage, error: insertError } = await supabase
       .from("messages")
       .insert(payload)
-      .select("id")
+      .select("id, content, sender_type, created_at")
       .single();
 
     if (insertError) {
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: insertedMessage });
   } catch (error) {
     console.error("Erreur route messages/send:", error);
     return NextResponse.json(

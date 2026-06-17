@@ -8,6 +8,7 @@ type CreateAgentNotificationInput = {
     | "client_step_completed"
     | "client_uploaded_essential_documents"
     | "client_uploaded_proofs"
+    | "client_submitted_nda_final_documents"
     | "client_validated_reformulation"
     | "client_requested_call";
   title: string;

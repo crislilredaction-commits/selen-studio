@@ -335,7 +335,7 @@ export default function AgentSidebarMessaging() {
                 fontSize: 10,
                 fontWeight: 700,
                 background: "var(--selen-gold)",
-                color: "#1a120b",
+                color: "var(--selen-ink)",
                 borderRadius: 999,
                 padding: "2px 7px",
                 flexShrink: 0,
@@ -352,10 +352,19 @@ export default function AgentSidebarMessaging() {
   return (
     <div
       style={{
+        ...({
+          "--selen-text": "var(--selen-text-oncard)",
+          "--selen-text2": "var(--selen-text2-oncard)",
+          "--selen-text3": "var(--selen-text3-oncard)",
+          "--selen-bg2": "var(--selen-card2)",
+          "--selen-bg3": "rgba(247, 239, 224, 0.08)",
+          "--selen-border": "rgba(245, 208, 138, 0.18)",
+          "--selen-border2": "rgba(245, 208, 138, 0.34)",
+        } as React.CSSProperties),
         position: "relative",
         zIndex: open ? 80 : 1,
         border: "1px solid var(--selen-border)",
-        background: "var(--selen-bg2)",
+        background: "var(--selen-card-texture), var(--selen-card)",
         borderRadius: "var(--radius-lg)",
         overflow: "visible",
       }}
@@ -410,7 +419,7 @@ export default function AgentSidebarMessaging() {
                 height: 20,
                 borderRadius: 999,
                 background: "var(--selen-gold)",
-                color: "#1a120b",
+                color: "var(--selen-ink)",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -445,9 +454,9 @@ export default function AgentSidebarMessaging() {
             bottom: "calc(100% + 10px)",
             zIndex: 90,
             border: "1px solid var(--selen-border)",
-            background: "var(--selen-bg2)",
+            background: "var(--selen-card-texture), var(--selen-card)",
             borderRadius: "var(--radius-lg)",
-            boxShadow: "0 -18px 45px rgba(0,0,0,0.45)",
+            boxShadow: "0 -18px 45px rgba(58, 44, 32, 0.32)",
             padding: 10,
             height: "min(620px, calc(100vh - 180px))",
             minHeight: 460,
@@ -834,9 +843,9 @@ export default function AgentSidebarMessaging() {
                 style={{
                   background:
                     sendingInternal || !internalDraft.trim()
-                      ? "rgba(212, 159, 63, 0.45)"
+                      ? "rgba(201, 148, 58, 0.45)"
                       : "var(--selen-gold)",
-                  color: "#1a120b",
+                  color: "var(--selen-ink)",
                   border: "none",
                   borderRadius: "var(--radius-md)",
                   padding: "10px 14px",

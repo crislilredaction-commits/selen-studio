@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { Resend } from "resend";
-import { getVitrineClientUrl } from "@/lib/vitrineLinks";
+import { notifyClientVisibleDocuments } from "@/lib/server/notifyClientVisibleDocuments";
 
 function getAdminSupabase() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -22,14 +21,6 @@ function getAdminSupabase() {
       },
     },
   );
-}
-
-function getResendClient() {
-  if (!process.env.RESEND_API_KEY) {
-    throw new Error("RESEND_API_KEY manquante.");
-  }
-
-  return new Resend(process.env.RESEND_API_KEY);
 }
 
 type OrganisationRow = {
@@ -112,7 +103,6 @@ export async function POST(req: Request) {
       : dossier.organisations;
 
     const organisation = (organisationRaw ?? null) as OrganisationRow | null;
-    const clientEmail = organisation?.email ?? null;
 
     const payload = {
       dossier_id: dossierId,
@@ -158,58 +148,19 @@ export async function POST(req: Request) {
       );
     }
 
-    if (clientEmail) {
-      const resend = getResendClient();
-      const clientUrl = getVitrineClientUrl("nda", dossierId);
-
-      const recipientName = organisation?.name || "bonjour";
-
-      const emailResult = await resend.emails.send({
-        from: "Selen ✨ <hello@selen-editions.fr>",
-        to: clientEmail,
-        subject: "Votre proposition de programme est disponible ✨",
-        html: `
-          <p>Bonjour ${recipientName},</p>
-
-          <p>
-            Votre conseiller a préparé une <strong>proposition de programme de formation</strong>
-            pour votre dossier.
-          </p>
-
-          <p>
-            Cette proposition a été pensée pour renforcer la cohérence du programme
-            avec le profil du formateur et optimiser les chances d’acceptation du dossier.
-          </p>
-
-          <p>Vous pouvez maintenant :</p>
-
-          <ul>
-            <li>consulter la proposition,</li>
-            <li>la commenter,</li>
-            <li>la valider,</li>
-            <li>ou demander une modification si besoin.</li>
-          </ul>
-
-          <p>
-            <a href="${clientUrl}" style="display:inline-block;padding:10px 16px;background:#4b2e1e;color:#ffffff;text-decoration:none;border-radius:6px;">
-              Accéder à mon dossier
-            </a>
-          </p>
-
-          <p>
-            À très vite,<br />
-            L’équipe Selen
-          </p>
-        `,
-      });
-
-      console.log("SEND TO CLIENT email result =", emailResult);
-    }
+    const emailNotification = await notifyClientVisibleDocuments({
+      dossierId,
+      dossierType: "nda",
+      organisation,
+      subject: "Votre proposition de programme est disponible",
+      message:
+        "Votre conseiller a préparé une proposition de programme de formation pour votre dossier. Vous pouvez la consulter, la valider ou demander une modification depuis votre espace client.",
+    });
 
     return NextResponse.json({
       success: true,
       version,
-      emailed: Boolean(clientEmail),
+      emailed: emailNotification.sent,
     });
   } catch (error) {
     console.error("SEND TO CLIENT fatal error =", error);

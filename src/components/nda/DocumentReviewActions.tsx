@@ -14,23 +14,41 @@ const ACTIONS: Array<{
   status: ReviewStatus;
   label: string;
   pendingLabel: string;
+  shortLabel: string;
+  title: string;
 }> = [
   {
     status: "validated",
     label: "Valider",
     pendingLabel: "Validation...",
+    shortLabel: "✓",
+    title: "Valider le document",
   },
   {
     status: "to_correct",
     label: "À corriger",
     pendingLabel: "Envoi...",
+    shortLabel: "!",
+    title: "Demander une correction",
   },
   {
     status: "not_reviewed",
     label: "Remettre à vérifier",
     pendingLabel: "Mise à jour...",
+    shortLabel: "↻",
+    title: "Remettre à vérifier",
   },
 ];
+
+function getVisibleActions(currentStatus?: string | null) {
+  if (currentStatus === "validated" || currentStatus === "to_correct") {
+    return ACTIONS.filter((action) => action.status === "not_reviewed");
+  }
+
+  return ACTIONS.filter(
+    (action) => action.status === "validated" || action.status === "to_correct",
+  );
+}
 
 export default function DocumentReviewActions({
   documentId,
@@ -75,9 +93,10 @@ export default function DocumentReviewActions({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {ACTIONS.map((action) => {
+        {getVisibleActions(currentStatus).map((action) => {
           const pending = pendingStatus === action.status;
           const disabled = Boolean(pendingStatus) || currentStatus === action.status;
+          const isPrimary = action.status === "validated";
 
           return (
             <button
@@ -85,27 +104,35 @@ export default function DocumentReviewActions({
               type="button"
               disabled={disabled}
               onClick={() => updateReviewStatus(action.status)}
+              title={action.title}
+              aria-label={action.title}
               style={{
                 border: "1px solid var(--selen-border)",
                 borderRadius: 6,
                 background:
-                  action.status === "validated"
+                  isPrimary
                     ? "var(--selen-gold)"
-                    : "var(--selen-bg3)",
+                    : action.status === "to_correct"
+                      ? "var(--selen-danger-bg)"
+                      : "var(--selen-bg3)",
                 color:
-                  action.status === "validated"
-                    ? "#0f0c08"
-                    : "var(--selen-text)",
+                  isPrimary
+                    ? "var(--selen-ink)"
+                    : action.status === "to_correct"
+                      ? "var(--selen-danger)"
+                      : "var(--selen-text2)",
                 cursor: disabled ? "default" : "pointer",
                 fontFamily: "var(--font-body)",
-                fontSize: 11,
-                fontWeight: 600,
+                fontSize: pending ? 10 : 14,
+                fontWeight: 700,
                 opacity: disabled ? 0.58 : 1,
-                padding: "5px 7px",
+                width: pending ? "auto" : 32,
+                height: 32,
+                padding: pending ? "0 8px" : 0,
                 whiteSpace: "nowrap",
               }}
             >
-              {pending ? action.pendingLabel : action.label}
+              {pending ? action.pendingLabel : action.shortLabel}
             </button>
           );
         })}

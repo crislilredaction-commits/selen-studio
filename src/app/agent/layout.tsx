@@ -10,7 +10,8 @@ export default function AgentLayout({
       style={{
         display: "flex",
         minHeight: "100vh",
-        background: "var(--selen-bg)",
+        background:
+          "radial-gradient(circle at 18% 0%, rgba(201, 148, 58, 0.12), transparent 28%), linear-gradient(180deg, var(--selen-bg2), var(--selen-bg))",
       }}
     >
       <AgentSidebar />
@@ -18,7 +19,8 @@ export default function AgentLayout({
       <main
         style={{
           flex: 1,
-          background: "var(--selen-bg)",
+          background:
+            "radial-gradient(circle at 72% 6%, rgba(245, 208, 138, 0.08), transparent 24%), transparent",
         }}
       >
         {children}

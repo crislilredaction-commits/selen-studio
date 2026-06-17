@@ -5,6 +5,7 @@ import { getNdaDocumentChecklistItems } from "@/lib/ndaChecklist";
 type Props = {
   receivedKeys: string[];
   phase1InfoStatus?: "completed" | "unknown";
+  scope?: "initial" | "full";
 };
 
 const NDA_DOCUMENT_CHECKLIST = getNdaDocumentChecklistItems();
@@ -16,6 +17,7 @@ const REQUIRED_PHASE_1_KEYS = NDA_DOCUMENT_CHECKLIST.filter(
 export default function NdaChecklist({
   receivedKeys,
   phase1InfoStatus = "unknown",
+  scope = "full",
 }: Props) {
   const phase1Required = NDA_DOCUMENT_CHECKLIST.filter(
     (d) => d.phase === 1 && d.required !== false,
@@ -28,6 +30,7 @@ export default function NdaChecklist({
   const phase1Validated = REQUIRED_PHASE_1_KEYS.every((key) =>
     receivedKeys.includes(key),
   );
+  const showFinalPhase = scope === "full" && phase1Validated;
 
   function renderItem(key: string, label: string, helper?: string) {
     const received = receivedKeys.includes(key);
@@ -152,7 +155,7 @@ export default function NdaChecklist({
 
       {phase1Required.map((d) => renderItem(d.key, d.label, d.helper))}
 
-      {phase1Recommended.length ? (
+      {scope === "full" && phase1Recommended.length ? (
         <>
           <div
             style={{
@@ -170,7 +173,7 @@ export default function NdaChecklist({
         </>
       ) : null}
 
-      {phase1Validated ? (
+      {showFinalPhase ? (
         <>
           <div
             style={{
@@ -186,7 +189,7 @@ export default function NdaChecklist({
 
           {phase2.map((d) => renderItem(d.key, d.label, d.helper))}
         </>
-      ) : (
+      ) : scope === "full" ? (
         <div
           style={{
             marginTop: 16,
@@ -198,7 +201,7 @@ export default function NdaChecklist({
           programme / CV reçues. Les compléments recommandés ne bloquent pas
           cette étape.
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

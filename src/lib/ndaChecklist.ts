@@ -23,17 +23,16 @@ export const NDA_CHECKLIST: NdaChecklistItem[] = [
     phase: 1,
     required: true,
   },
-  { key: "avis_insee", label: "Avis INSEE", phase: 1, required: true },
   {
-    key: "diplomes_formateur_principal",
-    label: "Diplômes / preuves de compétences",
+    key: "avis_insee",
+    label: "Avis INSEE / justificatif d’existence",
     phase: 1,
-    required: false,
+    required: true,
     helper:
-      "Complément recommandé, à demander si nécessaire selon le programme et le CV.",
+      "À déposer si déjà disponible pour identifier l’organisme.",
   },
 
-  // PHASE 2
+  // PHASE 2 - pieces finales retournees apres generation des documents a signer
   {
     key: "convention_signee",
     label: "Convention signée",
@@ -41,8 +40,20 @@ export const NDA_CHECKLIST: NdaChecklistItem[] = [
     required: true,
   },
   {
+    key: "programme_formation_signe",
+    label: "Programme de formation signé",
+    phase: 2,
+    required: true,
+  },
+  {
     key: "liste_formateurs_signee",
     label: "Liste des formateurs signée",
+    phase: 2,
+    required: true,
+  },
+  {
+    key: "diplomes_formateur_principal",
+    label: "Diplômes / preuves de compétences",
     phase: 2,
     required: true,
   },

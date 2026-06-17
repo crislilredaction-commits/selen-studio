@@ -240,7 +240,7 @@ export function getNdaAgentWorkflowState(args: {
     return {
       currentStep: 2,
       statusLabel: "Coordonnées client attendues",
-      actionLabel: "Compléter les informations de génération NDA.",
+      actionLabel: "Compléter les informations de préparation NDA.",
       agentStatusDescription:
         "Les informations client et stagiaire nécessaires sont attendues.",
       statusTone: "warn" satisfies NdaWorkflowStatusTone,
@@ -253,10 +253,10 @@ export function getNdaAgentWorkflowState(args: {
   if (!signingDocumentsGenerated) {
     return {
       currentStep: 3,
-      statusLabel: "Documents à signer à générer",
-      actionLabel: "Générer le pack à signer pour le client.",
+      statusLabel: "Documents à signer à préparer",
+      actionLabel: "Préparer le pack à signer pour le client.",
       agentStatusDescription:
-        "Le contexte est prêt, le pack de documents doit être généré côté agent.",
+        "Le contexte est prêt, le pack de documents doit être préparé côté agent.",
       statusTone: "status" satisfies NdaWorkflowStatusTone,
       targetDossierStatus: "under_review",
       finalReturnedDocuments,

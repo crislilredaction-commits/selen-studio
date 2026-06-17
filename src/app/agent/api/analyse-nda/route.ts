@@ -60,6 +60,177 @@ function pickPreferredDoc(
   )[0];
 }
 
+function buildNdaListeFormateursResumeFromCv(
+  cvText: string,
+  programmeText: string,
+) {
+  const cleanedCvText = cvText
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/[ ]{2,}/g, " ")
+    .trim();
+
+  const formationTitle =
+    extractTrainingTitle(programmeText)?.trim() || "la formation concernée";
+
+  if (!cleanedCvText) return "";
+
+  const lines = cleanedCvText
+    .split("\n")
+    .map((line) =>
+      line
+        .replace(/^[\s•·\-–—*]+/, "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter((line) => line.length >= 8 && line.length <= 260);
+
+  const uniqueLines = Array.from(new Set(lines));
+
+  const hasYear = (value: string) => /\b(19|20)\d{2}\b/.test(value);
+  const hasDuration = (value: string) =>
+    /\b\d+\s*(an|ans|année|années|mois)\b/i.test(value) ||
+    /\b(19|20)\d{2}\s*[-–—]\s*(19|20)\d{2}\b/.test(value);
+
+  const pickLines = (patterns: RegExp[], limit = 8) =>
+    uniqueLines
+      .filter((line) => patterns.some((pattern) => pattern.test(line)))
+      .slice(0, limit);
+
+  const diplomaLines = pickLines([
+    /dipl[oô]me/i,
+    /certificat/i,
+    /certification/i,
+    /titre professionnel/i,
+    /attestation/i,
+    /habilitation/i,
+    /formation suivie/i,
+    /bac\b/i,
+    /bts\b/i,
+    /licence\b/i,
+    /master\b/i,
+    /doctorat\b/i,
+  ]);
+
+  const experienceLines = pickLines(
+    [
+      /exp[ée]rience/i,
+      /poste/i,
+      /fonction/i,
+      /emploi/i,
+      /salari[ée]/i,
+      /ind[ée]pendant/i,
+      /dirigeant/i,
+      /responsable/i,
+      /charg[ée]/i,
+      /consultant/i,
+      /formateur/i,
+      /formatrice/i,
+      /technicien/i,
+      /manager/i,
+      /coordinateur/i,
+      /chef/i,
+      /g[ée]rant/i,
+      /entreprise/i,
+      /soci[ée]t[ée]/i,
+    ],
+    10,
+  );
+
+  const competenceLines = pickLines(
+    [
+      /comp[ée]tence/i,
+      /mission/i,
+      /activit[ée]/i,
+      /accompagnement/i,
+      /animation/i,
+      /gestion/i,
+      /conseil/i,
+      /encadrement/i,
+      /coordination/i,
+      /analyse/i,
+      /suivi/i,
+      /pilotage/i,
+      /maîtrise/i,
+      /pratique/i,
+      /terrain/i,
+    ],
+    10,
+  );
+
+  const fallbackCompetences = [
+    `compétences techniques et pratiques liées à ${formationTitle}`,
+    "capacité à expliquer les gestes, méthodes ou raisonnements professionnels attendus",
+    "capacité à relier les situations de terrain aux objectifs pédagogiques de la formation",
+    "capacité à accompagner des apprenants dans l’acquisition de compétences opérationnelles",
+    "capacité à évaluer la progression et à adapter les explications au niveau du public",
+  ];
+
+  const sections: string[] = [];
+
+  sections.push("Diplômes / attestations identifiés :");
+  if (diplomaLines.length) {
+    sections.push(
+      ...diplomaLines.map(
+        (line) =>
+          `- ${line}${hasYear(line) ? "" : " (année d’obtention à vérifier / compléter)"}`,
+      ),
+    );
+  } else {
+    sections.push(
+      "- Aucun diplôme, titre, certificat ou attestation clairement identifiable dans le texte extrait du CV. À compléter par l’agent si l’information figure dans le document original ou dans une pièce jointe séparée.",
+    );
+  }
+
+  sections.push("");
+  sections.push("Expériences professionnelles pertinentes :");
+  if (experienceLines.length) {
+    sections.push(
+      ...experienceLines.map(
+        (line) =>
+          `- ${line}${hasDuration(line) ? "" : " (durée, dates ou entreprise à vérifier / compléter)"}`,
+      ),
+    );
+  } else {
+    sections.push(
+      `- Le CV mentionne une expérience en lien avec ${formationTitle}, mais les postes, durées et entreprises ne sont pas suffisamment détaillés dans le texte extrait. À compléter par l’agent à partir du CV original.`,
+    );
+  }
+
+  sections.push("");
+  sections.push("Compétences mobilisables pour animer la formation :");
+  if (competenceLines.length) {
+    sections.push(
+      ...competenceLines.map(
+        (line) =>
+          `- ${line} — compétence à relier aux objectifs de la formation "${formationTitle}".`,
+      ),
+    );
+  } else {
+    sections.push(
+      "- Le CV ne détaille pas suffisamment les missions confiées. Compétences types à vérifier par l’agent :",
+      ...fallbackCompetences.map((line) => `  - ${line}.`),
+    );
+  }
+
+  sections.push("");
+  sections.push("Lien avec la formation visée :");
+  sections.push(
+    `- Le parcours du formateur doit être rapproché de la formation "${formationTitle}". L’agent doit vérifier que les diplômes, attestations, expériences professionnelles et missions réellement présentes dans le CV justifient la capacité du formateur à enseigner ce domaine.`,
+  );
+
+  sections.push("");
+  sections.push("Points à compléter par l’agent :");
+  sections.push(
+    "- Préciser les années d’obtention des diplômes / attestations si elles sont visibles dans le CV.",
+    "- Préciser le nombre d’années d’expérience réellement justifiable.",
+    "- Mentionner les entreprises ou structures concernées lorsque l’information est présente.",
+    "- Supprimer toute compétence type non vérifiable si elle ne correspond pas au parcours réel du formateur.",
+  );
+
+  return sections.join("\n");
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
@@ -221,7 +392,10 @@ export async function POST(req: Request) {
         .eq("id", cvDoc.id);
     }
 
-    if (!programmeText.trim() && previousAnalysis?.source_program_text?.trim()) {
+    if (
+      !programmeText.trim() &&
+      previousAnalysis?.source_program_text?.trim()
+    ) {
       programmeText = previousAnalysis.source_program_text.trim();
       await serviceSupabase
         .from("documents")
@@ -335,6 +509,11 @@ export async function POST(req: Request) {
     console.log("intituleFormation:", intituleFormation);
     console.log("dureeFormation:", dureeFormation);
 
+    const listeFormateursDirigeantResume = buildNdaListeFormateursResumeFromCv(
+      cvText,
+      programmeText,
+    );
+
     const payload = {
       formateur_nom: trainerName.formateur_nom || null,
       formateur_prenom: trainerName.formateur_prenom || null,
@@ -347,6 +526,7 @@ export async function POST(req: Request) {
       code_postal: codePostal || null,
       ville: ville || null,
       region: region || null,
+      liste_formateurs_dirigeant_resume: listeFormateursDirigeantResume || null,
     };
 
     console.log("Analyse NDA payload:", payload);

@@ -6,6 +6,7 @@ import {
   syncNdaDossierStatus,
 } from "@/lib/server/ndaAgentWorkflow";
 import { hasNdaProgramDocumentContent } from "@/lib/server/ndaProgramDocumentHtml";
+import { notifyClientVisibleDocuments } from "@/lib/server/notifyClientVisibleDocuments";
 
 export const dynamic = "force-dynamic";
 
@@ -166,7 +167,17 @@ export async function POST(req: Request) {
       if (document?.dossier_id) {
         const { data: dossier } = await admin
           .from("dossiers")
-          .select("id, type, status")
+          .select(
+            `
+            id,
+            type,
+            status,
+            organisations:organisation_id (
+              name,
+              email
+            )
+          `,
+          )
           .eq("id", document.dossier_id)
           .maybeSingle();
 
@@ -208,6 +219,29 @@ export async function POST(req: Request) {
             currentStatus: dossier.status,
             targetStatus: workflowState.targetDossierStatus,
           });
+
+          if (
+            workflowState.targetDossierStatus === "compliant" &&
+            dossier.status !== "compliant"
+          ) {
+            const organisationRaw = Array.isArray(dossier.organisations)
+              ? dossier.organisations[0]
+              : dossier.organisations;
+
+            await notifyClientVisibleDocuments({
+              dossierId: dossier.id,
+              dossierType: "nda",
+              organisation: organisationRaw ?? null,
+              subject: "Votre dossier NDA est prêt à être déposé",
+              message:
+                "Votre dossier NDA a été vérifié par Selen. Vous pouvez maintenant accéder à votre espace client pour consulter la procédure de dépôt et récupérer les documents à déposer sur la plateforme officielle.",
+            }).catch((emailError) => {
+              console.error(
+                "Notification client dossier NDA prêt au dépôt échouée.",
+                emailError,
+              );
+            });
+          }
         }
       }
     } catch (syncError) {

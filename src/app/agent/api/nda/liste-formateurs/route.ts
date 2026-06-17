@@ -4,44 +4,21 @@ import { createClient as createSessionClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED_FIELDS = new Set([
-  "client_nom",
-  "client_siret",
-  "client_adresse",
-  "client_representant_prenom",
-  "client_representant_nom",
-  "stagiaire_prenom",
-  "stagiaire_nom",
-  "stagiaire_fonction",
-  "stagiaire_adresse",
-  "stagiaire_email",
-  "stagiaire_telephone",
-  "intitule_formation",
-  "duree_formation",
-  "modalite",
-  "date_formation_prevue",
-  "date_fin_formation",
-  "lieu_formation",
-  "tarif_formation",
-  "prerequis_formation",
-  "lieu_signature_convention",
-  "date_signature_convention",
-  "representant_prenom",
-  "representant_nom",
-  "formateur_prenom",
-  "formateur_nom",
-  "formateur_email",
-  "nb_formateurs",
-  "siret",
-  "organisme_adresse",
-  "region",
-  "nda_deposit_specific_code",
-  "nda_deposit_specific_code_label",
-  "nda_deposit_status",
-  "nda_deposit_submitted_at",
-  "nda_deposit_refusal_received_at",
-  "nda_obtained_at",
-]);
+const ALLOWED_STATUSES = new Set(["", "CDD", "CDI", "bénévole", "associé"]);
+
+type InterneRow = {
+  nom_prenom?: string;
+  date_embauche?: string;
+  statut?: string;
+  titres_experience?: string;
+};
+
+type SoustraitantRow = {
+  nom_prenom?: string;
+  organisme_nom?: string;
+  adresse?: string;
+  titres_experience?: string;
+};
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -107,18 +84,51 @@ async function requireAgent() {
   return { ok: true as const };
 }
 
-function normalizeFieldValue(key: string, value: unknown) {
-  if (key === "nb_formateurs") {
-    if (value === "" || value === null || value === undefined) return null;
-    const numberValue = Number(value);
-    return Number.isFinite(numberValue) ? numberValue : null;
-  }
-
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-
+function cleanText(value: unknown) {
+  if (value === null || value === undefined) return null;
   const text = String(value).trim();
-  return text === "" ? null : text;
+  return text.length > 0 ? text : null;
+}
+
+function cleanTextForJson(value: unknown) {
+  return cleanText(value) ?? "";
+}
+
+function normalizeInternes(value: unknown): InterneRow[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.slice(0, 5).map((row) => {
+    const source = row && typeof row === "object" ? row : {};
+    const statut = cleanTextForJson((source as InterneRow).statut);
+
+    return {
+      nom_prenom: cleanTextForJson((source as InterneRow).nom_prenom),
+      date_embauche: cleanTextForJson((source as InterneRow).date_embauche),
+      statut: ALLOWED_STATUSES.has(statut) ? statut : "",
+      titres_experience: cleanTextForJson(
+        (source as InterneRow).titres_experience,
+      ),
+    };
+  });
+}
+
+function normalizeSoustraitants(value: unknown): SoustraitantRow[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.slice(0, 5).map((row) => {
+    const source = row && typeof row === "object" ? row : {};
+
+    return {
+      nom_prenom: cleanTextForJson((source as SoustraitantRow).nom_prenom),
+      organisme_nom: cleanTextForJson(
+        (source as SoustraitantRow).organisme_nom,
+      ),
+      adresse: cleanTextForJson((source as SoustraitantRow).adresse),
+      titres_experience: cleanTextForJson(
+        (source as SoustraitantRow).titres_experience,
+      ),
+    };
+  });
 }
 
 export async function PATCH(req: Request) {
@@ -129,12 +139,8 @@ export async function PATCH(req: Request) {
     const body = await req.json().catch(() => null);
     const dossierId =
       typeof body?.dossierId === "string" ? body.dossierId.trim() : "";
-    const values =
-      body?.values && typeof body.values === "object"
-        ? (body.values as Record<string, unknown>)
-        : null;
 
-    if (!dossierId || !values) {
+    if (!dossierId) {
       return NextResponse.json(
         { ok: false, error: "invalid_payload" },
         { status: 400 },
@@ -169,27 +175,25 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const updates: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(values)) {
-      if (!ALLOWED_FIELDS.has(key)) continue;
-      const normalizedValue = normalizeFieldValue(key, value);
-      if (normalizedValue !== undefined) updates[key] = normalizedValue;
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "no_allowed_fields" },
-        { status: 400 },
-      );
-    }
-
     const { data: variables, error: upsertError } = await admin
       .from("nda_variables")
       .upsert(
         {
           dossier_id: dossierId,
           organisation_id: dossier.organisation_id,
-          ...updates,
+          liste_formateurs_internes: normalizeInternes(body?.internes),
+          liste_formateurs_soustraitants: normalizeSoustraitants(
+            body?.soustraitants,
+          ),
+          liste_formateurs_dirigeant_resume: cleanText(
+            body?.dirigeant_resume,
+          ),
+          liste_formateurs_fait_a: cleanText(body?.fait_a),
+          liste_formateurs_date_signature: cleanText(body?.date_signature),
+          liste_formateurs_nom_signataire: cleanText(body?.nom_signataire),
+          liste_formateurs_qualite_signataire: cleanText(
+            body?.qualite_signataire,
+          ),
         },
         { onConflict: "dossier_id" },
       )

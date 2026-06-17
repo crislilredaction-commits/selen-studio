@@ -610,24 +610,24 @@ function EmptyState({
 
 // Palette extraite du screenshot
 const C = {
-  bg: "#1a1510", // fond principal très sombre brun-noir
-  surface: "#221c14", // cartes
-  surfaceHover: "#2a2218",
-  border: "rgba(196,169,106,0.15)",
-  borderStrong: "rgba(196,169,106,0.28)",
-  gold: "#c4a96a", // accent principal
-  goldBright: "#d4a843",
-  text: "rgba(255,255,255,0.88)",
-  textSoft: "rgba(255,255,255,0.5)",
-  textFaint: "rgba(255,255,255,0.25)",
+  bg: "var(--selen-bg)",
+  surface: "var(--selen-card-texture), var(--selen-card)",
+  surfaceHover: "var(--selen-card2)",
+  border: "var(--selen-border)",
+  borderStrong: "var(--selen-border2)",
+  gold: "var(--selen-gold)",
+  goldBright: "var(--selen-gold2)",
+  text: "var(--selen-text-oncard)",
+  textSoft: "var(--selen-text2-oncard)",
+  textFaint: "var(--selen-text3-oncard)",
 };
 
 const s: Record<string, CSSProperties> = {
   page: {
     minHeight: "100vh",
     background: C.bg,
-    color: C.text,
-    fontFamily: "'Georgia', 'Times New Roman', serif",
+    color: "var(--selen-text)",
+    fontFamily: "var(--font-body)",
   },
   container: {
     maxWidth: 1340,
@@ -920,7 +920,7 @@ const s: Record<string, CSSProperties> = {
     fontSize: "0.75rem",
     padding: "0.4rem 0.85rem",
     background: C.gold,
-    color: "#1a1510",
+    color: "var(--selen-ink)",
     borderRadius: 6,
     fontWeight: 700,
     textDecoration: "none",

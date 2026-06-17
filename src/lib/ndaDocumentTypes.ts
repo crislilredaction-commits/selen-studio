@@ -3,6 +3,7 @@ export const NDA_DOCUMENT_TYPE_OPTIONS = [
   { value: "programme_formation", label: "Programme de formation" },
   { value: "programme_formation_signe", label: "Programme de formation signé" },
   { value: "convention_formation", label: "Convention de formation" },
+  { value: "liste_formateurs", label: "Liste des formateurs DREETS" },
   { value: "avis_insee", label: "Avis INSEE" },
   {
     value: "diplomes_formateur_principal",

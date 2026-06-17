@@ -178,6 +178,14 @@ export default function AgentSidebar() {
     <aside
       className="flex h-screen flex-col"
       style={{
+        ...({
+          "--selen-text": "var(--selen-text-oncard)",
+          "--selen-text2": "var(--selen-text2-oncard)",
+          "--selen-text3": "var(--selen-text3-oncard)",
+          "--selen-bg3": "rgba(247, 239, 224, 0.08)",
+          "--selen-border": "rgba(245, 208, 138, 0.18)",
+          "--selen-border2": "rgba(245, 208, 138, 0.34)",
+        } as React.CSSProperties),
         width: 320,
         background: "var(--selen-sidebar)",
         borderRight: "1px solid var(--selen-border)",

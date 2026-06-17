@@ -281,7 +281,7 @@ const ANSWER_CONFIG = [
     value: "unknown",
     label: "Ne sais pas",
     color: "rgba(255,255,255,0.3)",
-    activeText: "#1a1510",
+    activeText: "var(--selen-ink)",
   },
 ] as const;
 
@@ -1834,15 +1834,15 @@ function Alert({
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
 const C = {
-  bg: "#1a1510",
-  surface: "#221c14",
-  surfaceDeep: "#1d1810",
-  border: "rgba(196,169,106,0.15)",
-  borderStrong: "rgba(196,169,106,0.28)",
-  gold: "#c4a96a",
-  text: "rgba(255,255,255,0.88)",
-  textSoft: "rgba(255,255,255,0.5)",
-  textFaint: "rgba(255,255,255,0.22)",
+  bg: "var(--selen-bg)",
+  surface: "var(--selen-card-texture), var(--selen-card)",
+  surfaceDeep: "var(--selen-card2)",
+  border: "var(--selen-border)",
+  borderStrong: "var(--selen-border2)",
+  gold: "var(--selen-gold)",
+  text: "var(--selen-text-oncard)",
+  textSoft: "var(--selen-text2-oncard)",
+  textFaint: "var(--selen-text3-oncard)",
 };
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -1866,7 +1866,7 @@ const s: Record<string, CSSProperties> = {
     minHeight: "100vh",
     background: C.bg,
     color: C.text,
-    fontFamily: "Georgia, 'Times New Roman', serif",
+    fontFamily: "var(--font-body)",
   } as CSSProperties,
   container: {
     maxWidth: 1280,
@@ -2124,7 +2124,7 @@ const s: Record<string, CSSProperties> = {
 
   adviceTitle: {
     display: "block",
-    color: C.text,
+    color: "var(--selen-text)",
     fontSize: "1rem",
     lineHeight: 1.25,
     fontFamily: "Georgia, serif",
@@ -2346,7 +2346,7 @@ const s: Record<string, CSSProperties> = {
     width: "100%",
     padding: "0.6rem 1rem",
     background: C.gold,
-    color: "#1a1510",
+    color: "var(--selen-ink)",
     border: "none",
     borderRadius: 6,
     fontSize: "0.82rem",

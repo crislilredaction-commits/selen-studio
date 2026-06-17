@@ -16,9 +16,10 @@ export default function SubmitButton({
       type="submit"
       disabled={pending}
       style={{
-        background: "var(--selen-gold)",
-        color: "#0f0c08",
-        border: "none",
+        background:
+          "linear-gradient(135deg, var(--selen-gold), var(--selen-copper))",
+        color: "var(--selen-ink)",
+        border: "1px solid rgba(120, 90, 50, 0.24)",
         borderRadius: "var(--radius-sm)",
         padding: "8px 14px",
         fontSize: 13,
@@ -26,6 +27,7 @@ export default function SubmitButton({
         cursor: pending ? "default" : "pointer",
         opacity: pending ? 0.7 : 1,
         fontFamily: "var(--font-body)",
+        boxShadow: "0 10px 24px rgba(201, 148, 58, 0.18)",
       }}
     >
       {pending ? pendingLabel : label}

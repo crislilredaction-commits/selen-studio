@@ -36,7 +36,13 @@ export default function AgentMessagingDrawer({
   }, [messages]);
 
   useEffect(() => {
-    setMessages(initialMessages);
+    setMessages((currentMessages) => {
+      const merged = new Map<string, MessageItem>();
+      [...initialMessages, ...currentMessages].forEach((item) => {
+        merged.set(item.id, item);
+      });
+      return Array.from(merged.values());
+    });
   }, [initialMessages]);
 
   useEffect(() => {
@@ -85,13 +91,16 @@ export default function AgentMessagingDrawer({
         }),
       });
 
-      const data = await res.json().catch(() => null);
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+        message?: MessageItem;
+      } | null;
 
       if (!res.ok) {
         throw new Error(data?.error || "Erreur lors de l’envoi du message.");
       }
 
-      const newMessage: MessageItem = {
+      const newMessage: MessageItem = data?.message ?? {
         id: crypto.randomUUID(),
         content: message.trim(),
         sender_type: "agent",

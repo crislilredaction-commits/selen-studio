@@ -83,14 +83,14 @@ export default function GenerateNdaProgramButton({ dossierId }: Props) {
         if (data?.error === "missing_generation_context") {
           setMissingFields(data.missingRequiredFields ?? []);
           setError(
-            "Certaines informations nécessaires à la génération sont manquantes.",
+            "Certaines informations nécessaires à la préparation sont manquantes.",
           );
           return;
         }
 
         if (data?.error === "missing_program_content") {
           setError(
-            "Le programme validé ne contient pas encore de déroulé pédagogique exploitable. Vérifiez que les modules sont bien enregistrés avant de générer les documents.",
+            "Le programme validé ne contient pas encore de déroulé pédagogique exploitable. Vérifiez que les modules sont bien enregistrés avant de préparer les documents.",
           );
           return;
         }
@@ -98,7 +98,7 @@ export default function GenerateNdaProgramButton({ dossierId }: Props) {
         if (data?.error === "duration_mismatch") {
           setError(
             data.message ??
-              "La durée totale déclarée ne correspond pas à la durée totale des modules. Corrigez la durée ou les modules avant de générer les documents.",
+              "La durée totale déclarée ne correspond pas à la durée totale des modules. Corrigez la durée ou les modules avant de préparer les documents.",
           );
           return;
         }
@@ -106,13 +106,13 @@ export default function GenerateNdaProgramButton({ dossierId }: Props) {
         setError(
           data?.message ??
             data?.error ??
-            "Impossible de générer les documents pour le moment.",
+            "Impossible de préparer les documents pour le moment.",
         );
         return;
       }
 
       if (!data?.ok) {
-        setError("Impossible de générer les documents pour le moment.");
+        setError("Impossible de préparer les documents pour le moment.");
         return;
       }
 
@@ -120,14 +120,14 @@ export default function GenerateNdaProgramButton({ dossierId }: Props) {
 
       setSuccess(
         count > 1
-          ? `${count} documents générés. La liste des documents se met à jour.`
-          : "Document généré. La liste des documents se met à jour.",
+          ? `${count} documents préparés. La liste des documents se met à jour.`
+          : "Document préparé. La liste des documents se met à jour.",
       );
 
       router.refresh();
     } catch (err) {
       console.error(err);
-      setError("Impossible de générer les documents pour le moment.");
+      setError("Impossible de préparer les documents pour le moment.");
     } finally {
       setLoading(false);
     }
@@ -153,7 +153,7 @@ export default function GenerateNdaProgramButton({ dossierId }: Props) {
       >
         {loading
           ? "Génération des documents..."
-          : "Générer les documents à signer"}
+          : "Préparer les documents à signer"}
       </SelenButton>
 
       {success ? (

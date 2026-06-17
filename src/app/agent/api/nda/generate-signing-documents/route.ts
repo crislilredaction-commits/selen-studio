@@ -7,7 +7,7 @@ import {
 } from "@/lib/server/ndaProgramDocumentHtml";
 import { buildNdaConventionDocumentHtml } from "@/lib/server/ndaConventionDocumentHtml";
 import { getNdaDocumentContext } from "@/lib/server/ndaDocumentContext";
-import { notifyClientVisibleDocuments } from "@/lib/server/notifyClientVisibleDocuments";
+
 import { syncNdaDossierStatus } from "@/lib/server/ndaAgentWorkflow";
 import { createClient as createSessionClient } from "@/lib/supabase/server";
 
@@ -340,14 +340,6 @@ export async function POST(req: Request) {
       dossierId: context.dossier.id,
       currentStatus: context.dossier.status,
       targetStatus: "waiting_client",
-    });
-
-    await notifyClientVisibleDocuments({
-      dossierId: context.dossier.id,
-      organisation: context.organisation,
-      subject: "Vos documents NDA sont disponibles",
-      message:
-        "Vos documents à signer sont maintenant disponibles dans votre espace client Selen. Vous pouvez les télécharger, les signer, puis déposer les documents signés directement dans votre dossier.",
     });
 
     return NextResponse.json({

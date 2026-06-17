@@ -1,35 +1,45 @@
 @import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap");
 
 :root {
-  --selen-bg: #2d231a;
-  --selen-bg2: #382b20;
-  --selen-bg3: #493728;
-  --selen-card: #403123;
-  --selen-card2: #4c3a2a;
+  --selen-bg: #f3e8d3;
+  --selen-bg2: #ece0c8;
+  --selen-bg3: #e3d4b4;
+  --selen-card: #423322;
+  --selen-card2: #4f3c28;
+  --selen-card-texture: linear-gradient(
+    155deg,
+    rgba(255, 220, 160, 0.05) 0%,
+    rgba(0, 0, 0, 0.12) 100%
+  );
+  --selen-sidebar: #352819;
 
-  --selen-border: rgba(180, 140, 80, 0.18);
-  --selen-border2: rgba(180, 140, 80, 0.32);
+  --selen-border: rgba(120, 90, 50, 0.18);
+  --selen-border2: rgba(120, 90, 50, 0.32);
 
   --selen-gold: #c9943a;
   --selen-gold2: #e8b86d;
   --selen-gold3: #f5d08a;
-  --selen-amber: #d4800a;
-  --selen-copper: #b87040;
+  --selen-amber: #b8700a;
+  --selen-copper: #a85f38;
 
-  --selen-text: #f0e8d8;
-  --selen-text2: #b8a88a;
-  --selen-text3: #7a6a55;
+  --selen-text: #3a2c20;
+  --selen-text2: #6b5a45;
+  --selen-text3: #8a7860;
   --selen-ink: #2d231a;
   --selen-parchment: #f7efe0;
 
-  --selen-success: #6aad7a;
-  --selen-success-bg: rgba(106, 173, 122, 0.12);
-  --selen-info: #6aa0c9;
-  --selen-info-bg: rgba(106, 160, 201, 0.12);
-  --selen-warn: #c9a040;
-  --selen-warn-bg: rgba(201, 160, 64, 0.12);
-  --selen-danger: #c96a6a;
-  --selen-danger-bg: rgba(201, 106, 106, 0.12);
+  --selen-text-oncard: #f0e8d8;
+  --selen-text2-oncard: #c4b39a;
+  --selen-text3-oncard: #a8957a;
+
+  --selen-success: #4a8a5a;
+  --selen-success-bg: rgba(74, 138, 90, 0.12);
+  --selen-info: #4a80a9;
+  --selen-info-bg: rgba(74, 128, 169, 0.12);
+  --selen-warn: #a9850a;
+  --selen-warn-bg: rgba(169, 133, 10, 0.12);
+  --selen-danger: #b04a4a;
+  --selen-danger-bg: rgba(176, 74, 74, 0.12);
 
   --font-display: "Cinzel", Georgia, serif;
   --font-body: "DM Sans", system-ui, sans-serif;

@@ -425,22 +425,22 @@ function Alert({
 }
 
 const C = {
-  bg: "#1a1510",
-  surface: "#221c14",
-  border: "rgba(196,169,106,0.15)",
-  borderStrong: "rgba(196,169,106,0.28)",
-  gold: "#c4a96a",
-  text: "rgba(255,255,255,0.88)",
-  textSoft: "rgba(255,255,255,0.55)",
-  textFaint: "rgba(255,255,255,0.25)",
+  bg: "var(--selen-bg)",
+  surface: "var(--selen-card-texture), var(--selen-card)",
+  border: "var(--selen-border)",
+  borderStrong: "var(--selen-border2)",
+  gold: "var(--selen-gold)",
+  text: "var(--selen-text-oncard)",
+  textSoft: "var(--selen-text2-oncard)",
+  textFaint: "var(--selen-text3-oncard)",
 };
 
 const s: Record<string, CSSProperties> = {
   page: {
     minHeight: "100vh",
     background: C.bg,
-    color: C.text,
-    fontFamily: "Georgia, 'Times New Roman', serif",
+    color: "var(--selen-text)",
+    fontFamily: "var(--font-body)",
   },
   container: {
     maxWidth: 1180,
@@ -593,7 +593,7 @@ const s: Record<string, CSSProperties> = {
     width: "100%",
     padding: "0.65rem 1rem",
     background: C.gold,
-    color: "#1a1510",
+    color: "var(--selen-ink)",
     border: "none",
     borderRadius: 6,
     fontSize: "0.82rem",

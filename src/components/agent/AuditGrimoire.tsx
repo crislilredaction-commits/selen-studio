@@ -371,17 +371,17 @@ function SubBlock({ title, children }: { title: string; children: ReactNode }) {
 }
 
 const C = {
-  bg: "#1a1510",
-  surface: "#221c14",
-  surfaceDeep: "#18120d",
-  border: "rgba(196,169,106,0.18)",
-  borderStrong: "rgba(196,169,106,0.34)",
-  gold: "#c4a96a",
-  goldBright: "#d4a843",
-  text: "rgba(255,255,255,0.88)",
-  textSoft: "rgba(255,255,255,0.58)",
-  textFaint: "rgba(255,255,255,0.28)",
-  warning: "#d4a843",
+  bg: "var(--selen-bg)",
+  surface: "var(--selen-card)",
+  surfaceDeep: "var(--selen-card2)",
+  border: "rgba(245, 208, 138, 0.18)",
+  borderStrong: "rgba(245, 208, 138, 0.34)",
+  gold: "var(--selen-gold)",
+  goldBright: "var(--selen-gold2)",
+  text: "var(--selen-text-oncard)",
+  textSoft: "var(--selen-text2-oncard)",
+  textFaint: "var(--selen-text3-oncard)",
+  warning: "var(--selen-gold2)",
 };
 
 const s: Record<string, CSSProperties> = {
@@ -396,7 +396,7 @@ const s: Record<string, CSSProperties> = {
     padding: "0.72rem 1rem",
     borderRadius: 999,
     border: `1px solid ${C.borderStrong}`,
-    background: "linear-gradient(135deg, #2a2117, #1a1510)",
+    background: "var(--selen-card-texture), var(--selen-card)",
     color: C.gold,
     fontSize: "0.86rem",
     fontWeight: 800,
@@ -428,7 +428,7 @@ const s: Record<string, CSSProperties> = {
     height: "100vh",
     overflowY: "auto",
     background:
-      "radial-gradient(circle at top, rgba(196,169,106,0.12), transparent 34%), #1a1510",
+      "radial-gradient(circle at top, rgba(201,148,58,0.12), transparent 34%), var(--selen-card-texture), var(--selen-card)",
     borderLeft: `1px solid ${C.borderStrong}`,
     boxShadow: "-22px 0 70px rgba(0,0,0,0.55)",
     padding: "1.4rem",

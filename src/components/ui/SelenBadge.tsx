@@ -18,12 +18,21 @@ export default function SelenBadge({
 }) {
   const colors: Record<Variant, string> = {
     type: "var(--selen-gold2)",
-    status: "var(--selen-copper)",
-    info: "#4da3ff",
-    warn: "#ffb347",
-    success: "#52d273",
-    danger: "#ff6b6b",
+    status: "var(--selen-gold2)",
+    info: "var(--selen-info)",
+    warn: "var(--selen-warn)",
+    success: "var(--selen-success)",
+    danger: "var(--selen-danger)",
     neutral: "var(--selen-text3)",
+  };
+  const backgrounds: Record<Variant, string> = {
+    type: "rgba(201, 148, 58, 0.14)",
+    status: "rgba(168, 95, 56, 0.14)",
+    info: "var(--selen-info-bg)",
+    warn: "var(--selen-warn-bg)",
+    success: "var(--selen-success-bg)",
+    danger: "var(--selen-danger-bg)",
+    neutral: "rgba(120, 90, 50, 0.1)",
   };
 
   return (
@@ -35,7 +44,7 @@ export default function SelenBadge({
         padding: "5px 10px",
         borderRadius: 999,
         fontSize: 11,
-        background: "var(--selen-bg3)",
+        background: backgrounds[variant],
         border: "1px solid var(--selen-border)",
         color: colors[variant],
         fontWeight: 500,
