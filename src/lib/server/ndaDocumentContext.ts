@@ -65,6 +65,8 @@ export type NdaDocumentContextVariables = {
   nda_deposit_submitted_at: string | null;
   nda_deposit_refusal_received_at: string | null;
   nda_obtained_at: string | null;
+  cv_manual_text: string | null;
+  program_manual_text: string | null;
 };
 
 export type NdaDocumentContextProgramVersion = {
@@ -338,7 +340,7 @@ export async function getNdaDocumentContext(
     supabase
       .from("nda_variables")
       .select(
-        "representant_prenom, representant_nom, formateur_nom, formateur_prenom, formateur_email, intitule_formation, duree_formation, tarif_formation, prerequis_formation, modalite, nb_formateurs, region, siret, organisme_adresse, stagiaire_prenom, stagiaire_nom, stagiaire_adresse, stagiaire_email, stagiaire_telephone, stagiaire_fonction, client_nom, client_adresse, client_representant_prenom, client_representant_nom, client_siret, date_formation_prevue, date_fin_formation, lieu_formation, lieu_signature_convention, date_signature_convention, liste_formateurs_internes, liste_formateurs_soustraitants, liste_formateurs_dirigeant_resume, liste_formateurs_fait_a, liste_formateurs_date_signature, liste_formateurs_nom_signataire, liste_formateurs_qualite_signataire, nda_deposit_specific_code, nda_deposit_specific_code_label, nda_deposit_status, nda_deposit_submitted_at, nda_deposit_refusal_received_at, nda_obtained_at",
+        "representant_prenom, representant_nom, formateur_nom, formateur_prenom, formateur_email, intitule_formation, duree_formation, tarif_formation, prerequis_formation, modalite, nb_formateurs, region, siret, organisme_adresse, stagiaire_prenom, stagiaire_nom, stagiaire_adresse, stagiaire_email, stagiaire_telephone, stagiaire_fonction, client_nom, client_adresse, client_representant_prenom, client_representant_nom, client_siret, date_formation_prevue, date_fin_formation, lieu_formation, lieu_signature_convention, date_signature_convention, liste_formateurs_internes, liste_formateurs_soustraitants, liste_formateurs_dirigeant_resume, liste_formateurs_fait_a, liste_formateurs_date_signature, liste_formateurs_nom_signataire, liste_formateurs_qualite_signataire, nda_deposit_specific_code, nda_deposit_specific_code_label, nda_deposit_status, nda_deposit_submitted_at, nda_deposit_refusal_received_at, nda_obtained_at, cv_manual_text, program_manual_text",
       )
       .eq("dossier_id", dossierId)
       .maybeSingle(),

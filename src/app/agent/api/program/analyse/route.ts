@@ -21,6 +21,8 @@ type NdaVariablesRow = {
   code_postal?: string | null;
   region?: string | null;
   siret?: string | null;
+  cv_manual_text?: string | null;
+  program_manual_text?: string | null;
 };
 
 type DocumentRow = {
@@ -395,6 +397,23 @@ export async function POST(req: Request) {
     let cvTextSource: string = cvTextResult.source;
     let programTextError = programTextResult.error;
     let cvTextError = cvTextResult.error;
+    const manualProgramText =
+      (ndaVariables as NdaVariablesRow | null)?.program_manual_text?.trim() ??
+      "";
+    const manualCvText =
+      (ndaVariables as NdaVariablesRow | null)?.cv_manual_text?.trim() ?? "";
+
+    if (manualProgramText.length >= 20) {
+      programText = manualProgramText;
+      programTextSource = "manual_agent";
+      programTextError = null;
+    }
+
+    if (manualCvText.length >= 20) {
+      cvText = manualCvText;
+      cvTextSource = "manual_agent";
+      cvTextError = null;
+    }
 
     if (!programText.trim() && previousAnalysis?.source_program_text?.trim()) {
       programText = previousAnalysis.source_program_text.trim();
@@ -439,10 +458,14 @@ export async function POST(req: Request) {
     console.log("PROGRAM TEXT LENGTH:", programText.length);
     console.log("CV TEXT LENGTH:", cvText.length);
 
+    const missingUsableTextMessage =
+      "L’analyse automatique a besoin d’un texte exploitable pour le CV et le programme. Collez un résumé ou le contenu du document dans les zones prévues.";
+
     if (!selectedProgramDoc || !programText.trim()) {
       return NextResponse.json(
         {
-          error:
+          error: missingUsableTextMessage,
+          detail:
             "Le programme sélectionné existe, mais aucun texte n’a pu être extrait. Merci de réimporter un fichier Word/PDF lisible ou de corriger le format du document.",
           debug: {
             cvCandidatesCount: cvCandidates.length,
@@ -465,7 +488,8 @@ export async function POST(req: Request) {
     if (!selectedCvDoc || !cvText.trim()) {
       return NextResponse.json(
         {
-          error:
+          error: missingUsableTextMessage,
+          detail:
             "Le CV sélectionné existe, mais aucun texte n’a pu être extrait. Merci de réimporter un fichier Word/PDF lisible ou de corriger le format du document.",
           debug: {
             cvCandidatesCount: cvCandidates.length,

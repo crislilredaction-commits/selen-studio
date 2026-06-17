@@ -24,6 +24,7 @@ import NdaPhaseValidationActions, {
 import SubmitButton from "@/components/ui/SubmitButton";
 import NdaVariablesCard from "@/components/nda/NdaVariablesCard";
 import NdaDepositFollowUpCard from "@/components/nda/NdaDepositFollowUpCard";
+import NdaManualAnalysisTextCard from "@/components/nda/NdaManualAnalysisTextCard";
 import OpenDocumentButton from "@/components/ui/OpenDocumentButton";
 import DeleteDocumentButton from "@/components/ui/DeleteDocumentButton";
 import AnalyzeNdaButton from "@/components/nda/AnalyzeNdaButton";
@@ -116,6 +117,7 @@ type DbDocumentRow = {
   visible_to_client_at?: string | null;
   metadata?: Record<string, unknown> | null;
   notes?: string | null;
+  extracted_text?: string | null;
 };
 
 type MessageRow = {
@@ -194,6 +196,8 @@ type NdaVariablesRow = {
   nda_deposit_submitted_at?: string | null;
   nda_deposit_refusal_received_at?: string | null;
   nda_obtained_at?: string | null;
+  cv_manual_text?: string | null;
+  program_manual_text?: string | null;
 };
 
 function getTypeLabel(type: string): string {
@@ -1863,7 +1867,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
   const { data: documentsData, error: documentsError } = await supabase
     .from("documents")
     .select(
-      "id, name, document_type, status, source, created_at, storage_path, is_visible_to_client, document_role, review_status, generated_from_model, version_group, parent_document_id, requires_client_action, validated_at, validated_by, visible_to_client_at, metadata, notes",
+      "id, name, document_type, status, source, created_at, storage_path, is_visible_to_client, document_role, review_status, generated_from_model, version_group, parent_document_id, requires_client_action, validated_at, validated_by, visible_to_client_at, metadata, notes, extracted_text",
     )
     .eq("dossier_id", dossier.id)
     .order("created_at", { ascending: true });
@@ -2040,6 +2044,31 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
   const generatedSigningDocuments = allNdaDocuments.filter(
     isNdaGeneratedSigningDocument,
   );
+  const sortedNdaDocumentsByDate = [...allNdaDocuments].sort(
+    (a, b) =>
+      new Date(b.created_at ?? "").getTime() -
+      new Date(a.created_at ?? "").getTime(),
+  );
+  const analysisCvDocument = sortedNdaDocumentsByDate.find((doc) =>
+    ["cv_formateur", "cv"].includes(normalizeNdaDocumentType(doc.document_type)),
+  );
+  const analysisProgramDocument = sortedNdaDocumentsByDate.find((doc) => {
+    const normalizedType = normalizeNdaDocumentType(doc.document_type);
+    return (
+      ["programme_formation", "programme_client_corrige", "programme_reformule"].includes(
+        normalizedType,
+      ) ||
+      doc.document_role === "client_returned_document" ||
+      doc.storage_path?.includes("program-versions")
+    );
+  });
+  const analysisCvAutoText = analysisCvDocument?.extracted_text?.trim() ?? "";
+  const analysisProgramAutoText =
+    analysisProgramDocument?.extracted_text?.trim() ?? "";
+  const analysisCvInitialText =
+    ndaVariables?.cv_manual_text?.trim() || analysisCvAutoText;
+  const analysisProgramInitialText =
+    ndaVariables?.program_manual_text?.trim() || analysisProgramAutoText;
   const generatedSigningTypes = Array.from(
     new Set(
       generatedSigningDocuments.map((doc) =>
@@ -3116,10 +3145,22 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
               title="Historique — analyse et validation du programme"
             >
               {dossier.type === "nda" ? (
-                <AnalyzeProgramButton
-                  dossierId={dossier.id}
-                  initialAnalysis={latestProgramAnalysis}
-                />
+                <SelenCard>
+                  <SelenCardTitle>Textes exploitables pour l'analyse</SelenCardTitle>
+                  <NdaManualAnalysisTextCard
+                    dossierId={dossier.id}
+                    cvInitialText={analysisCvInitialText}
+                    programInitialText={analysisProgramInitialText}
+                    cvAutoTextLength={analysisCvAutoText.length}
+                    programAutoTextLength={analysisProgramAutoText.length}
+                  />
+                  <div style={{ marginTop: 14 }}>
+                    <AnalyzeProgramButton
+                      dossierId={dossier.id}
+                      initialAnalysis={latestProgramAnalysis}
+                    />
+                  </div>
+                </SelenCard>
               ) : null}
 
               {latestClientDecision ? (

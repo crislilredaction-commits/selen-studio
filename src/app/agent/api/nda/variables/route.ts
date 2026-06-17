@@ -41,6 +41,8 @@ const ALLOWED_FIELDS = new Set([
   "nda_deposit_submitted_at",
   "nda_deposit_refusal_received_at",
   "nda_obtained_at",
+  "cv_manual_text",
+  "program_manual_text",
 ]);
 
 function getAdminClient() {

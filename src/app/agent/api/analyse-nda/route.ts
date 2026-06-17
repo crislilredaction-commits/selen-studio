@@ -32,6 +32,11 @@ type PreviousProgramAnalysisRow = {
   created_at: string;
 };
 
+type NdaManualAnalysisTextsRow = {
+  cv_manual_text: string | null;
+  program_manual_text: string | null;
+};
+
 function sortNewestFirst<T extends { created_at?: string | null }>(
   docs: T[],
 ): T[] {
@@ -283,6 +288,20 @@ export async function POST(req: Request) {
       );
     }
 
+    const { data: ndaVariablesManualTexts, error: ndaVariablesManualError } =
+      await supabase
+        .from("nda_variables")
+        .select("cv_manual_text, program_manual_text")
+        .eq("dossier_id", dossierId)
+        .maybeSingle();
+
+    if (ndaVariablesManualError) {
+      return NextResponse.json(
+        { error: ndaVariablesManualError.message },
+        { status: 500 },
+      );
+    }
+
     const [
       { data: dossierDocsRaw, error: dossierDocsError },
       { data: globalDocsRaw, error: globalDocsError },
@@ -383,9 +402,27 @@ export async function POST(req: Request) {
     let cvText = cvTextResult.text;
     let programmeText = programmeTextResult.text;
     const entrepriseText = entrepriseTextResult.text;
+    const manualTexts =
+      (ndaVariablesManualTexts as NdaManualAnalysisTextsRow | null) ?? null;
+    const manualCvText = manualTexts?.cv_manual_text?.trim() ?? "";
+    const manualProgrammeText =
+      manualTexts?.program_manual_text?.trim() ?? "";
+    let cvTextSource: string = cvTextResult.source;
+    let programmeTextSource: string = programmeTextResult.source;
+
+    if (manualCvText.length >= 20) {
+      cvText = manualCvText;
+      cvTextSource = "manual_agent";
+    }
+
+    if (manualProgrammeText.length >= 20) {
+      programmeText = manualProgrammeText;
+      programmeTextSource = "manual_agent";
+    }
 
     if (!cvText.trim() && previousAnalysis?.source_cv_text?.trim()) {
       cvText = previousAnalysis.source_cv_text.trim();
+      cvTextSource = "previous_analysis";
       await serviceSupabase
         .from("documents")
         .update({ extracted_text: cvText })
@@ -397,16 +434,21 @@ export async function POST(req: Request) {
       previousAnalysis?.source_program_text?.trim()
     ) {
       programmeText = previousAnalysis.source_program_text.trim();
+      programmeTextSource = "previous_analysis";
       await serviceSupabase
         .from("documents")
         .update({ extracted_text: programmeText })
         .eq("id", programmeDoc.id);
     }
 
+    const missingUsableTextMessage =
+      "L’analyse automatique a besoin d’un texte exploitable pour le CV et le programme. Collez un résumé ou le contenu du document dans les zones prévues.";
+
     if (!cvText.trim()) {
       return NextResponse.json(
         {
-          error:
+          error: missingUsableTextMessage,
+          detail:
             "Le CV sélectionné existe, mais aucun texte n’a pu être extrait. Merci de réimporter un fichier Word/PDF lisible ou de corriger le format du document.",
           debug: {
             selectedCvDocName: cvDoc.name,
@@ -421,7 +463,8 @@ export async function POST(req: Request) {
     if (!programmeText.trim()) {
       return NextResponse.json(
         {
-          error:
+          error: missingUsableTextMessage,
+          detail:
             "Le programme sélectionné existe, mais aucun texte n’a pu être extrait. Merci de réimporter un fichier Word/PDF lisible ou de corriger le format du document.",
           debug: {
             selectedProgrammeDocName: programmeDoc.name,
@@ -451,8 +494,8 @@ export async function POST(req: Request) {
     console.log("CV TEXT LENGTH:", cvText.length);
     console.log("PROGRAMME TEXT LENGTH:", programmeText.length);
     console.log("ENTREPRISE TEXT LENGTH:", entrepriseText.length);
-    console.log("CV EXTRACTION SOURCE:", cvTextResult.source);
-    console.log("PROGRAMME EXTRACTION SOURCE:", programmeTextResult.source);
+    console.log("CV EXTRACTION SOURCE:", cvTextSource);
+    console.log("PROGRAMME EXTRACTION SOURCE:", programmeTextSource);
     console.log("ENTREPRISE EXTRACTION SOURCE:", entrepriseTextResult.source);
     console.log("CV TEXT PREVIEW:", cvText.slice(0, 300));
     console.log("PROGRAMME TEXT PREVIEW:", programmeText.slice(0, 300));

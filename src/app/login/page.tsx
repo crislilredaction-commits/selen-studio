@@ -77,6 +77,7 @@ export default function StudioLoginPage() {
             fontFamily: "var(--font-display)",
             fontSize: 30,
             lineHeight: 1.15,
+            color: "var(--selen-gold)",
             marginBottom: 10,
           }}
         >
