@@ -98,7 +98,8 @@ export function hasNdaListeFormateursContent(
   return (
     internes.some((row) => rowHasContent(row)) ||
     soustraitants.some((row) => rowHasContent(row)) ||
-    text(variables?.liste_formateurs_dirigeant_resume).length > 0
+    text(variables?.liste_formateurs_dirigeant_resume).length > 0 ||
+    text(variables?.cv_manual_text).length > 0
   );
 }
 
@@ -147,7 +148,7 @@ function buildTemplateData(context: NdaDocumentContext) {
       variables?.organisme_adresse || organisation?.address,
     ),
     dirigeant_titres_experience: text(
-      variables?.liste_formateurs_dirigeant_resume,
+      variables?.liste_formateurs_dirigeant_resume || variables?.cv_manual_text,
     ),
     fait_a: text(
       variables?.liste_formateurs_fait_a ||

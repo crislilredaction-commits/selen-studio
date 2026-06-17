@@ -2038,8 +2038,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
 
   const canRunAutoAnalysis =
     uniqueReceivedKeys.includes("cv_formateur") &&
-    uniqueReceivedKeys.includes("programme_formation") &&
-    uniqueReceivedKeys.includes("avis_insee");
+    uniqueReceivedKeys.includes("programme_formation");
 
   if (documentsError) {
     return (
@@ -2128,6 +2127,14 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
     ndaVariables?.cv_manual_text?.trim() || analysisCvAutoText;
   const analysisProgramInitialText =
     ndaVariables?.program_manual_text?.trim() || analysisProgramAutoText;
+  const administrativeIdentityDocument = sortedNdaDocumentsByDate.find((doc) =>
+    ["avis_insee", "kbis"].includes(normalizeNdaDocumentType(doc.document_type)),
+  );
+  const administrativeIdentityWarning =
+    administrativeIdentityDocument &&
+    !administrativeIdentityDocument.extracted_text?.trim()
+      ? "Avis INSEE reçu — texte non extrait automatiquement. Vérification manuelle requise."
+      : null;
   const generatedSigningTypes = Array.from(
     new Set(
       generatedSigningDocuments.map((doc) =>
@@ -3957,7 +3964,41 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
             ) : null}
 
             {dossier.type === "nda" && canRunAutoAnalysis ? (
-              <AnalyzeNdaButton dossierId={dossier.id} />
+              <SelenCard>
+                <SelenCardTitle>Analyse automatique NDA</SelenCardTitle>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "var(--selen-text3)",
+                    lineHeight: 1.5,
+                    margin: 0,
+                  }}
+                >
+                  À utiliser après avoir classé les documents initiaux et
+                  complété les textes exploitables du CV et du programme. Cette
+                  analyse aide à préparer la cohérence CV/programme, la liste
+                  des formateurs et les contrôles du dossier. Les documents
+                  administratifs non extractibles, comme l’avis INSEE, peuvent
+                  être vérifiés manuellement.
+                </p>
+                {administrativeIdentityWarning ? (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      border: "1px solid rgba(212, 159, 63, 0.35)",
+                      borderRadius: "var(--radius-sm)",
+                      background: "rgba(212, 159, 63, 0.1)",
+                      color: "var(--selen-warning)",
+                      padding: "9px 10px",
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {administrativeIdentityWarning}
+                  </div>
+                ) : null}
+                <AnalyzeNdaButton dossierId={dossier.id} />
+              </SelenCard>
             ) : null}
 
             <SelenCard>

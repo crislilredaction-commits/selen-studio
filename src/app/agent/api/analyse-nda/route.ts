@@ -14,6 +14,7 @@ import {
 } from "@/lib/documentText";
 import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
 import { getOrExtractDocumentText } from "@/lib/server/documentTextExtraction";
+import { extractNdaProgramContent } from "@/lib/server/ndaProgramDocumentHtml";
 
 type DocRow = {
   id: string;
@@ -30,6 +31,21 @@ type PreviousProgramAnalysisRow = {
   source_cv_text: string | null;
   source_program_text: string | null;
   created_at: string;
+};
+
+type ProgramVersionRow = {
+  id?: string | null;
+  version_type?: string | null;
+  status?: string | null;
+  client_decision?: string | null;
+  title?: string | null;
+  target_audience?: string | null;
+  overall_objective?: string | null;
+  modules?: unknown;
+  content?: unknown;
+  structured_content?: unknown;
+  programme_content?: unknown;
+  pedagogical_content?: unknown;
 };
 
 type NdaManualAnalysisTextsRow = {
@@ -63,6 +79,43 @@ function pickPreferredDoc(
       wantedTypes.includes(normalizeNdaDocumentType(d.document_type)),
     ),
   )[0];
+}
+
+function programVersionToText(version: ProgramVersionRow | null | undefined) {
+  const content = extractNdaProgramContent(version);
+
+  if (!content.modules.length) return "";
+
+  const lines: string[] = [];
+
+  if (version?.title) {
+    lines.push(`Intitule : ${version.title}`);
+  }
+
+  if (version?.target_audience) {
+    lines.push(`Public vise : ${version.target_audience}`);
+  }
+
+  if (version?.overall_objective) {
+    lines.push(`Objectif global : ${version.overall_objective}`);
+  }
+
+  content.modules.forEach((module, index) => {
+    lines.push("");
+    lines.push(`MODULE ${index + 1} : ${module.title}`);
+    if (module.duration) lines.push(`Duree : ${module.duration}`);
+    if (module.objective) lines.push(`Objectif : ${module.objective}`);
+
+    if (module.chapters.length > 0) {
+      lines.push("Chapitres :");
+      module.chapters.forEach((chapter) => {
+        const objective = chapter.objective ? ` - ${chapter.objective}` : "";
+        lines.push(`- ${chapter.title}${objective}`);
+      });
+    }
+  });
+
+  return lines.join("\n").trim();
 }
 
 function buildNdaListeFormateursResumeFromCv(
@@ -359,11 +412,13 @@ export async function POST(req: Request) {
       "avis_insee",
     ]);
 
-    if (!cvDoc || !programmeDoc || !entrepriseDoc) {
+    if (!cvDoc || !programmeDoc) {
       return NextResponse.json(
         {
           error:
-            "Documents insuffisants. Il faut au minimum un CV, un programme et un KBIS ou avis INSEE.",
+            "L'analyse pédagogique nécessite un texte exploitable pour le CV et le programme.",
+          detail:
+            "Documents insuffisants. Il faut au minimum un CV et un programme pour lancer l'analyse pédagogique.",
         },
         { status: 400 },
       );
@@ -384,6 +439,29 @@ export async function POST(req: Request) {
       );
     }
 
+    const { data: programVersions, error: programVersionsError } =
+      await supabase
+        .from("dossier_program_versions")
+        .select("*")
+        .eq("dossier_id", dossierId)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+    if (programVersionsError) {
+      return NextResponse.json(
+        { error: programVersionsError.message },
+        { status: 500 },
+      );
+    }
+
+    const programVersionWithContent =
+      ((programVersions ?? []) as ProgramVersionRow[])
+        .map((version) => ({
+          version,
+          text: programVersionToText(version),
+        }))
+        .find((candidate) => candidate.text.trim().length > 20) ?? null;
+
     const previousAnalysis = (
       (previousAnalyses ?? []) as PreviousProgramAnalysisRow[]
     ).find(
@@ -396,7 +474,13 @@ export async function POST(req: Request) {
       await Promise.all([
         getOrExtractDocumentText(serviceSupabase, cvDoc),
         getOrExtractDocumentText(serviceSupabase, programmeDoc),
-        getOrExtractDocumentText(serviceSupabase, entrepriseDoc),
+        entrepriseDoc
+          ? getOrExtractDocumentText(serviceSupabase, entrepriseDoc)
+          : Promise.resolve({
+              text: "",
+              source: "none" as const,
+              error: "Aucun avis INSEE ou KBIS rattache au dossier.",
+            }),
       ]);
 
     let cvText = cvTextResult.text;
@@ -418,6 +502,11 @@ export async function POST(req: Request) {
     if (manualProgrammeText.length >= 20) {
       programmeText = manualProgrammeText;
       programmeTextSource = "manual_agent";
+    }
+
+    if (!manualProgrammeText && programVersionWithContent) {
+      programmeText = programVersionWithContent.text;
+      programmeTextSource = `program_version:${programVersionWithContent.version.version_type ?? "unknown"}`;
     }
 
     if (!cvText.trim() && previousAnalysis?.source_cv_text?.trim()) {
@@ -442,7 +531,7 @@ export async function POST(req: Request) {
     }
 
     const missingUsableTextMessage =
-      "L’analyse automatique a besoin d’un texte exploitable pour le CV et le programme. Collez un résumé ou le contenu du document dans les zones prévues.";
+      "L’analyse pédagogique nécessite un texte exploitable pour le CV et le programme.";
 
     if (!cvText.trim()) {
       return NextResponse.json(
@@ -476,20 +565,12 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!entrepriseText.trim()) {
-      return NextResponse.json(
-        {
-          error:
-            "Le document entreprise sélectionné existe, mais aucun texte n’a pu être extrait. Merci de réimporter un KBIS ou avis INSEE lisible.",
-          debug: {
-            selectedEntrepriseDocName: entrepriseDoc.name,
-            selectedEntrepriseExtractionError: entrepriseTextResult.error,
-            entrepriseTextLength: entrepriseText.length,
-          },
-        },
-        { status: 422 },
-      );
-    }
+    const administrativeWarning =
+      entrepriseDoc && !entrepriseText.trim()
+        ? "Avis INSEE reçu — texte non extrait automatiquement. Vérification manuelle requise."
+        : !entrepriseDoc
+          ? "Avis INSEE / KBIS non trouvé. Vérification administrative manuelle requise."
+          : null;
 
     console.log("CV TEXT LENGTH:", cvText.length);
     console.log("PROGRAMME TEXT LENGTH:", programmeText.length);
@@ -557,7 +638,7 @@ export async function POST(req: Request) {
       programmeText,
     );
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       formateur_nom: trainerName.formateur_nom || null,
       formateur_prenom: trainerName.formateur_prenom || null,
       formateur_email: trainerEmail || null,
@@ -565,12 +646,15 @@ export async function POST(req: Request) {
       duree_formation: dureeFormation || null,
       modalite: "presentiel",
       nb_formateurs: 1,
-      siret: siret || null,
-      code_postal: codePostal || null,
-      ville: ville || null,
-      region: region || null,
       liste_formateurs_dirigeant_resume: listeFormateursDirigeantResume || null,
     };
+
+    if (entrepriseText.trim()) {
+      payload.siret = siret || null;
+      payload.code_postal = codePostal || null;
+      payload.ville = ville || null;
+      payload.region = region || null;
+    }
 
     console.log("Analyse NDA payload:", payload);
 
@@ -587,7 +671,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: ndaError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, payload });
+    return NextResponse.json({
+      success: true,
+      payload,
+      warnings: administrativeWarning ? [administrativeWarning] : [],
+      administrativeCheck: {
+        documentName: entrepriseDoc?.name ?? null,
+        textLength: entrepriseText.length,
+        extractionSource: entrepriseTextResult.source,
+        extractionError: entrepriseTextResult.error,
+        warning: administrativeWarning,
+      },
+    });
   } catch (error) {
     console.error("Analyse NDA fatal error:", error);
     return NextResponse.json(

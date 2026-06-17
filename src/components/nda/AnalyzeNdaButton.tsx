@@ -7,6 +7,12 @@ type Props = {
   dossierId: string;
 };
 
+type AnalyzeNdaResponse = {
+  success?: boolean;
+  error?: string;
+  warnings?: string[];
+};
+
 export default function AnalyzeNdaButton({ dossierId }: Props) {
   const router = useRouter();
   const [isRunning, setIsRunning] = useState(false);
@@ -23,23 +29,26 @@ export default function AnalyzeNdaButton({ dossierId }: Props) {
         body: formData,
       });
 
+      const data = (await res.json().catch(() => null)) as
+        | AnalyzeNdaResponse
+        | null;
+
       if (!res.ok) {
-        let message = "Analyse impossible.";
-        try {
-          const data = await res.json();
-          message = data?.error || message;
-        } catch {
-          // rien
-        }
-        alert(message);
+        alert(data?.error || "Analyse impossible.");
         return;
       }
 
       router.refresh();
-      alert("Analyse terminée ✨");
+
+      const warnings = data?.warnings?.filter(Boolean) ?? [];
+      if (warnings.length > 0) {
+        alert(`Analyse terminée.\n\nAvertissement : ${warnings.join("\n")}`);
+      } else {
+        alert("Analyse terminée.");
+      }
     } catch (error) {
       console.error(error);
-      alert("Une erreur est survenue pendant l’analyse.");
+      alert("Une erreur est survenue pendant l'analyse.");
     } finally {
       setIsRunning(false);
     }
@@ -63,9 +72,7 @@ export default function AnalyzeNdaButton({ dossierId }: Props) {
         opacity: isRunning ? 0.85 : 1,
       }}
     >
-      {isRunning
-        ? "⏳ Analyse en cours..."
-        : "🧠 Analyser automatiquement le dossier"}
+      {isRunning ? "Analyse en cours..." : "Analyser le dossier NDA"}
     </button>
   );
 }
