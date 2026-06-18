@@ -30,6 +30,7 @@ import DeleteDocumentButton from "@/components/ui/DeleteDocumentButton";
 import AnalyzeNdaButton from "@/components/nda/AnalyzeNdaButton";
 import GenerateNdaProgramButton from "@/components/nda/GenerateNdaProgramButton";
 import AgentMessagingDrawer from "@/components/AgentMessagingDrawer";
+import DossierAutoRefreshNotice from "@/components/agent/DossierAutoRefreshNotice";
 import AnalyzeProgramButton from "@/components/program/AnalyzeProgramButton";
 import AgentProgramEditor from "@/components/program/AgentProgramEditor";
 import { getVitrineClientUrl } from "@/lib/vitrineLinks";
@@ -2462,6 +2463,12 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
       </div>
 
       <div style={{ padding: "24px 28px", maxWidth: 1120, margin: "0 auto" }}>
+        <DossierAutoRefreshNotice
+          dossierId={dossier.id}
+          initialUpdatedAt={dossier.updated_at}
+          initialStatus={displayDossierStatus}
+        />
+
         <div style={{ marginBottom: 20 }}>
           <p
             style={{
@@ -2789,6 +2796,21 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                   title="Retour client et contrôle final"
                   subtitle="Suivez les documents signés retournés par le client et validez les pièces finales."
                 >
+                <SelenCard>
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "var(--selen-text3)",
+                      lineHeight: 1.5,
+                      margin: 0,
+                    }}
+                  >
+                    Lorsque vous validez cette phase, les documents sont rendus
+                    disponibles au client et la procédure de dépôt est ouverte
+                    côté Vitrine. Le client reçoit un email l'invitant à
+                    consulter son dossier.
+                  </p>
+                </SelenCard>
                 <SelenCard>
                   <SelenCardTitle>
                     Documents finaux retournés par le client

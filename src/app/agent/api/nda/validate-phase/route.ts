@@ -98,6 +98,73 @@ function normalizeValidations(value: unknown) {
     : {};
 }
 
+async function openDepositProcedureForClient(args: {
+  admin: ReturnType<typeof getAdminClient>;
+  dossierId: string;
+  organisation: { name?: string | null; email?: string | null } | null;
+}) {
+  const { admin, dossierId, organisation } = args;
+  const now = new Date().toISOString();
+
+  const { error: statusError } = await admin
+    .from("dossiers")
+    .update({
+      status: "compliant",
+      updated_at: now,
+    })
+    .eq("id", dossierId);
+
+  if (statusError) {
+    return { ok: false as const, error: statusError.message };
+  }
+
+  const { error: documentsError } = await admin
+    .from("documents")
+    .update({
+      is_visible_to_client: true,
+      requires_client_action: false,
+      visible_to_client_at: now,
+    })
+    .eq("dossier_id", dossierId)
+    .or(
+      "review_status.eq.validated,document_role.eq.client_to_complete,document_role.eq.generated_document,document_role.eq.final_validated_file",
+    );
+
+  if (documentsError) {
+    return { ok: false as const, error: documentsError.message };
+  }
+
+  const emailNotification = await notifyClientVisibleDocuments({
+    dossierId,
+    dossierType: "nda",
+    organisation,
+    subject: "Vos documents NDA sont prêts",
+    message:
+      "Vos documents ont été préparés et validés par Selen. Vous pouvez maintenant les télécharger dans votre espace client. Vous y trouverez également la procédure de dépôt de votre demande de déclaration d'activité.",
+    buttonLabel: "Accéder à mon dossier",
+  });
+
+  if (!emailNotification.sent) {
+    return {
+      ok: false as const,
+      error:
+        emailNotification.error ??
+        "Les documents ont été validés, mais l'email client n'a pas pu être envoyé.",
+    };
+  }
+
+  await admin.from("messages").insert({
+    dossier_id: dossierId,
+    sender_type: "agent",
+    content:
+      "Documents validés et procédure de dépôt ouverte au client. Email de consultation envoyé.",
+    read_by_agent_at: now,
+    read_by_client_at: null,
+  });
+
+  return { ok: true as const };
+}
+
 export async function PATCH(req: Request) {
   try {
     const auth = await requireAgent();
@@ -213,41 +280,28 @@ export async function PATCH(req: Request) {
 
     if (
       action === "validate" &&
-      phaseKey === "ready_for_deposit" &&
-      dossier.status !== "compliant"
+      (phaseKey === "final_return" || phaseKey === "ready_for_deposit")
     ) {
-      const { error: statusError } = await admin
-        .from("dossiers")
-        .update({
-          status: "compliant",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", dossierId);
-
-      if (statusError) {
-        return NextResponse.json(
-          { ok: false, error: statusError.message },
-          { status: 500 },
-        );
-      }
-
       const organisationRaw = Array.isArray(dossier.organisations)
         ? dossier.organisations[0]
         : dossier.organisations;
 
-      await notifyClientVisibleDocuments({
+      const depositOpening = await openDepositProcedureForClient({
+        admin,
         dossierId,
-        dossierType: "nda",
         organisation: organisationRaw ?? null,
-        subject: "Votre dossier NDA est prêt à être déposé",
-        message:
-          "Votre dossier NDA a été vérifié par Selen. Vous pouvez maintenant accéder à votre espace client pour consulter la procédure de dépôt et récupérer les documents à déposer sur la plateforme officielle.",
-      }).catch((emailError) => {
-        console.error(
-          "Notification client dossier NDA prêt au dépôt échouée.",
-          emailError,
-        );
       });
+
+      if (!depositOpening.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            phaseValidated: true,
+            error: depositOpening.error,
+          },
+          { status: 502 },
+        );
+      }
     }
 
     return NextResponse.json({
