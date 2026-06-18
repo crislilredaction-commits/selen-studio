@@ -53,6 +53,25 @@ type NdaManualAnalysisTextsRow = {
   program_manual_text: string | null;
 };
 
+function formatTrainerDisplayName(first?: string | null, last?: string | null) {
+  return [first?.trim(), last?.trim().toUpperCase()]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function ensureTrainerNamePrefix(summary: string, trainerName: string) {
+  const cleanedSummary = summary.trim();
+  const cleanedName = trainerName.trim();
+
+  if (!cleanedName || !cleanedSummary) return cleanedSummary;
+
+  if (cleanedSummary.toLowerCase().startsWith(cleanedName.toLowerCase())) {
+    return cleanedSummary;
+  }
+
+  return `${cleanedName} — ${cleanedSummary}`;
+}
+
 function sortNewestFirst<T extends { created_at?: string | null }>(
   docs: T[],
 ): T[] {
@@ -637,6 +656,13 @@ export async function POST(req: Request) {
       cvText,
       programmeText,
     );
+    const listeFormateursResumeWithName = ensureTrainerNamePrefix(
+      listeFormateursDirigeantResume,
+      formatTrainerDisplayName(
+        trainerName.formateur_prenom,
+        trainerName.formateur_nom,
+      ),
+    );
 
     const payload: Record<string, unknown> = {
       formateur_nom: trainerName.formateur_nom || null,
@@ -646,7 +672,8 @@ export async function POST(req: Request) {
       duree_formation: dureeFormation || null,
       modalite: "presentiel",
       nb_formateurs: 1,
-      liste_formateurs_dirigeant_resume: listeFormateursDirigeantResume || null,
+      liste_formateurs_dirigeant_resume:
+        listeFormateursResumeWithName || null,
     };
 
     if (entrepriseText.trim()) {

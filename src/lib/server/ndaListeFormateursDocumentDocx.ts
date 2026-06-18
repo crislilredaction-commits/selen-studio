@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import Docxtemplater from "docxtemplater";
+import PizZip from "pizzip";
 import type {
   NdaDocumentContext,
   NdaDocumentContextVariables,
@@ -31,43 +33,6 @@ type ListeFormateursSoustraitant = {
   titres_experience?: string | null;
 };
 
-type OptionalDocxDependencies = {
-  PizZip: new (content: Buffer) => {
-    files: Record<string, { asText?: () => string }>;
-    generate: (options: { type: "nodebuffer" }) => Buffer;
-  };
-  Docxtemplater: new (
-    zip: unknown,
-    options: {
-      paragraphLoop: boolean;
-      linebreaks: boolean;
-      delimiters?: {
-        start: string;
-        end: string;
-      };
-      nullGetter: () => string;
-    },
-  ) => {
-    render: (data: Record<string, string>) => void;
-    getZip: () => {
-      files: Record<string, { asText?: () => string }>;
-      generate: (options: { type: "nodebuffer" }) => Buffer;
-    };
-  };
-};
-
-function loadOptionalDocxDependencies(): OptionalDocxDependencies | null {
-  try {
-    const requireFn = eval("require") as NodeRequire;
-    return {
-      PizZip: requireFn("pizzip"),
-      Docxtemplater: requireFn("docxtemplater"),
-    };
-  } catch {
-    return null;
-  }
-}
-
 function text(value: unknown) {
   if (value === null || value === undefined) return "";
   return String(value).trim();
@@ -75,6 +40,26 @@ function text(value: unknown) {
 
 function fullName(first?: string | null, last?: string | null) {
   return [first, last].map(text).filter(Boolean).join(" ");
+}
+
+function formatTrainerDisplayName(
+  first?: string | null,
+  last?: string | null,
+) {
+  return [text(first), text(last).toUpperCase()].filter(Boolean).join(" ");
+}
+
+function ensureTrainerNamePrefix(summary: string, trainerName: string) {
+  const cleanedSummary = text(summary);
+  const cleanedName = text(trainerName);
+
+  if (!cleanedName || !cleanedSummary) return cleanedSummary;
+
+  if (cleanedSummary.toLowerCase().startsWith(cleanedName.toLowerCase())) {
+    return cleanedSummary;
+  }
+
+  return `${cleanedName} — ${cleanedSummary}`;
 }
 
 function normalizeArray<T>(value: unknown): T[] {
@@ -114,14 +99,6 @@ export function getNdaListeFormateursGenerationReadiness(
     };
   }
 
-  if (!loadOptionalDocxDependencies()) {
-    return {
-      ok: false as const,
-      error: "docx_dependency_missing",
-      dependencies: ["docxtemplater", "pizzip"],
-    };
-  }
-
   if (!hasNdaListeFormateursContent(context.variables)) {
     return {
       ok: false as const,
@@ -141,14 +118,22 @@ function buildTemplateData(context: NdaDocumentContext) {
   const soustraitants = normalizeArray<ListeFormateursSoustraitant>(
     variables?.liste_formateurs_soustraitants,
   ).slice(0, 5);
+  const trainerName = formatTrainerDisplayName(
+    variables?.formateur_prenom,
+    variables?.formateur_nom,
+  );
 
   const data: Record<string, string> = {
     organisme_nom: text(organisation?.name),
     organisme_adresse: text(
       variables?.organisme_adresse || organisation?.address,
     ),
-    dirigeant_titres_experience: text(
-      variables?.liste_formateurs_dirigeant_resume || variables?.cv_manual_text,
+    dirigeant_titres_experience: ensureTrainerNamePrefix(
+      text(
+        variables?.liste_formateurs_dirigeant_resume ||
+          variables?.cv_manual_text,
+      ),
+      trainerName,
     ),
     fait_a: text(
       variables?.liste_formateurs_fait_a ||
@@ -215,23 +200,16 @@ function assertNoVisiblePlaceholders(zip: {
 export function buildNdaListeFormateursDocumentDocx(
   context: NdaDocumentContext,
 ) {
-  const dependencies = loadOptionalDocxDependencies();
-
   if (!existsSync(NDA_LISTE_FORMATEURS_TEMPLATE_PATH)) {
     throw new Error(
       "Modèle Word manquant : src/lib/templates/nda/liste-formateurs-dreets.docx",
     );
   }
 
-  if (!dependencies) {
-    throw new Error(
-      "Dépendances DOCX manquantes : installer docxtemplater et pizzip.",
-    );
-  }
 
   const template = readFileSync(NDA_LISTE_FORMATEURS_TEMPLATE_PATH);
-  const zip = new dependencies.PizZip(template);
-  const doc = new dependencies.Docxtemplater(zip, {
+  const zip = new PizZip(template);
+  const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
     linebreaks: true,
     delimiters: {

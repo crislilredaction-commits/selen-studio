@@ -1888,11 +1888,6 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
     : { data: null };
 
   const reviewCase = reviewCaseRaw as ReviewCaseSummary | null;
-  const showGenericGenerateButton = ![
-    "preaudit",
-    "review",
-    "audit_blanc",
-  ].includes(dossier.type);
 
   const { data: relatedDossiers } = organisation
     ? await supabase
@@ -2464,16 +2459,6 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
           </span>
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <SelenButton variant="ghost" size="sm">
-            Ajouter un document
-          </SelenButton>
-          {showGenericGenerateButton ? (
-            <SelenButton variant="primary" size="sm" type="button">
-              Générer le {getTypeLabel(dossier.type)}
-            </SelenButton>
-          ) : null}
-        </div>
       </div>
 
       <div style={{ padding: "24px 28px", maxWidth: 1120, margin: "0 auto" }}>
@@ -2697,6 +2682,22 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                   title="Préparation des documents à signer"
                   subtitle="Vérifiez les variables NDA, puis préparez le pack visible côté client."
                 >
+                  <SelenCard>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--selen-text3)",
+                        lineHeight: 1.5,
+                        margin: 0,
+                      }}
+                    >
+                      Les informations de cette étape sont principalement
+                      reprises depuis le questionnaire rempli par le client. Les
+                      documents servent à vérifier la cohérence des informations
+                      et à constituer les preuves du dossier.
+                    </p>
+                  </SelenCard>
+
                   <NdaVariablesCard
                     dossierId={dossier.id}
                     initialValues={ndaVariablesInitialValues}
@@ -3237,6 +3238,19 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
               {dossier.type === "nda" ? (
                 <SelenCard>
                   <SelenCardTitle>Textes exploitables pour l'analyse</SelenCardTitle>
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "var(--selen-text3)",
+                      lineHeight: 1.5,
+                      margin: "0 0 12px",
+                    }}
+                  >
+                    À utiliser après avoir classé les documents initiaux et
+                    complété les textes exploitables du CV et du programme. Les
+                    documents administratifs non extractibles, comme l’avis
+                    INSEE, peuvent être vérifiés manuellement.
+                  </p>
                   <NdaManualAnalysisTextCard
                     dossierId={dossier.id}
                     cvInitialText={analysisCvInitialText}
