@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText } from "lucide-react";
+import { CalendarDays, FileText, Star } from "lucide-react";
 import AgentSidebarMessaging from "@/components/layout/AgentSidebarMessaging";
 
 const links = [
@@ -106,6 +106,16 @@ const links = [
         />
       </svg>
     ),
+  },
+  {
+    href: "/agent/rendez-vous",
+    label: "Rendez-vous",
+    icon: <CalendarDays size={16} strokeWidth={1.5} />,
+  },
+  {
+    href: "/agent/satisfaction",
+    label: "Satisfaction",
+    icon: <Star size={16} strokeWidth={1.5} />,
   },
   {
     href: "/agent/clients",

@@ -1493,115 +1493,37 @@ export default function AgentAuditBlancDetailPage() {
                     </select>
                   </label>
 
-                  <label style={s.fieldLabel}>
-                    Format
-                    <select
-                      value={auditCase.calendly_mode ?? ""}
-                      onChange={(event) =>
-                        updateCaseField(
-                          "calendly_mode",
-                          event.target.value || null,
-                        )
-                      }
-                      style={s.input}
-                      className="sel-input"
-                    >
-                      <option value="">Non renseigné</option>
-                      <option value="single_3h30">1 créneau de 3h30</option>
-                      <option value="split_2x1h45">2 créneaux d’1h45</option>
-                    </select>
-                  </label>
+                  <div style={s.fieldLabel}>
+                    Format réservé
+                    <div style={s.readonlyField}>
+                      {auditCase.calendly_mode === "split_2x1h45"
+                        ? "Audit blanc 2 x 1h45"
+                        : auditCase.calendly_mode === "single_3h30"
+                          ? "Audit blanc 3h30"
+                          : "Géré par la Vitrine"}
+                    </div>
+                  </div>
 
-                  <label style={s.fieldLabel}>
-                    Début créneau 1
-                    <input
-                      type="datetime-local"
-                      value={isoToLocalInput(auditCase.calendly_event_1_start)}
-                      onChange={(event) =>
-                        updateCaseField(
-                          "calendly_event_1_start",
-                          localInputToIso(event.target.value),
-                        )
-                      }
-                      style={s.input}
-                      className="sel-input"
-                    />
-                  </label>
+                  <div style={s.fieldLabel}>
+                    Créneau 1
+                    <div style={s.readonlyField}>
+                      {formatDateTime(auditCase.calendly_event_1_start)}
+                    </div>
+                  </div>
 
-                  <label style={s.fieldLabel}>
-                    Fin créneau 1
-                    <input
-                      type="datetime-local"
-                      value={isoToLocalInput(auditCase.calendly_event_1_end)}
-                      onChange={(event) =>
-                        updateCaseField(
-                          "calendly_event_1_end",
-                          localInputToIso(event.target.value),
-                        )
-                      }
-                      style={s.input}
-                      className="sel-input"
-                    />
-                  </label>
+                  <div style={s.fieldLabel}>
+                    Créneau 2
+                    <div style={s.readonlyField}>
+                      {formatDateTime(auditCase.calendly_event_2_start)}
+                    </div>
+                  </div>
 
-                  <label style={s.fieldLabel}>
-                    Début créneau 2
-                    <input
-                      type="datetime-local"
-                      value={isoToLocalInput(auditCase.calendly_event_2_start)}
-                      onChange={(event) =>
-                        updateCaseField(
-                          "calendly_event_2_start",
-                          localInputToIso(event.target.value),
-                        )
-                      }
-                      disabled={auditCase.calendly_mode !== "split_2x1h45"}
-                      style={{
-                        ...s.input,
-                        opacity:
-                          auditCase.calendly_mode === "split_2x1h45" ? 1 : 0.45,
-                      }}
-                      className="sel-input"
-                    />
-                  </label>
-
-                  <label style={s.fieldLabel}>
-                    Fin créneau 2
-                    <input
-                      type="datetime-local"
-                      value={isoToLocalInput(auditCase.calendly_event_2_end)}
-                      onChange={(event) =>
-                        updateCaseField(
-                          "calendly_event_2_end",
-                          localInputToIso(event.target.value),
-                        )
-                      }
-                      disabled={auditCase.calendly_mode !== "split_2x1h45"}
-                      style={{
-                        ...s.input,
-                        opacity:
-                          auditCase.calendly_mode === "split_2x1h45" ? 1 : 0.45,
-                      }}
-                      className="sel-input"
-                    />
-                  </label>
-
-                  <label style={s.fieldLabel}>
+                  <div style={s.fieldLabel}>
                     Lien visio
-                    <input
-                      type="url"
-                      value={auditCase.meeting_url ?? ""}
-                      onChange={(event) =>
-                        updateCaseField(
-                          "meeting_url",
-                          event.target.value || null,
-                        )
-                      }
-                      placeholder="https://..."
-                      style={s.input}
-                      className="sel-input"
-                    />
-                  </label>
+                    <div style={s.readonlyField}>
+                      {auditCase.meeting_url || "Géré par la Vitrine"}
+                    </div>
+                  </div>
                 </div>
               </article>
 
@@ -2710,6 +2632,18 @@ const s: Record<string, CSSProperties> = {
     outline: "none",
     fontFamily: "sans-serif",
     boxSizing: "border-box",
+  },
+  readonlyField: {
+    width: "100%",
+    minHeight: 42,
+    padding: "0.65rem",
+    border: `1px solid ${C.border}`,
+    background: "rgba(255,255,255,0.025)",
+    color: C.text,
+    borderRadius: 6,
+    fontFamily: "sans-serif",
+    boxSizing: "border-box",
+    overflowWrap: "anywhere",
   },
   documentPanel: {
     border: `1px solid ${C.border}`,
