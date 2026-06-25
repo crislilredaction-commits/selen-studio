@@ -27,6 +27,16 @@ type ReminderRow = {
   metadata: Record<string, unknown> | null;
 };
 
+type ReminderEvent = {
+  id: string;
+  reminder_id: string;
+  event_type: string;
+  agent_email: string | null;
+  subject: string | null;
+  body_text: string | null;
+  created_at: string;
+};
+
 const STATUS_FILTERS = [
   { value: "active", label: "À traiter" },
   { value: "ready", label: "Prêtes" },
@@ -88,6 +98,26 @@ function metadataText(row: ReminderRow, key: string) {
   return "";
 }
 
+function stageLabel(row: ReminderRow) {
+  return metadataText(row, "current_step") || "—";
+}
+
+function expectedAction(row: ReminderRow) {
+  return metadataText(row, "expected_action") || "—";
+}
+
+function reason(row: ReminderRow) {
+  return metadataText(row, "reason") || "—";
+}
+
+function prestation(row: ReminderRow) {
+  return (
+    metadataText(row, "prestation_type") ||
+    metadataText(row, "dossier_type") ||
+    "—"
+  );
+}
+
 export default function AgentRelancesPage() {
   const supabase = useMemo(() => createClient(), []);
   const [reminders, setReminders] = useState<ReminderRow[]>([]);
@@ -99,6 +129,10 @@ export default function AgentRelancesPage() {
   const [editing, setEditing] = useState<Record<string, ReminderRow>>({});
   const [busyId, setBusyId] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [historyByReminder, setHistoryByReminder] = useState<
+    Record<string, ReminderEvent[]>
+  >({});
+  const [openHistoryId, setOpenHistoryId] = useState("");
 
   async function loadReminders() {
     setLoading(true);
@@ -125,6 +159,37 @@ export default function AgentRelancesPage() {
     setLoading(false);
   }
 
+  async function loadHistory(reminderId: string) {
+    if (openHistoryId === reminderId) {
+      setOpenHistoryId("");
+      return;
+    }
+
+    setOpenHistoryId(reminderId);
+
+    if (historyByReminder[reminderId]) {
+      return;
+    }
+
+    const { data, error: historyError } = await supabase
+      .from("client_reminder_events")
+      .select(
+        "id, reminder_id, event_type, agent_email, subject, body_text, created_at",
+      )
+      .eq("reminder_id", reminderId)
+      .order("created_at", { ascending: false });
+
+    if (historyError) {
+      setError(historyError.message);
+      return;
+    }
+
+    setHistoryByReminder((current) => ({
+      ...current,
+      [reminderId]: (data ?? []) as ReminderEvent[],
+    }));
+  }
+
   useEffect(() => {
     void loadReminders();
   }, []);
@@ -148,7 +213,10 @@ export default function AgentRelancesPage() {
     await loadReminders();
   }
 
-  async function updateReminder(id: string, action: "save" | "ignore" | "postpone") {
+  async function updateReminder(
+    id: string,
+    action: "save" | "ignore" | "postpone",
+  ) {
     setBusyId(id);
     setNotice("");
     setError("");
@@ -209,7 +277,7 @@ export default function AgentRelancesPage() {
     setNotice(
       result.sent
         ? "Relance envoyée."
-        : result.error ?? "Relance validée, mais email non envoyé.",
+        : (result.error ?? "Relance validée, mais email non envoyé."),
     );
     await loadReminders();
   }
@@ -255,7 +323,8 @@ export default function AgentRelancesPage() {
           <p style={s.eyebrow}>Studio agent</p>
           <h1 style={s.title}>Relances clients</h1>
           <p style={s.subtitle}>
-            Brouillons préparés automatiquement, envoyés uniquement après validation agent.
+            Brouillons préparés automatiquement, envoyés uniquement après
+            validation agent.
           </p>
         </div>
         <SelenButton onClick={() => void generateNow()} disabled={generating}>
@@ -324,6 +393,14 @@ export default function AgentRelancesPage() {
                         <SelenButton type="button" size="sm" variant="ghost">
                           Voir
                         </SelenButton>
+                        <SelenButton
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void loadHistory(row.id)}
+                        >
+                          Historique
+                        </SelenButton>
                       </Link>
                     ) : null}
                     <SelenButton
@@ -365,9 +442,15 @@ export default function AgentRelancesPage() {
                 </div>
 
                 <div style={s.grid}>
-                  <Info label="Prestation" value={formatType(row.reminder_type)} />
+                  <Info
+                    label="Prestation"
+                    value={formatType(row.reminder_type)}
+                  />
                   <Info label="Dossier" value={row.dossier_id ?? "—"} mono />
-                  <Info label="Raison" value={metadataText(row, "reason") || "—"} />
+                  <Info
+                    label="Raison"
+                    value={metadataText(row, "reason") || "—"}
+                  />
                   <Info
                     label="Dernière activité"
                     value={formatDate(metadataText(row, "last_activity_at"))}
@@ -411,6 +494,62 @@ export default function AgentRelancesPage() {
                     />
                   </details>
                 </div>
+                <div style={s.metaBox}>
+                  <p>
+                    <b>Prestation :</b> {prestation(row)}
+                  </p>
+
+                  <p>
+                    <b>Étape :</b> {stageLabel(row)}
+                  </p>
+
+                  <p>
+                    <b>Action attendue :</b> {expectedAction(row)}
+                  </p>
+
+                  <p>
+                    <b>Pourquoi cette relance ?</b>
+                    <br />
+                    {reason(row)}
+                  </p>
+                </div>
+                {openHistoryId === row.id ? (
+                  <div style={s.historyBox}>
+                    <strong>Historique de la relance</strong>
+
+                    {(historyByReminder[row.id] ?? []).length === 0 ? (
+                      <p style={{ color: "var(--selen-muted)" }}>
+                        Aucun historique enregistré pour le moment.
+                      </p>
+                    ) : (
+                      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                        {(historyByReminder[row.id] ?? []).map((event) => (
+                          <div key={event.id} style={s.historyItem}>
+                            <div style={{ fontWeight: 700 }}>
+                              {formatReminderEvent(event.event_type)}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 13,
+                                color: "var(--selen-muted)",
+                              }}
+                            >
+                              {formatDate(event.created_at)}
+                              {event.agent_email
+                                ? ` · ${event.agent_email}`
+                                : ""}
+                            </div>
+                            {event.subject ? (
+                              <div style={{ marginTop: 4 }}>
+                                Objet : {event.subject}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </SelenCard>
             );
           })
@@ -418,6 +557,19 @@ export default function AgentRelancesPage() {
       </section>
     </main>
   );
+}
+
+function formatReminderEvent(type: string) {
+  const labels: Record<string, string> = {
+    created: "Créée",
+    edited: "Modifiée",
+    sent: "Envoyée",
+    ignored: "Ignorée",
+    postponed: "Reportée",
+    failed: "Échec d’envoi",
+  };
+
+  return labels[type] ?? type;
 }
 
 function Info({
@@ -432,7 +584,9 @@ function Info({
   return (
     <div style={s.info}>
       <span style={s.infoLabel}>{label}</span>
-      <span style={{ ...s.infoValue, fontFamily: mono ? "monospace" : undefined }}>
+      <span
+        style={{ ...s.infoValue, fontFamily: mono ? "monospace" : undefined }}
+      >
         {value || "—"}
       </span>
     </div>
@@ -552,5 +706,18 @@ const s: Record<string, CSSProperties> = {
     background: "var(--selen-danger-bg)",
     color: "var(--selen-danger)",
     fontSize: 13,
+  },
+  historyBox: {
+    marginTop: 14,
+    padding: 14,
+    border: "1px solid var(--selen-border)",
+    borderRadius: 16,
+    background: "rgba(255,255,255,0.04)",
+  },
+  historyItem: {
+    padding: 10,
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(0,0,0,0.08)",
   },
 };
