@@ -7,7 +7,8 @@ async function requireAgent() {
   const { data: userData } = await supabase.auth.getUser();
   const email = userData.user?.email?.trim().toLowerCase();
 
-  if (!email) return { ok: false as const, error: "Non authentifié.", status: 401 };
+  if (!email)
+    return { ok: false as const, error: "Non authentifié.", status: 401 };
 
   const { data: profile, error } = await supabase
     .from("agent_profiles")
@@ -36,7 +37,10 @@ export async function POST(req: Request) {
     const action = String(body.action ?? "").trim();
 
     if (!reminderId) {
-      return NextResponse.json({ error: "reminderId manquant." }, { status: 400 });
+      return NextResponse.json(
+        { error: "reminderId manquant." },
+        { status: 400 },
+      );
     }
 
     const admin = createSupabaseAdminClient();
@@ -54,7 +58,9 @@ export async function POST(req: Request) {
       update.status = "ignored";
     } else if (action === "postpone") {
       update.status = "postponed";
-      update.due_at = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      update.due_at = new Date(
+        now.getTime() + 7 * 24 * 60 * 60 * 1000,
+      ).toISOString();
     } else {
       return NextResponse.json({ error: "Action invalide." }, { status: 400 });
     }
@@ -68,6 +74,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    await admin.from("client_reminder_events").insert({
+      reminder_id: reminderId,
+      event_type:
+        action === "save"
+          ? "edited"
+          : action === "ignore"
+            ? "ignored"
+            : "postponed",
+      agent_email: auth.email,
+      subject: String(body.subject ?? "").trim(),
+      body_html: String(body.bodyHtml ?? "").trim(),
+      body_text: String(body.bodyText ?? "").trim(),
+      metadata: { action },
+    });
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Mise à jour relance échouée.", error);
@@ -77,4 +98,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

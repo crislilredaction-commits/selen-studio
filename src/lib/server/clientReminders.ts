@@ -20,6 +20,13 @@ type ReminderInsert = {
   due_at: string;
   metadata: JsonRecord;
   dedupe_key: string;
+  suggested_subject: string;
+  suggested_body_html: string;
+  suggested_body_text: string;
+  prestation_type?: string | null;
+  prestation_id?: string | null;
+  stage_label?: string | null;
+  expected_action?: string | null;
 };
 
 const ACTIVE_REMINDER_STATUSES = ["draft", "ready", "postponed"];
@@ -40,7 +47,9 @@ function daysBetween(later: Date, earlier: Date) {
   return Math.floor((later.getTime() - earlier.getTime()) / DAY_MS);
 }
 
-function isMissingTableError(error: { code?: string; message?: string } | null) {
+function isMissingTableError(
+  error: { code?: string; message?: string } | null,
+) {
   return error?.code === "42P01" || error?.message?.includes("does not exist");
 }
 
@@ -52,7 +61,10 @@ async function tableExistsQuery<T>(
   return { data, error };
 }
 
-async function getUserEmail(admin: SupabaseAdminClient, userId?: string | null) {
+async function getUserEmail(
+  admin: SupabaseAdminClient,
+  userId?: string | null,
+) {
   if (!userId) return null;
   const { data, error } = await admin.auth.admin.getUserById(userId);
   if (error) {
@@ -142,8 +154,25 @@ async function createReminderIfDue(
     return { created: false, skipped: "cooldown" };
   }
 
-  const { error } = await admin.from("client_reminders").insert(payload);
+  const { data, error } = await admin
+    .from("client_reminders")
+    .insert(payload)
+    .select("id, subject, body_html, body_text")
+    .single();
+
   if (error) throw error;
+
+  await admin.from("client_reminder_events").insert({
+    reminder_id: data.id,
+    event_type: "created",
+    subject: data.subject,
+    body_html: data.body_html,
+    body_text: data.body_text,
+    metadata: {
+      reminder_type: payload.reminder_type,
+      dedupe_key: payload.dedupe_key,
+    },
+  });
 
   return { created: true, skipped: null };
 }
@@ -193,6 +222,13 @@ function buildReminderPayload({
     subject: template.subject,
     body_html: template.html,
     body_text: template.text,
+    suggested_subject: template.subject,
+    suggested_body_html: template.html,
+    suggested_body_text: template.text,
+    prestation_type: dossierType ?? null,
+    prestation_id: dossierId ?? clientId ?? null,
+    stage_label: asString(metadata.current_step) || null,
+    expected_action: asString(metadata.expected_action) || null,
     due_at: (dueAt ?? new Date()).toISOString(),
     dedupe_key: `${type}:${dedupeScope}`,
     metadata: {
@@ -208,7 +244,9 @@ async function generatePreauditReminders(admin: SupabaseAdminClient) {
   const { data: accessRows, error } = await tableExistsQuery<JsonRecord[]>(
     admin
       .from("selen_client_tool_access")
-      .select("id, user_id, tool_slug, status, access_type, starts_at, ends_at, updated_at, created_at")
+      .select(
+        "id, user_id, tool_slug, status, access_type, starts_at, ends_at, updated_at, created_at",
+      )
       .in("tool_slug", ["preaudit", "preaudit-qualiopi"])
       .eq("status", "active"),
   );
@@ -242,7 +280,11 @@ async function generatePreauditReminders(admin: SupabaseAdminClient) {
 
     const latestSession = sessions?.[0] ?? null;
     const sessionStatus = asString(latestSession?.status).toLowerCase();
-    if (["completed", "done", "finished", "finalized", "termine"].includes(sessionStatus)) {
+    if (
+      ["completed", "done", "finished", "finalized", "termine"].includes(
+        sessionStatus,
+      )
+    ) {
       continue;
     }
 
@@ -292,7 +334,9 @@ async function getReviewAppointment(
     admin
       .from("appointment_requests")
       .select("*")
-      .or(`audit_blanc_case_id.eq.${auditCaseId},email.eq.${email},client_email.eq.${email}`)
+      .or(
+        `audit_blanc_case_id.eq.${auditCaseId},email.eq.${email},client_email.eq.${email}`,
+      )
       .order("created_at", { ascending: false })
       .limit(5),
   );
@@ -310,8 +354,14 @@ async function generateAuditBlancReminders(admin: SupabaseAdminClient) {
   const { data: cases, error } = await tableExistsQuery<JsonRecord[]>(
     admin
       .from("audit_blanc_cases")
-      .select("id, dossier_id, client_email, status, calendly_mode, calendly_event_1_start, meeting_url, updated_at, created_at")
-      .not("status", "in", '("cancelled","completed")')
+      .select(
+        "id, dossier_id, client_email, status, calendly_mode, calendly_event_1_start, meeting_url, updated_at, created_at",
+      )
+      .not(
+        "status",
+        "in",
+        '("cancelled","completed","archived","expired","report_ready")',
+      )
       .order("updated_at", { ascending: false }),
   );
 
@@ -446,12 +496,15 @@ async function latestClientActivityForDossier(
       .from("documents")
       .select("created_at, updated_at")
       .eq("dossier_id", dossierId)
-      .or("source.eq.client,source.eq.client_upload,source.eq.user_upload,source.eq.client_uploaded_document")
+      .or(
+        "source.eq.client,source.eq.client_upload,source.eq.user_upload,source.eq.client_uploaded_document",
+      )
       .order("updated_at", { ascending: false })
       .limit(1),
   );
   const documentDate =
-    maybeDate(documents?.[0]?.updated_at) ?? maybeDate(documents?.[0]?.created_at);
+    maybeDate(documents?.[0]?.updated_at) ??
+    maybeDate(documents?.[0]?.created_at);
   if (documentDate) candidates.push(documentDate);
 
   const { data: programVersions } = await tableExistsQuery<JsonRecord[]>(
@@ -476,9 +529,15 @@ async function generateNdaReminders(admin: SupabaseAdminClient) {
   const now = new Date();
   const { data: dossiers, error } = await admin
     .from("dossiers")
-    .select("id, title, type, status, organisation_id, updated_at, organisations(id, name, email)")
+    .select(
+      "id, title, type, status, organisation_id, updated_at, organisations(id, name, email)",
+    )
     .in("type", ["nda", "qualiopi"])
-    .not("status", "in", '("archived","compliant")')
+    .not(
+      "status",
+      "in",
+      '("archived","compliant","completed","cancelled","expired")',
+    )
     .order("updated_at", { ascending: false });
 
   if (error) throw error;
@@ -528,7 +587,9 @@ async function generateNdaReminders(admin: SupabaseAdminClient) {
   return { created, checked: dossiers.length };
 }
 
-export async function generateClientReminders(admin = createSupabaseAdminClient()) {
+export async function generateClientReminders(
+  admin = createSupabaseAdminClient(),
+) {
   const [preaudit, auditBlanc, nda] = await Promise.all([
     generatePreauditReminders(admin),
     generateAuditBlancReminders(admin),
@@ -605,4 +666,3 @@ export async function sendClientReminder({
 
   return emailResult;
 }
-

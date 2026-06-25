@@ -18,7 +18,9 @@ function paragraphize(text: string) {
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br />")}</p>`)
+    .map(
+      (paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br />")}</p>`,
+    )
     .join("\n");
 }
 
@@ -177,3 +179,25 @@ export async function sendSelenEmail({
   return { sent: true, error: null };
 }
 
+export function renderSelenEmailLayout(contentHtml: string) {
+  return `
+  <div style="font-family: Georgia, serif; background:#f7efe2; padding:24px;">
+    <div style="max-width:640px;margin:auto;background:#fffaf0;border:1px solid #d6b16a;border-radius:18px;padding:28px;">
+      ${contentHtml}
+
+      <hr style="border:none;border-top:1px solid #d6b16a;margin:28px 0;" />
+
+      <p style="font-size:14px;line-height:1.6;color:#4b3828;">
+        Si vous avez des questions ou besoin d’aide, vous pouvez nous contacter depuis votre espace client,
+        par email à <a href="mailto:hello@selen-editions.fr">hello@selen-editions.fr</a>,
+        ou <a href="https://selen-editions.fr/prendre-rendez-vous">prendre un rendez-vous téléphonique</a>.
+      </p>
+
+      <p style="font-size:14px;color:#4b3828;">
+        <strong>Selen Editions</strong><br />
+        Accompagnement administratif et Qualiopi<br />
+        <a href="mailto:hello@selen-editions.fr">hello@selen-editions.fr</a>
+      </p>
+    </div>
+  </div>`;
+}

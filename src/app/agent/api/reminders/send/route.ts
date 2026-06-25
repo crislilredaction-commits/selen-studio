@@ -7,7 +7,8 @@ async function requireAgent() {
   const { data: userData } = await supabase.auth.getUser();
   const email = userData.user?.email?.trim().toLowerCase();
 
-  if (!email) return { ok: false as const, error: "Non authentifié.", status: 401 };
+  if (!email)
+    return { ok: false as const, error: "Non authentifié.", status: 401 };
 
   const { data: profile, error } = await supabase
     .from("agent_profiles")
@@ -35,7 +36,10 @@ export async function POST(req: Request) {
     const reminderId = String(body.reminderId ?? "").trim();
 
     if (!reminderId) {
-      return NextResponse.json({ error: "reminderId manquant." }, { status: 400 });
+      return NextResponse.json(
+        { error: "reminderId manquant." },
+        { status: 400 },
+      );
     }
 
     const result = await sendClientReminder({
@@ -44,6 +48,20 @@ export async function POST(req: Request) {
       subject: String(body.subject ?? "").trim(),
       bodyHtml: String(body.bodyHtml ?? "").trim(),
       bodyText: String(body.bodyText ?? "").trim(),
+    });
+
+    const { createSupabaseAdminClient } =
+      await import("@/lib/server/supabaseAdmin");
+    const admin = createSupabaseAdminClient();
+
+    await admin.from("client_reminder_events").insert({
+      reminder_id: reminderId,
+      event_type: result.sent ? "sent" : "failed",
+      agent_email: auth.email,
+      subject: String(body.subject ?? "").trim(),
+      body_html: String(body.bodyHtml ?? "").trim(),
+      body_text: String(body.bodyText ?? "").trim(),
+      metadata: result,
     });
 
     return NextResponse.json({ ok: true, ...result });
@@ -55,4 +73,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
