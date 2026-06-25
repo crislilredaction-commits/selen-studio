@@ -171,13 +171,33 @@ export default function AgentRendezVousPage() {
     void loadAppointments();
   }, []);
 
-  async function updateStatus(id: string, status: string) {
-    setUpdatingId(id);
+  async function updateAppointment(
+    row: AppointmentRow,
+    changes: { status?: string; metadata?: Record<string, unknown> },
+  ) {
+    setUpdatingId(row.id);
     setError("");
+
+    const currentMetadata =
+      row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+
+    const updatePayload: Record<string, unknown> = {};
+
+    if (changes.status) {
+      updatePayload.status = changes.status;
+    }
+
+    if (changes.metadata) {
+      updatePayload.metadata = {
+        ...currentMetadata,
+        ...changes.metadata,
+      };
+    }
+
     const { error: updateError } = await supabase
       .from("appointment_requests")
-      .update({ status })
-      .eq("id", id);
+      .update(updatePayload)
+      .eq("id", row.id);
 
     if (updateError) {
       setError(updateError.message);
@@ -186,8 +206,16 @@ export default function AgentRendezVousPage() {
     }
 
     setAppointments((rows) =>
-      rows.map((row) => (row.id === id ? { ...row, status } : row)),
+      rows.map((item) =>
+        item.id === row.id
+          ? ({
+              ...item,
+              ...updatePayload,
+            } as AppointmentRow)
+          : item,
+      ),
     );
+
     setUpdatingId("");
   }
 
@@ -327,7 +355,11 @@ export default function AgentRendezVousPage() {
                       size="sm"
                       variant="secondary"
                       disabled={isUpdating}
-                      onClick={() => void updateStatus(row.id, "completed")}
+                      onClick={() =>
+                        void updateAppointment(row, {
+                          metadata: { processed: true },
+                        })
+                      }
                     >
                       Traité
                     </SelenButton>
@@ -335,7 +367,11 @@ export default function AgentRendezVousPage() {
                       size="sm"
                       variant="primary"
                       disabled={isUpdating}
-                      onClick={() => void updateStatus(row.id, "completed")}
+                      onClick={() =>
+                        void updateAppointment(row, {
+                          status: "completed",
+                        })
+                      }
                     >
                       Terminé
                     </SelenButton>
@@ -343,7 +379,11 @@ export default function AgentRendezVousPage() {
                       size="sm"
                       variant="ghost"
                       disabled={isUpdating}
-                      onClick={() => void updateStatus(row.id, "completed")}
+                      onClick={() =>
+                        void updateAppointment(row, {
+                          metadata: { archived: true },
+                        })
+                      }
                     >
                       Archiver
                     </SelenButton>

@@ -24,10 +24,8 @@ function paragraphize(text: string) {
     .join("\n");
 }
 
-export function getPhoneAppointmentUrl() {
-  const configured = process.env.NEXT_PUBLIC_PHONE_BOOKING_URL?.trim();
-  if (configured) return configured;
-  return `${getVitrineBaseUrl()}/rendez-vous-telephonique`;
+function getPhoneAppointmentUrl() {
+  return "https://www.selen-editions.fr/prendre-rendez-vous";
 }
 
 export function getSelenLogoUrl() {

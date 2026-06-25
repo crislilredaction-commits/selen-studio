@@ -33,6 +33,39 @@ export async function requireSupportAgent() {
   return { ok: true as const, email };
 }
 
+export async function requireSupportAdmin() {
+  const auth = await requireSupportAgent();
+  if (!auth.ok) return auth;
+
+  const supabase = await createClient();
+  const { data: adminUser } = await supabase
+    .from("selen_admin_users")
+    .select("role, is_active")
+    .eq("email", auth.email)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (adminUser?.role === "admin") return auth;
+
+  const { data: profile, error } = await supabase
+    .from("agent_profiles")
+    .select("role, is_active")
+    .eq("email", auth.email)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error) return { ok: false as const, error: error.message, status: 500 };
+  if (profile?.role !== "admin") {
+    return {
+      ok: false as const,
+      error: "Action reservee aux administrateurs Studio.",
+      status: 403,
+    };
+  }
+
+  return auth;
+}
+
 export async function isActiveSupportAgentEmail(
   supabase: ReturnType<typeof createClient> extends Promise<infer T> ? T : never,
   email: string,
