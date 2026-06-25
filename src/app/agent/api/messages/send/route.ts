@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { Resend } from "resend";
 import { createAgentNotification } from "@/lib/server/notifications";
 import { getVitrineClientUrl } from "@/lib/vitrineLinks";
-
-const resendApiKey = process.env.RESEND_API_KEY;
-const resend = resendApiKey ? new Resend(resendApiKey) : null;
+import {
+  renderSelenEmailFromText,
+  sendSelenEmail,
+} from "@/lib/server/selenEmailLayout";
 
 export async function POST(req: Request) {
   try {
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
         .eq("id", dossierId)
         .single();
 
-      if (dossier?.organisation_id && resend) {
+      if (dossier?.organisation_id) {
         const { data: organisation } = await supabase
           .from("organisations")
           .select("email, name")
@@ -80,21 +80,22 @@ export async function POST(req: Request) {
 
         if (organisation?.email) {
           const clientUrl = getVitrineClientUrl(dossier.type, dossier.id);
+          const rendered = renderSelenEmailFromText({
+            title: "Nouveau message concernant votre dossier",
+            bodyText: [
+              "Bonjour,",
+              "Votre agent vous a envoyé un message :",
+              content,
+            ].join("\n\n"),
+            ctaLabel: "Accéder à mon dossier",
+            ctaUrl: clientUrl,
+          });
 
-          await resend.emails.send({
-            from: "Selen ✨ <hello@selen-editions.fr>",
+          await sendSelenEmail({
             to: organisation.email,
             subject: "Nouveau message concernant votre dossier",
-            html: `
-              <p>Bonjour,</p>
-              <p>Votre agent vous a envoyé un message :</p>
-              <p><strong>${content}</strong></p>
-              <p>
-                👉 <a href="${clientUrl}">
-                  Accéder à mon dossier
-                </a>
-              </p>
-            `,
+            html: rendered.html,
+            text: rendered.text,
           });
         }
       }
@@ -111,3 +112,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
