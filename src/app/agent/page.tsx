@@ -56,6 +56,15 @@ type ReminderRow = {
   metadata: Record<string, unknown> | null;
 };
 
+type SupportTicketRow = {
+  id: string;
+  client_email: string | null;
+  subject: string | null;
+  category: string | null;
+  status: string | null;
+  updated_at: string | null;
+};
+
 type DashboardItem = {
   id: string;
   title: string;
@@ -68,6 +77,7 @@ type DashboardData = {
   assignedDossiers: DashboardItem[];
   unreadMessageDossiers: DashboardItem[];
   relanceDossiers: DashboardItem[];
+  supportTickets: DashboardItem[];
   actionDossiers: DashboardItem[];
   auditBlancItems: DashboardItem[];
   unassignedItems: DashboardItem[];
@@ -449,6 +459,25 @@ async function getDashboardData(
     },
   );
 
+  const { data: supportTicketsData } = await supabase
+    .from("support_tickets")
+    .select("id, client_email, subject, category, status, updated_at")
+    .in("status", ["open", "waiting_agent"])
+    .order("updated_at", { ascending: false })
+    .limit(6);
+
+  const supportTickets = ((supportTicketsData ?? []) as SupportTicketRow[]).map(
+    (ticket) => ({
+      id: ticket.id,
+      title: ticket.client_email || "Client support",
+      subtitle: `${ticket.category || "Support"} · ${
+        ticket.subject || "Demande à traiter"
+      }`,
+      href: "/agent/support",
+      date: ticket.updated_at,
+    }),
+  );
+
   const actionDossiers = uniqueItems([
     ...unreadMessageDossiers,
     ...relanceDossiers,
@@ -537,6 +566,7 @@ async function getDashboardData(
     assignedDossiers: assignedDossiers.slice(0, 6),
     unreadMessageDossiers: unreadMessageDossiers.slice(0, 6),
     relanceDossiers: relanceDossiers.slice(0, 6),
+    supportTickets: supportTickets.slice(0, 6),
     actionDossiers: actionDossiers.slice(0, 8),
     auditBlancItems,
     unassignedItems: [...unassignedDossiers, ...unassignedAudits].slice(0, 8),
@@ -688,6 +718,15 @@ export default async function AgentHomePage() {
           items={dashboard.relanceDossiers}
           footerHref="/agent/relances"
           footerLabel="Ouvrir les relances"
+        />
+        <TaskCard
+          icon="🛟"
+          title="Support à traiter"
+          count={dashboard.supportTickets.length}
+          emptyText="Aucun ticket support à traiter."
+          items={dashboard.supportTickets}
+          footerHref="/agent/support"
+          footerLabel="Ouvrir le support"
         />
       </section>
 
