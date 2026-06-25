@@ -45,6 +45,17 @@ type MessageRow = {
   read_by_agent_at: string | null;
 };
 
+type ReminderRow = {
+  id: string;
+  client_email: string | null;
+  dossier_id: string | null;
+  reminder_type: string | null;
+  status: string | null;
+  subject: string | null;
+  due_at: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
 type DashboardItem = {
   id: string;
   title: string;
@@ -117,21 +128,9 @@ const inactiveStatuses = new Set([
   "terminé",
 ]);
 
-const waitingClientStatuses = new Set([
-  "waiting_client",
-  "to_complete",
-  "collecting_documents",
-  "booking_pending",
-]);
-
 function isActiveStatus(status?: string | null) {
   if (!status) return true;
   return !inactiveStatuses.has(status);
-}
-
-function isWaitingClientStatus(status?: string | null) {
-  if (!status) return false;
-  return waitingClientStatuses.has(status);
 }
 
 function shouldShowAuditBlancInDashboard(auditCase: AuditBlancCaseRow) {
@@ -178,6 +177,14 @@ function formatType(type?: string | null) {
   if (type === "prepa") return "Prépa";
   if (type === "daily") return "Daily";
   return type ?? "Dossier";
+}
+
+function formatReminderType(type?: string | null) {
+  if (type === "preaudit_incomplete_15_days") return "Préaudit";
+  if (type === "audit_blanc_booking_reminder_7_days") return "Review";
+  if (type === "audit_blanc_48h_reminder") return "Rappel Review";
+  if (type === "nda_inactive_9_days") return "NDA";
+  return "Relance";
 }
 
 function formatOffer(offer?: string | null) {
@@ -328,9 +335,6 @@ async function getDashboardData(
   supabase: Awaited<ReturnType<typeof createClient>>,
   staff: StaffInfo,
 ): Promise<DashboardData> {
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
   const assignedDossierIds = new Set<string>();
 
   if (staff.id) {
@@ -419,54 +423,31 @@ async function getDashboardData(
     subtitle: `${formatType(dossier.type)} · message client non lu`,
   }));
 
-  let relanceDossiersRaw: DossierRow[] = [];
+  const { data: reminderData } = await supabase
+    .from("client_reminders")
+    .select(
+      "id, client_email, dossier_id, reminder_type, status, subject, due_at, metadata",
+    )
+    .in("status", ["draft", "ready", "postponed"])
+    .order("due_at", { ascending: true })
+    .limit(12);
 
-  if (assignedDossiersRaw.length > 0) {
-    const assignedIds = assignedDossiersRaw.map((dossier) => dossier.id);
+  const relanceDossiers = ((reminderData ?? []) as ReminderRow[]).map(
+    (reminder) => {
+      const reason =
+        typeof reminder.metadata?.reason === "string"
+          ? reminder.metadata.reason
+          : reminder.subject || "Relance client à traiter";
 
-    const { data: recentMessageData } = await supabase
-      .from("messages")
-      .select(
-        "id, dossier_id, sender_type, content, created_at, read_by_agent_at",
-      )
-      .in("dossier_id", assignedIds)
-      .order("created_at", { ascending: false })
-      .limit(200);
-
-    const latestMessageByDossier = new Map<string, MessageRow>();
-
-    ((recentMessageData ?? []) as MessageRow[]).forEach((message) => {
-      if (!message.dossier_id) return;
-      if (!latestMessageByDossier.has(message.dossier_id)) {
-        latestMessageByDossier.set(message.dossier_id, message);
-      }
-    });
-
-    relanceDossiersRaw = assignedDossiersRaw.filter((dossier) => {
-      const latestMessage = latestMessageByDossier.get(dossier.id);
-
-      if (latestMessage?.created_at) {
-        const latestMessageDate = new Date(latestMessage.created_at);
-
-        return (
-          latestMessage.sender_type !== "client" &&
-          latestMessageDate < sevenDaysAgo
-        );
-      }
-
-      if (!dossier.updated_at) return false;
-
-      return (
-        isWaitingClientStatus(dossier.status) &&
-        new Date(dossier.updated_at) < sevenDaysAgo
-      );
-    });
-  }
-
-  const relanceDossiers = relanceDossiersRaw.map((dossier) => ({
-    ...buildDossierItem(dossier),
-    subtitle: `${formatType(dossier.type)} · relance client à prévoir`,
-  }));
+      return {
+        id: reminder.id,
+        title: reminder.client_email || "Client à relancer",
+        subtitle: `${formatReminderType(reminder.reminder_type)} · ${reason}`,
+        href: "/agent/relances",
+        date: reminder.due_at,
+      };
+    },
+  );
 
   const actionDossiers = uniqueItems([
     ...unreadMessageDossiers,
@@ -705,6 +686,8 @@ export default async function AgentHomePage() {
           count={dashboard.relanceDossiers.length}
           emptyText="Aucune relance client détectée."
           items={dashboard.relanceDossiers}
+          footerHref="/agent/relances"
+          footerLabel="Ouvrir les relances"
         />
       </section>
 

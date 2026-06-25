@@ -352,6 +352,31 @@ export default async function AgentDossiersPage() {
         </Link>
       </div>
 
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          marginBottom: 16,
+        }}
+      >
+        <Link href="/agent/dossiers" style={{ textDecoration: "none" }}>
+          <SelenButton variant="secondary" size="sm">
+            Dossiers
+          </SelenButton>
+        </Link>
+        <Link href="/agent/audits-blancs" style={{ textDecoration: "none" }}>
+          <SelenButton variant="ghost" size="sm">
+            Review
+          </SelenButton>
+        </Link>
+        <Link href="/agent/clients" style={{ textDecoration: "none" }}>
+          <SelenButton variant="ghost" size="sm">
+            Clients
+          </SelenButton>
+        </Link>
+      </div>
+
       <SelenCard>
         <SelenCardTitle>Dossiers en cours</SelenCardTitle>
 

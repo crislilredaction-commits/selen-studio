@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bell, CalendarDays, FileText, Star } from "lucide-react";
+import { CalendarDays, FileText, Star } from "lucide-react";
 import AgentSidebarMessaging from "@/components/layout/AgentSidebarMessaging";
+import { createClient } from "@/lib/supabase/client";
 
 const links = [
   {
@@ -75,51 +77,14 @@ const links = [
     ),
   },
   {
-    href: "/agent/audits-blancs",
-    label: "Review",
-    icon: (
-      <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
-        <path
-          d="M3 2.5h10v11H3z"
-          stroke="currentColor"
-          strokeWidth="1.2"
-          rx="2"
-        />
-        <path
-          d="M5 5h6"
-          stroke="currentColor"
-          strokeWidth="1"
-          strokeLinecap="round"
-        />
-        <path
-          d="M5 7.5h4"
-          stroke="currentColor"
-          strokeWidth="1"
-          strokeLinecap="round"
-        />
-        <path
-          d="M5 10.5l1 1 2-2"
-          stroke="currentColor"
-          strokeWidth="1.1"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    ),
-  },
-  {
     href: "/agent/rendez-vous",
     label: "Rendez-vous",
     icon: <CalendarDays size={16} strokeWidth={1.5} />,
   },
   {
-    href: "/agent/relances",
-    label: "Relances clients",
-    icon: <Bell size={16} strokeWidth={1.5} />,
-  },
-  {
     href: "/agent/satisfaction",
     label: "Satisfaction",
+    adminOnly: true,
     icon: <Star size={16} strokeWidth={1.5} />,
   },
   {
@@ -140,6 +105,7 @@ const links = [
   {
     href: "/agent/articles",
     label: "Articles",
+    adminOnly: true,
     icon: <FileText size={16} strokeWidth={1.5} />,
   },
   {
@@ -159,6 +125,7 @@ const links = [
   },
   {
     href: "/agent/admin/agents",
+    adminOnly: true,
     label: "Accès agents",
     icon: (
       <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
@@ -188,6 +155,65 @@ const links = [
 
 export default function AgentSidebar() {
   const pathname = usePathname();
+  const supabase = useMemo(() => createClient(), []);
+  const [role, setRole] = useState<"agent" | "admin">("agent");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRole() {
+      const { data: authData } = await supabase.auth.getUser();
+      const email = authData.user?.email?.trim().toLowerCase();
+
+      if (!email) return;
+
+      const { data: adminUser } = await supabase
+        .from("selen_admin_users")
+        .select("role, is_active")
+        .eq("email", email)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!cancelled && adminUser?.role === "admin") {
+        setRole("admin");
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("agent_profiles")
+        .select("role, is_active")
+        .eq("email", email)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!cancelled && profile?.role === "admin") {
+        setRole("admin");
+      }
+    }
+
+    void loadRole();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
+  const navigationOrder = [
+    "/agent",
+    "/agent/dossiers",
+    "/agent/rendez-vous",
+    "/agent/clients",
+    "/agent/profil",
+    "/agent/admin/agents",
+    "/agent/satisfaction",
+    "/agent/articles",
+  ];
+  const visibleLinks = links
+    .filter((link) => !link.adminOnly || role === "admin")
+    .sort(
+      (a, b) =>
+        navigationOrder.indexOf(a.href) - navigationOrder.indexOf(b.href),
+    );
 
   return (
     <aside
@@ -281,7 +307,7 @@ export default function AgentSidebar() {
           Navigation
         </p>
 
-        {links.map((link) => {
+        {visibleLinks.map((link) => {
           const isActive =
             link.href === "/agent"
               ? pathname === "/agent"
