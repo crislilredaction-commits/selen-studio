@@ -39,7 +39,17 @@ export default async function ExternalAuditDetailPage({ params }: PageProps) {
   if (!data) notFound();
 
   const audit = data as ExternalAuditRow;
-  const confirmationEmail = buildExternalAuditConfirmationEmail(audit);
+  const modelEmail = buildExternalAuditConfirmationEmail(audit);
+  const metadata =
+    audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+  const draftSubject =
+    typeof metadata.confirmation_email_draft_subject === "string"
+      ? metadata.confirmation_email_draft_subject
+      : "";
+  const draftBody =
+    typeof metadata.confirmation_email_draft_body === "string"
+      ? metadata.confirmation_email_draft_body
+      : "";
   const googleStatus = getGoogleCalendarConfigStatus();
 
   return (
@@ -48,9 +58,12 @@ export default async function ExternalAuditDetailPage({ params }: PageProps) {
       <ExternalAuditStatusPanel
         audit={audit}
         confirmationEmail={{
-          to: confirmationEmail.to,
-          subject: confirmationEmail.subject,
-          bodyText: confirmationEmail.bodyText,
+          to: modelEmail.to,
+          subject: draftSubject || modelEmail.subject,
+          bodyText: draftBody || modelEmail.bodyText,
+          modelSubject: modelEmail.subject,
+          modelBodyText: modelEmail.bodyText,
+          hasDraft: Boolean(draftSubject || draftBody),
         }}
         googleStatus={googleStatus}
       />

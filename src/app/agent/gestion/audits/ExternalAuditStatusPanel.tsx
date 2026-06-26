@@ -11,6 +11,9 @@ type ConfirmationEmailPreview = {
   to: string;
   subject: string;
   bodyText: string;
+  modelSubject: string;
+  modelBodyText: string;
+  hasDraft: boolean;
 };
 
 type GoogleStatus = {
@@ -43,6 +46,9 @@ export default function ExternalAuditStatusPanel({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [liveGoogleStatus, setLiveGoogleStatus] = useState(googleStatus);
+  const [subject, setSubject] = useState(confirmationEmail.subject);
+  const [bodyText, setBodyText] = useState(confirmationEmail.bodyText);
+  const [hasDraft, setHasDraft] = useState(confirmationEmail.hasDraft);
 
   async function post(url: string, body: Record<string, unknown>, action: string) {
     setBusy(action);
@@ -65,7 +71,7 @@ export default function ExternalAuditStatusPanel({
   async function sendConfirmation() {
     const result = await post(
       "/agent/api/gestion/audits/email-confirmation",
-      { auditId: audit.id },
+      { auditId: audit.id, action: "send", subject, bodyText },
       "confirmation",
     );
     if (!result) return;
@@ -74,6 +80,32 @@ export default function ExternalAuditStatusPanel({
         ? "Email de confirmation envoye."
         : result.email?.error ?? "Email non envoye.",
     );
+    router.refresh();
+  }
+
+  async function saveDraft() {
+    const result = await post(
+      "/agent/api/gestion/audits/email-confirmation",
+      { auditId: audit.id, action: "save_draft", subject, bodyText },
+      "draft",
+    );
+    if (!result) return;
+    setHasDraft(true);
+    setNotice("Brouillon de confirmation enregistre.");
+    router.refresh();
+  }
+
+  async function resetDraft() {
+    const result = await post(
+      "/agent/api/gestion/audits/email-confirmation",
+      { auditId: audit.id, action: "reset_draft" },
+      "reset",
+    );
+    if (!result) return;
+    setSubject(confirmationEmail.modelSubject);
+    setBodyText(confirmationEmail.modelBodyText);
+    setHasDraft(false);
+    setNotice("Modele de confirmation restaure.");
     router.refresh();
   }
 
@@ -140,13 +172,30 @@ export default function ExternalAuditStatusPanel({
           <Info label="Destinataire" value={confirmationEmail.to || "-"} />
           <Info label="Statut" value={audit.confirmation_email_sent_at ? "Envoye" : "Non envoye"} />
           <Info label="Date d'envoi" value={formatDate(audit.confirmation_email_sent_at)} />
+          <Info label="Brouillon" value={hasDraft ? "Personnalise" : "Modele dynamique"} />
         </div>
-        <div style={s.previewBox}>
-          <span style={s.label}>Objet</span>
-          <strong>{confirmationEmail.subject}</strong>
-        </div>
+        <label style={s.field}>
+          <span>Objet</span>
+          <input
+            value={subject}
+            onChange={(event) => setSubject(event.target.value)}
+            style={s.input}
+          />
+        </label>
+        <label style={s.field}>
+          <span>Corps du mail</span>
+          <textarea
+            value={bodyText}
+            onChange={(event) => setBodyText(event.target.value)}
+            style={{ ...s.input, ...s.textarea }}
+          />
+        </label>
         {previewOpen ? (
-          <pre style={s.pre}>{confirmationEmail.bodyText}</pre>
+          <div style={s.previewBox}>
+            <span style={s.label}>Apercu du mail qui sera envoye</span>
+            <strong>{subject}</strong>
+            <pre style={s.pre}>{bodyText}</pre>
+          </div>
         ) : null}
         <div style={s.actions}>
           <SelenButton
@@ -155,6 +204,22 @@ export default function ExternalAuditStatusPanel({
             onClick={() => setPreviewOpen((current) => !current)}
           >
             {previewOpen ? "Masquer le mail" : "Previsualiser le mail"}
+          </SelenButton>
+          <SelenButton
+            type="button"
+            variant="ghost"
+            disabled={busy === "draft"}
+            onClick={() => void saveDraft()}
+          >
+            Enregistrer brouillon
+          </SelenButton>
+          <SelenButton
+            type="button"
+            variant="ghost"
+            disabled={busy === "reset"}
+            onClick={() => void resetDraft()}
+          >
+            Reinitialiser modele
           </SelenButton>
           <SelenButton
             type="button"
@@ -277,6 +342,30 @@ const s: Record<string, CSSProperties> = {
     border: "1px solid var(--selen-border)",
     color: "var(--selen-text-oncard)",
     marginBottom: 12,
+  },
+  field: {
+    display: "grid",
+    gap: 6,
+    color: "var(--selen-text2-oncard)",
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  input: {
+    width: "100%",
+    minHeight: 40,
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid rgba(120, 90, 50, 0.32)",
+    background: "#f7ecd8",
+    color: "#3b281b",
+    padding: "0 12px",
+    fontSize: 13,
+    boxSizing: "border-box",
+  },
+  textarea: {
+    minHeight: 340,
+    padding: 12,
+    resize: "vertical",
+    lineHeight: 1.55,
   },
   pre: {
     whiteSpace: "pre-wrap",

@@ -22,29 +22,47 @@ function auditHours(
   }`;
 }
 
+function isCertifopac(certifier?: string | null) {
+  return String(certifier ?? "")
+    .trim()
+    .toLowerCase()
+    .includes("certifopac");
+}
+
 export function buildExternalAuditConfirmationEmail(audit: ExternalAuditRow) {
   const contact = audit.contact_name?.trim() || "Madame, Monsieur";
   const date = formatAuditDate(audit);
   const hours = auditHours(audit);
   const address = audit.address || "adresse a confirmer";
   const certifier = audit.certifier || "a confirmer";
-  const subject = `Confirmation de votre audit Qualiopi - ${audit.of_name}`;
+  const subject = "Confirmation de votre audit Qualiopi";
+  const certifopacParagraph = isCertifopac(audit.certifier)
+    ? [
+        "Par ailleurs, si cela n'est pas deja fait, je vous invite a completer le questionnaire disponible sur l'application Certifopac. Ce questionnaire me permet de preparer l'audit dans les meilleures conditions.",
+        "Si vous rencontrez la moindre difficulte pour y acceder ou le completer, n'hesitez pas a me contacter ; je vous accompagnerai avec plaisir.",
+      ]
+    : [];
   const bodyText = [
     `Bonjour ${contact},`,
-    "Je me permets de vous confirmer que la realisation de votre audit Qualiopi m'a ete confiee.",
-    "Je suis Pascale Barthaux, auditrice Qualiopi, et j'interviendrai pour votre audit selon les modalites suivantes :",
+    "J'espere que vous allez bien.",
+    "Je vous contacte car la realisation de votre audit Qualiopi m'a ete confiee.",
+    "Je me presente : je suis Pascale Barthaux, auditrice Qualiopi, et j'aurai le plaisir de vous accompagner lors de cet audit.",
+    "Voici un recapitulatif des informations prevues :",
     `Organisme de formation : ${audit.of_name}`,
-    `Contact : ${audit.contact_name || "-"}`,
+    `Certificateur : ${certifier}`,
+    `Type d'audit : ${audit.audit_type}`,
     `Date : ${date}`,
     `Horaires : ${hours}`,
     `Adresse : ${address}`,
-    `Type d'audit : ${audit.audit_type}`,
-    `Certificateur : ${certifier}`,
-    "J'arriverai environ 5 a 15 minutes avant le debut de l'audit.",
-    "Pour le bon deroulement de l'audit, merci de prevoir : une table, des chaises, une connexion Wi-Fi et une prise de courant a proximite.",
-    "Il n'est pas necessaire d'imprimer les elements a presenter : les documents au format numerique sont acceptes.",
-    "Pour toute question organisationnelle concernant le deroulement pratique de l'audit, vous pouvez repondre directement a Pascale.",
-    "Pour toute question financiere ou contractuelle, merci de contacter directement votre certificateur.",
+    "J'arriverai generalement entre 5 et 15 minutes avant le debut de l'audit afin que nous puissions nous installer sereinement.",
+    "Pour le bon deroulement de la journee, il vous suffit de prevoir :\n\n• une table et des chaises ;\n• une prise de courant a proximite ;\n• une connexion Wi-Fi si possible.",
+    "Il n'est pas necessaire d'imprimer les documents a presenter : les supports numeriques sont tout a fait acceptes.",
+    "Afin de preparer le plan d'audit, pourriez-vous egalement m'indiquer, par retour de mail, les personnes qui seront presentes lors de l'audit ainsi que leur fonction au sein de l'organisme de formation ?",
+    ...certifopacParagraph,
+    "Si vous avez des questions concernant l'organisation pratique de l'audit, n'hesitez pas a me repondre directement, je serai ravie de vous renseigner.",
+    "Pour toute question relative aux aspects contractuels ou financiers, je vous invite en revanche a contacter directement votre certificateur.",
+    "Je vous remercie par avance pour votre accueil et vous souhaite une excellente preparation d'ici notre rencontre.",
+    "Au plaisir de faire votre connaissance.",
     "Bien cordialement,",
     "Pascale Barthaux\nAuditrice Qualiopi",
   ].join("\n\n");
@@ -62,8 +80,41 @@ export function buildExternalAuditConfirmationEmail(audit: ExternalAuditRow) {
   };
 }
 
-export async function sendExternalAuditConfirmation(audit: ExternalAuditRow) {
-  const email = buildExternalAuditConfirmationEmail(audit);
+export function renderExternalAuditConfirmationEmail({
+  audit,
+  subject,
+  bodyText,
+}: {
+  audit: ExternalAuditRow;
+  subject?: string | null;
+  bodyText?: string | null;
+}) {
+  const model = buildExternalAuditConfirmationEmail(audit);
+  const finalSubject = subject?.trim() || model.subject;
+  const finalBodyText = bodyText?.trim() || model.bodyText;
+  const rendered = renderSelenEmailFromText({
+    title: finalSubject,
+    bodyText: finalBodyText,
+  });
+
+  return {
+    to: model.to,
+    subject: finalSubject,
+    bodyText: finalBodyText,
+    html: rendered.html,
+    text: rendered.text,
+  };
+}
+
+export async function sendExternalAuditConfirmation(
+  audit: ExternalAuditRow,
+  options: { subject?: string | null; bodyText?: string | null } = {},
+) {
+  const email = renderExternalAuditConfirmationEmail({
+    audit,
+    subject: options.subject,
+    bodyText: options.bodyText,
+  });
   if (!email.to) {
     return { sent: false, error: "Email contact absent." };
   }
