@@ -4,6 +4,11 @@ import {
   type SupabaseClient,
 } from "@supabase/supabase-js";
 import { createClient as createSessionClient } from "@/lib/supabase/server";
+import {
+  renderSelenEmailFromText,
+  sendSelenEmail,
+} from "@/lib/server/selenEmailLayout";
+import { getVitrineBaseUrl } from "@/lib/vitrineLinks";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +33,23 @@ type ReviewCaseAccessRow = {
   client_email: string;
   status: string;
   report_status: string;
+};
+
+type ClientToolAccessRow = {
+  id: string;
+  status: string | null;
+  access_type: string | null;
+  ends_at: string | null;
+};
+
+type GrantableTool = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  display_order: number | null;
+  created_at: string;
 };
 
 function jsonResponse(data: unknown, status = 200) {
@@ -147,6 +169,11 @@ const TOOL_DOSSIER_CONFIG: Record<
     title: "Préaudit Qualiopi",
     status: "assignable",
   },
+  nda: {
+    dossierType: "nda",
+    title: "Accompagnement Numéro de Déclaration d’Activité",
+    status: "assignable",
+  },
   audit_blanc: {
     dossierType: "review",
     title: "Selen Review - Audit blanc Qualiopi",
@@ -174,6 +201,82 @@ const TOOL_DOSSIER_CONFIG: Record<
 
 function getDossierConfigFromToolSlug(toolSlug: string) {
   return TOOL_DOSSIER_CONFIG[toolSlug] ?? null;
+}
+
+const FALLBACK_GRANTABLE_TOOLS: GrantableTool[] = [
+  {
+    id: "fallback-nda",
+    slug: "nda",
+    name: "NDA",
+    description: "Accompagnement Numéro de Déclaration d’Activité",
+    is_active: true,
+    display_order: 30,
+    created_at: "2026-06-26T00:00:00.000Z",
+  },
+];
+
+function withFallbackGrantableTools(tools: GrantableTool[]) {
+  const slugs = new Set(tools.map((tool) => tool.slug));
+  return [
+    ...tools,
+    ...FALLBACK_GRANTABLE_TOOLS.filter((tool) => !slugs.has(tool.slug)),
+  ].sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
+}
+
+function getFallbackGrantableTool(slug: string) {
+  return FALLBACK_GRANTABLE_TOOLS.find((tool) => tool.slug === slug) ?? null;
+}
+
+function normalizeDateTime(value?: string | null) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? value : new Date(time).toISOString();
+}
+
+function shouldSendAccessActivationEmail(
+  existingAccess: ClientToolAccessRow | null,
+  payload: { status: string; access_type: string; ends_at: string | null },
+) {
+  if (!existingAccess) return true;
+
+  return (
+    existingAccess.status !== payload.status ||
+    existingAccess.access_type !== payload.access_type ||
+    normalizeDateTime(existingAccess.ends_at) !== normalizeDateTime(payload.ends_at)
+  );
+}
+
+async function notifyClientAccessActivated({
+  email,
+  toolName,
+}: {
+  email: string;
+  toolName: string;
+}) {
+  const clientUrl = `${getVitrineBaseUrl()}/client`;
+  const bodyText = [
+    "Bonjour,",
+    "",
+    `Votre accès à la prestation ${toolName} vient d'être activé gratuitement dans votre espace Selen.`,
+    "",
+    "Vous pouvez accéder à votre espace client ici :",
+    clientUrl,
+    "",
+    "Si vous n'avez pas encore créé votre accès, suivez le lien reçu ou utilisez la procédure d'activation prévue.",
+  ].join("\n");
+  const emailContent = renderSelenEmailFromText({
+    title: "Votre accès Selen est activé",
+    bodyText,
+    ctaLabel: "Accéder à mon espace client",
+    ctaUrl: clientUrl,
+  });
+
+  return sendSelenEmail({
+    to: email,
+    subject: "Votre accès Selen est activé",
+    html: emailContent.html,
+    text: emailContent.text,
+  });
 }
 
 async function ensureOrganisationForClient({
@@ -452,9 +555,13 @@ export async function GET(request: NextRequest) {
       return jsonResponse({ error: toolsError.message }, 500);
     }
 
+    const grantableTools = withFallbackGrantableTools(
+      (tools ?? []) as GrantableTool[],
+    );
+
     if (!email) {
       return jsonResponse({
-        tools: tools ?? [],
+        tools: grantableTools,
         client: null,
         accesses: [],
       });
@@ -464,7 +571,7 @@ export async function GET(request: NextRequest) {
 
     if (!client) {
       return jsonResponse({
-        tools: tools ?? [],
+        tools: grantableTools,
         client: null,
         accesses: [],
         message: "Aucun utilisateur Supabase Auth trouvé avec cet email.",
@@ -484,7 +591,7 @@ export async function GET(request: NextRequest) {
     }
 
     return jsonResponse({
-      tools: tools ?? [],
+      tools: grantableTools,
       client: {
         id: client.id,
         email: client.email,
@@ -623,7 +730,9 @@ export async function POST(request: NextRequest) {
         return jsonResponse({ error: toolError.message }, 500);
       }
 
-      if (!tool) {
+      const fallbackTool = getFallbackGrantableTool(toolSlug);
+
+      if (!tool && !fallbackTool) {
         return jsonResponse(
           { error: "Cette prestation n’existe pas ou n’est pas active." },
           404,
@@ -632,7 +741,7 @@ export async function POST(request: NextRequest) {
 
       const { data: existingAccess, error: existingError } = await admin
         .from("selen_client_tool_access")
-        .select("id")
+        .select("id, status, access_type, ends_at")
         .eq("user_id", client.id)
         .eq("tool_slug", toolSlug)
         .maybeSingle();
@@ -641,6 +750,12 @@ export async function POST(request: NextRequest) {
         return jsonResponse({ error: existingError.message }, 500);
       }
 
+      const toolName =
+        typeof tool?.name === "string" && tool.name.trim()
+          ? tool.name.trim()
+          : fallbackTool?.name || toolSlug;
+      const existingAccessRow =
+        (existingAccess as ClientToolAccessRow | null) ?? null;
       const payload = {
         user_id: client.id,
         tool_slug: toolSlug,
@@ -650,12 +765,20 @@ export async function POST(request: NextRequest) {
         ends_at: accessType === "unlimited" ? null : endsAt,
         updated_at: new Date().toISOString(),
       };
+      const shouldNotifyClient = shouldSendAccessActivationEmail(
+        existingAccessRow,
+        {
+          status: payload.status,
+          access_type: payload.access_type,
+          ends_at: payload.ends_at,
+        },
+      );
 
-      if (existingAccess?.id) {
+      if (existingAccessRow?.id) {
         const { error: updateError } = await admin
           .from("selen_client_tool_access")
           .update(payload)
-          .eq("id", existingAccess.id);
+          .eq("id", existingAccessRow.id);
 
         if (updateError) {
           return jsonResponse({ error: updateError.message }, 500);
@@ -683,11 +806,15 @@ export async function POST(request: NextRequest) {
           dossierId: dossier?.id ?? null,
           toolSlug,
         });
+        const emailResult = shouldNotifyClient
+          ? await notifyClientAccessActivated({ email, toolName })
+          : { sent: false, error: null };
 
         return jsonResponse({
           updated: true,
           dossier,
           reviewCase,
+          email: emailResult,
           message: reviewCase
             ? "Accès mis à jour, dossier Studio vérifié et fiche Review reliée."
             : dossier
@@ -730,11 +857,15 @@ export async function POST(request: NextRequest) {
         dossierId: dossier?.id ?? null,
         toolSlug,
       });
+      const emailResult = shouldNotifyClient
+        ? await notifyClientAccessActivated({ email, toolName })
+        : { sent: false, error: null };
 
       return jsonResponse({
         created: true,
         dossier,
         reviewCase,
+        email: emailResult,
         message: reviewCase
           ? "Accès créé, dossier Studio créé et fiche Review reliée."
           : dossier
