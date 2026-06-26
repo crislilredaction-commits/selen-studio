@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -21,25 +22,23 @@ const TYPE_FILTERS = [
 const STATUS_FILTERS = [
   { value: "all", label: "Tous les statuts" },
   { value: "pending", label: "En attente" },
-  { value: "booked", label: "Réservé" },
-  { value: "processed", label: "Traité" },
-  { value: "completed", label: "Terminé" },
-  { value: "archived", label: "Archivé" },
-  { value: "cancelled", label: "Annulé" },
+  { value: "booked", label: "Reserve" },
+  { value: "processed", label: "Traite" },
+  { value: "completed", label: "Termine" },
+  { value: "archived", label: "Archives" },
+  { value: "cancelled", label: "Annule" },
 ];
 
 const PERIOD_FILTERS = [
-  { value: "all", label: "Toute période" },
-  { value: "future", label: "À venir" },
-  { value: "past", label: "Passés" },
+  { value: "all", label: "Toute periode" },
+  { value: "future", label: "A venir" },
+  { value: "past", label: "Passes" },
   { value: "30", label: "30 jours" },
 ];
 
 function text(value: JsonValue | undefined) {
   if (typeof value === "string") return value.trim();
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
   return "";
 }
 
@@ -51,10 +50,27 @@ function first(row: AppointmentRow, keys: string[]) {
   return "";
 }
 
+function metadata(row: AppointmentRow) {
+  return row.metadata && typeof row.metadata === "object"
+    ? (row.metadata as JsonObject)
+    : {};
+}
+
+function metaText(row: AppointmentRow, keys: string[]) {
+  const meta = metadata(row);
+  for (const key of keys) {
+    const value = text(meta[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
 function objectValue(row: AppointmentRow, keys: string[]) {
   for (const key of keys) {
-    const value = row[key];
-    if (value && typeof value === "object") return value;
+    const direct = row[key];
+    if (direct && typeof direct === "object") return direct;
+    const nested = metadata(row)[key];
+    if (nested && typeof nested === "object") return nested;
   }
   return null;
 }
@@ -67,7 +83,6 @@ function appointmentType(row: AppointmentRow) {
     "request_type",
     "format",
   ]).toLowerCase();
-
   if (raw.includes("30") || raw.includes("call") || raw.includes("appel")) {
     return { key: "call_30", label: "Appel 30 min" };
   }
@@ -77,7 +92,7 @@ function appointmentType(row: AppointmentRow) {
   if (raw.includes("audit") || raw.includes("3h30") || raw.includes("review")) {
     return { key: "audit_3h30", label: "Audit blanc 3h30" };
   }
-  return { key: raw || "unknown", label: raw || "Non renseigné" };
+  return { key: raw || "unknown", label: raw || "Non renseigne" };
 }
 
 function appointmentDate(row: AppointmentRow) {
@@ -95,7 +110,7 @@ function appointmentDate(row: AppointmentRow) {
 }
 
 function formatDateTime(value: string) {
-  if (!value) return "—";
+  if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("fr-FR", {
@@ -104,38 +119,40 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
+function statusValue(row: AppointmentRow) {
+  const base = first(row, ["status", "internal_status"]).toLowerCase();
+  const meta = metadata(row);
+  if (meta.archived === true) return "archived";
+  if (meta.processed === true && base !== "completed") return "processed";
+  return base || "pending";
+}
+
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     pending: "En attente",
-    requested: "Demandé",
-    booked: "Réservé",
-    confirmed: "Confirmé",
-    processed: "Traité",
-    completed: "Terminé",
-    archived: "Archivé",
-    cancelled: "Annulé",
+    requested: "Demande",
+    booked: "Reserve",
+    confirmed: "Confirme",
+    processed: "Traite",
+    completed: "Termine",
+    archived: "Archive",
+    cancelled: "Annule",
   };
-  return labels[status] ?? status ?? "Non renseigné";
+  return labels[status] ?? status;
 }
 
-function statusVariant(status: string) {
+function statusVariant(
+  status: string,
+): "info" | "warn" | "success" | "danger" | "neutral" {
   if (status === "completed") return "success";
-  if (status === "processed" || status === "booked" || status === "confirmed") {
-    return "info";
-  }
+  if (status === "processed" || status === "booked" || status === "confirmed") return "info";
   if (status === "cancelled") return "danger";
   if (status === "archived") return "neutral";
   return "warn";
 }
 
-function JsonDetails({ title, value }: { title: string; value: JsonValue }) {
-  if (!value) return null;
-  return (
-    <details style={s.details}>
-      <summary style={s.summary}>{title}</summary>
-      <pre style={s.pre}>{JSON.stringify(value, null, 2)}</pre>
-    </details>
-  );
+function linkValue(row: AppointmentRow, keys: string[]) {
+  return first(row, keys) || metaText(row, keys);
 }
 
 export default function AgentRendezVousPage() {
@@ -173,25 +190,16 @@ export default function AgentRendezVousPage() {
 
   async function updateAppointment(
     row: AppointmentRow,
-    changes: { status?: string; metadata?: Record<string, unknown> },
+    changes: { status?: "completed"; metadata?: Record<string, unknown> },
   ) {
     setUpdatingId(row.id);
     setError("");
 
-    const currentMetadata =
-      row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-
+    const currentMetadata = metadata(row);
     const updatePayload: Record<string, unknown> = {};
-
-    if (changes.status) {
-      updatePayload.status = changes.status;
-    }
-
+    if (changes.status) updatePayload.status = changes.status;
     if (changes.metadata) {
-      updatePayload.metadata = {
-        ...currentMetadata,
-        ...changes.metadata,
-      };
+      updatePayload.metadata = { ...currentMetadata, ...changes.metadata };
     }
 
     const { error: updateError } = await supabase
@@ -207,15 +215,9 @@ export default function AgentRendezVousPage() {
 
     setAppointments((rows) =>
       rows.map((item) =>
-        item.id === row.id
-          ? ({
-              ...item,
-              ...updatePayload,
-            } as AppointmentRow)
-          : item,
+        item.id === row.id ? ({ ...item, ...updatePayload } as AppointmentRow) : item,
       ),
     );
-
     setUpdatingId("");
   }
 
@@ -226,22 +228,24 @@ export default function AgentRendezVousPage() {
 
     return appointments.filter((row) => {
       const type = appointmentType(row).key;
-      const status = first(row, ["status", "internal_status"]).toLowerCase();
+      const status = statusValue(row);
       const dateValue = appointmentDate(row);
       const timestamp = new Date(dateValue).getTime();
+      const archived = metadata(row).archived === true;
       const haystack = [
         first(row, ["first_name", "firstname", "prenom"]),
         first(row, ["last_name", "lastname", "nom"]),
         first(row, ["email", "client_email"]),
         first(row, ["phone", "telephone", "tel"]),
-        row.id,
+        first(row, ["message", "notes", "comment"]),
       ]
         .join(" ")
         .toLowerCase();
 
       const matchesSearch = !q || haystack.includes(q);
       const matchesType = typeFilter === "all" || type === typeFilter;
-      const matchesStatus = statusFilter === "all" || status === statusFilter;
+      const matchesStatus =
+        statusFilter === "all" ? !archived : status === statusFilter;
       const matchesPeriod =
         periodFilter === "all" ||
         (periodFilter === "future" && timestamp >= now) ||
@@ -252,20 +256,14 @@ export default function AgentRendezVousPage() {
     });
   }, [appointments, periodFilter, search, statusFilter, typeFilter]);
 
-  const stats = useMemo(
-    () => ({
-      total: appointments.length,
-      pending: appointments.filter((row) =>
-        ["", "pending", "requested", "booked", "confirmed"].includes(
-          first(row, ["status", "internal_status"]).toLowerCase(),
-        ),
-      ).length,
-      completed: appointments.filter(
-        (row) => first(row, ["status", "internal_status"]) === "completed",
-      ).length,
-    }),
-    [appointments],
-  );
+  const visibleForStats = appointments.filter((row) => metadata(row).archived !== true);
+  const stats = {
+    total: visibleForStats.length,
+    pending: visibleForStats.filter((row) =>
+      ["pending", "requested", "booked", "confirmed", "processed"].includes(statusValue(row)),
+    ).length,
+    completed: visibleForStats.filter((row) => statusValue(row) === "completed").length,
+  };
 
   return (
     <main style={s.page}>
@@ -274,13 +272,13 @@ export default function AgentRendezVousPage() {
           <p style={s.eyebrow}>Studio agent</p>
           <h1 style={s.title}>Rendez-vous</h1>
           <p style={s.subtitle}>
-            Consultation et suivi interne des demandes créées par la Vitrine.
+            Consultation et suivi interne des demandes creees par la Vitrine.
           </p>
         </div>
         <div style={s.stats}>
           <Stat label="Total" value={stats.total} />
-          <Stat label="À suivre" value={stats.pending} />
-          <Stat label="Terminés" value={stats.completed} />
+          <Stat label="A suivre" value={stats.pending} />
+          <Stat label="Termines" value={stats.completed} />
         </div>
       </header>
 
@@ -292,25 +290,13 @@ export default function AgentRendezVousPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Rechercher nom, email, téléphone..."
+            placeholder="Rechercher nom, email, telephone..."
             style={s.input}
             type="search"
           />
-          <Select
-            value={typeFilter}
-            onChange={setTypeFilter}
-            items={TYPE_FILTERS}
-          />
-          <Select
-            value={statusFilter}
-            onChange={setStatusFilter}
-            items={STATUS_FILTERS}
-          />
-          <Select
-            value={periodFilter}
-            onChange={setPeriodFilter}
-            items={PERIOD_FILTERS}
-          />
+          <Select value={typeFilter} onChange={setTypeFilter} items={TYPE_FILTERS} />
+          <Select value={statusFilter} onChange={setStatusFilter} items={STATUS_FILTERS} />
+          <Select value={periodFilter} onChange={setPeriodFilter} items={PERIOD_FILTERS} />
         </div>
       </SelenCard>
 
@@ -322,7 +308,7 @@ export default function AgentRendezVousPage() {
         ) : (
           filtered.map((row) => {
             const type = appointmentType(row);
-            const status = first(row, ["status", "internal_status"]);
+            const status = statusValue(row);
             const profileAnswers = objectValue(row, [
               "profile_answers",
               "profile_responses",
@@ -333,6 +319,25 @@ export default function AgentRendezVousPage() {
             ]);
             const message = first(row, ["message", "notes", "comment"]);
             const isUpdating = updatingId === row.id;
+            const meetLink = linkValue(row, [
+              "google_meet_link",
+              "google_meet_url",
+              "meet_link",
+              "meet_url",
+            ]);
+            const calendarLink = linkValue(row, [
+              "google_calendar_link",
+              "google_event_link",
+              "calendar_link",
+              "htmlLink",
+            ]);
+            const dossierId = first(row, ["dossier_id"]);
+            const auditCaseId = first(row, ["audit_blanc_case_id"]);
+            const reviewHref = auditCaseId
+              ? `/agent/audits-blancs/${auditCaseId}`
+              : dossierId
+                ? `/agent/dossiers/${dossierId}`
+                : "";
 
             return (
               <SelenCard key={row.id}>
@@ -346,35 +351,42 @@ export default function AgentRendezVousPage() {
                         {statusLabel(status)}
                       </SelenBadge>
                     </div>
-                    <h2 style={s.itemTitle}>
-                      {formatDateTime(appointmentDate(row))}
-                    </h2>
+                    <h2 style={s.itemTitle}>{formatDateTime(appointmentDate(row))}</h2>
+                    <p style={s.person}>
+                      {[first(row, ["first_name", "firstname", "prenom"]), first(row, ["last_name", "lastname", "nom"])]
+                        .filter(Boolean)
+                        .join(" ") || "Client"}
+                    </p>
                   </div>
                   <div style={s.actions}>
-                    <SelenButton
-                      size="sm"
-                      variant="secondary"
-                      disabled={isUpdating}
-                      onClick={() =>
-                        void updateAppointment(row, {
-                          metadata: { processed: true },
-                        })
-                      }
-                    >
-                      Traité
-                    </SelenButton>
-                    <SelenButton
-                      size="sm"
-                      variant="primary"
-                      disabled={isUpdating}
-                      onClick={() =>
-                        void updateAppointment(row, {
-                          status: "completed",
-                        })
-                      }
-                    >
-                      Terminé
-                    </SelenButton>
+                    {metadata(row).processed !== true ? (
+                      <SelenButton
+                        size="sm"
+                        variant="secondary"
+                        disabled={isUpdating}
+                        onClick={() =>
+                          void updateAppointment(row, {
+                            metadata: { processed: true },
+                          })
+                        }
+                      >
+                        Traite
+                      </SelenButton>
+                    ) : null}
+                    {status !== "completed" ? (
+                      <SelenButton
+                        size="sm"
+                        variant="primary"
+                        disabled={isUpdating}
+                        onClick={() =>
+                          void updateAppointment(row, {
+                            status: "completed",
+                          })
+                        }
+                      >
+                        Termine
+                      </SelenButton>
+                    ) : null}
                     <SelenButton
                       size="sm"
                       variant="ghost"
@@ -391,64 +403,42 @@ export default function AgentRendezVousPage() {
                 </div>
 
                 <div style={s.grid}>
-                  <Info
-                    label="Prénom"
-                    value={first(row, ["first_name", "firstname", "prenom"])}
-                  />
-                  <Info
-                    label="Nom"
-                    value={first(row, ["last_name", "lastname", "nom"])}
-                  />
-                  <Info
-                    label="Email"
-                    value={first(row, ["email", "client_email"])}
-                  />
-                  <Info
-                    label="Téléphone"
-                    value={first(row, ["phone", "telephone", "tel"])}
-                  />
-                  <Info
-                    label="Source"
-                    value={first(row, ["source", "origin"])}
-                  />
-                  <Info
-                    label="booking_group_id"
-                    value={first(row, ["booking_group_id"])}
-                    mono
-                  />
-                  <Info
-                    label="google_event_id"
-                    value={first(row, ["google_event_id"])}
-                    mono
-                  />
-                  <Info
-                    label="client_id"
-                    value={first(row, ["client_id"])}
-                    mono
-                  />
-                  <Info
-                    label="dossier_id"
-                    value={first(row, ["dossier_id"])}
-                    mono
-                  />
-                  <Info
-                    label="audit_blanc_case_id"
-                    value={first(row, ["audit_blanc_case_id"])}
-                    mono
-                  />
+                  <Info label="Email" value={first(row, ["email", "client_email"])} />
+                  <Info label="Telephone" value={first(row, ["phone", "telephone", "tel"])} />
+                  <Info label="Source" value={first(row, ["source", "origin"]) || metaText(row, ["source", "origin"])} />
+                </div>
+
+                <div style={s.linkActions}>
+                  {calendarLink ? (
+                    <a href={calendarLink} target="_blank" rel="noreferrer" style={s.actionLink}>
+                      Agenda Google
+                    </a>
+                  ) : null}
+                  {meetLink ? (
+                    <a href={meetLink} target="_blank" rel="noreferrer" style={s.actionLink}>
+                      Rejoindre Meet
+                    </a>
+                  ) : null}
+                  {reviewHref ? (
+                    <Link href={reviewHref} style={s.actionLink}>
+                      Ouvrir dossier Review
+                    </Link>
+                  ) : null}
                 </div>
 
                 {message ? (
                   <div style={s.message}>
-                    <strong>Message laissé</strong>
+                    <strong>Message laisse</strong>
                     <p>{message}</p>
                   </div>
                 ) : null}
 
-                <JsonDetails
-                  title="Réponses au questionnaire profil"
-                  value={profileAnswers}
-                />
+                {profileAnswers ? (
+                  <details style={s.details}>
+                    <summary style={s.summary}>Reponses au questionnaire profil</summary>
+                    <pre style={s.pre}>{JSON.stringify(profileAnswers, null, 2)}</pre>
+                  </details>
+                ) : null}
               </SelenCard>
             );
           })
@@ -468,11 +458,7 @@ function Select({
   items: { value: string; label: string }[];
 }) {
   return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      style={s.input}
-    >
+    <select value={value} onChange={(event) => onChange(event.target.value)} style={s.input}>
       {items.map((item) => (
         <option key={item.value} value={item.value}>
           {item.label}
@@ -482,23 +468,11 @@ function Select({
   );
 }
 
-function Info({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
+function Info({ label, value }: { label: string; value: string }) {
   return (
     <div style={s.info}>
       <span style={s.infoLabel}>{label}</span>
-      <span
-        style={{ ...s.infoValue, fontFamily: mono ? "monospace" : undefined }}
-      >
-        {value || "—"}
-      </span>
+      <span style={s.infoValue}>{value || "-"}</span>
     </div>
   );
 }
@@ -562,11 +536,12 @@ const s: Record<string, CSSProperties> = {
     width: "100%",
     minHeight: 40,
     borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--selen-border)",
-    background: "var(--selen-bg2)",
-    color: "var(--selen-text)",
+    border: "1px solid rgba(120, 90, 50, 0.32)",
+    background: "#f7ecd8",
+    color: "#3b281b",
     padding: "0 12px",
     fontSize: 13,
+    boxSizing: "border-box",
   },
   list: { display: "grid", gap: 12, marginTop: 14 },
   rowHeader: {
@@ -582,6 +557,11 @@ const s: Record<string, CSSProperties> = {
     fontSize: 20,
     margin: 0,
     color: "var(--selen-text-oncard)",
+  },
+  person: {
+    margin: "8px 0 0",
+    color: "var(--selen-text2-oncard)",
+    fontSize: 13,
   },
   actions: { display: "flex", gap: 8, flexWrap: "wrap" },
   grid: {
@@ -610,6 +590,20 @@ const s: Record<string, CSSProperties> = {
     fontSize: 13,
     color: "var(--selen-text-oncard)",
     overflowWrap: "anywhere",
+  },
+  linkActions: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 },
+  actionLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: 34,
+    padding: "0 10px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--selen-border)",
+    color: "var(--selen-gold2)",
+    background: "rgba(201, 148, 58, 0.1)",
+    textDecoration: "none",
+    fontSize: 12,
+    fontWeight: 700,
   },
   message: {
     marginTop: 14,

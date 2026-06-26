@@ -343,6 +343,14 @@ export default function SupportTicketClient({
 
   return (
     <main style={s.page}>
+      <div style={s.backRow}>
+        <Link href="/agent/support" style={{ textDecoration: "none" }}>
+          <SelenButton type="button" variant="ghost">
+            ← Retour au support
+          </SelenButton>
+        </Link>
+      </div>
+
       <header style={s.header}>
         <div>
           <p style={s.eyebrow}>Support client</p>
@@ -822,6 +830,7 @@ const s: Record<string, CSSProperties> = {
     flexWrap: "wrap",
     marginBottom: 20,
   },
+  backRow: { marginBottom: 14 },
   eyebrow: {
     fontFamily: "var(--font-display)",
     fontSize: 9,
@@ -931,9 +940,9 @@ const s: Record<string, CSSProperties> = {
     width: "100%",
     minHeight: 40,
     borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--selen-border)",
-    background: "var(--selen-bg2)",
-    color: "var(--selen-text)",
+    border: "1px solid rgba(120, 90, 50, 0.32)",
+    background: "#f7ecd8",
+    color: "#3b281b",
     padding: "0 12px",
     fontSize: 13,
     boxSizing: "border-box",
