@@ -70,6 +70,7 @@ export default function ExternalAuditForm({
       departureMode: formData.get("departureMode"),
       departureAddress: formData.get("departureAddress"),
       travelDurationMinutes: formData.get("travelDurationMinutes"),
+      planAuditSent: formData.get("planAuditSent") === "on",
     });
     if (!result) return;
     setNotice(result.conflictWarning || "Audit enregistre.");
@@ -78,6 +79,32 @@ export default function ExternalAuditForm({
       return;
     }
     router.refresh();
+  }
+
+  async function deleteCancelledAudit() {
+    if (!audit?.id) return;
+    const confirmed = window.confirm(
+      "Supprimer definitivement cet audit annule ? Cette action est irreversible.",
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setNotice("");
+    setError("");
+    const response = await fetch("/agent/api/gestion/audits", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auditId: audit.id }),
+    });
+    const result = await response.json().catch(() => ({}));
+    setBusy(false);
+
+    if (!response.ok) {
+      setError(result.error ?? "Suppression impossible.");
+      return;
+    }
+
+    router.push("/agent/gestion/audits");
   }
 
   return (
@@ -138,6 +165,14 @@ export default function ExternalAuditForm({
             style={{ ...s.input, minHeight: 96, paddingTop: 10 }}
           />
         </label>
+        <label style={s.checkboxRow}>
+          <input
+            type="checkbox"
+            name="planAuditSent"
+            defaultChecked={audit?.metadata?.plan_audit_sent === true}
+          />
+          <span>Plan d'audit envoyé</span>
+        </label>
         <div style={s.section}>
           <h3 style={s.sectionTitle}>Départ vers l'audit</h3>
           <label style={s.field}>
@@ -178,6 +213,16 @@ export default function ExternalAuditForm({
           />
         </div>
         <div style={s.actions}>
+          {audit?.status === "cancelled" ? (
+            <SelenButton
+              type="button"
+              variant="danger"
+              disabled={busy}
+              onClick={() => void deleteCancelledAudit()}
+            >
+              Supprimer definitivement
+            </SelenButton>
+          ) : null}
           <SelenButton type="submit" disabled={busy}>
             Enregistrer
           </SelenButton>
@@ -249,6 +294,14 @@ const s: Record<string, CSSProperties> = {
     color: "var(--selen-text-oncard)",
     fontFamily: "var(--font-display)",
     fontSize: 18,
+  },
+  checkboxRow: {
+    gridColumn: "1 / -1",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    color: "var(--selen-text2-oncard)",
+    fontSize: 13,
   },
   input: {
     width: "100%",

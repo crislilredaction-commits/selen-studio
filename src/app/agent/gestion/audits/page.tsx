@@ -12,6 +12,14 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function metadata(audit: ExternalAuditRow) {
+  return audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+}
+
+function planSent(audit: ExternalAuditRow) {
+  return metadata(audit).plan_audit_sent === true;
+}
+
 export default async function ExternalAuditsPage() {
   const canAccessGestionLil = await isLilOwner();
   if (!canAccessGestionLil) {
@@ -69,6 +77,14 @@ export default async function ExternalAuditsPage() {
                       {formatDate(auditStart(audit).toISOString())} a{" "}
                       {audit.start_time.slice(0, 5)}
                     </p>
+                    <div style={s.badges}>
+                      <span style={audit.confirmation_email_sent_at ? s.badgeOk : s.badgeTodo}>
+                        Confirmation {audit.confirmation_email_sent_at ? "envoyee" : "a envoyer"}
+                      </span>
+                      <span style={planSent(audit) ? s.badgeOk : s.badgeTodo}>
+                        Plan {planSent(audit) ? "envoye" : "a envoyer"}
+                      </span>
+                    </div>
                   </div>
                   <strong style={s.status}>{audit.status}</strong>
                 </div>
@@ -111,5 +127,22 @@ const s: Record<string, CSSProperties> = {
     gap: 12,
   },
   status: { color: "var(--selen-gold2)", fontSize: 12 },
+  badges: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 },
+  badgeOk: {
+    borderRadius: 999,
+    border: "1px solid rgba(126, 201, 126, 0.32)",
+    background: "rgba(126, 201, 126, 0.12)",
+    color: "var(--selen-success)",
+    padding: "4px 8px",
+    fontSize: 11,
+  },
+  badgeTodo: {
+    borderRadius: 999,
+    border: "1px solid rgba(201, 148, 58, 0.32)",
+    background: "rgba(201, 148, 58, 0.12)",
+    color: "var(--selen-gold2)",
+    padding: "4px 8px",
+    fontSize: 11,
+  },
   muted: { color: "var(--selen-text2-oncard)", fontSize: 13, lineHeight: 1.6 },
 };

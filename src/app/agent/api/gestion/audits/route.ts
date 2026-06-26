@@ -16,6 +16,10 @@ function normalizeTravelMinutes(value: unknown) {
   return Number.isFinite(parsed) && parsed > 0 ? String(Math.round(parsed)) : "";
 }
 
+function boolValue(value: unknown) {
+  return value === true || value === "true" || value === "on";
+}
+
 export async function POST(req: Request) {
   const auth = await requireLilOwner();
   if (!auth.ok) {
@@ -55,6 +59,9 @@ export async function POST(req: Request) {
     const travelDurationMinutes = normalizeTravelMinutes(
       body.travelDurationMinutes,
     );
+    const planAuditSent = boolValue(body.planAuditSent);
+    const previousPlanSent = previousMetadata.plan_audit_sent === true;
+    const now = new Date().toISOString();
     const payload = {
       of_name: String(body.ofName ?? "").trim(),
       contact_name: String(body.contactName ?? "").trim() || null,
@@ -73,6 +80,15 @@ export async function POST(req: Request) {
         departure_mode: normalizedDepartureMode,
         departure_address: departureAddress,
         travel_duration_minutes: travelDurationMinutes,
+        plan_audit_sent: planAuditSent,
+        plan_audit_sent_at: planAuditSent
+          ? previousMetadata.plan_audit_sent_at || now
+          : null,
+        plan_audit_status: planAuditSent ? "Envoyé" : "À envoyer",
+        plan_audit_updated_at:
+          planAuditSent !== previousPlanSent
+            ? now
+            : previousMetadata.plan_audit_updated_at,
         updated_by: auth.email,
       },
     };
@@ -144,6 +160,58 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("Sauvegarde audit externe echouee.", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Erreur inconnue." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  const auth = await requireLilOwner();
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  try {
+    const { auditId } = await req.json();
+    const id = String(auditId ?? "").trim();
+    if (!id) {
+      return NextResponse.json({ error: "auditId requis." }, { status: 400 });
+    }
+
+    const admin = createSupabaseAdminClient();
+    const { data: audit, error } = await admin
+      .from("external_audits")
+      .select("id,status")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!audit) {
+      return NextResponse.json({ error: "Audit introuvable." }, { status: 404 });
+    }
+    if (audit.status !== "cancelled") {
+      return NextResponse.json(
+        { error: "Seul un audit annule peut etre supprime definitivement." },
+        { status: 400 },
+      );
+    }
+
+    const { error: deleteError } = await admin
+      .from("external_audits")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Suppression audit externe echouee.", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erreur inconnue." },
       { status: 500 },
