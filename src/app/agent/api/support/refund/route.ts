@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
-import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import {
+  requireLilOwner,
+  requireSupportAgent,
+} from "@/app/agent/api/support/_utils";
 
 const REFUND_STATUSES = new Set([
   "to_process",
@@ -64,6 +67,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, refund: data });
     }
 
+    const adminAuth = await requireLilOwner();
+    if (!adminAuth.ok) {
+      return NextResponse.json(
+        { error: adminAuth.error },
+        { status: adminAuth.status },
+      );
+    }
+
     const refundId = String(body.refundId ?? "").trim();
     const status = String(body.status ?? "").trim();
     const stripeRefundId = String(body.stripeRefundId ?? "").trim() || null;
@@ -77,7 +88,7 @@ export async function POST(req: Request) {
 
     const payload: Record<string, string | null> = { status };
     if (status === "processed") {
-      payload.processed_by_agent_email = auth.email;
+      payload.processed_by_agent_email = adminAuth.email;
       payload.processed_at = new Date().toISOString();
       payload.stripe_refund_id = stripeRefundId;
     }

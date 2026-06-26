@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { CalendarDays, FileText, Star } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, FileText, Star } from "lucide-react";
 import AgentSidebarMessaging from "@/components/layout/AgentSidebarMessaging";
 import { createClient } from "@/lib/supabase/client";
+import { isOwnerLil } from "@/lib/ownerLil";
 
 const links = [
   {
@@ -109,6 +110,12 @@ const links = [
     icon: <FileText size={16} strokeWidth={1.5} />,
   },
   {
+    href: "/agent/gestion",
+    label: "Gestion Lil",
+    ownerOnly: true,
+    icon: <BriefcaseBusiness size={16} strokeWidth={1.5} />,
+  },
+  {
     href: "/agent/profil",
     label: "Mon profil",
     icon: (
@@ -157,6 +164,7 @@ export default function AgentSidebar() {
   const pathname = usePathname();
   const supabase = useMemo(() => createClient(), []);
   const [role, setRole] = useState<"agent" | "admin">("agent");
+  const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,6 +174,7 @@ export default function AgentSidebar() {
       const email = authData.user?.email?.trim().toLowerCase();
 
       if (!email) return;
+      if (!cancelled) setEmail(email);
 
       const { data: adminUser } = await supabase
         .from("selen_admin_users")
@@ -207,9 +216,13 @@ export default function AgentSidebar() {
     "/agent/admin/agents",
     "/agent/satisfaction",
     "/agent/articles",
+    "/agent/gestion",
   ];
   const visibleLinks = links
-    .filter((link) => !link.adminOnly || role === "admin")
+    .filter((link) => {
+      if ("ownerOnly" in link && link.ownerOnly) return isOwnerLil(email);
+      return !("adminOnly" in link && link.adminOnly) || role === "admin";
+    })
     .sort(
       (a, b) =>
         navigationOrder.indexOf(a.href) - navigationOrder.indexOf(b.href),

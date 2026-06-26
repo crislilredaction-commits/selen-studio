@@ -188,7 +188,7 @@ export function renderSelenEmailLayout(contentHtml: string) {
       <p style="font-size:14px;line-height:1.6;color:#4b3828;">
         Si vous avez des questions ou besoin d’aide, vous pouvez nous contacter depuis votre espace client,
         par email à <a href="mailto:hello@selen-editions.fr">hello@selen-editions.fr</a>,
-        ou <a href="https://selen-editions.fr/prendre-rendez-vous">prendre un rendez-vous téléphonique</a>.
+        ou <a href="https://www.selen-editions.fr/prendre-rendez-vous">prendre un rendez-vous téléphonique</a>.
       </p>
 
       <p style="font-size:14px;color:#4b3828;">

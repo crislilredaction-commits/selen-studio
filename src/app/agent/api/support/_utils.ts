@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { isOwnerLil } from "@/lib/ownerLil";
 
 export async function requireSupportAgent() {
   const supabase = await createClient();
@@ -59,6 +60,21 @@ export async function requireSupportAdmin() {
     return {
       ok: false as const,
       error: "Action reservee aux administrateurs Studio.",
+      status: 403,
+    };
+  }
+
+  return auth;
+}
+
+export async function requireLilOwner() {
+  const auth = await requireSupportAgent();
+  if (!auth.ok) return auth;
+
+  if (!isOwnerLil(auth.email)) {
+    return {
+      ok: false as const,
+      error: "Acces reserve au compte proprietaire Selen.",
       status: 403,
     };
   }

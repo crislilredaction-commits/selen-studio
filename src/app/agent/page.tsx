@@ -5,6 +5,7 @@ import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/agent/LogoutButton";
+import { isOwnerLil } from "@/lib/ownerLil";
 
 type StaffRole = "agent" | "admin";
 
@@ -65,6 +66,15 @@ type SupportTicketRow = {
   updated_at: string | null;
 };
 
+type RefundRequestRow = {
+  id: string;
+  ticket_id: string | null;
+  client_email: string | null;
+  amount_cents: number | null;
+  reason: string | null;
+  created_at: string | null;
+};
+
 type DashboardItem = {
   id: string;
   title: string;
@@ -78,10 +88,12 @@ type DashboardData = {
   unreadMessageDossiers: DashboardItem[];
   relanceDossiers: DashboardItem[];
   supportTickets: DashboardItem[];
+  refundRequests: DashboardItem[];
   actionDossiers: DashboardItem[];
   auditBlancItems: DashboardItem[];
   unassignedItems: DashboardItem[];
   unreadMessagesCount: number;
+  canAccessGestionLil: boolean;
 };
 
 const studioLinks: {
@@ -92,6 +104,14 @@ const studioLinks: {
 }[] = [];
 
 const adminLinks = [
+  {
+    title: "Gestion Lil",
+    description:
+      "Piloter les audits externes, le CA Selen et les actions SAV admin.",
+    href: "/agent/gestion",
+    icon: "💼",
+    internal: true,
+  },
   {
     title: "Créer un accès agent",
     description:
@@ -345,6 +365,7 @@ async function getDashboardData(
   supabase: Awaited<ReturnType<typeof createClient>>,
   staff: StaffInfo,
 ): Promise<DashboardData> {
+  const canAccessGestionLil = isOwnerLil(staff.email);
   const assignedDossierIds = new Set<string>();
 
   if (staff.id) {
@@ -478,6 +499,28 @@ async function getDashboardData(
     }),
   );
 
+  let refundRequests: DashboardItem[] = [];
+  if (canAccessGestionLil) {
+    const { data: refundData } = await supabase
+      .from("support_refund_requests")
+      .select("id, ticket_id, client_email, amount_cents, reason, created_at")
+      .eq("status", "to_process")
+      .order("created_at", { ascending: false })
+      .limit(6);
+
+    refundRequests = ((refundData ?? []) as RefundRequestRow[]).map(
+      (refund) => ({
+        id: refund.id,
+        title: refund.client_email || "Client a rembourser",
+        subtitle: `${refund.reason || "Remboursement a traiter"}${
+          refund.amount_cents ? ` · ${(refund.amount_cents / 100).toFixed(2)} €` : ""
+        }`,
+        href: refund.ticket_id ? `/agent/support/${refund.ticket_id}` : "/agent/support",
+        date: refund.created_at,
+      }),
+    );
+  }
+
   const actionDossiers = uniqueItems([
     ...unreadMessageDossiers,
     ...relanceDossiers,
@@ -567,10 +610,12 @@ async function getDashboardData(
     unreadMessageDossiers: unreadMessageDossiers.slice(0, 6),
     relanceDossiers: relanceDossiers.slice(0, 6),
     supportTickets: supportTickets.slice(0, 6),
+    refundRequests,
     actionDossiers: actionDossiers.slice(0, 8),
     auditBlancItems,
     unassignedItems: [...unassignedDossiers, ...unassignedAudits].slice(0, 8),
     unreadMessagesCount: unreadMessagesRaw.length,
+    canAccessGestionLil,
   };
 }
 
@@ -580,7 +625,11 @@ export default async function AgentHomePage() {
   const dashboard = await getDashboardData(supabase, staff);
 
   const isAdmin = staff.role === "admin";
+  const canAccessGestionLil = dashboard.canAccessGestionLil;
   const greetingName = getGreetingName(staff);
+  const visibleAdminLinks = adminLinks.filter((item) =>
+    item.href === "/agent/gestion" ? canAccessGestionLil : isAdmin,
+  );
 
   return (
     <main
@@ -728,6 +777,17 @@ export default async function AgentHomePage() {
           footerHref="/agent/support"
           footerLabel="Ouvrir le support"
         />
+        {canAccessGestionLil && (
+          <TaskCard
+            icon="💸"
+            title="Remboursements a traiter"
+            count={dashboard.refundRequests.length}
+            emptyText="Aucun remboursement en attente."
+            items={dashboard.refundRequests}
+            footerHref="/agent/support"
+            footerLabel="Ouvrir le support"
+          />
+        )}
       </section>
 
       <section
@@ -821,7 +881,7 @@ export default async function AgentHomePage() {
         </section>
       )}
 
-      {isAdmin && (
+      {visibleAdminLinks.length > 0 && (
         <section>
           <SelenCard>
             <SelenCardTitle>Accès admin</SelenCardTitle>
@@ -845,7 +905,7 @@ export default async function AgentHomePage() {
                 gap: 12,
               }}
             >
-              {adminLinks.map((item) => {
+              {visibleAdminLinks.map((item) => {
                 const card = (
                   <div
                     style={{

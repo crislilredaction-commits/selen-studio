@@ -176,6 +176,13 @@ export default async function AgentSupportPage({ searchParams }: PageProps) {
             Historique complet des demandes support, avec recherche par client,
             email, sujet ou categorie.
           </p>
+          <div style={s.headerActions}>
+            <Link href="/agent/codes-reduction" style={{ textDecoration: "none" }}>
+              <SelenButton type="button" variant="secondary">
+                Codes de reduction
+              </SelenButton>
+            </Link>
+          </div>
         </div>
 
         <div style={s.stats}>
@@ -347,6 +354,12 @@ const s: Record<string, CSSProperties> = {
     margin: 0,
     maxWidth: 720,
     lineHeight: 1.6,
+  },
+  headerActions: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    marginTop: 14,
   },
   stats: {
     display: "grid",
