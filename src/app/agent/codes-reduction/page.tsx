@@ -6,6 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import CodesReductionClient, {
   type DiscountCodeRow,
 } from "@/app/agent/codes-reduction/CodesReductionClient";
+import DiscountCodeCreateForm from "@/app/agent/codes-reduction/DiscountCodeCreateForm";
 
 type PageProps = {
   searchParams?: Promise<{
@@ -49,7 +50,7 @@ export default async function AgentCodesReductionPage({ searchParams }: PageProp
   const codes = ((data ?? []) as DiscountCodeRow[]).filter((item) => {
     const codeMatches = !codeQuery || item.code.toLowerCase().includes(codeQuery);
     const emailMatches =
-      !emailQuery || item.client_email.toLowerCase().includes(emailQuery);
+      !emailQuery || (item.client_email ?? "").toLowerCase().includes(emailQuery);
     return codeMatches && emailMatches && matchesStatus(item, statusFilter);
   });
 
@@ -92,6 +93,10 @@ export default async function AgentCodesReductionPage({ searchParams }: PageProp
       </div>
 
       {error ? <div style={s.error}>Erreur Supabase : {error.message}</div> : null}
+
+      <div style={{ marginBottom: 14 }}>
+        <DiscountCodeCreateForm />
+      </div>
 
       <SelenCard>
         <form style={s.filters}>

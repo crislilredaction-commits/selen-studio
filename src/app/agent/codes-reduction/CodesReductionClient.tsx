@@ -9,11 +9,17 @@ import SelenButton from "@/components/ui/SelenButton";
 export type DiscountCodeRow = {
   id: string;
   code: string;
-  client_email: string;
+  client_email: string | null;
   ticket_id: string | null;
+  type?: string | null;
+  offer_slug?: string | null;
   discount_type: string;
   percent_off: number | null;
   amount_off_cents: number | null;
+  discount_percent?: number | null;
+  discount_amount?: number | null;
+  max_global_uses?: number | null;
+  max_uses_per_email?: number | null;
   currency: string | null;
   status: string;
   expires_at: string | null;
@@ -40,8 +46,13 @@ function formatAmount(cents?: number | null, currency = "eur") {
 }
 
 function discountValue(code: DiscountCodeRow) {
-  if (code.discount_type === "percent") return `${code.percent_off ?? 0}%`;
-  return formatAmount(code.amount_off_cents, code.currency ?? "eur");
+  if (code.discount_type === "percent") {
+    return `${code.discount_percent ?? code.percent_off ?? 0}%`;
+  }
+  return formatAmount(
+    code.discount_amount ?? code.amount_off_cents,
+    code.currency ?? "eur",
+  );
 }
 
 function isExpired(code: DiscountCodeRow) {
@@ -103,7 +114,11 @@ export default function CodesReductionClient({
               <div style={s.cardTop}>
                 <div style={{ minWidth: 0 }}>
                   <div style={s.codeLine}>{code.code}</div>
-                  <div style={s.metaLine}>{code.client_email}</div>
+                  <div style={s.metaLine}>
+                    {code.type === "newsletter_public"
+                      ? "Newsletter publique"
+                      : code.client_email || "Ticket support"}
+                  </div>
                 </div>
                 <span style={s.status}>{expired && code.status === "active" ? "expired" : code.status}</span>
               </div>
@@ -111,6 +126,10 @@ export default function CodesReductionClient({
               <div style={s.grid}>
                 <Info label="Type" value={code.discount_type === "percent" ? "Pourcentage" : "Montant fixe"} />
                 <Info label="Valeur" value={discountValue(code)} />
+                <Info label="Mode" value={code.type === "newsletter_public" ? "Newsletter" : "Ticket support"} />
+                <Info label="Offre" value={code.offer_slug || "Toutes"} />
+                <Info label="Max global" value={code.max_global_uses ? String(code.max_global_uses) : "Illimite"} />
+                <Info label="Max/email" value={String(code.max_uses_per_email ?? 1)} />
                 <Info label="Expiration" value={formatDate(code.expires_at)} />
                 <Info label="Utilise le" value={formatDate(code.used_at)} />
                 <Info label="Utilise par" value={code.used_by_email || "-"} />

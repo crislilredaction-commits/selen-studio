@@ -14,6 +14,12 @@ import {
 } from "@/lib/documentText";
 import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
 import { getOrExtractDocumentText } from "@/lib/server/documentTextExtraction";
+import {
+  buildDeterministicNdaChecks,
+  buildQuestionsToAskFromChecks,
+  buildSourceUsedLabels,
+  computeQuickDiagnostic,
+} from "@/lib/server/ndaAnalysisEnrichment";
 import { extractNdaProgramContent } from "@/lib/server/ndaProgramDocumentHtml";
 
 type DocRow = {
@@ -685,6 +691,32 @@ export async function POST(req: Request) {
 
     console.log("Analyse NDA payload:", payload);
 
+    const deterministicControls = buildDeterministicNdaChecks({
+      cvText,
+      programText: programmeText,
+      entrepriseText,
+      extracted: {
+        duration: dureeFormation || null,
+        siret: siret || null,
+        email: trainerEmail || null,
+      },
+    });
+    const quickDiagnostic = computeQuickDiagnostic(
+      deterministicControls,
+      cvText,
+      programmeText,
+    );
+    const sourceUsed = buildSourceUsedLabels({
+      cvDocumentName: cvDoc.name ?? null,
+      cvSource: cvTextSource,
+      programDocumentName: programmeDoc.name ?? null,
+      programSource: programmeTextSource,
+      hasPreviousAnalysis: Boolean(previousAnalysis),
+    });
+    const questionsToAsk = buildQuestionsToAskFromChecks(
+      deterministicControls,
+    );
+
     const { error: ndaError } = await supabase.from("nda_variables").upsert(
       {
         dossier_id: dossierId,
@@ -701,6 +733,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       payload,
+      quickDiagnostic,
+      deterministicControls,
+      sourceUsed,
+      questions_to_ask: questionsToAsk,
       warnings: administrativeWarning ? [administrativeWarning] : [],
       administrativeCheck: {
         documentName: entrepriseDoc?.name ?? null,

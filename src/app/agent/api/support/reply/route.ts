@@ -1,10 +1,26 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import {
   renderSelenEmailFromText,
   sendSelenEmail,
 } from "@/lib/server/selenEmailLayout";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+
+function hashToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function getSupportReplyUrl(ticketId: string, token: string) {
+  const base =
+    process.env.NEXT_PUBLIC_VITRINE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    "https://www.selen-editions.fr";
+  const url = new URL("/support/reply", base);
+  url.searchParams.set("ticket", ticketId);
+  url.searchParams.set("token", token);
+  return url.toString();
+}
 
 export async function POST(req: Request) {
   const auth = await requireSupportAgent();
@@ -70,13 +86,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
+    const replyToken = crypto.randomBytes(32).toString("base64url");
+    const replyUrl = getSupportReplyUrl(cleanTicketId, replyToken);
+    const expiresAt = new Date(
+      Date.now() + 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const { error: tokenError } = await admin.from("support_reply_tokens").insert({
+      ticket_id: cleanTicketId,
+      token_hash: hashToken(replyToken),
+      expires_at: expiresAt,
+      metadata: {
+        created_by_agent_email: auth.email,
+        source: "agent_reply_email",
+      },
+    });
+
+    if (tokenError) {
+      console.error("Creation token reponse support echouee.", tokenError);
+    }
+
     const rendered = renderSelenEmailFromText({
       title: `Reponse de Selen - ${ticket.subject}`,
       bodyText: [
         "Bonjour,",
         cleanMessage,
-        "Vous pouvez repondre depuis votre espace client ou reprendre contact avec Selen.",
+        "Vous pouvez repondre a Selen directement avec le bouton ci-dessous, sans creer de nouveau ticket.",
       ].join("\n\n"),
+      ctaLabel: "Repondre a Selen",
+      ctaUrl: replyUrl,
     });
 
     const emailResult = await sendSelenEmail({

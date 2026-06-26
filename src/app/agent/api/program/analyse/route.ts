@@ -3,6 +3,13 @@ import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
 import { getOrExtractDocumentText } from "@/lib/server/documentTextExtraction";
+import {
+  buildDeterministicNdaChecks,
+  buildSourceUsedLabels,
+  computeQuickDiagnostic,
+  type DeterministicCheck,
+  type NdaQuickDiagnostic,
+} from "@/lib/server/ndaAnalysisEnrichment";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -50,8 +57,18 @@ function buildPrompt(args: {
   ndaVariables: NdaVariablesRow | null;
   programText: string;
   cvText: string;
+  deterministicControls: DeterministicCheck[];
+  quickDiagnostic: NdaQuickDiagnostic;
+  sourceUsed: string[];
 }) {
-  const { ndaVariables, programText, cvText } = args;
+  const {
+    ndaVariables,
+    programText,
+    cvText,
+    deterministicControls,
+    quickDiagnostic,
+    sourceUsed,
+  } = args;
 
   return `
 Tu es un assistant métier expert en ingénierie pédagogique, conformité documentaire et cohérence formateur/programme.
@@ -63,6 +80,7 @@ Tu dois choisir UNE seule décision parmi :
 - programme_conforme
 - thematique_ok_reformulation_necessaire
 - thematique_incoherente_repositionnement_necessaire
+- insufficient_information
 
 Règles métier importantes :
 - Les objectifs doivent être formulés en compétences applicables.
@@ -79,6 +97,8 @@ Règles métier importantes :
 - En cas de repositionnement, rester crédible, vendable et cohérent.
 - Chaque objectif de module doit impérativement commencer par :
   "À l’issue de ce module, le bénéficiaire sera capable de..."
+- Analyser explicitement : cohérence CV / programme, cohérence expérience / sujet, crédibilité commerciale, adéquation DREETS, vocabulaire professionnel, risque potentiel de refus et repositionnement éventuel.
+- Si les pièces ou extractions ne permettent pas une décision fiable, utiliser le statut insufficient_information et indiquer les questions à poser au client.
 
 Contexte dossier :
 ${JSON.stringify(
@@ -109,12 +129,28 @@ CV / compétences source :
 ${cvText || "Aucun CV exploitable fourni."}
 """
 
+Contrôles déterministes déjà calculés :
+${JSON.stringify(deterministicControls, null, 2)}
+
+Diagnostic rapide déterministe :
+${quickDiagnostic}
+
+Source utilisée :
+${JSON.stringify(sourceUsed, null, 2)}
+
 Consignes de sortie :
 - justification claire et courte
 - résumé agent exploitable immédiatement
 - programme complet si reformulation ou repositionnement
 - vigilance_points = liste concise
 - modules = tableau structuré, même si vide en cas d’analyse insuffisante
+- quick_diagnostic doit valoir : conforme, a_verifier, risque_eleve_refus ou insufficient_information
+- conformity_points liste les éléments conformes et immédiatement rassurants
+- verification_points liste les points à vérifier avec le client ou manuellement
+- risk_points liste les risques réels de refus ou d'incohérence
+- questions_to_ask contient les questions concrètes à poser au client
+- recommendations contient les actions agent recommandées
+- proposed_reformulated_program contient une synthèse structurée du programme reformulé proposé, ou une chaîne vide si impossible
 `.trim();
 }
 
@@ -513,10 +549,35 @@ export async function POST(req: Request) {
       );
     }
 
+    const deterministicControls = buildDeterministicNdaChecks({
+      cvText,
+      programText,
+      extracted: {
+        duration: (ndaVariables as NdaVariablesRow | null)?.duree_formation ?? null,
+        siret: (ndaVariables as NdaVariablesRow | null)?.siret ?? null,
+        email: (ndaVariables as NdaVariablesRow | null)?.formateur_email ?? null,
+      },
+    });
+    const deterministicQuickDiagnostic = computeQuickDiagnostic(
+      deterministicControls,
+      cvText,
+      programText,
+    );
+    const sourceUsed = buildSourceUsedLabels({
+      cvDocumentName: selectedCvDoc?.name ?? null,
+      cvSource: cvTextSource,
+      programDocumentName: selectedProgramDoc?.name ?? null,
+      programSource: programTextSource,
+      hasPreviousAnalysis: Boolean(previousAnalysis),
+    });
+
     const prompt = buildPrompt({
       ndaVariables: (ndaVariables as NdaVariablesRow | null) ?? null,
       programText,
       cvText,
+      deterministicControls,
+      quickDiagnostic: deterministicQuickDiagnostic,
+      sourceUsed,
     });
 
     const response = await openai.responses.create({
@@ -556,6 +617,16 @@ export async function POST(req: Request) {
                   "programme_conforme",
                   "thematique_ok_reformulation_necessaire",
                   "thematique_incoherente_repositionnement_necessaire",
+                  "insufficient_information",
+                ],
+              },
+              quick_diagnostic: {
+                type: "string",
+                enum: [
+                  "conforme",
+                  "a_verifier",
+                  "risque_eleve_refus",
+                  "insufficient_information",
                 ],
               },
               justification: { type: "string" },
@@ -570,6 +641,27 @@ export async function POST(req: Request) {
                 type: "array",
                 items: { type: "string" },
               },
+              conformity_points: {
+                type: "array",
+                items: { type: "string" },
+              },
+              verification_points: {
+                type: "array",
+                items: { type: "string" },
+              },
+              risk_points: {
+                type: "array",
+                items: { type: "string" },
+              },
+              questions_to_ask: {
+                type: "array",
+                items: { type: "string" },
+              },
+              recommendations: {
+                type: "array",
+                items: { type: "string" },
+              },
+              proposed_reformulated_program: { type: "string" },
               modules: {
                 type: "array",
                 items: {
@@ -597,6 +689,7 @@ export async function POST(req: Request) {
             },
             required: [
               "decision",
+              "quick_diagnostic",
               "justification",
               "agent_summary",
               "reformulated_title",
@@ -604,6 +697,12 @@ export async function POST(req: Request) {
               "overall_objective",
               "recommended_positioning",
               "vigilance_points",
+              "conformity_points",
+              "verification_points",
+              "risk_points",
+              "questions_to_ask",
+              "recommendations",
+              "proposed_reformulated_program",
               "modules",
             ],
           },
@@ -613,6 +712,18 @@ export async function POST(req: Request) {
 
     const rawText = response.output_text;
     const parsed = JSON.parse(rawText);
+    const highRiskDiagnostic =
+      deterministicQuickDiagnostic === "risque_eleve_refus" ||
+      deterministicQuickDiagnostic === "insufficient_information";
+    const quickDiagnostic = highRiskDiagnostic
+      ? deterministicQuickDiagnostic
+      : (parsed.quick_diagnostic ?? deterministicQuickDiagnostic);
+    const enrichedResult = {
+      ...parsed,
+      quick_diagnostic: quickDiagnostic,
+      deterministic_controls: deterministicControls,
+      source_used: sourceUsed,
+    };
 
     const insertPayload = {
       dossier_id: dossierId,
@@ -623,6 +734,9 @@ export async function POST(req: Request) {
       source_context_json: {
         dossier_title: dossier.title ?? null,
         nda_variables: ndaVariables ?? null,
+        quick_diagnostic: quickDiagnostic,
+        deterministic_controls: deterministicControls,
+        source_used: sourceUsed,
       },
       decision: parsed.decision ?? null,
       justification: parsed.justification ?? null,
@@ -633,9 +747,9 @@ export async function POST(req: Request) {
       recommended_positioning: parsed.recommended_positioning ?? null,
       vigilance_points: parsed.vigilance_points ?? [],
       modules: parsed.modules ?? [],
-      raw_result_json: parsed,
+      raw_result_json: enrichedResult,
       model_name: "gpt-4.1",
-      prompt_version: "program_analysis_v2",
+      prompt_version: "program_analysis_v3",
     };
 
     const { data: savedAnalysis, error: saveError } = await supabase
