@@ -67,35 +67,6 @@ export default function ExternalAuditForm({
     router.refresh();
   }
 
-  async function sendConfirmation() {
-    if (!audit?.id) return;
-    const result = await post("/agent/api/gestion/audits/email-confirmation", {
-      auditId: audit.id,
-    });
-    if (!result) return;
-    setNotice(
-      result.email?.sent
-        ? "Email de confirmation envoye."
-        : result.email?.error ?? "Email non envoye.",
-    );
-    router.refresh();
-  }
-
-  async function createCalendar() {
-    if (!audit?.id) return;
-    const result = await post("/agent/api/gestion/audits/calendar", {
-      auditId: audit.id,
-    });
-    if (!result) return;
-    setNotice(
-      result.conflictWarning ||
-        (result.calendar?.created
-          ? "Evenement Google Calendar cree."
-          : result.calendar?.error ?? "Evenement non cree."),
-    );
-    router.refresh();
-  }
-
   return (
     <SelenCard>
       <SelenCardTitle>
@@ -158,26 +129,6 @@ export default function ExternalAuditForm({
           <SelenButton type="submit" disabled={busy}>
             Enregistrer
           </SelenButton>
-          {audit?.id ? (
-            <>
-              <SelenButton
-                type="button"
-                variant="secondary"
-                disabled={busy}
-                onClick={() => void sendConfirmation()}
-              >
-                Envoyer confirmation
-              </SelenButton>
-              <SelenButton
-                type="button"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => void createCalendar()}
-              >
-                Creer evenement Google
-              </SelenButton>
-            </>
-          ) : null}
         </div>
       </form>
     </SelenCard>

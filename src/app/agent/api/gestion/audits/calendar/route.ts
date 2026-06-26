@@ -41,7 +41,8 @@ export async function POST(req: Request) {
         ok: true,
         calendar: {
           created: false,
-          error: null,
+          alreadyExists: true,
+          error: "Evenement deja cree.",
           eventId: typedAudit.google_calendar_event_id,
         },
         conflicts: [],

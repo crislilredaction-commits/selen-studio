@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireLilOwner } from "@/app/agent/api/support/_utils";
 import type { ExternalAuditRow } from "@/lib/server/externalAudits";
-import { sendExternalAuditConfirmation } from "@/lib/server/externalAuditEmails";
+import { sendExternalAuditReminder } from "@/lib/server/externalAuditEmails";
 
 export async function POST(req: Request) {
   const auth = await requireLilOwner();
@@ -31,22 +31,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Audit introuvable." }, { status: 404 });
     }
 
-    const emailResult = await sendExternalAuditConfirmation(
-      audit as ExternalAuditRow,
-    );
-    if (emailResult.sent) {
+    const email = await sendExternalAuditReminder(audit as ExternalAuditRow);
+    if (email.sent) {
       await admin
         .from("external_audits")
-        .update({
-          confirmation_email_sent_at: new Date().toISOString(),
-          status: "confirmed",
-        })
+        .update({ reminder_email_sent_at: new Date().toISOString() })
         .eq("id", id);
     }
 
-    return NextResponse.json({ ok: true, email: emailResult });
+    return NextResponse.json({ ok: true, email });
   } catch (error) {
-    console.error("Email confirmation audit echoue.", error);
+    console.error("Rappel audit externe echoue.", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erreur inconnue." },
       { status: 500 },

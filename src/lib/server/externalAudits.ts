@@ -1,8 +1,4 @@
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
-import {
-  renderSelenEmailFromText,
-  sendSelenEmail,
-} from "@/lib/server/selenEmailLayout";
 
 export type ExternalAuditRow = {
   id: string;
@@ -61,48 +57,6 @@ export function googleMapsUrl(address?: string | null) {
   )}`;
 }
 
-export function renderExternalAuditConfirmation(audit: ExternalAuditRow) {
-  const contact = audit.contact_name?.trim() || "Madame, Monsieur";
-  const date = new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "full",
-  }).format(auditStart(audit));
-  const start = audit.start_time.slice(0, 5);
-  const address = audit.address || "adresse a confirmer";
-  const certifier = audit.certifier || "a confirmer";
-
-  return [
-    `Bonjour ${contact},`,
-    "Je me permets de vous confirmer que la realisation de votre audit Qualiopi m'a ete confiee.",
-    `Je suis Pascale Barthaux, auditrice Qualiopi, et j'interviendrai pour votre audit ${audit.audit_type} le ${date}, a partir de ${start}, a l'adresse suivante :\n${address}`,
-    `Certificateur : ${certifier}`,
-    "J'arriverai environ 5 a 15 minutes avant le debut de l'audit.",
-    "Pour le bon deroulement de l'audit, merci de prevoir :\n- un espace calme avec une table et des chaises ;\n- une connexion Wi-Fi ;\n- une prise de courant a proximite.",
-    "Il n'est pas necessaire d'imprimer les elements a presenter : les documents peuvent etre consultes au format numerique.",
-    "Si vous avez des questions concernant l'organisation pratique de l'audit, vous pouvez me joindre par retour d'email.\nPour toute question d'ordre financier ou contractuel, je vous invite a contacter directement le certificateur.",
-    "Bien cordialement,",
-    "Pascale Barthaux\nAuditrice Qualiopi",
-  ].join("\n\n");
-}
-
-export async function sendExternalAuditConfirmation(audit: ExternalAuditRow) {
-  if (!audit.contact_email) {
-    return { sent: false, error: "Email contact absent." };
-  }
-
-  const bodyText = renderExternalAuditConfirmation(audit);
-  const rendered = renderSelenEmailFromText({
-    title: "Confirmation de votre audit Qualiopi",
-    bodyText,
-  });
-
-  return sendSelenEmail({
-    to: audit.contact_email,
-    subject: "Confirmation de votre audit Qualiopi",
-    html: rendered.html,
-    text: rendered.text,
-  });
-}
-
 export async function findSelenAppointmentConflicts(
   audit: Pick<ExternalAuditRow, "audit_date" | "start_time" | "end_time">,
 ) {
@@ -159,15 +113,35 @@ async function getGoogleAccessToken() {
   return payload.access_token ?? null;
 }
 
+export function getGoogleCalendarConfigStatus() {
+  const required = [
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REFRESH_TOKEN",
+    "GOOGLE_CALENDAR_ID",
+    "GOOGLE_CALENDAR_TIMEZONE",
+  ];
+  const missing = required.filter((key) => !process.env[key]?.trim());
+  return {
+    configured: missing.length === 0,
+    missing,
+    calendarId: process.env.GOOGLE_CALENDAR_ID || null,
+    timezone: process.env.GOOGLE_CALENDAR_TIMEZONE || null,
+  };
+}
+
 export async function createGoogleCalendarEvent(audit: ExternalAuditRow) {
   const accessToken = await getGoogleAccessToken();
   const calendarId = process.env.GOOGLE_CALENDAR_ID || "primary";
   const timeZone = process.env.GOOGLE_CALENDAR_TIMEZONE || "Europe/Paris";
 
   if (!accessToken) {
+    const status = getGoogleCalendarConfigStatus();
     return {
       created: false,
-      error: "Configuration Google Calendar absente.",
+      error: status.configured
+        ? "Configuration Google Calendar invalide ou refresh token refuse."
+        : "Configuration Google Calendar absente dans Selen Studio. Ajoutez GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, GOOGLE_CALENDAR_ID et GOOGLE_CALENDAR_TIMEZONE dans .env.local et dans Vercel.",
       eventId: null,
     };
   }
