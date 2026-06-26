@@ -22,11 +22,99 @@ function auditHours(
   }`;
 }
 
+function formatTime(value: Date) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+}
+
 function isCertifopac(certifier?: string | null) {
   return String(certifier ?? "")
     .trim()
     .toLowerCase()
     .includes("certifopac");
+}
+
+function metadataText(audit: ExternalAuditRow, keys: string[]) {
+  const metadata =
+    audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function metadataNumber(audit: ExternalAuditRow, keys: string[]) {
+  const raw = metadataText(audit, keys);
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function formatSentStatus(value?: string | null) {
+  if (!value) return "Non envoyé";
+  return `Envoyé le ${new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value))}`;
+}
+
+export function buildTravelPreparation(audit: ExternalAuditRow) {
+  const mode = metadataText(audit, ["departure_mode"]) || "home";
+  const customAddress = metadataText(audit, ["departure_address"]);
+  const travelMinutes = metadataNumber(audit, [
+    "travel_duration_minutes",
+    "travel_time_minutes",
+    "estimated_travel_minutes",
+  ]);
+  const start = auditStart(audit);
+  const departureAt = travelMinutes
+    ? new Date(start.getTime() - (travelMinutes + 30) * 60 * 1000)
+    : null;
+  const wakeAt = departureAt
+    ? new Date(departureAt.getTime() - 60 * 60 * 1000)
+    : null;
+
+  if (mode === "mother") {
+    return {
+      mode,
+      label: "👩 Chez maman",
+      address: "Abbeville",
+      travelMinutes,
+      travelLabel: travelMinutes ? `${travelMinutes} minutes` : "Temps de trajet non renseigné",
+      departureAt,
+      departureLabel: departureAt ? formatTime(departureAt) : "-",
+      wakeAt,
+      wakeLabel: wakeAt ? formatTime(wakeAt) : "-",
+    };
+  }
+
+  if (mode === "custom") {
+    return {
+      mode,
+      label: "🏨 Hébergement temporaire",
+      address: customAddress || "Adresse de départ non renseignée",
+      travelMinutes,
+      travelLabel: travelMinutes ? `${travelMinutes} minutes` : "Temps de trajet non renseigné",
+      departureAt,
+      departureLabel: departureAt ? formatTime(departureAt) : "-",
+      wakeAt,
+      wakeLabel: wakeAt ? formatTime(wakeAt) : "-",
+    };
+  }
+
+  return {
+    mode: "home",
+    label: "🏠 Domicile",
+    address: "Droupt-Saint-Basle",
+    travelMinutes,
+    travelLabel: travelMinutes ? `${travelMinutes} minutes` : "Temps de trajet non renseigné",
+    departureAt,
+    departureLabel: departureAt ? formatTime(departureAt) : "-",
+    wakeAt,
+    wakeLabel: wakeAt ? formatTime(wakeAt) : "-",
+  };
 }
 
 export function buildExternalAuditConfirmationEmail(audit: ExternalAuditRow) {
@@ -127,31 +215,62 @@ export async function sendExternalAuditConfirmation(
   });
 }
 
-export function buildExternalAuditReminderEmail(audit: ExternalAuditRow) {
+export function buildLilReminderEmail(audit: ExternalAuditRow) {
   const maps = googleMapsUrl(audit.address);
+  const travel = buildTravelPreparation(audit);
   const notes =
     audit.metadata && typeof audit.metadata.notes === "string"
-      ? audit.metadata.notes
+      ? audit.metadata.notes.trim()
       : "";
+  const auditPlanStatus =
+    metadataText(audit, [
+      "audit_plan_status",
+      "plan_audit_status",
+      "plan_status",
+      "audit_plan",
+    ]) || "Non renseigné";
   const subject = `Rappel audit externe - ${audit.of_name}`;
   const bodyText = [
-    `Audit externe demain : ${audit.of_name}`,
+    `Organisme de formation : ${audit.of_name}`,
     `Contact : ${audit.contact_name || "-"}`,
-    `Email : ${audit.contact_email || "-"}`,
     `Telephone : ${audit.contact_phone || "-"}`,
-    `Adresse : ${audit.address || "-"}`,
-    maps ? `Google Maps : ${maps}` : "",
+    `Email : ${audit.contact_email || "-"}`,
+    `Adresse complète : ${audit.address || "-"}`,
+    `Date : ${formatAuditDate(audit)}`,
+    `Horaires : ${auditHours(audit)}`,
     `Type d'audit : ${audit.audit_type}`,
     `Certificateur : ${audit.certifier || "-"}`,
-    `Date : ${formatAuditDate(audit)}`,
-    `Horaire : ${auditHours(audit)}`,
-    notes ? `Notes : ${notes}` : "",
+    maps ? `Lien Google Maps : ${maps}` : "Lien Google Maps : adresse absente",
+    `Event Google associé : ${audit.google_calendar_event_id || "Aucun événement Google associé"}`,
+    `Statut mail confirmation : ${formatSentStatus(audit.confirmation_email_sent_at)}`,
+    `Statut plan d'audit : ${auditPlanStatus}`,
+    "",
+    "POINT DE DEPART",
+    travel.label,
+    travel.address,
+    "",
+    "Temps estimé :",
+    travel.travelLabel,
+    "",
+    "Départ conseillé :",
+    travel.departureLabel,
+    "",
+    "Réveil conseillé :",
+    travel.wakeLabel,
+    "",
+    "--------------------------------------------------",
+    "MES NOTES",
+    "",
+    notes || "Aucune note enregistrée.",
+    "--------------------------------------------------",
   ]
     .filter(Boolean)
     .join("\n");
   const rendered = renderSelenEmailFromText({
     title: subject,
     bodyText,
+    ctaLabel: maps ? "Ouvrir Google Maps" : undefined,
+    ctaUrl: maps || undefined,
   });
 
   return {
@@ -163,8 +282,10 @@ export function buildExternalAuditReminderEmail(audit: ExternalAuditRow) {
   };
 }
 
+export const buildExternalAuditReminderEmail = buildLilReminderEmail;
+
 export async function sendExternalAuditReminder(audit: ExternalAuditRow) {
-  const email = buildExternalAuditReminderEmail(audit);
+  const email = buildLilReminderEmail(audit);
   return sendSelenEmail({
     to: email.to,
     subject: email.subject,

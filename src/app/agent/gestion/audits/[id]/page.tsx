@@ -1,10 +1,13 @@
 import type { CSSProperties } from "react";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import SelenButton from "@/components/ui/SelenButton";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { isLilOwner } from "@/lib/server/studioAdmin";
 import ExternalAuditForm from "@/app/agent/gestion/audits/ExternalAuditForm";
 import ExternalAuditStatusPanel from "@/app/agent/gestion/audits/ExternalAuditStatusPanel";
+import ExternalAuditTravelCard from "@/app/agent/gestion/audits/ExternalAuditTravelCard";
 import {
   getGoogleCalendarConfigStatus,
   type ExternalAuditRow,
@@ -54,7 +57,15 @@ export default async function ExternalAuditDetailPage({ params }: PageProps) {
 
   return (
     <main style={s.page}>
+      <div>
+        <Link href="/agent/gestion/audits" style={{ textDecoration: "none" }}>
+          <SelenButton type="button" variant="ghost">
+            ← Retour aux audits
+          </SelenButton>
+        </Link>
+      </div>
       <ExternalAuditForm audit={audit} />
+      <ExternalAuditTravelCard audit={audit} />
       <ExternalAuditStatusPanel
         audit={audit}
         confirmationEmail={{

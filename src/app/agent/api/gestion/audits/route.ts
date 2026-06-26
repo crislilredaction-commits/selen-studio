@@ -9,6 +9,12 @@ import {
 } from "@/lib/server/externalAudits";
 
 const STATUSES = new Set(["planned", "confirmed", "completed", "cancelled"]);
+const DEPARTURE_MODES = new Set(["home", "mother", "custom"]);
+
+function normalizeTravelMinutes(value: unknown) {
+  const parsed = Number(String(value ?? "").trim());
+  return Number.isFinite(parsed) && parsed > 0 ? String(Math.round(parsed)) : "";
+}
 
 export async function POST(req: Request) {
   const auth = await requireLilOwner();
@@ -19,6 +25,36 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const id = String(body.id ?? "").trim();
+    const admin = createSupabaseAdminClient();
+    let previousMetadata: Record<string, unknown> = {};
+    if (id) {
+      const { data: existingAudit, error: existingError } = await admin
+        .from("external_audits")
+        .select("metadata")
+        .eq("id", id)
+        .maybeSingle();
+      if (existingError) {
+        return NextResponse.json({ error: existingError.message }, { status: 500 });
+      }
+      previousMetadata =
+        existingAudit?.metadata && typeof existingAudit.metadata === "object"
+          ? (existingAudit.metadata as Record<string, unknown>)
+          : {};
+    }
+
+    const departureMode = String(body.departureMode ?? "home").trim();
+    const normalizedDepartureMode = DEPARTURE_MODES.has(departureMode)
+      ? departureMode
+      : "home";
+    const departureAddress =
+      normalizedDepartureMode === "custom"
+        ? String(body.departureAddress ?? "").trim()
+        : normalizedDepartureMode === "mother"
+          ? "Abbeville"
+          : "Droupt-Saint-Basle";
+    const travelDurationMinutes = normalizeTravelMinutes(
+      body.travelDurationMinutes,
+    );
     const payload = {
       of_name: String(body.ofName ?? "").trim(),
       contact_name: String(body.contactName ?? "").trim() || null,
@@ -32,7 +68,11 @@ export async function POST(req: Request) {
       end_time: String(body.endTime ?? "").trim() || null,
       status: String(body.status ?? "planned").trim(),
       metadata: {
+        ...previousMetadata,
         notes: String(body.notes ?? "").trim(),
+        departure_mode: normalizedDepartureMode,
+        departure_address: departureAddress,
+        travel_duration_minutes: travelDurationMinutes,
         updated_by: auth.email,
       },
     };
@@ -53,7 +93,6 @@ export async function POST(req: Request) {
       end_time: payload.end_time,
     });
 
-    const admin = createSupabaseAdminClient();
     const query = id
       ? admin
           .from("external_audits")

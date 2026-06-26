@@ -14,6 +14,13 @@ const STATUSES = [
   ["cancelled", "Annule"],
 ];
 
+function metadataText(audit: ExternalAuditRow | null | undefined, key: string) {
+  const metadata =
+    audit?.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+  const value = metadata[key];
+  return typeof value === "string" ? value : "";
+}
+
 export default function ExternalAuditForm({
   audit,
 }: {
@@ -23,6 +30,9 @@ export default function ExternalAuditForm({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [departureMode, setDepartureMode] = useState(
+    metadataText(audit, "departure_mode") || "home",
+  );
 
   async function post(url: string, body: Record<string, unknown>) {
     setBusy(true);
@@ -57,6 +67,9 @@ export default function ExternalAuditForm({
       endTime: formData.get("endTime"),
       status: formData.get("status"),
       notes: formData.get("notes"),
+      departureMode: formData.get("departureMode"),
+      departureAddress: formData.get("departureAddress"),
+      travelDurationMinutes: formData.get("travelDurationMinutes"),
     });
     if (!result) return;
     setNotice(result.conflictWarning || "Audit enregistre.");
@@ -125,6 +138,45 @@ export default function ExternalAuditForm({
             style={{ ...s.input, minHeight: 96, paddingTop: 10 }}
           />
         </label>
+        <div style={s.section}>
+          <h3 style={s.sectionTitle}>Départ vers l'audit</h3>
+          <label style={s.field}>
+            <span>Lieu de départ</span>
+            <select
+              name="departureMode"
+              value={departureMode}
+              onChange={(event) => setDepartureMode(event.target.value)}
+              style={s.input}
+            >
+              <option value="home">🏠 Domicile (Droupt-Saint-Basle)</option>
+              <option value="mother">👩 Chez maman (Abbeville)</option>
+              <option value="custom">🏨 Hébergement temporaire</option>
+            </select>
+          </label>
+          {departureMode === "custom" ? (
+            <label style={s.field}>
+              <span>Adresse de départ</span>
+              <textarea
+                name="departureAddress"
+                defaultValue={metadataText(audit, "departure_address")}
+                placeholder={"Exemple :\n12 rue des Tanneurs\n67000 Strasbourg"}
+                style={{ ...s.input, minHeight: 84, paddingTop: 10 }}
+              />
+            </label>
+          ) : (
+            <input
+              type="hidden"
+              name="departureAddress"
+              value={departureMode === "mother" ? "Abbeville" : "Droupt-Saint-Basle"}
+            />
+          )}
+          <Field
+            label="Temps de trajet estime (minutes)"
+            name="travelDurationMinutes"
+            type="number"
+            defaultValue={metadataText(audit, "travel_duration_minutes")}
+          />
+        </div>
         <div style={s.actions}>
           <SelenButton type="submit" disabled={busy}>
             Enregistrer
@@ -180,6 +232,23 @@ const s: Record<string, CSSProperties> = {
     color: "var(--selen-text2-oncard)",
     fontSize: 12,
     gridColumn: "1 / -1",
+  },
+  section: {
+    gridColumn: "1 / -1",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 12,
+    padding: 12,
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--selen-border)",
+    background: "rgba(247, 239, 224, 0.06)",
+  },
+  sectionTitle: {
+    gridColumn: "1 / -1",
+    margin: 0,
+    color: "var(--selen-text-oncard)",
+    fontFamily: "var(--font-display)",
+    fontSize: 18,
   },
   input: {
     width: "100%",
