@@ -6,6 +6,7 @@ import SelenButton from "@/components/ui/SelenButton";
 import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/agent/LogoutButton";
 import { isOwnerLil } from "@/lib/ownerLil";
+import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 type StaffRole = "agent" | "admin";
 
@@ -510,13 +511,17 @@ async function getDashboardData(
     },
   );
 
-  const { data: supportTicketsData } = await supabase
-    .from("support_tickets")
-    .select(
-      "id, client_email, client_name, subject, category, priority, status, last_message_at, updated_at, created_at",
-    )
-    .in("status", ["open", "waiting_agent", "new", "pending"])
-    .limit(30);
+  const { data: supportTicketsData, error: supportTicketsError } =
+    await supabase
+      .from("support_tickets")
+      .select("*")
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .order("updated_at", { ascending: false })
+      .limit(30);
+
+  if (supportTicketsError) {
+    console.error("Erreur chargement tickets dashboard:", supportTicketsError);
+  }
 
   const supportTickets = ((supportTicketsData ?? []) as SupportTicketRow[])
     .sort((a, b) => {
@@ -545,9 +550,13 @@ async function getDashboardData(
         id: refund.id,
         title: refund.client_email || "Client a rembourser",
         subtitle: `${refund.reason || "Remboursement a traiter"}${
-          refund.amount_cents ? ` · ${(refund.amount_cents / 100).toFixed(2)} €` : ""
+          refund.amount_cents
+            ? ` · ${(refund.amount_cents / 100).toFixed(2)} €`
+            : ""
         }`,
-        href: refund.ticket_id ? `/agent/support/${refund.ticket_id}` : "/agent/support",
+        href: refund.ticket_id
+          ? `/agent/support/${refund.ticket_id}`
+          : "/agent/support",
         date: refund.created_at,
       }),
     );
@@ -654,7 +663,8 @@ async function getDashboardData(
 export default async function AgentHomePage() {
   const supabase = await createClient();
   const staff = await getCurrentStaffInfo(supabase);
-  const dashboard = await getDashboardData(supabase, staff);
+  const admin = createSupabaseAdminClient();
+  const dashboard = await getDashboardData(admin, staff);
 
   const isAdmin = staff.role === "admin";
   const canAccessGestionLil = dashboard.canAccessGestionLil;

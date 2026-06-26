@@ -140,6 +140,7 @@ export default async function AgentSupportPage({ searchParams }: PageProps) {
     .order("updated_at", { ascending: false });
 
   const tickets = (data ?? []) as SupportTicket[];
+
   const activeTickets = tickets.filter((ticket) =>
     ["open", "waiting_agent"].includes(ticket.status),
   );
@@ -177,7 +178,10 @@ export default async function AgentSupportPage({ searchParams }: PageProps) {
             email, sujet ou categorie.
           </p>
           <div style={s.headerActions}>
-            <Link href="/agent/codes-reduction" style={{ textDecoration: "none" }}>
+            <Link
+              href="/agent/codes-reduction"
+              style={{ textDecoration: "none" }}
+            >
               <SelenButton type="button" variant="secondary">
                 Codes de reduction
               </SelenButton>
