@@ -60,10 +60,14 @@ type ReminderRow = {
 type SupportTicketRow = {
   id: string;
   client_email: string | null;
+  client_name: string | null;
   subject: string | null;
   category: string | null;
+  priority: string | null;
   status: string | null;
+  last_message_at: string | null;
   updated_at: string | null;
+  created_at: string | null;
 };
 
 type RefundRequestRow = {
@@ -217,6 +221,18 @@ function formatReminderType(type?: string | null) {
   return "Relance";
 }
 
+function supportPriorityRank(priority?: string | null) {
+  if (priority === "urgent") return 0;
+  if (priority === "high") return 1;
+  if (priority === "normal") return 2;
+  if (priority === "low") return 3;
+  return 4;
+}
+
+function supportActivityDate(ticket: SupportTicketRow) {
+  return ticket.last_message_at || ticket.updated_at || ticket.created_at;
+}
+
 function formatOffer(offer?: string | null) {
   if (offer === "direct") return "Audit blanc direct";
   if (offer === "reserved_after_auto_audit")
@@ -259,6 +275,20 @@ function buildAuditItem(auditCase: AuditBlancCaseRow): DashboardItem {
     subtitle: `${formatOffer(auditCase.offer)} · ${formatStatus(auditCase.status)}`,
     href: `/agent/audits-blancs/${auditCase.id}`,
     date: auditCase.updated_at,
+  };
+}
+
+function buildSupportTicketItem(ticket: SupportTicketRow): DashboardItem {
+  return {
+    id: ticket.id,
+    title: ticket.subject || "Ticket support",
+    subtitle: [
+      ticket.client_name || ticket.client_email || "Client",
+      ticket.category || "support",
+      ticket.priority || "normal",
+    ].join(" · "),
+    href: `/agent/support/${ticket.id}`,
+    date: supportActivityDate(ticket),
   };
 }
 
@@ -482,22 +512,24 @@ async function getDashboardData(
 
   const { data: supportTicketsData } = await supabase
     .from("support_tickets")
-    .select("id, client_email, subject, category, status, updated_at")
-    .in("status", ["open", "waiting_agent"])
-    .order("updated_at", { ascending: false })
-    .limit(6);
+    .select(
+      "id, client_email, client_name, subject, category, priority, status, last_message_at, updated_at, created_at",
+    )
+    .in("status", ["open", "waiting_agent", "new", "pending"])
+    .limit(30);
 
-  const supportTickets = ((supportTicketsData ?? []) as SupportTicketRow[]).map(
-    (ticket) => ({
-      id: ticket.id,
-      title: ticket.client_email || "Client support",
-      subtitle: `${ticket.category || "Support"} · ${
-        ticket.subject || "Demande à traiter"
-      }`,
-      href: "/agent/support",
-      date: ticket.updated_at,
-    }),
-  );
+  const supportTickets = ((supportTicketsData ?? []) as SupportTicketRow[])
+    .sort((a, b) => {
+      const priorityDelta =
+        supportPriorityRank(a.priority) - supportPriorityRank(b.priority);
+      if (priorityDelta !== 0) return priorityDelta;
+      return (
+        new Date(supportActivityDate(b) ?? 0).getTime() -
+        new Date(supportActivityDate(a) ?? 0).getTime()
+      );
+    })
+    .slice(0, 6)
+    .map(buildSupportTicketItem);
 
   let refundRequests: DashboardItem[] = [];
   if (canAccessGestionLil) {
