@@ -163,9 +163,14 @@ export default async function GestionLilPage() {
             Pilotage compact des audits externes, du CA, des charges et du SAV admin.
           </p>
         </div>
-        <Link href="/agent/gestion/audits/new" style={{ textDecoration: "none" }}>
-          <SelenButton type="button">Nouvel audit</SelenButton>
-        </Link>
+        <div style={s.headerActions}>
+          <Link href="/agent/gestion/factures" style={{ textDecoration: "none" }}>
+            <SelenButton type="button" variant="ghost">Factures</SelenButton>
+          </Link>
+          <Link href="/agent/gestion/audits/new" style={{ textDecoration: "none" }}>
+            <SelenButton type="button">Nouvel audit</SelenButton>
+          </Link>
+        </div>
       </header>
 
       <section style={s.kpis}>
@@ -320,6 +325,7 @@ const s: Record<string, CSSProperties> = {
     flexWrap: "wrap",
     marginBottom: 18,
   },
+  headerActions: { display: "flex", gap: 8, flexWrap: "wrap" },
   eyebrow: {
     fontFamily: "var(--font-display)",
     fontSize: 9,

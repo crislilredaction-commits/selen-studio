@@ -5,11 +5,14 @@ import {
   createGoogleCalendarEvent,
   findGoogleCalendarConflicts,
   findSelenAppointmentConflicts,
+  getAuditMeetLink,
+  isRemoteAudit,
   type ExternalAuditRow,
 } from "@/lib/server/externalAudits";
 
 const STATUSES = new Set(["planned", "confirmed", "completed", "cancelled"]);
 const DEPARTURE_MODES = new Set(["home", "mother", "custom"]);
+const DELIVERY_MODES = new Set(["presentiel", "distanciel"]);
 
 function normalizeTravelMinutes(value: unknown) {
   const parsed = Number(String(value ?? "").trim());
@@ -47,6 +50,13 @@ export async function POST(req: Request) {
     }
 
     const departureMode = String(body.departureMode ?? "home").trim();
+    const requestedDeliveryMode = String(
+      body.auditDeliveryMode ?? body.audit_delivery_mode ?? "presentiel",
+    ).trim();
+    const auditDeliveryMode = DELIVERY_MODES.has(requestedDeliveryMode)
+      ? requestedDeliveryMode
+      : "presentiel";
+    const remoteAudit = auditDeliveryMode === "distanciel";
     const normalizedDepartureMode = DEPARTURE_MODES.has(departureMode)
       ? departureMode
       : "home";
@@ -56,9 +66,9 @@ export async function POST(req: Request) {
         : normalizedDepartureMode === "mother"
           ? "Abbeville"
           : "Droupt-Saint-Basle";
-    const travelDurationMinutes = normalizeTravelMinutes(
-      body.travelDurationMinutes,
-    );
+    const travelDurationMinutes = remoteAudit
+      ? ""
+      : normalizeTravelMinutes(body.travelDurationMinutes);
     const planAuditSent = boolValue(body.planAuditSent);
     const previousPlanSent = previousMetadata.plan_audit_sent === true;
     const now = new Date().toISOString();
@@ -69,6 +79,7 @@ export async function POST(req: Request) {
       contact_phone: String(body.contactPhone ?? "").trim() || null,
       address: String(body.address ?? "").trim() || null,
       audit_type: String(body.auditType ?? "").trim(),
+      audit_delivery_mode: auditDeliveryMode,
       certifier: String(body.certifier ?? "").trim() || null,
       audit_date: String(body.auditDate ?? "").trim(),
       start_time: String(body.startTime ?? "").trim(),
@@ -76,10 +87,11 @@ export async function POST(req: Request) {
       status: String(body.status ?? "planned").trim(),
       metadata: {
         ...previousMetadata,
+        audit_delivery_mode: auditDeliveryMode,
         notes: String(body.notes ?? "").trim(),
-        departure_mode: normalizedDepartureMode,
-        departure_address: departureAddress,
-        travel_duration_minutes: travelDurationMinutes,
+        departure_mode: remoteAudit ? null : normalizedDepartureMode,
+        departure_address: remoteAudit ? null : departureAddress,
+        travel_duration_minutes: remoteAudit ? null : travelDurationMinutes,
         plan_audit_sent: planAuditSent,
         plan_audit_sent_at: planAuditSent
           ? previousMetadata.plan_audit_sent_at || now
@@ -125,8 +137,17 @@ export async function POST(req: Request) {
 
     const savedAudit = data as ExternalAuditRow;
     const googleConflicts = await findGoogleCalendarConflicts(savedAudit);
-    const calendar = savedAudit.google_calendar_event_id
-      ? { created: false, error: null, eventId: savedAudit.google_calendar_event_id }
+    const shouldCreateCalendar =
+      !savedAudit.google_calendar_event_id ||
+      (isRemoteAudit(savedAudit) && !getAuditMeetLink(savedAudit));
+    const calendar = !shouldCreateCalendar
+      ? {
+          created: false,
+          error: null,
+          eventId: savedAudit.google_calendar_event_id,
+          meetLink: savedAudit.google_meet_link ?? null,
+          calendarLink: savedAudit.calendar_link ?? null,
+        }
       : await createGoogleCalendarEvent(savedAudit);
 
     if (calendar.created && calendar.eventId) {
@@ -134,10 +155,15 @@ export async function POST(req: Request) {
         .from("external_audits")
         .update({
           google_calendar_event_id: calendar.eventId,
+          google_meet_link: calendar.meetLink ?? savedAudit.google_meet_link ?? null,
+          calendar_link: calendar.calendarLink ?? savedAudit.calendar_link ?? null,
           metadata: {
             ...(savedAudit.metadata ?? {}),
             calendar_created_by: auth.email,
             calendar_created_at: new Date().toISOString(),
+            meet_link: calendar.meetLink ?? undefined,
+            google_meet_link: calendar.meetLink ?? undefined,
+            calendar_link: calendar.calendarLink ?? undefined,
             selen_conflicts: conflicts,
             google_conflicts: googleConflicts.conflicts,
           },

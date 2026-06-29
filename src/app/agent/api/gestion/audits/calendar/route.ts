@@ -5,6 +5,8 @@ import {
   createGoogleCalendarEvent,
   findGoogleCalendarConflicts,
   findSelenAppointmentConflicts,
+  getAuditMeetLink,
+  isRemoteAudit,
   type ExternalAuditRow,
 } from "@/lib/server/externalAudits";
 
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
     }
 
     const typedAudit = audit as ExternalAuditRow;
-    if (typedAudit.google_calendar_event_id) {
+    if (typedAudit.google_calendar_event_id && !(isRemoteAudit(typedAudit) && !getAuditMeetLink(typedAudit))) {
       return NextResponse.json({
         ok: true,
         calendar: {
@@ -60,10 +62,15 @@ export async function POST(req: Request) {
         .from("external_audits")
         .update({
           google_calendar_event_id: calendar.eventId,
+          google_meet_link: calendar.meetLink ?? typedAudit.google_meet_link ?? null,
+          calendar_link: calendar.calendarLink ?? typedAudit.calendar_link ?? null,
           metadata: {
             ...(typedAudit.metadata ?? {}),
             calendar_created_by: auth.email,
             calendar_created_at: new Date().toISOString(),
+            meet_link: calendar.meetLink ?? undefined,
+            google_meet_link: calendar.meetLink ?? undefined,
+            calendar_link: calendar.calendarLink ?? undefined,
             selen_conflicts: conflicts,
             google_conflicts: googleConflicts.conflicts,
           },

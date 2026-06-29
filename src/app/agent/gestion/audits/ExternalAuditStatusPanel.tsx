@@ -31,6 +31,16 @@ function formatDate(value?: string | null) {
   }).format(new Date(value));
 }
 
+function metadataText(audit: ExternalAuditRow, key: string) {
+  const metadata = audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+  const value = metadata[key];
+  return typeof value === "string" ? value : "";
+}
+
+function meetLink(audit: ExternalAuditRow) {
+  return audit.google_meet_link || metadataText(audit, "meet_link");
+}
+
 export default function ExternalAuditStatusPanel({
   audit,
   confirmationEmail,
@@ -235,15 +245,45 @@ export default function ExternalAuditStatusPanel({
       </SelenCard>
 
       <SelenCard>
-        <SelenCardTitle>Rappel Lil veille a 20h</SelenCardTitle>
+        <SelenCardTitle>Rappels automatiques</SelenCardTitle>
         <div style={s.grid}>
-          <Info label="Statut" value={audit.reminder_email_sent_at ? "Envoye" : "Non envoye"} />
-          <Info label="Date d'envoi" value={formatDate(audit.reminder_email_sent_at)} />
+          <Info
+            label="Client J-1 09h"
+            value={
+              audit.client_reminder_sent_at || metadataText(audit, "client_reminder_sent_at")
+                ? "Envoye"
+                : "Non envoye"
+            }
+          />
+          <Info
+            label="Date rappel client"
+            value={formatDate(
+              audit.client_reminder_sent_at || metadataText(audit, "client_reminder_sent_at"),
+            )}
+          />
+          <Info
+            label="Lil J-1 20h"
+            value={
+              audit.lil_reminder_sent_at ||
+              audit.reminder_email_sent_at ||
+              metadataText(audit, "lil_reminder_sent_at")
+                ? "Envoye"
+                : "Non envoye"
+            }
+          />
+          <Info
+            label="Date rappel Lil"
+            value={formatDate(
+              audit.lil_reminder_sent_at ||
+                audit.reminder_email_sent_at ||
+                metadataText(audit, "lil_reminder_sent_at"),
+            )}
+          />
         </div>
         <p style={s.muted}>
-          Le rappel automatique necessite un cron Vercel configure a 20h. Les
-          crons Vercel utilisent l'UTC : 20h France correspond a 18h UTC en ete
-          et 19h UTC en hiver.
+          Le rappel client part a J-1 09h Europe/Paris. Le rappel Lil part a
+          J-1 20h Europe/Paris. Le bouton manuel ci-dessous envoie uniquement
+          le rappel Lil.
         </p>
         <div style={s.actions}>
           <SelenButton
@@ -276,7 +316,16 @@ export default function ExternalAuditStatusPanel({
           <Info label="Calendar ID" value={liveGoogleStatus.calendarId || "-"} />
           <Info label="Timezone" value={liveGoogleStatus.timezone || "-"} />
           <Info label="Google event" value={audit.google_calendar_event_id || "-"} />
+          <Info label="Lien Meet" value={meetLink(audit) || "-"} />
+          <Info label="Lien agenda" value={audit.calendar_link || metadataText(audit, "calendar_link") || "-"} />
         </div>
+        {meetLink(audit) ? (
+          <div style={s.actions}>
+            <a href={meetLink(audit)} target="_blank" rel="noreferrer" style={s.actionLink}>
+              Rejoindre Meet
+            </a>
+          </div>
+        ) : null}
         <div style={s.actions}>
           <SelenButton
             type="button"
@@ -379,6 +428,19 @@ const s: Record<string, CSSProperties> = {
     lineHeight: 1.55,
   },
   actions: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 },
+  actionLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: 36,
+    padding: "0 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--selen-border)",
+    color: "var(--selen-gold2)",
+    background: "rgba(201, 148, 58, 0.1)",
+    textDecoration: "none",
+    fontSize: 12,
+    fontWeight: 700,
+  },
   muted: { color: "var(--selen-text2-oncard)", fontSize: 13, lineHeight: 1.6 },
   warning: {
     color: "var(--selen-danger)",

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/agent/api/jobs/external-audit-reminders",
+      "schedule": "0 7,8,18,19 * * *"
+    }
+  ]
+}

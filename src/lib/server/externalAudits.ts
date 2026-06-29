@@ -13,9 +13,14 @@ export type ExternalAuditRow = {
   start_time: string;
   end_time: string | null;
   status: string;
+  audit_delivery_mode: string | null;
   google_calendar_event_id: string | null;
+  google_meet_link: string | null;
+  calendar_link: string | null;
   confirmation_email_sent_at: string | null;
   reminder_email_sent_at: string | null;
+  client_reminder_sent_at: string | null;
+  lil_reminder_sent_at: string | null;
   created_at: string | null;
   updated_at: string | null;
   metadata: Record<string, unknown> | null;
@@ -55,6 +60,37 @@ export function googleMapsUrl(address?: string | null) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
     address,
   )}`;
+}
+
+export function auditDeliveryMode(audit: Pick<ExternalAuditRow, "audit_delivery_mode" | "metadata">) {
+  const metadata = audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+  const raw =
+    String(audit.audit_delivery_mode ?? "").trim() ||
+    (typeof metadata.audit_delivery_mode === "string"
+      ? metadata.audit_delivery_mode.trim()
+      : "");
+  return raw === "distanciel" ? "distanciel" : "presentiel";
+}
+
+export function isRemoteAudit(audit: Pick<ExternalAuditRow, "audit_delivery_mode" | "metadata">) {
+  return auditDeliveryMode(audit) === "distanciel";
+}
+
+export function getAuditMeetLink(
+  audit: Pick<ExternalAuditRow, "google_meet_link" | "metadata">,
+) {
+  if (audit.google_meet_link?.trim()) return audit.google_meet_link.trim();
+  const metadata = audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+  for (const key of ["meet_link", "google_meet_link", "google_meet_url", "meet_url"]) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function googleCalendarDateTime(date: string, time: string) {
+  const cleanTime = time.length === 5 ? `${time}:00` : time;
+  return `${date}T${cleanTime}`;
 }
 
 export async function findSelenAppointmentConflicts(
@@ -146,10 +182,11 @@ export async function createGoogleCalendarEvent(audit: ExternalAuditRow) {
     };
   }
 
+  const remote = isRemoteAudit(audit);
   const response = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
       calendarId,
-    )}/events`,
+    )}/events?conferenceDataVersion=1`,
     {
       method: "POST",
       headers: {
@@ -158,22 +195,35 @@ export async function createGoogleCalendarEvent(audit: ExternalAuditRow) {
       },
       body: JSON.stringify({
         summary: `Audit Qualiopi - ${audit.of_name}`,
-        location: audit.address || undefined,
+        location: remote ? undefined : audit.address || undefined,
         description: [
           `Contact : ${audit.contact_name || "-"}`,
           `Email : ${audit.contact_email || "-"}`,
           `Telephone : ${audit.contact_phone || "-"}`,
           `Type : ${audit.audit_type}`,
+          `Modalite : ${remote ? "Distanciel" : "Presentiel"}`,
           `Certificateur : ${audit.certifier || "-"}`,
+          remote ? "Google Meet demande automatiquement." : "",
         ].join("\n"),
         start: {
-          dateTime: auditStart(audit).toISOString(),
+          dateTime: googleCalendarDateTime(audit.audit_date, audit.start_time),
           timeZone,
         },
         end: {
-          dateTime: auditEnd(audit).toISOString(),
+          dateTime: googleCalendarDateTime(
+            audit.audit_date,
+            audit.end_time || auditEnd(audit).toTimeString().slice(0, 8),
+          ),
           timeZone,
         },
+        conferenceData: remote
+          ? {
+              createRequest: {
+                requestId: `selen-audit-${audit.id}-${Date.now()}`,
+                conferenceSolutionKey: { type: "hangoutsMeet" },
+              },
+            }
+          : undefined,
       }),
     },
   );
@@ -186,8 +236,26 @@ export async function createGoogleCalendarEvent(audit: ExternalAuditRow) {
     };
   }
 
-  const payload = (await response.json()) as { id?: string };
-  return { created: true, error: null, eventId: payload.id ?? null };
+  const payload = (await response.json()) as {
+    id?: string;
+    htmlLink?: string;
+    hangoutLink?: string;
+    conferenceData?: { entryPoints?: { entryPointType?: string; uri?: string }[] };
+  };
+  const meetLink =
+    payload.hangoutLink ||
+    payload.conferenceData?.entryPoints?.find(
+      (entry) => entry.entryPointType === "video" && entry.uri,
+    )?.uri ||
+    null;
+
+  return {
+    created: true,
+    error: null,
+    eventId: payload.id ?? null,
+    meetLink,
+    calendarLink: payload.htmlLink ?? null,
+  };
 }
 
 export async function findGoogleCalendarConflicts(audit: ExternalAuditRow) {

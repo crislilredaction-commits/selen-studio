@@ -2,7 +2,22 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireLilOwner } from "@/app/agent/api/support/_utils";
 import type { ExternalAuditRow } from "@/lib/server/externalAudits";
-import { sendExternalAuditReminder } from "@/lib/server/externalAuditEmails";
+import {
+  sendExternalAuditClientReminder,
+  sendExternalAuditLilReminder,
+} from "@/lib/server/externalAuditEmails";
+
+type ReminderAudience = "client" | "lil";
+
+function metadataOf(audit: ExternalAuditRow) {
+  return audit.metadata && typeof audit.metadata === "object"
+    ? { ...audit.metadata }
+    : {};
+}
+
+function asHistory(value: unknown) {
+  return Array.isArray(value) ? value.slice(-19) : [];
+}
 
 export async function POST(req: Request) {
   const auth = await requireLilOwner();
@@ -11,8 +26,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { auditId } = await req.json();
+    const { auditId, audience = "lil" } = await req.json();
     const id = String(auditId ?? "").trim();
+    const reminderAudience: ReminderAudience =
+      String(audience) === "client" ? "client" : "lil";
     if (!id) {
       return NextResponse.json({ error: "auditId requis." }, { status: 400 });
     }
@@ -31,11 +48,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Audit introuvable." }, { status: 404 });
     }
 
-    const email = await sendExternalAuditReminder(audit as ExternalAuditRow);
+    const typedAudit = audit as ExternalAuditRow;
+    const email =
+      reminderAudience === "client"
+        ? await sendExternalAuditClientReminder(typedAudit)
+        : await sendExternalAuditLilReminder(typedAudit);
     if (email.sent) {
+      const now = new Date().toISOString();
+      const metadata = metadataOf(typedAudit);
+      const history = asHistory(metadata.reminder_history);
       await admin
         .from("external_audits")
-        .update({ reminder_email_sent_at: new Date().toISOString() })
+        .update({
+          reminder_email_sent_at:
+            reminderAudience === "lil" ? now : typedAudit.reminder_email_sent_at,
+          client_reminder_sent_at:
+            reminderAudience === "client" ? now : typedAudit.client_reminder_sent_at,
+          lil_reminder_sent_at:
+            reminderAudience === "lil" ? now : typedAudit.lil_reminder_sent_at,
+          metadata: {
+            ...metadata,
+            [`${reminderAudience}_reminder_sent_at`]: now,
+            [`${reminderAudience}_reminder_method`]: "manual",
+            [`${reminderAudience}_reminder_status`]: "sent",
+            reminder_history: [
+              ...history,
+              {
+                audience: reminderAudience,
+                method: "manual",
+                status: "sent",
+                sent_at: now,
+                sent_by: auth.email,
+              },
+            ],
+          },
+        })
         .eq("id", id);
     }
 

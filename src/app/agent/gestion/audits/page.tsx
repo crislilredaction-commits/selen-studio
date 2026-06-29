@@ -4,7 +4,12 @@ import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { isLilOwner } from "@/lib/server/studioAdmin";
-import { auditStart, type ExternalAuditRow } from "@/lib/server/externalAudits";
+import {
+  auditDeliveryMode,
+  auditStart,
+  getAuditMeetLink,
+  type ExternalAuditRow,
+} from "@/lib/server/externalAudits";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("fr-FR", {
@@ -76,6 +81,15 @@ export default async function ExternalAuditsPage() {
                     <p style={s.muted}>
                       {formatDate(auditStart(audit).toISOString())} a{" "}
                       {audit.start_time.slice(0, 5)}
+                    </p>
+                    <p style={s.muted}>
+                      Type :{" "}
+                      {auditDeliveryMode(audit) === "distanciel"
+                        ? "Distanciel"
+                        : "Presentiel"}
+                      {auditDeliveryMode(audit) === "distanciel" && getAuditMeetLink(audit)
+                        ? ` - Meet : ${getAuditMeetLink(audit)}`
+                        : ""}
                     </p>
                     <div style={s.badges}>
                       <span style={audit.confirmation_email_sent_at ? s.badgeOk : s.badgeTodo}>

@@ -33,6 +33,10 @@ export default function ExternalAuditForm({
   const [departureMode, setDepartureMode] = useState(
     metadataText(audit, "departure_mode") || "home",
   );
+  const [auditDeliveryMode, setAuditDeliveryMode] = useState(
+    audit?.audit_delivery_mode || metadataText(audit, "audit_delivery_mode") || "presentiel",
+  );
+  const currentMeetLink = audit?.google_meet_link || metadataText(audit, "meet_link");
 
   async function post(url: string, body: Record<string, unknown>) {
     setBusy(true);
@@ -61,6 +65,7 @@ export default function ExternalAuditForm({
       contactPhone: formData.get("contactPhone"),
       address: formData.get("address"),
       auditType: formData.get("auditType"),
+      auditDeliveryMode: formData.get("auditDeliveryMode"),
       certifier: formData.get("certifier"),
       auditDate: formData.get("auditDate"),
       startTime: formData.get("startTime"),
@@ -128,6 +133,18 @@ export default function ExternalAuditForm({
           />
         </label>
         <Field label="Type d'audit" name="auditType" defaultValue={audit?.audit_type} required />
+        <label style={s.field}>
+          <span>Modalite</span>
+          <select
+            name="auditDeliveryMode"
+            value={auditDeliveryMode}
+            onChange={(event) => setAuditDeliveryMode(event.target.value)}
+            style={s.input}
+          >
+            <option value="presentiel">Presentiel</option>
+            <option value="distanciel">Distanciel</option>
+          </select>
+        </label>
         <Field label="Certificateur" name="certifier" defaultValue={audit?.certifier} />
         <Field label="Date" name="auditDate" type="date" defaultValue={audit?.audit_date} required />
         <Field
@@ -173,6 +190,25 @@ export default function ExternalAuditForm({
           />
           <span>Plan d'audit envoyé</span>
         </label>
+        {auditDeliveryMode === "distanciel" ? (
+          <div style={s.section}>
+            <h3 style={s.sectionTitle}>Visio</h3>
+            <p style={s.muted}>
+              Aucun trajet ni horaire de depart ne sera calcule. Un evenement
+              Google Calendar avec lien Meet sera demande automatiquement.
+            </p>
+            {currentMeetLink ? (
+              <a
+                href={currentMeetLink}
+                target="_blank"
+                rel="noreferrer"
+                style={s.actionLink}
+              >
+                Rejoindre Meet
+              </a>
+            ) : null}
+          </div>
+        ) : (
         <div style={s.section}>
           <h3 style={s.sectionTitle}>Départ vers l'audit</h3>
           <label style={s.field}>
@@ -212,6 +248,7 @@ export default function ExternalAuditForm({
             defaultValue={metadataText(audit, "travel_duration_minutes")}
           />
         </div>
+        )}
         <div style={s.actions}>
           {audit?.status === "cancelled" ? (
             <SelenButton
@@ -294,6 +331,27 @@ const s: Record<string, CSSProperties> = {
     color: "var(--selen-text-oncard)",
     fontFamily: "var(--font-display)",
     fontSize: 18,
+  },
+  muted: {
+    gridColumn: "1 / -1",
+    color: "var(--selen-text2-oncard)",
+    fontSize: 13,
+    lineHeight: 1.6,
+    margin: 0,
+  },
+  actionLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 36,
+    padding: "0 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--selen-border)",
+    color: "var(--selen-gold2)",
+    background: "rgba(201, 148, 58, 0.1)",
+    textDecoration: "none",
+    fontSize: 12,
+    fontWeight: 700,
   },
   checkboxRow: {
     gridColumn: "1 / -1",
