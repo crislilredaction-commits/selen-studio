@@ -28,6 +28,25 @@ export type ExternalAuditRow = {
 
 type AppointmentRow = Record<string, unknown> & { id: string };
 
+export type ExternalAuditMonthlyStats = {
+  currentMonthLabel: string;
+  previousMonthLabel: string;
+  currentMonthCount: number;
+  previousMonthCount: number;
+  average3Months: number;
+  average12Months: number | null;
+  yearTotal: number;
+  deliveryModeCurrentMonth: {
+    presentiel: number;
+    distanciel: number;
+  };
+  orderGiverCurrentMonth: {
+    certifopac: number;
+    icpf: number;
+    other: number;
+  };
+};
+
 const APPOINTMENT_DATE_KEYS = [
   "appointment_at",
   "starts_at",
@@ -41,6 +60,53 @@ const APPOINTMENT_DATE_KEYS = [
 
 function asString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthStart(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function monthLabel(key: string) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(`${key}-01T12:00:00`));
+}
+
+function auditMonthKey(auditDate: string) {
+  return auditDate.slice(0, 7);
+}
+
+function auditYear(auditDate: string) {
+  return auditDate.slice(0, 4);
+}
+
+function orderGiverBucket(audit: Pick<ExternalAuditRow, "certifier" | "metadata">) {
+  const metadata = audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+  const raw = [
+    audit.certifier,
+    metadata.order_giver,
+    metadata.donneur_ordre,
+    metadata.principal,
+    metadata.client_name,
+  ]
+    .map((value) => (typeof value === "string" ? value : ""))
+    .find((value) => value.trim());
+  const normalized = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (normalized.includes("certifopac")) return "certifopac";
+  if (normalized.includes("icpf")) return "icpf";
+  return "other";
 }
 
 export function auditStart(audit: Pick<ExternalAuditRow, "audit_date" | "start_time">) {
@@ -86,6 +152,72 @@ export function getAuditMeetLink(
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return "";
+}
+
+export async function getExternalAuditMonthlyStats(
+  referenceDate = new Date(),
+): Promise<ExternalAuditMonthlyStats> {
+  const admin = createSupabaseAdminClient();
+  const currentMonthStart = monthStart(referenceDate);
+  const currentMonth = monthKey(currentMonthStart);
+  const previousMonth = monthKey(addMonths(currentMonthStart, -1));
+  const threeMonthKeys = [0, -1, -2].map((offset) =>
+    monthKey(addMonths(currentMonthStart, offset)),
+  );
+  const twelveMonthKeys = Array.from({ length: 12 }, (_, index) =>
+    monthKey(addMonths(currentMonthStart, -index)),
+  );
+  const year = String(referenceDate.getFullYear());
+  const oldestNeeded = `${twelveMonthKeys[11]}-01`;
+
+  const { data, error } = await admin
+    .from("external_audits")
+    .select("id,audit_date,status,audit_delivery_mode,certifier,metadata")
+    .neq("status", "cancelled")
+    .gte("audit_date", oldestNeeded)
+    .order("audit_date", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const audits = (data ?? []) as ExternalAuditRow[];
+  const countByMonth = new Map<string, number>();
+  let yearTotal = 0;
+  const deliveryModeCurrentMonth = { presentiel: 0, distanciel: 0 };
+  const orderGiverCurrentMonth = { certifopac: 0, icpf: 0, other: 0 };
+
+  for (const audit of audits) {
+    const key = auditMonthKey(audit.audit_date);
+    countByMonth.set(key, (countByMonth.get(key) ?? 0) + 1);
+
+    if (auditYear(audit.audit_date) === year) yearTotal += 1;
+
+    if (key === currentMonth) {
+      const mode = auditDeliveryMode(audit);
+      deliveryModeCurrentMonth[mode] += 1;
+      orderGiverCurrentMonth[orderGiverBucket(audit)] += 1;
+    }
+  }
+
+  const average3Months =
+    threeMonthKeys.reduce((sum, key) => sum + (countByMonth.get(key) ?? 0), 0) / 3;
+  const hasEnough12MonthData =
+    audits.length > 0 && audits.some((audit) => audit.audit_date <= `${twelveMonthKeys[11]}-31`);
+  const average12Months = hasEnough12MonthData
+    ? twelveMonthKeys.reduce((sum, key) => sum + (countByMonth.get(key) ?? 0), 0) /
+      12
+    : null;
+
+  return {
+    currentMonthLabel: monthLabel(currentMonth),
+    previousMonthLabel: monthLabel(previousMonth),
+    currentMonthCount: countByMonth.get(currentMonth) ?? 0,
+    previousMonthCount: countByMonth.get(previousMonth) ?? 0,
+    average3Months,
+    average12Months,
+    yearTotal,
+    deliveryModeCurrentMonth,
+    orderGiverCurrentMonth,
+  };
 }
 
 function googleCalendarDateTime(date: string, time: string) {

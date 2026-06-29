@@ -7,7 +7,9 @@ import { isLilOwner } from "@/lib/server/studioAdmin";
 import {
   auditDeliveryMode,
   auditStart,
+  getExternalAuditMonthlyStats,
   getAuditMeetLink,
+  type ExternalAuditMonthlyStats,
   type ExternalAuditRow,
 } from "@/lib/server/externalAudits";
 
@@ -25,6 +27,19 @@ function planSent(audit: ExternalAuditRow) {
   return metadata(audit).plan_audit_sent === true;
 }
 
+function formatAverage(value: number | null) {
+  if (value === null) return "Donnees insuffisantes";
+  return new Intl.NumberFormat("fr-FR", {
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function formatShare(count: number, total: number) {
+  if (total <= 0) return "0";
+  const percent = Math.round((count / total) * 100);
+  return `${count} (${percent} %)`;
+}
+
 export default async function ExternalAuditsPage() {
   const canAccessGestionLil = await isLilOwner();
   if (!canAccessGestionLil) {
@@ -39,11 +54,14 @@ export default async function ExternalAuditsPage() {
   }
 
   const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("external_audits")
-    .select("*")
-    .order("audit_date", { ascending: true })
-    .order("start_time", { ascending: true });
+  const [{ data }, monthlyStats] = await Promise.all([
+    admin
+      .from("external_audits")
+      .select("*")
+      .order("audit_date", { ascending: true })
+      .order("start_time", { ascending: true }),
+    getExternalAuditMonthlyStats(),
+  ]);
 
   const audits = (data ?? []) as ExternalAuditRow[];
 
@@ -58,6 +76,8 @@ export default async function ExternalAuditsPage() {
           <SelenButton type="button">Nouvel audit</SelenButton>
         </Link>
       </header>
+
+      <MonthlyStatsBlock stats={monthlyStats} />
 
       <section style={s.list}>
         {audits.length === 0 ? (
@@ -111,6 +131,63 @@ export default async function ExternalAuditsPage() {
   );
 }
 
+function MonthlyStatsBlock({ stats }: { stats: ExternalAuditMonthlyStats }) {
+  const currentMonthTotal = stats.currentMonthCount;
+  return (
+    <SelenCard style={{ marginBottom: 14 }}>
+      <div style={s.statsHead}>
+        <div>
+          <SelenCardTitle style={{ marginBottom: 4 }}>Suivi mensuel</SelenCardTitle>
+          <p style={s.muted}>
+            Activite audits externes hors audits annules, comptee selon la date
+            d'audit.
+          </p>
+        </div>
+        <span style={s.meta}>{stats.currentMonthLabel}</span>
+      </div>
+      <div style={s.kpiGrid}>
+        <StatCard label={stats.currentMonthLabel} value={String(stats.currentMonthCount)} />
+        <StatCard label={stats.previousMonthLabel} value={String(stats.previousMonthCount)} />
+        <StatCard label="Moyenne 3 mois" value={formatAverage(stats.average3Months)} />
+        <StatCard label="Moyenne 12 mois" value={formatAverage(stats.average12Months)} />
+        <StatCard label="Total annee en cours" value={String(stats.yearTotal)} />
+      </div>
+      <div style={s.splitGrid}>
+        <div style={s.splitBox}>
+          <strong>Presentiel / distanciel</strong>
+          <span>
+            Presentiel : {formatShare(stats.deliveryModeCurrentMonth.presentiel, currentMonthTotal)}
+          </span>
+          <span>
+            Distanciel : {formatShare(stats.deliveryModeCurrentMonth.distanciel, currentMonthTotal)}
+          </span>
+        </div>
+        <div style={s.splitBox}>
+          <strong>Donneurs d'ordre</strong>
+          <span>
+            Certifopac : {formatShare(stats.orderGiverCurrentMonth.certifopac, currentMonthTotal)}
+          </span>
+          <span>
+            ICPF : {formatShare(stats.orderGiverCurrentMonth.icpf, currentMonthTotal)}
+          </span>
+          <span>
+            Autre : {formatShare(stats.orderGiverCurrentMonth.other, currentMonthTotal)}
+          </span>
+        </div>
+      </div>
+    </SelenCard>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={s.kpi}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 const s: Record<string, CSSProperties> = {
   page: { maxWidth: 1180, margin: "0 auto", padding: "24px 28px 48px" },
   header: {
@@ -134,6 +211,52 @@ const s: Record<string, CSSProperties> = {
     color: "var(--selen-text)",
   },
   list: { display: "grid", gap: 12 },
+  statsHead: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    marginBottom: 12,
+  },
+  meta: {
+    color: "var(--selen-gold2)",
+    fontSize: 12,
+    fontWeight: 700,
+    textTransform: "capitalize",
+  },
+  kpiGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    gap: 10,
+    marginBottom: 12,
+  },
+  kpi: {
+    display: "grid",
+    gap: 4,
+    padding: 12,
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--selen-border)",
+    background: "rgba(247, 239, 224, 0.06)",
+    color: "var(--selen-text2-oncard)",
+    fontSize: 12,
+    minWidth: 0,
+  },
+  splitGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 10,
+  },
+  splitBox: {
+    display: "grid",
+    gap: 5,
+    padding: 12,
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid rgba(201, 148, 58, 0.24)",
+    color: "var(--selen-text2-oncard)",
+    fontSize: 12,
+    lineHeight: 1.5,
+  },
   row: {
     display: "flex",
     justifyContent: "space-between",

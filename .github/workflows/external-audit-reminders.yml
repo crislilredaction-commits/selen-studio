@@ -1,0 +1,31 @@
+name: External audit reminders
+
+# GitHub Actions remplace Vercel Cron pour les rappels automatiques Selen.
+# Secrets requis dans GitHub :
+# - CRON_SECRET : doit etre identique a la variable d'environnement Vercel.
+# - SELEN_STUDIO_BASE_URL : URL de production, ex. https://ton-domaine-ou-url-vercel
+#
+# GitHub cron utilise UTC. La route decide ensuite selon l'heure Europe/Paris :
+# - 09h Europe/Paris => rappel client J-1
+# - 20h Europe/Paris => rappel Lil J-1
+# Les passages 07/08/18/19 UTC couvrent ete/hiver.
+
+on:
+  schedule:
+    - cron: "0 7,8,18,19 * * *"
+  workflow_dispatch:
+
+jobs:
+  external-audit-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger external audit reminders
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SELEN_STUDIO_BASE_URL: ${{ secrets.SELEN_STUDIO_BASE_URL }}
+        run: |
+          test -n "$CRON_SECRET"
+          test -n "$SELEN_STUDIO_BASE_URL"
+          curl -fsS -X POST "$SELEN_STUDIO_BASE_URL/agent/api/jobs/external-audit-reminders" \
+            -H "Authorization: Bearer $CRON_SECRET"
