@@ -112,6 +112,37 @@ async function archiveLinkedAudits(
   return results;
 }
 
+async function findLinkedAuditConflicts(
+  admin: SupabaseAdmin,
+  auditIds: string[],
+  currentInvoiceId?: string,
+) {
+  if (auditIds.length === 0) return [];
+
+  const { data, error } = await admin
+    .from("lil_invoices")
+    .select("id,invoice_number,linked_audit_ids")
+    .neq("status", "cancelled")
+    .limit(2000);
+
+  if (error) throw new Error(error.message);
+  const requested = new Set(auditIds);
+  return (data ?? [])
+    .filter((invoice) => invoice.id !== currentInvoiceId)
+    .flatMap((invoice) =>
+      Array.isArray(invoice.linked_audit_ids)
+        ? invoice.linked_audit_ids
+            .map((id) => String(id))
+            .filter((id) => requested.has(id))
+            .map((auditId) => ({
+              auditId,
+              invoiceId: invoice.id,
+              invoiceNumber: invoice.invoice_number ?? "brouillon",
+            }))
+        : [],
+    );
+}
+
 export async function POST(req: Request) {
   const auth = await requireLilOwner();
   if (!auth.ok) {
@@ -305,6 +336,21 @@ export async function POST(req: Request) {
           "1DawT2mz4m6pwRR3yvgWQVpJA5iU7R9Zi",
       },
     };
+
+    const linkedConflicts = await findLinkedAuditConflicts(
+      admin,
+      payload.linked_audit_ids,
+      existing?.id,
+    );
+    if (linkedConflicts.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Un ou plusieurs audits sont deja lies a une autre facture.",
+          conflicts: linkedConflicts,
+        },
+        { status: 400 },
+      );
+    }
 
     if (!payload.recipient_name || !payload.invoice_date) {
       return NextResponse.json(

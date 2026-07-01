@@ -9,6 +9,7 @@ import {
   isRemoteAudit,
   type ExternalAuditRow,
 } from "@/lib/server/externalAudits";
+import { eurosToCents } from "@/lib/lilInvoiceShared";
 
 const STATUSES = new Set(["planned", "confirmed", "completed", "to_invoice", "cancelled"]);
 const DEPARTURE_MODES = new Set(["home", "mother", "custom"]);
@@ -21,6 +22,11 @@ function normalizeTravelMinutes(value: unknown) {
 
 function boolValue(value: unknown) {
   return value === true || value === "true" || value === "on";
+}
+
+function moneyCents(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+  return eurosToCents(String(value ?? "")) ?? 0;
 }
 
 export async function POST(req: Request) {
@@ -88,6 +94,9 @@ export async function POST(req: Request) {
       metadata: {
         ...previousMetadata,
         audit_delivery_mode: auditDeliveryMode,
+        audit_reference: String(body.auditReference ?? "").trim(),
+        audit_amount_cents: moneyCents(body.auditAmount),
+        travel_expense_cents: moneyCents(body.travelExpenseAmount),
         notes: String(body.notes ?? "").trim(),
         departure_mode: remoteAudit ? null : normalizedDepartureMode,
         departure_address: remoteAudit ? null : departureAddress,

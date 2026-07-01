@@ -12,6 +12,16 @@ function isArchived(audit: ExternalAuditRow) {
   return metadata.archived === true || metadata.archived === "true";
 }
 
+function linkedAuditIds(rows: { linked_audit_ids?: unknown }[]) {
+  return new Set(
+    rows.flatMap((row) =>
+      Array.isArray(row.linked_audit_ids)
+        ? row.linked_audit_ids.map((id) => String(id))
+        : [],
+    ),
+  );
+}
+
 export default async function NewLilInvoicePage() {
   const canAccessGestionLil = await isLilOwner();
   if (!canAccessGestionLil) {
@@ -22,12 +32,20 @@ export default async function NewLilInvoicePage() {
     );
   }
   const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("external_audits")
-    .select("*")
-    .in("status", ["to_invoice", "completed", "confirmed", "planned"])
-    .order("audit_date", { ascending: false })
-    .limit(80);
+  const [{ data }, { data: invoiceLinks }] = await Promise.all([
+    admin
+      .from("external_audits")
+      .select("*")
+      .in("status", ["to_invoice", "completed", "confirmed", "planned"])
+      .order("audit_date", { ascending: false })
+      .limit(80),
+    admin
+      .from("lil_invoices")
+      .select("linked_audit_ids")
+      .neq("status", "cancelled")
+      .limit(2000),
+  ]);
+  const alreadyLinked = linkedAuditIds(invoiceLinks ?? []);
 
   return (
     <main style={s.page}>
@@ -35,7 +53,9 @@ export default async function NewLilInvoicePage() {
         <SelenButton type="button" variant="ghost">Retour</SelenButton>
       </Link>
       <InvoiceForm
-        audits={((data ?? []) as ExternalAuditRow[]).filter((audit) => !isArchived(audit))}
+        audits={((data ?? []) as ExternalAuditRow[]).filter(
+          (audit) => !isArchived(audit) && !alreadyLinked.has(audit.id),
+        )}
       />
     </main>
   );

@@ -23,6 +23,14 @@ function metadataText(audit: ExternalAuditRow, key: string) {
   return typeof value === "string" ? value : "";
 }
 
+function metadataCents(audit: ExternalAuditRow, key: string) {
+  const metadata = audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+  const value = metadata[key];
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, Math.round(value));
+  if (typeof value === "string") return eurosToCents(value) ?? 0;
+  return 0;
+}
+
 function auditLabel(audit: ExternalAuditRow) {
   return `${audit.of_name} - ${new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "medium",
@@ -43,18 +51,52 @@ function isCertifopacAudit(audit: ExternalAuditRow) {
   return haystack.includes("certifopac");
 }
 
-function lineFromAudit(audit: ExternalAuditRow): LilInvoiceLine {
+function isIcpfAudit(audit: ExternalAuditRow) {
+  return String(audit.certifier ?? "").toLowerCase().includes("icpf");
+}
+
+function auditReference(audit: ExternalAuditRow) {
+  return metadataText(audit, "audit_reference") || audit.id.slice(0, 8);
+}
+
+function lineFromAudit(audit: ExternalAuditRow): LilInvoiceLine[] {
+  if (isIcpfAudit(audit)) {
+    const amount = metadataCents(audit, "audit_amount_cents");
+    const travel = metadataCents(audit, "travel_expense_cents");
+    const reference = auditReference(audit);
+    const lines: LilInvoiceLine[] = [
+      {
+        label: `Audit ICPF - ${audit.audit_date} - Ref. ${reference}`,
+        details: audit.of_name,
+        quantity: 1,
+        unitAmountCents: amount,
+        totalAmountCents: amount,
+      },
+    ];
+    if (travel > 0) {
+      lines.push({
+        label: `Frais de deplacement - ${audit.audit_date} - Ref. ${reference}`,
+        details: audit.of_name,
+        quantity: 1,
+        unitAmountCents: travel,
+        totalAmountCents: travel,
+      });
+    }
+    return lines;
+  }
+
   const amount = isCertifopacAudit(audit)
     ? CERTIFOPAC_AUDIT_AMOUNT_CENTS
-    : eurosToCents(metadataText(audit, "invoice_amount") || metadataText(audit, "fee_amount")) ??
+    : metadataCents(audit, "audit_amount_cents") ||
+      eurosToCents(metadataText(audit, "invoice_amount") || metadataText(audit, "fee_amount")) ||
       0;
-  return {
+  return [{
     label: `Audit Qualiopi - ${audit.of_name}`,
     details: `${audit.audit_type} - ${audit.audit_date}`,
     quantity: 1,
     unitAmountCents: amount,
     totalAmountCents: amount,
-  };
+  }];
 }
 
 function emptyLine(): LilInvoiceLine {
@@ -102,7 +144,7 @@ export default function InvoiceForm({
     setSelectedAuditIds(nextIds);
     if (invoiceType === "manual") return;
     const selectedAudits = audits.filter((audit) => nextIds.includes(audit.id));
-    const nextLines = selectedAudits.map(lineFromAudit);
+    const nextLines = selectedAudits.flatMap(lineFromAudit);
     setLines(nextLines.length ? nextLines : [emptyLine()]);
     if (!invoice?.recipient_name && selectedAudits[0]) {
       const first = selectedAudits[0];

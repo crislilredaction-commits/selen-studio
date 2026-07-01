@@ -10,6 +10,7 @@ import {
   invoiceTypeLabel,
   type LilInvoiceRow,
 } from "@/lib/server/lilInvoices";
+import IcpfMonthlyInvoiceCard from "./IcpfMonthlyInvoiceCard";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(
@@ -68,6 +69,8 @@ export default async function LilInvoicesPage() {
           </Link>
         </div>
       </header>
+
+      <IcpfMonthlyInvoiceCard />
 
       <section style={s.list}>
         {invoices.length === 0 ? (

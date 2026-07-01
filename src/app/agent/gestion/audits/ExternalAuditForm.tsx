@@ -22,6 +22,17 @@ function metadataText(audit: ExternalAuditRow | null | undefined, key: string) {
   return typeof value === "string" ? value : "";
 }
 
+function metadataMoney(audit: ExternalAuditRow | null | undefined, key: string) {
+  const metadata =
+    audit?.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+  const value = metadata[key];
+  if (typeof value === "number" && value > 0) {
+    return String((value / 100).toFixed(2)).replace(".", ",");
+  }
+  if (typeof value === "string") return value;
+  return "";
+}
+
 export default function ExternalAuditForm({
   audit,
 }: {
@@ -68,6 +79,9 @@ export default function ExternalAuditForm({
       auditType: formData.get("auditType"),
       auditDeliveryMode: formData.get("auditDeliveryMode"),
       certifier: formData.get("certifier"),
+      auditReference: formData.get("auditReference"),
+      auditAmount: formData.get("auditAmount"),
+      travelExpenseAmount: formData.get("travelExpenseAmount"),
       auditDate: formData.get("auditDate"),
       startTime: formData.get("startTime"),
       endTime: formData.get("endTime"),
@@ -146,7 +160,32 @@ export default function ExternalAuditForm({
             <option value="distanciel">Distanciel</option>
           </select>
         </label>
-        <Field label="Certificateur" name="certifier" defaultValue={audit?.certifier} />
+        <label style={s.field}>
+          <span>Certificateur</span>
+          <select name="certifier" defaultValue={audit?.certifier ?? ""} style={s.input}>
+            <option value="">A confirmer</option>
+            <option value="Certifopac">Certifopac</option>
+            <option value="ICPF">ICPF</option>
+          </select>
+        </label>
+        <div style={s.section}>
+          <h3 style={s.sectionTitle}>Facturation</h3>
+          <Field
+            label="Reference audit"
+            name="auditReference"
+            defaultValue={metadataText(audit, "audit_reference")}
+          />
+          <Field
+            label="Montant audit HT"
+            name="auditAmount"
+            defaultValue={metadataMoney(audit, "audit_amount_cents")}
+          />
+          <Field
+            label="Frais de deplacement HT"
+            name="travelExpenseAmount"
+            defaultValue={metadataMoney(audit, "travel_expense_cents")}
+          />
+        </div>
         <Field label="Date" name="auditDate" type="date" defaultValue={audit?.audit_date} required />
         <Field
           label="Heure debut"
