@@ -19,6 +19,8 @@ const INVOICE_TYPES = new Set([
   "manual",
 ]);
 
+type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
+
 function parseLines(value: unknown): LilInvoiceLine[] {
   if (!Array.isArray(value)) return [];
   return value.map((line) => ({
@@ -44,6 +46,70 @@ async function loadInvoice(id: string) {
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data as LilInvoiceRow | null;
+}
+
+async function archiveLinkedAudits(
+  admin: SupabaseAdmin,
+  invoice: LilInvoiceRow,
+  archivedBy: string,
+) {
+  const auditIds = Array.isArray(invoice.linked_audit_ids)
+    ? invoice.linked_audit_ids.map((id) => String(id).trim()).filter(Boolean)
+    : [];
+  if (auditIds.length === 0) return [];
+
+  const { data, error } = await admin
+    .from("external_audits")
+    .select("id,metadata")
+    .in("id", auditIds);
+
+  if (error) {
+    console.error("Archivage audits factures echoue.", {
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoice_number,
+      error: error.message,
+    });
+    return auditIds.map((id) => ({ id, status: "failed", error: error.message }));
+  }
+
+  const now = new Date().toISOString();
+  const results = [];
+  for (const audit of data ?? []) {
+    const metadata =
+      audit.metadata && typeof audit.metadata === "object"
+        ? (audit.metadata as Record<string, unknown>)
+        : {};
+    const { error: updateError } = await admin
+      .from("external_audits")
+      .update({
+        metadata: {
+          ...metadata,
+          archived: true,
+          archived_at: metadata.archived_at || now,
+          archived_by: archivedBy,
+          archived_reason: "invoice_generated",
+          invoice_id: invoice.id,
+          invoice_number: invoice.invoice_number,
+        },
+      })
+      .eq("id", audit.id);
+
+    console.info("external_audit_archived_from_invoice", {
+      auditId: audit.id,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoice_number,
+      status: updateError ? "failed" : "archived",
+      error: updateError?.message ?? null,
+    });
+
+    results.push({
+      id: audit.id,
+      status: updateError ? "failed" : "archived",
+      error: updateError?.message ?? null,
+    });
+  }
+
+  return results;
 }
 
 export async function POST(req: Request) {
@@ -193,7 +259,12 @@ export async function POST(req: Request) {
           .select("*")
           .single();
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-        return NextResponse.json({ ok: true, invoice: data, email });
+        const archivedAudits = await archiveLinkedAudits(
+          admin,
+          data as LilInvoiceRow,
+          auth.email,
+        );
+        return NextResponse.json({ ok: true, invoice: data, email, archivedAudits });
       }
 
       await admin
@@ -349,7 +420,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: issueError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, invoice: issued, email });
+    const archivedAudits = await archiveLinkedAudits(
+      admin,
+      issued as LilInvoiceRow,
+      auth.email,
+    );
+
+    return NextResponse.json({ ok: true, invoice: issued, email, archivedAudits });
   } catch (error) {
     console.error("Action facture Lil echouee.", error);
     return NextResponse.json(

@@ -27,6 +27,22 @@ function planSent(audit: ExternalAuditRow) {
   return metadata(audit).plan_audit_sent === true;
 }
 
+function isArchived(audit: ExternalAuditRow) {
+  const meta = metadata(audit);
+  return meta.archived === true || meta.archived === "true";
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    planned: "Planifie",
+    confirmed: "Confirme",
+    completed: "Termine",
+    to_invoice: "A facturer",
+    cancelled: "Annule",
+  };
+  return labels[status] ?? status;
+}
+
 function formatAverage(value: number | null) {
   if (value === null) return "Donnees insuffisantes";
   return new Intl.NumberFormat("fr-FR", {
@@ -40,7 +56,13 @@ function formatShare(count: number, total: number) {
   return `${count} (${percent} %)`;
 }
 
-export default async function ExternalAuditsPage() {
+type ExternalAuditsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function ExternalAuditsPage({
+  searchParams,
+}: ExternalAuditsPageProps) {
   const canAccessGestionLil = await isLilOwner();
   if (!canAccessGestionLil) {
     return (
@@ -54,6 +76,12 @@ export default async function ExternalAuditsPage() {
   }
 
   const admin = createSupabaseAdminClient();
+  const params = (await searchParams) ?? {};
+  const archivesParam = params.archives;
+  const showArchives =
+    archivesParam === "1" ||
+    archivesParam === "true" ||
+    (Array.isArray(archivesParam) && archivesParam.includes("1"));
   const [{ data }, monthlyStats] = await Promise.all([
     admin
       .from("external_audits")
@@ -64,6 +92,9 @@ export default async function ExternalAuditsPage() {
   ]);
 
   const audits = (data ?? []) as ExternalAuditRow[];
+  const visibleAudits = showArchives
+    ? audits.filter(isArchived)
+    : audits.filter((audit) => !isArchived(audit));
 
   return (
     <main style={s.page}>
@@ -72,20 +103,32 @@ export default async function ExternalAuditsPage() {
           <p style={s.eyebrow}>Gestion Lil</p>
           <h1 style={s.title}>Audits externes</h1>
         </div>
-        <Link href="/agent/gestion/audits/new" style={{ textDecoration: "none" }}>
-          <SelenButton type="button">Nouvel audit</SelenButton>
-        </Link>
+        <div style={s.headerActions}>
+          <Link
+            href={showArchives ? "/agent/gestion/audits" : "/agent/gestion/audits?archives=1"}
+            style={{ textDecoration: "none" }}
+          >
+            <SelenButton type="button" variant="ghost">
+              {showArchives ? "Voir actifs" : "Archives"}
+            </SelenButton>
+          </Link>
+          <Link href="/agent/gestion/audits/new" style={{ textDecoration: "none" }}>
+            <SelenButton type="button">Nouvel audit</SelenButton>
+          </Link>
+        </div>
       </header>
 
       <MonthlyStatsBlock stats={monthlyStats} />
 
       <section style={s.list}>
-        {audits.length === 0 ? (
+        {visibleAudits.length === 0 ? (
           <SelenCard>
-            <SelenCardTitle>Aucun audit externe.</SelenCardTitle>
+            <SelenCardTitle>
+              {showArchives ? "Aucune archive audit." : "Aucun audit externe actif."}
+            </SelenCardTitle>
           </SelenCard>
         ) : (
-          audits.map((audit) => (
+          visibleAudits.map((audit) => (
             <Link
               key={audit.id}
               href={`/agent/gestion/audits/${audit.id}`}
@@ -120,7 +163,7 @@ export default async function ExternalAuditsPage() {
                       </span>
                     </div>
                   </div>
-                  <strong style={s.status}>{audit.status}</strong>
+                  <strong style={s.status}>{statusLabel(audit.status)}</strong>
                 </div>
               </SelenCard>
             </Link>
@@ -196,6 +239,13 @@ const s: Record<string, CSSProperties> = {
     alignItems: "flex-start",
     gap: 12,
     marginBottom: 20,
+  },
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    flexWrap: "wrap",
   },
   eyebrow: {
     fontFamily: "var(--font-display)",

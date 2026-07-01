@@ -1,0 +1,23 @@
+name: External audit lifecycle
+
+# GitHub Actions remplace Vercel Cron pour ce job.
+# CRON_SECRET doit etre identique au secret GitHub et a la variable Vercel.
+# SELEN_STUDIO_BASE_URL doit pointer vers l'URL de production Selen Studio.
+on:
+  schedule:
+    # GitHub Actions runs in UTC. These two calls cover 17:30 Europe/Paris
+    # across summer/winter time; the route decides server-side in Paris time.
+    - cron: "30 15,16 * * *"
+  workflow_dispatch:
+
+jobs:
+  external-audit-lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Move current-day external audits to invoice status
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SELEN_STUDIO_BASE_URL: ${{ secrets.SELEN_STUDIO_BASE_URL }}
+        run: |
+          curl -fsS -X POST "$SELEN_STUDIO_BASE_URL/agent/api/jobs/external-audit-lifecycle" \
+            -H "Authorization: Bearer $CRON_SECRET"

@@ -27,7 +27,7 @@ export default async function LilInvoiceDetailPage({ params }: PageProps) {
     admin
       .from("external_audits")
       .select("*")
-      .in("status", ["completed", "confirmed", "planned"])
+      .in("status", ["to_invoice", "completed", "confirmed", "planned"])
       .order("audit_date", { ascending: false })
       .limit(80),
   ]);

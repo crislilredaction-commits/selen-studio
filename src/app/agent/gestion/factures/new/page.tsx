@@ -7,6 +7,11 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import type { ExternalAuditRow } from "@/lib/server/externalAudits";
 import InvoiceForm from "@/app/agent/gestion/factures/InvoiceForm";
 
+function isArchived(audit: ExternalAuditRow) {
+  const metadata = audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
+  return metadata.archived === true || metadata.archived === "true";
+}
+
 export default async function NewLilInvoicePage() {
   const canAccessGestionLil = await isLilOwner();
   if (!canAccessGestionLil) {
@@ -20,7 +25,7 @@ export default async function NewLilInvoicePage() {
   const { data } = await admin
     .from("external_audits")
     .select("*")
-    .in("status", ["completed", "confirmed", "planned"])
+    .in("status", ["to_invoice", "completed", "confirmed", "planned"])
     .order("audit_date", { ascending: false })
     .limit(80);
 
@@ -29,7 +34,9 @@ export default async function NewLilInvoicePage() {
       <Link href="/agent/gestion/factures" style={{ textDecoration: "none" }}>
         <SelenButton type="button" variant="ghost">Retour</SelenButton>
       </Link>
-      <InvoiceForm audits={(data ?? []) as ExternalAuditRow[]} />
+      <InvoiceForm
+        audits={((data ?? []) as ExternalAuditRow[]).filter((audit) => !isArchived(audit))}
+      />
     </main>
   );
 }

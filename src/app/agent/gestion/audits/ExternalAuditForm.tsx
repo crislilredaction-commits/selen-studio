@@ -11,6 +11,7 @@ const STATUSES = [
   ["planned", "Planifie"],
   ["confirmed", "Confirme"],
   ["completed", "Termine"],
+  ["to_invoice", "A facturer"],
   ["cancelled", "Annule"],
 ];
 

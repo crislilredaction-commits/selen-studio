@@ -54,6 +54,11 @@ function planSent(audit: ExternalAuditRow) {
   return metadata(audit).plan_audit_sent === true;
 }
 
+function isArchived(audit: ExternalAuditRow) {
+  const meta = metadata(audit);
+  return meta.archived === true || meta.archived === "true";
+}
+
 function daysUntil(audit: ExternalAuditRow) {
   const start = new Date(`${audit.audit_date}T${audit.start_time}`).getTime();
   const today = new Date();
@@ -116,7 +121,7 @@ export default async function GestionLilPage() {
   const refundRows = (refunds ?? []) as Row[];
   const auditRows = (audits ?? []) as ExternalAuditRow[];
   const activeAudits = auditRows.filter((audit) =>
-    ["planned", "confirmed"].includes(audit.status),
+    ["planned", "confirmed"].includes(audit.status) && !isArchived(audit),
   );
   const upcomingAudits = activeAudits.filter((audit) => daysUntil(audit) >= 0);
   const planAlerts = upcomingAudits.filter((audit) => {

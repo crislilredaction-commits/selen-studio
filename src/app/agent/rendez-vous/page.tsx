@@ -177,6 +177,11 @@ function externalAuditMeetLink(audit: ExternalAuditRow) {
   );
 }
 
+function externalAuditArchived(audit: ExternalAuditRow) {
+  const meta = externalAuditMetadata(audit);
+  return meta.archived === true || meta.archived === "true";
+}
+
 export default function AgentRendezVousPage() {
   const supabase = useMemo(() => createClient(), []);
   const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
@@ -210,7 +215,11 @@ export default function AgentRendezVousPage() {
       .in("status", ["planned", "confirmed"])
       .order("audit_date", { ascending: true })
       .order("start_time", { ascending: true });
-    setExternalAudits((auditsData ?? []) as ExternalAuditRow[]);
+    setExternalAudits(
+      ((auditsData ?? []) as ExternalAuditRow[]).filter(
+        (audit) => !externalAuditArchived(audit),
+      ),
+    );
     setLoading(false);
   }
 

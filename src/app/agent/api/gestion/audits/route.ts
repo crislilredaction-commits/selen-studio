@@ -10,7 +10,7 @@ import {
   type ExternalAuditRow,
 } from "@/lib/server/externalAudits";
 
-const STATUSES = new Set(["planned", "confirmed", "completed", "cancelled"]);
+const STATUSES = new Set(["planned", "confirmed", "completed", "to_invoice", "cancelled"]);
 const DEPARTURE_MODES = new Set(["home", "mother", "custom"]);
 const DELIVERY_MODES = new Set(["presentiel", "distanciel"]);
 
