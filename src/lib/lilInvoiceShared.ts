@@ -1,4 +1,4 @@
-export type LilInvoiceStatus = "draft" | "issued" | "sent" | "paid" | "cancelled";
+export type LilInvoiceStatus = "draft" | "generated" | "deposited" | "paid" | "cancelled";
 export type LilInvoiceType = "certifopac_single_audit" | "icpf_monthly" | "manual";
 
 export type LilInvoiceLine = {

@@ -70,6 +70,7 @@ export type LilInvoiceRow = {
   pdf_url: string | null;
   issued_at: string | null;
   sent_at: string | null;
+  deposited_at: string | null;
   paid_at: string | null;
   email_sent_at: string | null;
   cancelled_at: string | null;

@@ -241,7 +241,11 @@ export default function InvoiceForm({
     }, 900);
   }
 
-  async function submit(formData: FormData, action: "save_draft" | "issue", autosave = false) {
+  async function submit(
+    formData: FormData,
+    action: "save_draft" | "generate_pdf",
+    autosave = false,
+  ) {
     setBusy(action);
     if (!autosave) setNotice("");
     setError("");
@@ -285,10 +289,8 @@ export default function InvoiceForm({
       return;
     }
     setNotice(
-      action === "issue"
-        ? result.email?.sent
-          ? `Facture generee et envoyee a ${result.email.to}.`
-          : result.email?.error ?? "Facture generee, email non envoye."
+      action === "generate_pdf"
+        ? "PDF genere. Aucun email n'a ete envoye."
         : "Brouillon enregistre.",
     );
     if (!invoice?.id && result.invoice?.id) {
@@ -327,7 +329,7 @@ export default function InvoiceForm({
     router.refresh();
   }
 
-  async function invoiceAction(action: "send_email" | "mark_paid") {
+  async function invoiceAction(action: "mark_deposited" | "mark_paid") {
     if (!invoice?.id) return;
     setBusy(action);
     setNotice("");
@@ -347,12 +349,8 @@ export default function InvoiceForm({
       setError(result.error ?? "Action impossible.");
       return;
     }
-    if (action === "send_email") {
-      setNotice(
-        result.email?.sent
-          ? `Facture envoyee a ${result.email.to}.`
-          : result.email?.error ?? "Email non envoye.",
-      );
+    if (action === "mark_deposited") {
+      setNotice("Facture marquee deposee sur la plateforme.");
     } else {
       setNotice("Facture marquee payee.");
     }
@@ -648,22 +646,29 @@ export default function InvoiceForm({
               type="button"
               disabled={Boolean(busy)}
               onClick={() => {
-                if (formRef.current) void submit(new FormData(formRef.current), "issue");
+                if (formRef.current) void submit(new FormData(formRef.current), "generate_pdf");
               }}
             >
-              {busy === "issue" ? "Generation..." : "Generer PDF et envoyer"}
+              {busy === "generate_pdf" ? "Generation..." : "Generer PDF"}
             </SelenButton>
           </div>
-        ) : invoice?.status === "issued" || invoice?.status === "sent" ? (
+        ) : invoice?.status === "generated" || invoice?.status === "deposited" ? (
           <div style={s.actionsFull}>
-            <SelenButton
-              type="button"
-              variant="ghost"
-              disabled={Boolean(busy)}
-              onClick={() => void invoiceAction("send_email")}
-            >
-              {busy === "send_email" ? "Envoi..." : "Envoyer / renvoyer email"}
-            </SelenButton>
+            {invoice?.pdf_url ? (
+              <a href={invoice.pdf_url} download style={s.actionLink}>
+                Telecharger PDF
+              </a>
+            ) : null}
+            {invoice.status === "generated" ? (
+              <SelenButton
+                type="button"
+                variant="secondary"
+                disabled={Boolean(busy)}
+                onClick={() => void invoiceAction("mark_deposited")}
+              >
+                {busy === "mark_deposited" ? "Mise a jour..." : "Marquer deposee plateforme"}
+              </SelenButton>
+            ) : null}
             <SelenButton
               type="button"
               variant="secondary"
