@@ -55,9 +55,12 @@ export default function SettingsForm({ settings }: { settings: LilInvoiceSetting
         onInput={() => scheduleAutosave()}
       >
         <Field label="Nom ou raison sociale" name="businessName" defaultValue={settings.business_name} />
+        <Field label="Forme juridique" name="legalForm" defaultValue={settings.legal_form} />
         <Field label="Activite" name="activity" defaultValue={settings.activity} />
         <Field label="SIREN/SIRET" name="sirenSiret" defaultValue={settings.siren_siret} />
         <Field label="Dispense RCS/RM" name="rcsRmExemption" defaultValue={settings.rcs_rm_exemption} />
+        <Field label="Code postal" name="postalCode" defaultValue={settings.postal_code} />
+        <Field label="Ville" name="city" defaultValue={settings.city} />
         <Field label="Telephone" name="phone" defaultValue={settings.phone} />
         <Field label="Email" name="email" defaultValue={settings.email} />
         <Field label="Email PayPal" name="paypalEmail" defaultValue={settings.paypal_email} />
@@ -73,6 +76,14 @@ export default function SettingsForm({ settings }: { settings: LilInvoiceSetting
             name="address"
             defaultValue={settings.address ?? ""}
             style={{ ...s.input, minHeight: 88, paddingTop: 10 }}
+          />
+        </label>
+        <label style={s.fieldFull}>
+          <span>Mentions legales</span>
+          <textarea
+            name="legalMentions"
+            defaultValue={settings.legal_mentions ?? ""}
+            style={{ ...s.input, minHeight: 96, paddingTop: 10 }}
           />
         </label>
         <div style={s.actions}>

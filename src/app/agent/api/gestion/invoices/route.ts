@@ -41,10 +41,6 @@ function normalizedName(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function boolValue(value: unknown) {
-  return value === true || value === "true" || value === "on";
-}
-
 async function loadInvoice(id: string) {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
@@ -73,11 +69,27 @@ async function saveBillingProfile(
     {
       normalized_name: normalized,
       name: payload.recipient_name,
+      legal_form:
+        typeof payload.metadata.client_legal_form === "string"
+          ? payload.metadata.client_legal_form
+          : null,
       email: payload.recipient_email,
       address: payload.recipient_address,
+      postal_code:
+        typeof payload.metadata.client_postal_code === "string"
+          ? payload.metadata.client_postal_code
+          : null,
+      city:
+        typeof payload.metadata.client_city === "string"
+          ? payload.metadata.client_city
+          : null,
       siren_siret:
         typeof payload.metadata.client_siren_siret === "string"
           ? payload.metadata.client_siren_siret
+          : null,
+      vat_number:
+        typeof payload.metadata.client_vat_number === "string"
+          ? payload.metadata.client_vat_number
           : null,
       phone:
         typeof payload.metadata.client_phone === "string"
@@ -413,17 +425,15 @@ export async function POST(req: Request) {
       metadata: {
         ...(existing?.metadata ?? {}),
         notes: String(body.notes ?? "").trim(),
+        client_legal_form: String(body.clientLegalForm ?? "").trim(),
         client_siren_siret: String(body.clientSirenSiret ?? "").trim(),
+        client_vat_number: String(body.clientVatNumber ?? "").trim(),
         client_phone: String(body.clientPhone ?? "").trim(),
-        service_date: String(body.serviceDate ?? "").trim(),
-        service_period: String(body.servicePeriod ?? "").trim(),
+        client_postal_code: String(body.clientPostalCode ?? "").trim(),
+        client_city: String(body.clientCity ?? "").trim(),
         audit_reference: String(body.auditReference ?? "").trim(),
-        delivery_address: String(body.deliveryAddress ?? "").trim(),
-        operation_category:
-          String(body.operationCategory ?? "").trim() || "Prestation de service",
         due_date: String(body.dueDate ?? "").trim(),
         payment_terms: String(body.paymentTerms ?? "").trim(),
-        vat_debits_option: boolValue(body.vatDebitsOption),
         temporary_generator: true,
         google_drive_target_folder:
           "1DawT2mz4m6pwRR3yvgWQVpJA5iU7R9Zi",

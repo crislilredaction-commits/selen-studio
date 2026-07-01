@@ -21,8 +21,11 @@ export type { LilInvoiceLine, LilInvoiceStatus, LilInvoiceType };
 export type LilInvoiceSettings = {
   id: boolean;
   business_name: string;
+  legal_form: string | null;
   activity: string;
   address: string | null;
+  postal_code: string | null;
+  city: string | null;
   siren_siret: string | null;
   rcs_rm_exemption: string | null;
   phone: string | null;
@@ -34,6 +37,7 @@ export type LilInvoiceSettings = {
   late_penalty_rate: string;
   recovery_fee_cents: number;
   payment_terms: string;
+  legal_mentions: string | null;
   metadata: Record<string, unknown>;
 };
 
@@ -41,9 +45,13 @@ export type LilBillingProfile = {
   id: string;
   normalized_name: string;
   name: string;
+  legal_form: string | null;
   email: string | null;
   address: string | null;
+  postal_code: string | null;
+  city: string | null;
   siren_siret: string | null;
+  vat_number: string | null;
   phone: string | null;
   default_payment_terms: string | null;
   metadata: Record<string, unknown> | null;
@@ -87,6 +95,13 @@ export const INVOICE_STORAGE_BUCKET = "selen-documents";
 export const GOOGLE_DRIVE_INVOICE_FOLDER =
   "https://drive.google.com/drive/folders/1DawT2mz4m6pwRR3yvgWQVpJA5iU7R9Zi?usp=sharing";
 
+const DEFAULT_LEGAL_MENTIONS =
+  "Dispensé d'immatriculation au Registre du Commerce et des Sociétés (RCS) ainsi qu'au Registre National des Entreprises (RNE), conformément à l'article L.123-1-1 du Code de commerce.";
+
+function settingText(value: string | null | undefined, fallback: string) {
+  return value?.trim() || fallback;
+}
+
 export function formatInvoiceNumber(sequenceNumber: number) {
   return `F${String(sequenceNumber).padStart(6, "0")}`;
 }
@@ -127,7 +142,7 @@ export async function getLilInvoiceSettings() {
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  if (data) return data as LilInvoiceSettings;
+  if (data) return normalizeLilInvoiceSettings(data as LilInvoiceSettings);
 
   const { data: inserted, error: insertError } = await admin
     .from("lil_invoice_settings")
@@ -135,7 +150,28 @@ export async function getLilInvoiceSettings() {
     .select("*")
     .single();
   if (insertError) throw new Error(insertError.message);
-  return inserted as LilInvoiceSettings;
+  return normalizeLilInvoiceSettings(inserted as LilInvoiceSettings);
+}
+
+function normalizeLilInvoiceSettings(settings: LilInvoiceSettings): LilInvoiceSettings {
+  return {
+    ...settings,
+    business_name: settingText(settings.business_name, "Pascale Barthaux"),
+    legal_form: settingText(settings.legal_form, "Entreprise Individuelle (EI)"),
+    activity: settingText(settings.activity, "Auditrice Qualiopi"),
+    address: settingText(settings.address, "2 Voie de Troyes"),
+    postal_code: settingText(settings.postal_code, "10700"),
+    city: settingText(settings.city, "Torcy-le-Petit"),
+    siren_siret: settingText(settings.siren_siret, "81772377800038"),
+    iban: settingText(settings.iban, "FR76 4061 8805 1100 0405 1327 975"),
+    vat_status: settingText(settings.vat_status, "TVA non applicable, art. 293 B du CGI."),
+    payment_terms: settingText(settings.payment_terms, "Paiement a reception de facture"),
+    late_penalty_rate: settingText(settings.late_penalty_rate, "Taux legal en vigueur"),
+    recovery_fee_cents: Number.isFinite(Number(settings.recovery_fee_cents))
+      ? settings.recovery_fee_cents
+      : 4000,
+    legal_mentions: settingText(settings.legal_mentions, DEFAULT_LEGAL_MENTIONS),
+  };
 }
 
 export async function reserveNextInvoiceNumber() {
@@ -166,10 +202,6 @@ function formatDateFr(value: string) {
 function metadataText(invoice: LilInvoiceRow, key: string) {
   const value = invoice.metadata?.[key];
   return typeof value === "string" ? value.trim() : "";
-}
-
-function metadataBool(invoice: LilInvoiceRow, key: string) {
-  return invoice.metadata?.[key] === true;
 }
 
 export function generateLilInvoicePdfBuffer({
@@ -218,10 +250,12 @@ export function generateLilInvoicePdfBuffer({
   doc.text(
     [
       settings.business_name,
+      settings.legal_form || "",
       settings.activity,
-      pdfText(settings.address),
+      [pdfText(settings.address), settings.postal_code, settings.city]
+        .filter(Boolean)
+        .join(" "),
       settings.siren_siret ? `SIREN/SIRET : ${settings.siren_siret}` : "",
-      settings.rcs_rm_exemption || "",
       settings.phone ? `Tel. : ${settings.phone}` : "",
       `Email : ${settings.email}`,
     ].filter(Boolean),
@@ -232,9 +266,16 @@ export function generateLilInvoicePdfBuffer({
   doc.text(
     [
       invoice.recipient_name,
+      metadataText(invoice, "client_legal_form"),
       invoice.recipient_address || "",
+      [metadataText(invoice, "client_postal_code"), metadataText(invoice, "client_city")]
+        .filter(Boolean)
+        .join(" "),
       metadataText(invoice, "client_siren_siret")
         ? `SIREN/SIRET : ${metadataText(invoice, "client_siren_siret")}`
+        : "",
+      metadataText(invoice, "client_vat_number")
+        ? `TVA intracom. : ${metadataText(invoice, "client_vat_number")}`
         : "",
       metadataText(invoice, "client_phone")
         ? `Tel. : ${metadataText(invoice, "client_phone")}`
@@ -280,34 +321,19 @@ export function generateLilInvoicePdfBuffer({
 
   const tableEnd = (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable
     ?.finalY ?? 330;
-  const serviceInfo = [
-    metadataText(invoice, "service_period")
-      ? `Periode de prestation : ${metadataText(invoice, "service_period")}`
-      : "",
-    metadataText(invoice, "service_date")
-      ? `Date de prestation : ${metadataText(invoice, "service_date")}`
-      : "",
-    metadataText(invoice, "audit_reference")
-      ? `Reference audit : ${metadataText(invoice, "audit_reference")}`
-      : "",
-    `Categorie d'operation : ${metadataText(invoice, "operation_category") || "Prestation de service"}`,
-    metadataText(invoice, "delivery_address")
-      ? `Adresse de prestation/livraison : ${metadataText(invoice, "delivery_address")}`
-      : "",
-    metadataBool(invoice, "vat_debits_option") ? "Option TVA sur les debits" : "",
-  ].filter(Boolean);
-  if (serviceInfo.length > 0) {
+  const auditReference = metadataText(invoice, "audit_reference");
+  if (auditReference) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(...sepia);
-    doc.text(serviceInfo, margin, tableEnd + 16, {
+    doc.text(`Reference audit : ${auditReference}`, margin, tableEnd + 16, {
       maxWidth: pageWidth - margin * 2,
       lineHeightFactor: 1.35,
     });
   }
 
   const totalsX = pageWidth - margin - 210;
-  let y = tableEnd + 24 + serviceInfo.length * 11;
+  let y = tableEnd + 24 + (auditReference ? 12 : 0);
   doc.setFillColor(255, 250, 240);
   doc.roundedRect(totalsX, y - 10, 210, 104, 6, 6, "F");
   doc.setFont("helvetica", "normal");
@@ -333,25 +359,16 @@ export function generateLilInvoicePdfBuffer({
     [
       metadataText(invoice, "payment_terms") || settings.payment_terms,
       `Date d'echeance : ${metadataText(invoice, "due_date") || "A reception"}`,
-      settings.paypal_email ? `PayPal : ${settings.paypal_email}` : "",
       settings.iban ? `IBAN : ${settings.iban}` : "",
       settings.bic ? `BIC : ${settings.bic}` : "",
       settings.vat_status,
       `Penalites de retard : ${settings.late_penalty_rate}`,
       `Indemnite forfaitaire de recouvrement : ${centsToEuros(settings.recovery_fee_cents)}`,
+      settings.legal_mentions || DEFAULT_LEGAL_MENTIONS,
     ].filter(Boolean),
     margin,
     y + 18,
     { maxWidth: pageWidth - margin * 2, lineHeightFactor: 1.35 },
-  );
-
-  doc.setFontSize(8.5);
-  doc.setTextColor(112, 86, 62);
-  doc.text(
-    "Document interne temporaire genere par Selen Studio. Remplacement prevu par une plateforme officielle de facturation electronique.",
-    margin,
-    806,
-    { maxWidth: pageWidth - margin * 2 },
   );
 
   return Buffer.from(doc.output("arraybuffer"));

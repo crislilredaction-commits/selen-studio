@@ -159,10 +159,28 @@ export default function InvoiceForm({
   const [recipientName, setRecipientName] = useState(invoice?.recipient_name ?? "");
   const [recipientEmail, setRecipientEmail] = useState(invoice?.recipient_email ?? "");
   const [recipientAddress, setRecipientAddress] = useState(invoice?.recipient_address ?? "");
+  const [clientLegalForm, setClientLegalForm] = useState(
+    typeof invoice?.metadata?.client_legal_form === "string"
+      ? invoice.metadata.client_legal_form
+      : "",
+  );
   const [clientSirenSiret, setClientSirenSiret] = useState(
     typeof invoice?.metadata?.client_siren_siret === "string"
       ? invoice.metadata.client_siren_siret
       : "",
+  );
+  const [clientVatNumber, setClientVatNumber] = useState(
+    typeof invoice?.metadata?.client_vat_number === "string"
+      ? invoice.metadata.client_vat_number
+      : "",
+  );
+  const [clientPostalCode, setClientPostalCode] = useState(
+    typeof invoice?.metadata?.client_postal_code === "string"
+      ? invoice.metadata.client_postal_code
+      : "",
+  );
+  const [clientCity, setClientCity] = useState(
+    typeof invoice?.metadata?.client_city === "string" ? invoice.metadata.client_city : "",
   );
   const [clientPhone, setClientPhone] = useState(
     typeof invoice?.metadata?.client_phone === "string" ? invoice.metadata.client_phone : "",
@@ -212,9 +230,13 @@ export default function InvoiceForm({
       (item) => item.normalized_name === normalized || item.name.trim().toLowerCase() === normalized,
     );
     if (!profile) return;
+    setClientLegalForm(profile.legal_form ?? "");
     setRecipientEmail(profile.email ?? "");
     setRecipientAddress(profile.address ?? "");
+    setClientPostalCode(profile.postal_code ?? "");
+    setClientCity(profile.city ?? "");
     setClientSirenSiret(profile.siren_siret ?? "");
+    setClientVatNumber(profile.vat_number ?? "");
     setClientPhone(profile.phone ?? "");
     setPaymentTerms(profile.default_payment_terms ?? "");
     scheduleAutosave();
@@ -257,16 +279,15 @@ export default function InvoiceForm({
       recipientName: formData.get("recipientName"),
       recipientAddress: formData.get("recipientAddress"),
       recipientEmail: formData.get("recipientEmail"),
+      clientLegalForm: formData.get("clientLegalForm"),
       clientSirenSiret: formData.get("clientSirenSiret"),
+      clientVatNumber: formData.get("clientVatNumber"),
       clientPhone: formData.get("clientPhone"),
+      clientPostalCode: formData.get("clientPostalCode"),
+      clientCity: formData.get("clientCity"),
       paymentTerms: formData.get("paymentTerms"),
-      serviceDate: formData.get("serviceDate"),
-      servicePeriod: formData.get("servicePeriod"),
       auditReference: formData.get("auditReference"),
-      deliveryAddress: formData.get("deliveryAddress"),
-      operationCategory: formData.get("operationCategory"),
       dueDate: formData.get("dueDate"),
-      vatDebitsOption: formData.get("vatDebitsOption") === "on",
       notes: formData.get("notes"),
       linkedAuditIds: selectedAuditIds,
       lines,
@@ -436,6 +457,16 @@ export default function InvoiceForm({
           />
         </label>
         <label style={s.field}>
+          <span>Forme juridique client</span>
+          <input
+            name="clientLegalForm"
+            value={clientLegalForm}
+            onChange={(event) => setClientLegalForm(event.target.value)}
+            style={s.input}
+            disabled={locked}
+          />
+        </label>
+        <label style={s.field}>
           <span>SIREN/SIRET client</span>
           <input
             name="clientSirenSiret"
@@ -446,11 +477,41 @@ export default function InvoiceForm({
           />
         </label>
         <label style={s.field}>
+          <span>TVA intracommunautaire</span>
+          <input
+            name="clientVatNumber"
+            value={clientVatNumber}
+            onChange={(event) => setClientVatNumber(event.target.value)}
+            style={s.input}
+            disabled={locked}
+          />
+        </label>
+        <label style={s.field}>
           <span>Telephone client</span>
           <input
             name="clientPhone"
             value={clientPhone}
             onChange={(event) => setClientPhone(event.target.value)}
+            style={s.input}
+            disabled={locked}
+          />
+        </label>
+        <label style={s.field}>
+          <span>Code postal client</span>
+          <input
+            name="clientPostalCode"
+            value={clientPostalCode}
+            onChange={(event) => setClientPostalCode(event.target.value)}
+            style={s.input}
+            disabled={locked}
+          />
+        </label>
+        <label style={s.field}>
+          <span>Ville client</span>
+          <input
+            name="clientCity"
+            value={clientCity}
+            onChange={(event) => setClientCity(event.target.value)}
             style={s.input}
             disabled={locked}
           />
@@ -466,23 +527,6 @@ export default function InvoiceForm({
           />
         </label>
         <Field
-          label="Date de prestation"
-          name="serviceDate"
-          type="date"
-          defaultValue={
-            typeof invoice?.metadata?.service_date === "string" ? invoice.metadata.service_date : ""
-          }
-          disabled={locked}
-        />
-        <Field
-          label="Periode de prestation"
-          name="servicePeriod"
-          defaultValue={
-            typeof invoice?.metadata?.service_period === "string" ? invoice.metadata.service_period : ""
-          }
-          disabled={locked}
-        />
-        <Field
           label="Reference audit"
           name="auditReference"
           defaultValue={
@@ -497,24 +541,6 @@ export default function InvoiceForm({
           defaultValue={typeof invoice?.metadata?.due_date === "string" ? invoice.metadata.due_date : ""}
           disabled={locked}
         />
-        <Field
-          label="Categorie operation"
-          name="operationCategory"
-          defaultValue={
-            typeof invoice?.metadata?.operation_category === "string"
-              ? invoice.metadata.operation_category
-              : "Prestation de service"
-          }
-          disabled={locked}
-        />
-        <Field
-          label="Adresse prestation/livraison"
-          name="deliveryAddress"
-          defaultValue={
-            typeof invoice?.metadata?.delivery_address === "string" ? invoice.metadata.delivery_address : ""
-          }
-          disabled={locked}
-        />
         <label style={s.fieldFull}>
           <span>Conditions paiement facture</span>
           <input
@@ -524,15 +550,6 @@ export default function InvoiceForm({
             style={s.input}
             disabled={locked}
           />
-        </label>
-        <label style={s.checkboxRow}>
-          <input
-            type="checkbox"
-            name="vatDebitsOption"
-            defaultChecked={invoice?.metadata?.vat_debits_option === true}
-            disabled={locked}
-          />
-          <span>Option TVA sur les debits</span>
         </label>
 
         <div style={s.fieldFull}>
@@ -751,14 +768,6 @@ const s: Record<string, CSSProperties> = {
     color: "var(--selen-text)",
   },
   saveState: { gridColumn: "1 / -1", color: "var(--selen-text2)", fontSize: 12 },
-  checkboxRow: {
-    gridColumn: "1 / -1",
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    color: "var(--selen-text2)",
-    fontSize: 13,
-  },
   actionsFull: { gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" },
   actionLink: {
     display: "inline-flex",

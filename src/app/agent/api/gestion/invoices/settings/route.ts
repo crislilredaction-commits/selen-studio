@@ -18,25 +18,34 @@ export async function POST(req: Request) {
     const payload = {
       id: true,
       business_name: String(body.businessName ?? "").trim() || "Pascale Barthaux",
+      legal_form:
+        String(body.legalForm ?? "").trim() || "Entreprise Individuelle (EI)",
       activity: String(body.activity ?? "").trim() || "Auditrice Qualiopi",
-      address: String(body.address ?? "").trim() || null,
-      siren_siret: String(body.sirenSiret ?? "").trim() || null,
+      address: String(body.address ?? "").trim() || "2 Voie de Troyes",
+      postal_code: String(body.postalCode ?? "").trim() || "10700",
+      city: String(body.city ?? "").trim() || "Torcy-le-Petit",
+      siren_siret: String(body.sirenSiret ?? "").trim() || "81772377800038",
       rcs_rm_exemption: String(body.rcsRmExemption ?? "").trim() || null,
       phone: String(body.phone ?? "").trim() || null,
       email:
         String(body.email ?? "").trim().toLowerCase() || "hello@selen-editions.fr",
       paypal_email: String(body.paypalEmail ?? "").trim().toLowerCase() || null,
-      iban: String(body.iban ?? "").trim() || null,
+      iban:
+        String(body.iban ?? "").trim() ||
+        "FR76 4061 8805 1100 0405 1327 975",
       bic: String(body.bic ?? "").trim() || null,
       vat_status:
         String(body.vatStatus ?? "").trim() ||
-        "TVA non applicable, art. 293 B du CGI",
+        "TVA non applicable, art. 293 B du CGI.",
       late_penalty_rate:
         String(body.latePenaltyRate ?? "").trim() || "Taux legal en vigueur",
       recovery_fee_cents: Math.max(0, Math.round(recoveryFeeCents)),
       payment_terms:
         String(body.paymentTerms ?? "").trim() ||
         "Paiement a reception de facture",
+      legal_mentions:
+        String(body.legalMentions ?? "").trim() ||
+        "Dispensé d'immatriculation au Registre du Commerce et des Sociétés (RCS) ainsi qu'au Registre National des Entreprises (RNE), conformément à l'article L.123-1-1 du Code de commerce.",
       metadata: { updated_by: auth.email, updated_at: new Date().toISOString() },
     };
 
