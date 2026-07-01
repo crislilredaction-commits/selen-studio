@@ -145,7 +145,8 @@ export default function InvoiceForm({
   audits: ExternalAuditRow[];
 }) {
   const router = useRouter();
-  const locked = Boolean(invoice && invoice.status !== "draft");
+  const locked = Boolean(invoice && !["draft", "generated"].includes(invoice.status));
+  const canDelete = Boolean(invoice && ["draft", "generated"].includes(invoice.status));
   const formRef = useRef<HTMLFormElement>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState("");
@@ -350,6 +351,33 @@ export default function InvoiceForm({
     router.refresh();
   }
 
+  async function deleteInvoice() {
+    if (!invoice?.id) return;
+    const confirmed = window.confirm(
+      "Supprimer definitivement cette facture test ? Les audits lies seront liberes si cette facture les avait archives.",
+    );
+    if (!confirmed) return;
+    setBusy("delete");
+    setNotice("");
+    setError("");
+    const response = await fetch("/agent/api/gestion/invoices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "delete",
+        id: invoice.id,
+        invoiceType,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    setBusy("");
+    if (!response.ok) {
+      setError(result.error ?? "Suppression impossible.");
+      return;
+    }
+    router.push("/agent/gestion/factures");
+  }
+
   async function invoiceAction(action: "mark_deposited" | "mark_paid") {
     if (!invoice?.id) return;
     setBusy(action);
@@ -496,28 +524,8 @@ export default function InvoiceForm({
             disabled={locked}
           />
         </label>
-        <label style={s.field}>
-          <span>Code postal client</span>
-          <input
-            name="clientPostalCode"
-            value={clientPostalCode}
-            onChange={(event) => setClientPostalCode(event.target.value)}
-            style={s.input}
-            disabled={locked}
-          />
-        </label>
-        <label style={s.field}>
-          <span>Ville client</span>
-          <input
-            name="clientCity"
-            value={clientCity}
-            onChange={(event) => setClientCity(event.target.value)}
-            style={s.input}
-            disabled={locked}
-          />
-        </label>
         <label style={s.fieldFull}>
-          <span>Adresse destinataire</span>
+          <span>Adresse de facturation</span>
           <textarea
             name="recipientAddress"
             value={recipientAddress}
@@ -526,6 +534,31 @@ export default function InvoiceForm({
             disabled={locked}
           />
         </label>
+        <details style={s.fieldFull}>
+          <summary style={s.summary}>Code postal et ville pour autocompletion</summary>
+          <div style={s.compactGrid}>
+            <label style={s.field}>
+              <span>Code postal client</span>
+              <input
+                name="clientPostalCode"
+                value={clientPostalCode}
+                onChange={(event) => setClientPostalCode(event.target.value)}
+                style={s.input}
+                disabled={locked}
+              />
+            </label>
+            <label style={s.field}>
+              <span>Ville client</span>
+              <input
+                name="clientCity"
+                value={clientCity}
+                onChange={(event) => setClientCity(event.target.value)}
+                style={s.input}
+                disabled={locked}
+              />
+            </label>
+          </div>
+        </details>
         <Field
           label="Reference audit"
           name="auditReference"
@@ -668,6 +701,16 @@ export default function InvoiceForm({
             >
               {busy === "generate_pdf" ? "Generation..." : "Generer PDF"}
             </SelenButton>
+            {canDelete ? (
+              <SelenButton
+                type="button"
+                variant="danger"
+                disabled={Boolean(busy)}
+                onClick={() => void deleteInvoice()}
+              >
+                {busy === "delete" ? "Suppression..." : "Supprimer facture test"}
+              </SelenButton>
+            ) : null}
           </div>
         ) : invoice?.status === "generated" || invoice?.status === "deposited" ? (
           <div style={s.actionsFull}>
@@ -742,6 +785,13 @@ const s: Record<string, CSSProperties> = {
   form: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 },
   field: { display: "grid", gap: 6, color: "var(--selen-text2)", fontSize: 12 },
   fieldFull: { gridColumn: "1 / -1", display: "grid", gap: 6, color: "var(--selen-text2)", fontSize: 12 },
+  summary: { cursor: "pointer", color: "var(--selen-text2)", fontSize: 12 },
+  compactGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 12,
+    marginTop: 8,
+  },
   label: { color: "var(--selen-text2)", fontSize: 12 },
   input: {
     width: "100%",

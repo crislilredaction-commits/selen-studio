@@ -204,6 +204,14 @@ function metadataText(invoice: LilInvoiceRow, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function addressLines(address: string | null | undefined, postalCode?: string, city?: string) {
+  const base = address?.trim() ?? "";
+  const locality = [postalCode?.trim(), city?.trim()].filter(Boolean).join(" ");
+  if (!base) return locality ? [locality] : [];
+  if (!locality || base.toLowerCase().includes(locality.toLowerCase())) return [base];
+  return [base, locality];
+}
+
 export function generateLilInvoicePdfBuffer({
   invoice,
   settings,
@@ -252,9 +260,7 @@ export function generateLilInvoicePdfBuffer({
       settings.business_name,
       settings.legal_form || "",
       settings.activity,
-      [pdfText(settings.address), settings.postal_code, settings.city]
-        .filter(Boolean)
-        .join(" "),
+      ...addressLines(settings.address, settings.postal_code ?? undefined, settings.city ?? undefined),
       settings.siren_siret ? `SIREN/SIRET : ${settings.siren_siret}` : "",
       settings.phone ? `Tel. : ${settings.phone}` : "",
       `Email : ${settings.email}`,
@@ -267,10 +273,11 @@ export function generateLilInvoicePdfBuffer({
     [
       invoice.recipient_name,
       metadataText(invoice, "client_legal_form"),
-      invoice.recipient_address || "",
-      [metadataText(invoice, "client_postal_code"), metadataText(invoice, "client_city")]
-        .filter(Boolean)
-        .join(" "),
+      ...addressLines(
+        invoice.recipient_address,
+        metadataText(invoice, "client_postal_code"),
+        metadataText(invoice, "client_city"),
+      ),
       metadataText(invoice, "client_siren_siret")
         ? `SIREN/SIRET : ${metadataText(invoice, "client_siren_siret")}`
         : "",
@@ -321,19 +328,8 @@ export function generateLilInvoicePdfBuffer({
 
   const tableEnd = (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable
     ?.finalY ?? 330;
-  const auditReference = metadataText(invoice, "audit_reference");
-  if (auditReference) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(...sepia);
-    doc.text(`Reference audit : ${auditReference}`, margin, tableEnd + 16, {
-      maxWidth: pageWidth - margin * 2,
-      lineHeightFactor: 1.35,
-    });
-  }
-
   const totalsX = pageWidth - margin - 210;
-  let y = tableEnd + 24 + (auditReference ? 12 : 0);
+  let y = tableEnd + 24;
   doc.setFillColor(255, 250, 240);
   doc.roundedRect(totalsX, y - 10, 210, 104, 6, 6, "F");
   doc.setFont("helvetica", "normal");

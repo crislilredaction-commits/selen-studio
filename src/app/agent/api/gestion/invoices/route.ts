@@ -19,6 +19,8 @@ const INVOICE_TYPES = new Set([
   "manual",
 ]);
 
+const EDITABLE_STATUSES = new Set(["draft", "generated"]);
+
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
 function parseLines(value: unknown): LilInvoiceLine[] {
@@ -171,6 +173,50 @@ async function archiveLinkedAudits(
   return results;
 }
 
+async function releaseLinkedAudits(
+  admin: SupabaseAdmin,
+  invoice: LilInvoiceRow,
+) {
+  const auditIds = Array.isArray(invoice.linked_audit_ids)
+    ? invoice.linked_audit_ids.map((id) => String(id).trim()).filter(Boolean)
+    : [];
+  if (auditIds.length === 0) return [];
+
+  const { data, error } = await admin
+    .from("external_audits")
+    .select("id,metadata")
+    .in("id", auditIds);
+  if (error) return auditIds.map((id) => ({ id, status: "failed", error: error.message }));
+
+  const results = [];
+  for (const audit of data ?? []) {
+    const metadata =
+      audit.metadata && typeof audit.metadata === "object"
+        ? (audit.metadata as Record<string, unknown>)
+        : {};
+    const nextMetadata = { ...metadata };
+    if (nextMetadata.invoice_id === invoice.id) {
+      delete nextMetadata.invoice_id;
+      delete nextMetadata.invoice_number;
+      delete nextMetadata.archived;
+      delete nextMetadata.archived_at;
+      delete nextMetadata.archived_by;
+      delete nextMetadata.archived_reason;
+    }
+
+    const { error: updateError } = await admin
+      .from("external_audits")
+      .update({ metadata: nextMetadata })
+      .eq("id", audit.id);
+    results.push({
+      id: audit.id,
+      status: updateError ? "failed" : "released",
+      error: updateError?.message ?? null,
+    });
+  }
+  return results;
+}
+
 async function findLinkedAuditConflicts(
   admin: SupabaseAdmin,
   auditIds: string[],
@@ -220,7 +266,7 @@ export async function POST(req: Request) {
     const linesInput = parseLines(body.lines);
     const totals = invoiceTotals(linesInput);
     if (
-      !["cancel", "mark_paid", "mark_deposited", "send_email"].includes(action) &&
+      !["cancel", "delete", "mark_paid", "mark_deposited", "send_email"].includes(action) &&
       totals.lines.length === 0
     ) {
       return NextResponse.json(
@@ -231,16 +277,32 @@ export async function POST(req: Request) {
 
     const admin = createSupabaseAdminClient();
     const existing = id ? await loadInvoice(id) : null;
-    const allowedLockedActions = new Set(["cancel", "mark_paid", "mark_deposited", "send_email"]);
+    const allowedLockedActions = new Set(["cancel", "delete", "mark_paid", "mark_deposited", "send_email"]);
     if (
       existing &&
-      existing.status !== "draft" &&
+      !EDITABLE_STATUSES.has(existing.status) &&
       !allowedLockedActions.has(action)
     ) {
       return NextResponse.json(
         { error: "Une facture emise ne peut plus etre modifiee." },
         { status: 400 },
       );
+    }
+
+    if (action === "delete") {
+      if (!existing) {
+        return NextResponse.json({ error: "Facture introuvable." }, { status: 404 });
+      }
+      if (!EDITABLE_STATUSES.has(existing.status)) {
+        return NextResponse.json(
+          { error: "Seules les factures brouillon ou generees peuvent etre supprimees." },
+          { status: 400 },
+        );
+      }
+      const releasedAudits = await releaseLinkedAudits(admin, existing);
+      const { error } = await admin.from("lil_invoices").delete().eq("id", existing.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, deleted: true, releasedAudits });
     }
 
     if (action === "cancel") {
@@ -488,7 +550,12 @@ export async function POST(req: Request) {
     }
 
     const savedInvoice = saved as LilInvoiceRow;
-    const numbering = await reserveNextInvoiceNumber();
+    const numbering = savedInvoice.invoice_number && savedInvoice.sequence_number
+      ? {
+          invoiceNumber: savedInvoice.invoice_number,
+          sequenceNumber: savedInvoice.sequence_number,
+        }
+      : await reserveNextInvoiceNumber();
     const invoiceWithNumber = {
       ...savedInvoice,
       invoice_number: numbering.invoiceNumber,
@@ -533,7 +600,7 @@ export async function POST(req: Request) {
         },
       })
       .eq("id", savedInvoice.id)
-      .eq("status", "draft")
+      .in("status", ["draft", "generated"])
       .select("*")
       .single();
 
