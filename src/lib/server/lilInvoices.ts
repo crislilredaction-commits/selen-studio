@@ -37,6 +37,20 @@ export type LilInvoiceSettings = {
   metadata: Record<string, unknown>;
 };
 
+export type LilBillingProfile = {
+  id: string;
+  normalized_name: string;
+  name: string;
+  email: string | null;
+  address: string | null;
+  siren_siret: string | null;
+  phone: string | null;
+  default_payment_terms: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type LilInvoiceRow = {
   id: string;
   invoice_number: string | null;
@@ -148,6 +162,15 @@ function formatDateFr(value: string) {
   );
 }
 
+function metadataText(invoice: LilInvoiceRow, key: string) {
+  const value = invoice.metadata?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function metadataBool(invoice: LilInvoiceRow, key: string) {
+  return invoice.metadata?.[key] === true;
+}
+
 export function generateLilInvoicePdfBuffer({
   invoice,
   settings,
@@ -209,6 +232,12 @@ export function generateLilInvoicePdfBuffer({
     [
       invoice.recipient_name,
       invoice.recipient_address || "",
+      metadataText(invoice, "client_siren_siret")
+        ? `SIREN/SIRET : ${metadataText(invoice, "client_siren_siret")}`
+        : "",
+      metadataText(invoice, "client_phone")
+        ? `Tel. : ${metadataText(invoice, "client_phone")}`
+        : "",
       invoice.recipient_email ? `Email : ${invoice.recipient_email}` : "",
     ].filter(Boolean),
     pageWidth / 2 + 16,
@@ -250,20 +279,48 @@ export function generateLilInvoicePdfBuffer({
 
   const tableEnd = (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable
     ?.finalY ?? 330;
+  const serviceInfo = [
+    metadataText(invoice, "service_period")
+      ? `Periode de prestation : ${metadataText(invoice, "service_period")}`
+      : "",
+    metadataText(invoice, "service_date")
+      ? `Date de prestation : ${metadataText(invoice, "service_date")}`
+      : "",
+    metadataText(invoice, "audit_reference")
+      ? `Reference audit : ${metadataText(invoice, "audit_reference")}`
+      : "",
+    `Categorie d'operation : ${metadataText(invoice, "operation_category") || "Prestation de service"}`,
+    metadataText(invoice, "delivery_address")
+      ? `Adresse de prestation/livraison : ${metadataText(invoice, "delivery_address")}`
+      : "",
+    metadataBool(invoice, "vat_debits_option") ? "Option TVA sur les debits" : "",
+  ].filter(Boolean);
+  if (serviceInfo.length > 0) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...sepia);
+    doc.text(serviceInfo, margin, tableEnd + 16, {
+      maxWidth: pageWidth - margin * 2,
+      lineHeightFactor: 1.35,
+    });
+  }
+
   const totalsX = pageWidth - margin - 210;
-  let y = tableEnd + 24;
+  let y = tableEnd + 24 + serviceInfo.length * 11;
   doc.setFillColor(255, 250, 240);
-  doc.roundedRect(totalsX, y - 10, 210, 84, 6, 6, "F");
+  doc.roundedRect(totalsX, y - 10, 210, 104, 6, 6, "F");
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.text("Total HT", totalsX + 14, y + 10);
   doc.text(centsToEuros(invoice.subtotal_cents), totalsX + 196, y + 10, { align: "right" });
-  doc.text("TVA", totalsX + 14, y + 32);
+  doc.text("Total TVA", totalsX + 14, y + 32);
   doc.text(centsToEuros(invoice.tax_cents), totalsX + 196, y + 32, { align: "right" });
+  doc.text("Total TTC", totalsX + 14, y + 54);
+  doc.text(centsToEuros(invoice.total_cents), totalsX + 196, y + 54, { align: "right" });
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("Total TTC / a payer", totalsX + 14, y + 58);
-  doc.text(centsToEuros(invoice.total_cents), totalsX + 196, y + 58, { align: "right" });
+  doc.text("Net a payer", totalsX + 14, y + 82);
+  doc.text(centsToEuros(invoice.total_cents), totalsX + 196, y + 82, { align: "right" });
 
   y += 122;
   doc.setFont("helvetica", "bold");
@@ -273,7 +330,8 @@ export function generateLilInvoicePdfBuffer({
   doc.setFontSize(9.5);
   doc.text(
     [
-      settings.payment_terms,
+      metadataText(invoice, "payment_terms") || settings.payment_terms,
+      `Date d'echeance : ${metadataText(invoice, "due_date") || "A reception"}`,
       settings.paypal_email ? `PayPal : ${settings.paypal_email}` : "",
       settings.iban ? `IBAN : ${settings.iban}` : "",
       settings.bic ? `BIC : ${settings.bic}` : "",

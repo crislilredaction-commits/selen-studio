@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import type { LilInvoiceSettings } from "@/lib/server/lilInvoices";
 
@@ -11,13 +10,23 @@ function euroValue(cents: number) {
 }
 
 export default function SettingsForm({ settings }: { settings: LilInvoiceSettings }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
+  function scheduleAutosave() {
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    setNotice("Sauvegarde...");
+    autosaveTimer.current = setTimeout(() => {
+      if (formRef.current) void save(new FormData(formRef.current));
+    }, 900);
+  }
+
   async function save(formData: FormData) {
     setBusy(true);
-    setNotice("");
+    setNotice("Sauvegarde...");
     setError("");
     const response = await fetch("/agent/api/gestion/invoices/settings", {
       method: "POST",
@@ -30,7 +39,7 @@ export default function SettingsForm({ settings }: { settings: LilInvoiceSetting
       setError(result.error ?? "Sauvegarde impossible.");
       return;
     }
-    setNotice("Parametres enregistres.");
+    setNotice("Sauvegarde OK.");
   }
 
   return (
@@ -38,7 +47,13 @@ export default function SettingsForm({ settings }: { settings: LilInvoiceSetting
       <SelenCardTitle>Parametres de facturation Lil</SelenCardTitle>
       {notice ? <div style={s.notice}>{notice}</div> : null}
       {error ? <div style={s.error}>Erreur : {error}</div> : null}
-      <form action={(formData) => void save(formData)} style={s.form}>
+      <form
+        ref={formRef}
+        action={(formData) => void save(formData)}
+        style={s.form}
+        onChange={() => scheduleAutosave()}
+        onInput={() => scheduleAutosave()}
+      >
         <Field label="Nom ou raison sociale" name="businessName" defaultValue={settings.business_name} />
         <Field label="Activite" name="activity" defaultValue={settings.activity} />
         <Field label="SIREN/SIRET" name="sirenSiret" defaultValue={settings.siren_siret} />
@@ -61,9 +76,7 @@ export default function SettingsForm({ settings }: { settings: LilInvoiceSetting
           />
         </label>
         <div style={s.actions}>
-          <SelenButton type="submit" disabled={busy}>
-            {busy ? "Sauvegarde..." : "Enregistrer"}
-          </SelenButton>
+          <span style={s.saveState}>{busy ? "Sauvegarde..." : notice || "Sauvegarde automatique"}</span>
         </div>
       </form>
     </SelenCard>
@@ -103,6 +116,7 @@ const s: Record<string, CSSProperties> = {
     boxSizing: "border-box",
   },
   actions: { gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" },
+  saveState: { color: "var(--selen-text2)", fontSize: 12 },
   notice: { padding: 10, borderRadius: "var(--radius-sm)", background: "var(--selen-success-bg)", color: "var(--selen-success)", marginBottom: 12 },
   error: { padding: 10, borderRadius: "var(--radius-sm)", background: "var(--selen-danger-bg)", color: "var(--selen-danger)", marginBottom: 12 },
 };

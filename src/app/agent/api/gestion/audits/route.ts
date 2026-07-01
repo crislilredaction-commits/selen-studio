@@ -78,6 +78,7 @@ export async function POST(req: Request) {
     const planAuditSent = boolValue(body.planAuditSent);
     const previousPlanSent = previousMetadata.plan_audit_sent === true;
     const now = new Date().toISOString();
+    const travelExpenseCents = moneyCents(body.travelExpenseAmount);
     const payload = {
       of_name: String(body.ofName ?? "").trim(),
       contact_name: String(body.contactName ?? "").trim() || null,
@@ -96,7 +97,8 @@ export async function POST(req: Request) {
         audit_delivery_mode: auditDeliveryMode,
         audit_reference: String(body.auditReference ?? "").trim(),
         audit_amount_cents: moneyCents(body.auditAmount),
-        travel_expense_cents: moneyCents(body.travelExpenseAmount),
+        travel_expense_cents: travelExpenseCents,
+        travel_expenses_cents: travelExpenseCents,
         notes: String(body.notes ?? "").trim(),
         departure_mode: remoteAudit ? null : normalizedDepartureMode,
         departure_address: remoteAudit ? null : departureAddress,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import SelenButton from "@/components/ui/SelenButton";
@@ -39,8 +39,11 @@ export default function ExternalAuditForm({
   audit?: ExternalAuditRow | null;
 }) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [saveState, setSaveState] = useState("");
   const [busy, setBusy] = useState(false);
   const [departureMode, setDepartureMode] = useState(
     metadataText(audit, "departure_mode") || "home",
@@ -68,7 +71,31 @@ export default function ExternalAuditForm({
     return result;
   }
 
-  async function save(formData: FormData) {
+  function requiredReady(formData: FormData) {
+    return Boolean(
+      String(formData.get("ofName") ?? "").trim() &&
+        String(formData.get("auditType") ?? "").trim() &&
+        String(formData.get("auditDate") ?? "").trim() &&
+        String(formData.get("startTime") ?? "").trim(),
+    );
+  }
+
+  function scheduleAutosave() {
+    if (!audit?.id || !formRef.current) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    setSaveState("Sauvegarde...");
+    autosaveTimer.current = setTimeout(() => {
+      if (!formRef.current) return;
+      const formData = new FormData(formRef.current);
+      if (requiredReady(formData)) void save(formData, true);
+    }, 900);
+  }
+
+  async function save(formData: FormData, autosave = false) {
+    if (!requiredReady(formData)) {
+      if (autosave) setSaveState("");
+      return;
+    }
     const result = await post("/agent/api/gestion/audits", {
       id: audit?.id,
       ofName: formData.get("ofName"),
@@ -93,6 +120,11 @@ export default function ExternalAuditForm({
       planAuditSent: formData.get("planAuditSent") === "on",
     });
     if (!result) return;
+    if (autosave) {
+      setSaveState("Sauvegarde OK");
+      router.refresh();
+      return;
+    }
     setNotice(result.conflictWarning || "Audit enregistre.");
     if (!audit?.id && result.audit?.id) {
       router.push(`/agent/gestion/audits/${result.audit.id}`);
@@ -134,7 +166,13 @@ export default function ExternalAuditForm({
       </SelenCardTitle>
       {notice ? <div style={s.notice}>{notice}</div> : null}
       {error ? <div style={s.error}>Erreur : {error}</div> : null}
-      <form action={(formData) => void save(formData)} style={s.form}>
+      <form
+        ref={formRef}
+        action={(formData) => void save(formData)}
+        style={s.form}
+        onChange={() => scheduleAutosave()}
+        onInput={() => scheduleAutosave()}
+      >
         <Field label="Nom de l'OF" name="ofName" defaultValue={audit?.of_name} required />
         <Field label="Contact" name="contactName" defaultValue={audit?.contact_name} />
         <Field label="Email" name="contactEmail" defaultValue={audit?.contact_email} />
@@ -290,6 +328,7 @@ export default function ExternalAuditForm({
         </div>
         )}
         <div style={s.actions}>
+          {saveState ? <span style={s.saveState}>{saveState}</span> : null}
           {audit?.status === "cancelled" ? (
             <SelenButton
               type="button"
@@ -300,9 +339,11 @@ export default function ExternalAuditForm({
               Supprimer definitivement
             </SelenButton>
           ) : null}
-          <SelenButton type="submit" disabled={busy}>
-            Enregistrer
-          </SelenButton>
+          {!audit?.id ? (
+            <SelenButton type="submit" disabled={busy}>
+              Creer audit
+            </SelenButton>
+          ) : null}
         </div>
       </form>
     </SelenCard>
@@ -415,9 +456,15 @@ const s: Record<string, CSSProperties> = {
   actions: {
     gridColumn: "1 / -1",
     display: "flex",
+    alignItems: "center",
     gap: 8,
     flexWrap: "wrap",
     justifyContent: "flex-end",
+  },
+  saveState: {
+    marginRight: "auto",
+    color: "var(--selen-text2-oncard)",
+    fontSize: 12,
   },
   notice: {
     margin: "12px 0",

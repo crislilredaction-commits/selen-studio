@@ -46,7 +46,8 @@ function linesFromAudit(audit: ExternalAuditRow) {
   const reference = auditReference(audit);
   const date = formatDate(audit.audit_date);
   const amount = centsValue(metadata.audit_amount_cents);
-  const travel = centsValue(metadata.travel_expense_cents);
+  const travel =
+    centsValue(metadata.travel_expense_cents) || centsValue(metadata.travel_expenses_cents);
   const lines: LilInvoiceLine[] = [
     {
       label: `Audit ICPF - ${date} - Ref. ${reference}`,
@@ -123,7 +124,9 @@ function previewPayload(month: string, audits: ExternalAuditRow[]) {
       auditDate: audit.audit_date,
       reference: auditReference(audit),
       amountCents: centsValue(metadataOf(audit).audit_amount_cents),
-      travelExpenseCents: centsValue(metadataOf(audit).travel_expense_cents),
+      travelExpenseCents:
+        centsValue(metadataOf(audit).travel_expense_cents) ||
+        centsValue(metadataOf(audit).travel_expenses_cents),
     })),
     lines: totals.lines,
     subtotalCents: totals.subtotalCents,

@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
-import type { LilInvoiceRow } from "@/lib/server/lilInvoices";
+import type { LilBillingProfile, LilInvoiceRow } from "@/lib/server/lilInvoices";
 import {
   CERTIFOPAC_AUDIT_AMOUNT_CENTS,
   INVOICE_TYPES,
@@ -60,17 +60,20 @@ function auditReference(audit: ExternalAuditRow) {
 }
 
 function lineFromAudit(audit: ExternalAuditRow): LilInvoiceLine[] {
+  const reference = auditReference(audit);
+  const auditAmount = metadataCents(audit, "audit_amount_cents");
+  const travel =
+    metadataCents(audit, "travel_expense_cents") ||
+    metadataCents(audit, "travel_expenses_cents");
+
   if (isIcpfAudit(audit)) {
-    const amount = metadataCents(audit, "audit_amount_cents");
-    const travel = metadataCents(audit, "travel_expense_cents");
-    const reference = auditReference(audit);
     const lines: LilInvoiceLine[] = [
       {
         label: `Audit ICPF - ${audit.audit_date} - Ref. ${reference}`,
         details: audit.of_name,
         quantity: 1,
-        unitAmountCents: amount,
-        totalAmountCents: amount,
+        unitAmountCents: auditAmount,
+        totalAmountCents: auditAmount,
       },
     ];
     if (travel > 0) {
@@ -85,9 +88,32 @@ function lineFromAudit(audit: ExternalAuditRow): LilInvoiceLine[] {
     return lines;
   }
 
+  if (isCertifopacAudit(audit) && (auditAmount > 0 || travel > 0)) {
+    const amount = auditAmount > 0 ? auditAmount : CERTIFOPAC_AUDIT_AMOUNT_CENTS;
+    const lines: LilInvoiceLine[] = [
+      {
+        label: `Prestation d'audit Certifopac - Ref. ${reference}`,
+        details: `${audit.audit_type} - ${audit.audit_date}`,
+        quantity: 1,
+        unitAmountCents: amount,
+        totalAmountCents: amount,
+      },
+    ];
+    if (travel > 0) {
+      lines.push({
+        label: `Frais de deplacement - Ref. ${reference}`,
+        details: audit.audit_date,
+        quantity: 1,
+        unitAmountCents: travel,
+        totalAmountCents: travel,
+      });
+    }
+    return lines;
+  }
+
   const amount = isCertifopacAudit(audit)
     ? CERTIFOPAC_AUDIT_AMOUNT_CENTS
-    : metadataCents(audit, "audit_amount_cents") ||
+    : auditAmount ||
       eurosToCents(metadataText(audit, "invoice_amount") || metadataText(audit, "fee_amount")) ||
       0;
   return [{
@@ -120,16 +146,41 @@ export default function InvoiceForm({
 }) {
   const router = useRouter();
   const locked = Boolean(invoice && invoice.status !== "draft");
+  const formRef = useRef<HTMLFormElement>(null);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState("");
+  const [saveState, setSaveState] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [profiles, setProfiles] = useState<LilBillingProfile[]>([]);
   const [invoiceType, setInvoiceType] = useState<LilInvoiceType>(
     invoice?.invoice_type || "certifopac_single_audit",
+  );
+  const [recipientName, setRecipientName] = useState(invoice?.recipient_name ?? "");
+  const [recipientEmail, setRecipientEmail] = useState(invoice?.recipient_email ?? "");
+  const [recipientAddress, setRecipientAddress] = useState(invoice?.recipient_address ?? "");
+  const [clientSirenSiret, setClientSirenSiret] = useState(
+    typeof invoice?.metadata?.client_siren_siret === "string"
+      ? invoice.metadata.client_siren_siret
+      : "",
+  );
+  const [clientPhone, setClientPhone] = useState(
+    typeof invoice?.metadata?.client_phone === "string" ? invoice.metadata.client_phone : "",
+  );
+  const [paymentTerms, setPaymentTerms] = useState(
+    typeof invoice?.metadata?.payment_terms === "string" ? invoice.metadata.payment_terms : "",
   );
   const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>(
     invoice?.linked_audit_ids || [],
   );
   const [lines, setLines] = useState<LilInvoiceLine[]>(invoiceLines(invoice));
+
+  useEffect(() => {
+    fetch("/agent/api/gestion/invoices/profiles")
+      .then((response) => response.json())
+      .then((result) => setProfiles(result.profiles ?? []))
+      .catch(() => undefined);
+  }, []);
 
   const totals = useMemo(() => {
     const subtotal = lines.reduce((sum, line) => {
@@ -149,9 +200,24 @@ export default function InvoiceForm({
     if (!invoice?.recipient_name && selectedAudits[0]) {
       const first = selectedAudits[0];
       const recipient = first.certifier || "";
-      const field = document.querySelector<HTMLInputElement>("[name='recipientName']");
-      if (field && recipient) field.value = recipient;
+      if (recipient) setRecipientName(recipient);
     }
+    scheduleAutosave();
+  }
+
+  function applyProfile(name: string) {
+    setRecipientName(name);
+    const normalized = name.trim().toLowerCase().replace(/\s+/g, " ");
+    const profile = profiles.find(
+      (item) => item.normalized_name === normalized || item.name.trim().toLowerCase() === normalized,
+    );
+    if (!profile) return;
+    setRecipientEmail(profile.email ?? "");
+    setRecipientAddress(profile.address ?? "");
+    setClientSirenSiret(profile.siren_siret ?? "");
+    setClientPhone(profile.phone ?? "");
+    setPaymentTerms(profile.default_payment_terms ?? "");
+    scheduleAutosave();
   }
 
   function updateLine(index: number, patch: Partial<LilInvoiceLine>) {
@@ -163,11 +229,21 @@ export default function InvoiceForm({
         return next;
       }),
     );
+    scheduleAutosave();
   }
 
-  async function submit(formData: FormData, action: "save_draft" | "issue") {
+  function scheduleAutosave() {
+    if (!invoice?.id || locked) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    setSaveState("Sauvegarde...");
+    autosaveTimer.current = setTimeout(() => {
+      if (formRef.current) void submit(new FormData(formRef.current), "save_draft", true);
+    }, 900);
+  }
+
+  async function submit(formData: FormData, action: "save_draft" | "issue", autosave = false) {
     setBusy(action);
-    setNotice("");
+    if (!autosave) setNotice("");
     setError("");
     const payload = {
       action,
@@ -177,6 +253,16 @@ export default function InvoiceForm({
       recipientName: formData.get("recipientName"),
       recipientAddress: formData.get("recipientAddress"),
       recipientEmail: formData.get("recipientEmail"),
+      clientSirenSiret: formData.get("clientSirenSiret"),
+      clientPhone: formData.get("clientPhone"),
+      paymentTerms: formData.get("paymentTerms"),
+      serviceDate: formData.get("serviceDate"),
+      servicePeriod: formData.get("servicePeriod"),
+      auditReference: formData.get("auditReference"),
+      deliveryAddress: formData.get("deliveryAddress"),
+      operationCategory: formData.get("operationCategory"),
+      dueDate: formData.get("dueDate"),
+      vatDebitsOption: formData.get("vatDebitsOption") === "on",
       notes: formData.get("notes"),
       linkedAuditIds: selectedAuditIds,
       lines,
@@ -190,6 +276,12 @@ export default function InvoiceForm({
     setBusy("");
     if (!response.ok) {
       setError(result.error ?? "Action impossible.");
+      if (autosave) setSaveState("Erreur de sauvegarde");
+      return;
+    }
+    if (autosave) {
+      setSaveState("Sauvegarde OK");
+      router.refresh();
       return;
     }
     setNotice(
@@ -203,7 +295,7 @@ export default function InvoiceForm({
       router.push(`/agent/gestion/factures/${result.invoice.id}`);
       return;
     }
-    router.refresh();
+      router.refresh();
   }
 
   async function cancelInvoice() {
@@ -291,7 +383,12 @@ export default function InvoiceForm({
         </p>
       ) : null}
 
-      <form style={s.form}>
+      <form
+        ref={formRef}
+        style={s.form}
+        onChange={() => scheduleAutosave()}
+        onInput={() => scheduleAutosave()}
+      >
         <label style={s.field}>
           <span>Type</span>
           <select
@@ -314,26 +411,130 @@ export default function InvoiceForm({
           defaultValue={invoice?.invoice_date || new Date().toISOString().slice(0, 10)}
           disabled={locked}
         />
-        <Field
-          label="Destinataire"
-          name="recipientName"
-          defaultValue={invoice?.recipient_name}
-          disabled={locked}
-        />
-        <Field
-          label="Email destinataire"
-          name="recipientEmail"
-          defaultValue={invoice?.recipient_email}
-          disabled={locked}
-        />
+        <label style={s.field}>
+          <span>Destinataire</span>
+          <input
+            name="recipientName"
+            list="billing-profiles"
+            value={recipientName}
+            onChange={(event) => applyProfile(event.target.value)}
+            style={s.input}
+            disabled={locked}
+          />
+          <datalist id="billing-profiles">
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.name} />
+            ))}
+          </datalist>
+        </label>
+        <label style={s.field}>
+          <span>Email destinataire</span>
+          <input
+            name="recipientEmail"
+            value={recipientEmail}
+            onChange={(event) => setRecipientEmail(event.target.value)}
+            style={s.input}
+            disabled={locked}
+          />
+        </label>
+        <label style={s.field}>
+          <span>SIREN/SIRET client</span>
+          <input
+            name="clientSirenSiret"
+            value={clientSirenSiret}
+            onChange={(event) => setClientSirenSiret(event.target.value)}
+            style={s.input}
+            disabled={locked}
+          />
+        </label>
+        <label style={s.field}>
+          <span>Telephone client</span>
+          <input
+            name="clientPhone"
+            value={clientPhone}
+            onChange={(event) => setClientPhone(event.target.value)}
+            style={s.input}
+            disabled={locked}
+          />
+        </label>
         <label style={s.fieldFull}>
           <span>Adresse destinataire</span>
           <textarea
             name="recipientAddress"
-            defaultValue={invoice?.recipient_address ?? ""}
+            value={recipientAddress}
+            onChange={(event) => setRecipientAddress(event.target.value)}
             style={{ ...s.input, minHeight: 78, paddingTop: 10 }}
             disabled={locked}
           />
+        </label>
+        <Field
+          label="Date de prestation"
+          name="serviceDate"
+          type="date"
+          defaultValue={
+            typeof invoice?.metadata?.service_date === "string" ? invoice.metadata.service_date : ""
+          }
+          disabled={locked}
+        />
+        <Field
+          label="Periode de prestation"
+          name="servicePeriod"
+          defaultValue={
+            typeof invoice?.metadata?.service_period === "string" ? invoice.metadata.service_period : ""
+          }
+          disabled={locked}
+        />
+        <Field
+          label="Reference audit"
+          name="auditReference"
+          defaultValue={
+            typeof invoice?.metadata?.audit_reference === "string" ? invoice.metadata.audit_reference : ""
+          }
+          disabled={locked}
+        />
+        <Field
+          label="Date echeance"
+          name="dueDate"
+          type="date"
+          defaultValue={typeof invoice?.metadata?.due_date === "string" ? invoice.metadata.due_date : ""}
+          disabled={locked}
+        />
+        <Field
+          label="Categorie operation"
+          name="operationCategory"
+          defaultValue={
+            typeof invoice?.metadata?.operation_category === "string"
+              ? invoice.metadata.operation_category
+              : "Prestation de service"
+          }
+          disabled={locked}
+        />
+        <Field
+          label="Adresse prestation/livraison"
+          name="deliveryAddress"
+          defaultValue={
+            typeof invoice?.metadata?.delivery_address === "string" ? invoice.metadata.delivery_address : ""
+          }
+          disabled={locked}
+        />
+        <label style={s.fieldFull}>
+          <span>Conditions paiement facture</span>
+          <input
+            name="paymentTerms"
+            value={paymentTerms}
+            onChange={(event) => setPaymentTerms(event.target.value)}
+            style={s.input}
+            disabled={locked}
+          />
+        </label>
+        <label style={s.checkboxRow}>
+          <input
+            type="checkbox"
+            name="vatDebitsOption"
+            defaultChecked={invoice?.metadata?.vat_debits_option === true}
+            disabled={locked}
+          />
+          <span>Option TVA sur les debits</span>
         </label>
 
         <div style={s.fieldFull}>
@@ -428,25 +629,26 @@ export default function InvoiceForm({
           <span>Total HT</span>
           <strong>{centsToEuros(totals.total)}</strong>
         </div>
+        {saveState ? <div style={s.saveState}>{saveState}</div> : null}
         {!locked ? (
           <div style={s.actionsFull}>
+            {!invoice?.id ? (
+              <SelenButton
+                type="button"
+                variant="ghost"
+                disabled={Boolean(busy)}
+                onClick={() => {
+                  if (formRef.current) void submit(new FormData(formRef.current), "save_draft");
+                }}
+              >
+                {busy === "save_draft" ? "Enregistrement..." : "Enregistrer brouillon"}
+              </SelenButton>
+            ) : null}
             <SelenButton
               type="button"
-              variant="ghost"
               disabled={Boolean(busy)}
               onClick={() => {
-                const form = document.querySelector("form");
-                if (form) void submit(new FormData(form), "save_draft");
-              }}
-            >
-              {busy === "save_draft" ? "Enregistrement..." : "Enregistrer brouillon"}
-            </SelenButton>
-            <SelenButton
-              type="button"
-              disabled={Boolean(busy)}
-              onClick={() => {
-                const form = document.querySelector("form");
-                if (form) void submit(new FormData(form), "issue");
+                if (formRef.current) void submit(new FormData(formRef.current), "issue");
               }}
             >
               {busy === "issue" ? "Generation..." : "Generer PDF et envoyer"}
@@ -542,6 +744,15 @@ const s: Record<string, CSSProperties> = {
     borderRadius: "var(--radius-sm)",
     border: "1px solid var(--selen-border)",
     color: "var(--selen-text)",
+  },
+  saveState: { gridColumn: "1 / -1", color: "var(--selen-text2)", fontSize: 12 },
+  checkboxRow: {
+    gridColumn: "1 / -1",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    color: "var(--selen-text2)",
+    fontSize: 13,
   },
   actionsFull: { gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" },
   actionLink: {

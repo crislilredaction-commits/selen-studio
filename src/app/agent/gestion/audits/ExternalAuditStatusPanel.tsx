@@ -51,11 +51,9 @@ export default function ExternalAuditStatusPanel({
   googleStatus: GoogleStatus;
 }) {
   const router = useRouter();
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [liveGoogleStatus, setLiveGoogleStatus] = useState(googleStatus);
   const [subject, setSubject] = useState(confirmationEmail.subject);
   const [bodyText, setBodyText] = useState(confirmationEmail.bodyText);
   const [hasDraft, setHasDraft] = useState(confirmationEmail.hasDraft);
@@ -152,25 +150,6 @@ export default function ExternalAuditStatusPanel({
     router.refresh();
   }
 
-  async function testGoogleConfig() {
-    setBusy("google-status");
-    setNotice("");
-    setError("");
-    const response = await fetch("/agent/api/gestion/google-calendar/status");
-    const result = await response.json().catch(() => ({}));
-    setBusy("");
-    if (!response.ok) {
-      setError(result.error ?? "Test Google impossible.");
-      return;
-    }
-    setLiveGoogleStatus(result as GoogleStatus);
-    setNotice(
-      result.configured
-        ? "Configuration Google Calendar presente."
-        : "Configuration Google Calendar incomplete.",
-    );
-  }
-
   return (
     <div style={s.stack}>
       {notice ? <div style={s.notice}>{notice}</div> : null}
@@ -200,21 +179,7 @@ export default function ExternalAuditStatusPanel({
             style={{ ...s.input, ...s.textarea }}
           />
         </label>
-        {previewOpen ? (
-          <div style={s.previewBox}>
-            <span style={s.label}>Apercu du mail qui sera envoye</span>
-            <strong>{subject}</strong>
-            <pre style={s.pre}>{bodyText}</pre>
-          </div>
-        ) : null}
         <div style={s.actions}>
-          <SelenButton
-            type="button"
-            variant="ghost"
-            onClick={() => setPreviewOpen((current) => !current)}
-          >
-            {previewOpen ? "Masquer le mail" : "Previsualiser le mail"}
-          </SelenButton>
           <SelenButton
             type="button"
             variant="ghost"
@@ -297,54 +262,27 @@ export default function ExternalAuditStatusPanel({
         </div>
       </SelenCard>
 
-      <SelenCard>
-        <SelenCardTitle>Google Calendar Studio</SelenCardTitle>
-        {!liveGoogleStatus.configured ? (
-          <p style={s.warning}>
-            Configuration Google Calendar absente dans Selen Studio. Ajoutez
-            GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN,
-            GOOGLE_CALENDAR_ID et GOOGLE_CALENDAR_TIMEZONE dans .env.local et
-            dans Vercel.
-          </p>
-        ) : null}
-        <div style={s.grid}>
-          <Info
-            label="Configuration"
-            value={liveGoogleStatus.configured ? "Presente" : "Incomplete"}
-          />
-          <Info label="Variables manquantes" value={liveGoogleStatus.missing.join(", ") || "-"} />
-          <Info label="Calendar ID" value={liveGoogleStatus.calendarId || "-"} />
-          <Info label="Timezone" value={liveGoogleStatus.timezone || "-"} />
-          <Info label="Google event" value={audit.google_calendar_event_id || "-"} />
-          <Info label="Lien Meet" value={meetLink(audit) || "-"} />
-          <Info label="Lien agenda" value={audit.calendar_link || metadataText(audit, "calendar_link") || "-"} />
-        </div>
-        {meetLink(audit) ? (
-          <div style={s.actions}>
-            <a href={meetLink(audit)} target="_blank" rel="noreferrer" style={s.actionLink}>
-              Rejoindre Meet
-            </a>
-          </div>
-        ) : null}
-        <div style={s.actions}>
+      {!audit.google_calendar_event_id ? (
+        <div style={s.discreetActions}>
+          {!googleStatus.configured ? (
+            <span style={s.warning}>Configuration Google Calendar incomplete.</span>
+          ) : null}
           <SelenButton
             type="button"
             variant="ghost"
-            disabled={busy === "google-status"}
-            onClick={() => void testGoogleConfig()}
-          >
-            Tester configuration Google
-          </SelenButton>
-          <SelenButton
-            type="button"
-            variant="secondary"
             disabled={busy === "calendar"}
             onClick={() => void createCalendar()}
           >
-            Creer evenement Google
+            Creer l'evenement Google Calendar
           </SelenButton>
         </div>
-      </SelenCard>
+      ) : meetLink(audit) ? (
+        <div style={s.discreetActions}>
+          <a href={meetLink(audit)} target="_blank" rel="noreferrer" style={s.actionLink}>
+            Rejoindre Meet
+          </a>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -377,21 +315,6 @@ const s: Record<string, CSSProperties> = {
     fontSize: 12,
     overflowWrap: "anywhere",
   },
-  label: {
-    display: "block",
-    fontSize: 10,
-    letterSpacing: "0.12em",
-    textTransform: "uppercase",
-    color: "var(--selen-text3-oncard)",
-    marginBottom: 4,
-  },
-  previewBox: {
-    padding: 10,
-    borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--selen-border)",
-    color: "var(--selen-text-oncard)",
-    marginBottom: 12,
-  },
   field: {
     display: "grid",
     gap: 6,
@@ -416,18 +339,14 @@ const s: Record<string, CSSProperties> = {
     resize: "vertical",
     lineHeight: 1.55,
   },
-  pre: {
-    whiteSpace: "pre-wrap",
-    overflowWrap: "anywhere",
-    padding: 12,
-    borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--selen-border)",
-    background: "rgba(10, 8, 6, 0.32)",
-    color: "var(--selen-text2-oncard)",
-    fontSize: 13,
-    lineHeight: 1.55,
-  },
   actions: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 },
+  discreetActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
   actionLink: {
     display: "inline-flex",
     alignItems: "center",

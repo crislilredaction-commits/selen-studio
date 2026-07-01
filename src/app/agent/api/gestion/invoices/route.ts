@@ -37,6 +37,14 @@ function parseAuditIds(value: unknown) {
   return value.map((item) => String(item).trim()).filter(Boolean);
 }
 
+function normalizedName(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function boolValue(value: unknown) {
+  return value === true || value === "true" || value === "on";
+}
+
 async function loadInvoice(id: string) {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
@@ -46,6 +54,45 @@ async function loadInvoice(id: string) {
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data as LilInvoiceRow | null;
+}
+
+async function saveBillingProfile(
+  admin: SupabaseAdmin,
+  payload: {
+    recipient_name: string;
+    recipient_email: string | null;
+    recipient_address: string | null;
+    metadata: Record<string, unknown>;
+  },
+) {
+  const normalized = normalizedName(payload.recipient_name);
+  if (!normalized) return;
+
+  const now = new Date().toISOString();
+  await admin.from("lil_billing_profiles").upsert(
+    {
+      normalized_name: normalized,
+      name: payload.recipient_name,
+      email: payload.recipient_email,
+      address: payload.recipient_address,
+      siren_siret:
+        typeof payload.metadata.client_siren_siret === "string"
+          ? payload.metadata.client_siren_siret
+          : null,
+      phone:
+        typeof payload.metadata.client_phone === "string"
+          ? payload.metadata.client_phone
+          : null,
+      default_payment_terms:
+        typeof payload.metadata.payment_terms === "string"
+          ? payload.metadata.payment_terms
+          : null,
+      metadata: {
+        updated_from_invoice_at: now,
+      },
+    },
+    { onConflict: "normalized_name" },
+  );
 }
 
 async function archiveLinkedAudits(
@@ -331,6 +378,17 @@ export async function POST(req: Request) {
       metadata: {
         ...(existing?.metadata ?? {}),
         notes: String(body.notes ?? "").trim(),
+        client_siren_siret: String(body.clientSirenSiret ?? "").trim(),
+        client_phone: String(body.clientPhone ?? "").trim(),
+        service_date: String(body.serviceDate ?? "").trim(),
+        service_period: String(body.servicePeriod ?? "").trim(),
+        audit_reference: String(body.auditReference ?? "").trim(),
+        delivery_address: String(body.deliveryAddress ?? "").trim(),
+        operation_category:
+          String(body.operationCategory ?? "").trim() || "Prestation de service",
+        due_date: String(body.dueDate ?? "").trim(),
+        payment_terms: String(body.paymentTerms ?? "").trim(),
+        vat_debits_option: boolValue(body.vatDebitsOption),
         temporary_generator: true,
         google_drive_target_folder:
           "1DawT2mz4m6pwRR3yvgWQVpJA5iU7R9Zi",
@@ -385,6 +443,7 @@ export async function POST(req: Request) {
 
     const { data: saved, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await saveBillingProfile(admin, payload);
 
     if (action !== "issue") {
       return NextResponse.json({ ok: true, invoice: saved });
