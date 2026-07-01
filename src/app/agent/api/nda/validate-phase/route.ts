@@ -33,8 +33,7 @@ function getAdminClient() {
 
 function isNdaPhaseKey(value: unknown): value is NdaPhaseKey {
   return (
-    typeof value === "string" &&
-    NDA_PHASE_KEYS.includes(value as NdaPhaseKey)
+    typeof value === "string" && NDA_PHASE_KEYS.includes(value as NdaPhaseKey)
   );
 }
 
@@ -125,6 +124,18 @@ async function openDepositProcedureForClient(args: {
     return { ok: false as const, error: statusError.message };
   }
 
+  const { error: variablesError } = await admin
+    .from("nda_variables")
+    .update({
+      nda_deposit_status: "ready_for_deposit",
+      updated_at: now,
+    })
+    .eq("dossier_id", dossierId);
+
+  if (variablesError) {
+    return { ok: false as const, error: variablesError.message };
+  }
+
   const { error: documentsError } = await admin
     .from("documents")
     .update({
@@ -150,12 +161,10 @@ async function openDepositProcedureForClient(args: {
   });
 
   if (!emailNotification.sent) {
-    return {
-      ok: false as const,
-      error:
-        emailNotification.error ??
-        "Les documents ont été validés, mais l'email client n'a pas pu être envoyé.",
-    };
+    console.error(
+      "Email ouverture dépôt NDA non envoyé:",
+      emailNotification.error,
+    );
   }
 
   await admin.from("messages").insert({
@@ -236,7 +245,9 @@ export async function PATCH(req: Request) {
 
     const { data: currentVariables, error: variablesError } = await admin
       .from("nda_variables")
-      .select("nda_phase_validations, client_representant_prenom, client_representant_nom, stagiaire_prenom, stagiaire_nom")
+      .select(
+        "nda_phase_validations, client_representant_prenom, client_representant_nom, stagiaire_prenom, stagiaire_nom",
+      )
       .eq("dossier_id", dossierId)
       .maybeSingle();
 
