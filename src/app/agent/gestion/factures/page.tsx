@@ -11,6 +11,7 @@ import {
   type LilInvoiceRow,
 } from "@/lib/server/lilInvoices";
 import IcpfMonthlyInvoiceCard from "./IcpfMonthlyInvoiceCard";
+import InvoiceListActions from "./InvoiceListActions";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(
@@ -94,6 +95,11 @@ export default async function LilInvoicesPage() {
                 </div>
                 <div style={s.rowActions}>
                   <span style={s.badge}>{statusLabel(invoice.status)}</span>
+                  <InvoiceListActions
+                    invoiceId={invoice.id}
+                    invoiceType={invoice.invoice_type}
+                    status={invoice.status}
+                  />
                   {invoice.pdf_url ? (
                     <a href={invoice.pdf_url} target="_blank" rel="noreferrer" style={s.link}>
                       PDF
