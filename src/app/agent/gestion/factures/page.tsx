@@ -19,6 +19,8 @@ function formatDate(value: string) {
 
 function statusLabel(status: string) {
   if (status === "issued") return "Emise";
+  if (status === "sent") return "Envoyee";
+  if (status === "paid") return "Payee";
   if (status === "cancelled") return "Annulee";
   return "Brouillon";
 }

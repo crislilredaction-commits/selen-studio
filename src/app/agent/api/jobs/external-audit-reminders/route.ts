@@ -18,7 +18,8 @@ function parisParts(date: Date) {
     hour: "2-digit",
     hour12: false,
   }).formatToParts(date);
-  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  const value = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "";
   return {
     year: Number(value("year")),
     month: Number(value("month")),
@@ -29,7 +30,9 @@ function parisParts(date: Date) {
 
 function parisDateOffset(days: number) {
   const parts = parisParts(new Date());
-  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days));
+  const date = new Date(
+    Date.UTC(parts.year, parts.month - 1, parts.day + days),
+  );
   return date.toISOString().slice(0, 10);
 }
 
@@ -52,27 +55,54 @@ function asHistory(value: unknown) {
   return Array.isArray(value) ? value.slice(-49) : [];
 }
 
+function plannedHour(audience: ReminderAudience) {
+  return audience === "client" ? "J-1 09:00 Europe/Paris" : "J-1 20:00 Europe/Paris";
+}
+
+function logReminderEvent(event: {
+  auditId: string;
+  audience: ReminderAudience;
+  recipient?: string | null;
+  plannedFor: string;
+  status: "skipped" | "sent" | "failed";
+  error?: string | null;
+}) {
+  console.info("external_audit_reminder", event);
+}
+
 function alreadySent(audit: ExternalAuditRow, audience: ReminderAudience) {
   const metadata = metadataOf(audit);
   if (audience === "client") {
-    return Boolean(audit.client_reminder_sent_at || metadata.client_reminder_sent_at);
+    return Boolean(
+      audit.client_reminder_sent_at || metadata.client_reminder_sent_at,
+    );
   }
   return Boolean(
     audit.lil_reminder_sent_at ||
-      audit.reminder_email_sent_at ||
-      metadata.lil_reminder_sent_at,
+    audit.reminder_email_sent_at ||
+    metadata.lil_reminder_sent_at,
   );
 }
 
 async function authorize(req: Request) {
   const cronSecret = process.env.CRON_SECRET?.trim();
   const authHeader = req.headers.get("authorization") ?? "";
+
+  // Appel manuel sécurisé avec Bearer token
   if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+    return { ok: true, email: "cron-secret" };
+  }
+
+  // Appel natif Vercel Cron
+  const userAgent = req.headers.get("user-agent") ?? "";
+  if (userAgent.includes("vercel-cron")) {
     return { ok: true, email: "vercel-cron" };
   }
 
+  // Appel manuel depuis Gestion Lil
   const auth = await requireLilOwner();
   if (auth.ok) return { ok: true, email: auth.email };
+
   return { ok: false, error: auth.error, status: auth.status };
 }
 
@@ -108,19 +138,45 @@ export async function POST(req: Request) {
   const results = [];
   for (const audit of (data ?? []) as ExternalAuditRow[]) {
     if (alreadySent(audit, audience)) {
+      logReminderEvent({
+        auditId: audit.id,
+        audience,
+        recipient: null,
+        plannedFor: plannedHour(audience),
+        status: "skipped",
+        error: "already_sent",
+      });
       results.push({ id: audit.id, skipped: true, reason: "already_sent" });
       continue;
     }
 
-    const email =
-      audience === "client"
-        ? await sendExternalAuditClientReminder(audit)
-        : await sendExternalAuditLilReminder(audit);
+    const email = await (async () => {
+      try {
+        return audience === "client"
+          ? await sendExternalAuditClientReminder(audit)
+          : await sendExternalAuditLilReminder(audit);
+      } catch (error) {
+        return {
+          sent: false,
+          error: error instanceof Error ? error.message : "Erreur Resend inconnue.",
+        };
+      }
+    })();
 
     const now = new Date().toISOString();
     const metadata = metadataOf(audit);
     const history = asHistory(metadata.reminder_history);
     const status = email.sent ? "sent" : "failed";
+    const recipient = "to" in email && typeof email.to === "string" ? email.to : null;
+
+    logReminderEvent({
+      auditId: audit.id,
+      audience,
+      recipient,
+      plannedFor: plannedHour(audience),
+      status,
+      error: email.error ?? null,
+    });
 
     await admin
       .from("external_audits")
@@ -128,7 +184,9 @@ export async function POST(req: Request) {
         reminder_email_sent_at:
           audience === "lil" && email.sent ? now : audit.reminder_email_sent_at,
         client_reminder_sent_at:
-          audience === "client" && email.sent ? now : audit.client_reminder_sent_at,
+          audience === "client" && email.sent
+            ? now
+            : audit.client_reminder_sent_at,
         lil_reminder_sent_at:
           audience === "lil" && email.sent ? now : audit.lil_reminder_sent_at,
         metadata: {
@@ -145,6 +203,8 @@ export async function POST(req: Request) {
               audience,
               method: "auto",
               status,
+              recipient,
+              planned_for: plannedHour(audience),
               sent_at: email.sent ? now : null,
               attempted_at: now,
               error: email.error ?? null,
@@ -157,7 +217,13 @@ export async function POST(req: Request) {
     results.push({ id: audit.id, email });
   }
 
-  return NextResponse.json({ ok: true, audience, date, count: results.length, results });
+  return NextResponse.json({
+    ok: true,
+    audience,
+    date,
+    count: results.length,
+    results,
+  });
 }
 
 export async function GET(req: Request) {

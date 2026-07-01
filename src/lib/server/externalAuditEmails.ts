@@ -12,6 +12,8 @@ import {
   type ExternalAuditRow,
 } from "@/lib/server/externalAudits";
 
+export const DEFAULT_LIL_REMINDER_EMAIL = "crislil.redaction@gmail.com";
+
 function formatAuditDate(audit: Pick<ExternalAuditRow, "audit_date" | "start_time">) {
   return new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "full",
@@ -76,6 +78,10 @@ function auditContactLines() {
     phone ? `Telephone : ${phone}` : "",
     "Email : hello@selen-editions.fr",
   ].filter(Boolean);
+}
+
+export function getLilReminderRecipient() {
+  return process.env.LIL_REMINDER_EMAIL?.trim() || DEFAULT_LIL_REMINDER_EMAIL;
 }
 
 function formatSentStatus(value?: string | null) {
@@ -410,7 +416,7 @@ export function buildLilReminderEmail(audit: ExternalAuditRow) {
   });
 
   return {
-    to: process.env.LIL_NOTIFICATION_EMAIL || "hello@selen-editions.fr",
+    to: getLilReminderRecipient(),
     subject,
     bodyText,
     html: rendered.html,
@@ -423,25 +429,27 @@ export const buildExternalAuditReminderEmail = buildLilReminderEmail;
 export async function sendExternalAuditClientReminder(audit: ExternalAuditRow) {
   const email = buildExternalAuditClientReminderEmail(audit);
   if (!email.to) {
-    return { sent: false, error: "Email contact absent." };
+    return { sent: false, error: "Email contact absent.", to: email.to };
   }
 
-  return sendSelenEmail({
+  const result = await sendSelenEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
     text: email.text,
   });
+  return { ...result, to: email.to };
 }
 
 export async function sendExternalAuditLilReminder(audit: ExternalAuditRow) {
   const email = buildLilReminderEmail(audit);
-  return sendSelenEmail({
+  const result = await sendSelenEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
     text: email.text,
   });
+  return { ...result, to: email.to };
 }
 
 export async function sendExternalAuditReminder(audit: ExternalAuditRow) {

@@ -8,6 +8,7 @@ import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import type { LilInvoiceRow } from "@/lib/server/lilInvoices";
 import {
+  CERTIFOPAC_AUDIT_AMOUNT_CENTS,
   INVOICE_TYPES,
   centsToEuros,
   eurosToCents,
@@ -28,10 +29,25 @@ function auditLabel(audit: ExternalAuditRow) {
   }).format(new Date(`${audit.audit_date}T12:00:00`))}`;
 }
 
+function isCertifopacAudit(audit: ExternalAuditRow) {
+  const haystack = [
+    audit.certifier,
+    metadataText(audit, "order_giver"),
+    metadataText(audit, "donneur_ordre"),
+    metadataText(audit, "principal"),
+    metadataText(audit, "client_name"),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes("certifopac");
+}
+
 function lineFromAudit(audit: ExternalAuditRow): LilInvoiceLine {
-  const amount =
-    eurosToCents(metadataText(audit, "invoice_amount") || metadataText(audit, "fee_amount")) ??
-    0;
+  const amount = isCertifopacAudit(audit)
+    ? CERTIFOPAC_AUDIT_AMOUNT_CENTS
+    : eurosToCents(metadataText(audit, "invoice_amount") || metadataText(audit, "fee_amount")) ??
+      0;
   return {
     label: `Audit Qualiopi - ${audit.of_name}`,
     details: `${audit.audit_type} - ${audit.audit_date}`,
@@ -61,7 +77,7 @@ export default function InvoiceForm({
   audits: ExternalAuditRow[];
 }) {
   const router = useRouter();
-  const locked = invoice?.status === "issued" || invoice?.status === "cancelled";
+  const locked = Boolean(invoice && invoice.status !== "draft");
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -134,7 +150,13 @@ export default function InvoiceForm({
       setError(result.error ?? "Action impossible.");
       return;
     }
-    setNotice(action === "issue" ? "Facture emise et PDF genere." : "Brouillon enregistre.");
+    setNotice(
+      action === "issue"
+        ? result.email?.sent
+          ? `Facture generee et envoyee a ${result.email.to}.`
+          : result.email?.error ?? "Facture generee, email non envoye."
+        : "Brouillon enregistre.",
+    );
     if (!invoice?.id && result.invoice?.id) {
       router.push(`/agent/gestion/factures/${result.invoice.id}`);
       return;
@@ -168,6 +190,38 @@ export default function InvoiceForm({
       return;
     }
     setNotice("Facture annulee.");
+    router.refresh();
+  }
+
+  async function invoiceAction(action: "send_email" | "mark_paid") {
+    if (!invoice?.id) return;
+    setBusy(action);
+    setNotice("");
+    setError("");
+    const response = await fetch("/agent/api/gestion/invoices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        id: invoice.id,
+        invoiceType,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    setBusy("");
+    if (!response.ok) {
+      setError(result.error ?? "Action impossible.");
+      return;
+    }
+    if (action === "send_email") {
+      setNotice(
+        result.email?.sent
+          ? `Facture envoyee a ${result.email.to}.`
+          : result.email?.error ?? "Email non envoye.",
+      );
+    } else {
+      setNotice("Facture marquee payee.");
+    }
     router.refresh();
   }
 
@@ -353,11 +407,27 @@ export default function InvoiceForm({
                 if (form) void submit(new FormData(form), "issue");
               }}
             >
-              {busy === "issue" ? "Generation..." : "Emettre et generer PDF"}
+              {busy === "issue" ? "Generation..." : "Generer PDF et envoyer"}
             </SelenButton>
           </div>
-        ) : invoice?.status === "issued" ? (
+        ) : invoice?.status === "issued" || invoice?.status === "sent" ? (
           <div style={s.actionsFull}>
+            <SelenButton
+              type="button"
+              variant="ghost"
+              disabled={Boolean(busy)}
+              onClick={() => void invoiceAction("send_email")}
+            >
+              {busy === "send_email" ? "Envoi..." : "Envoyer / renvoyer email"}
+            </SelenButton>
+            <SelenButton
+              type="button"
+              variant="secondary"
+              disabled={Boolean(busy)}
+              onClick={() => void invoiceAction("mark_paid")}
+            >
+              {busy === "mark_paid" ? "Mise a jour..." : "Marquer payee"}
+            </SelenButton>
             <SelenButton
               type="button"
               variant="danger"

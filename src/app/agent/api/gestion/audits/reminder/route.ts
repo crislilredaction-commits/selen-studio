@@ -19,6 +19,21 @@ function asHistory(value: unknown) {
   return Array.isArray(value) ? value.slice(-19) : [];
 }
 
+function plannedHour(audience: ReminderAudience) {
+  return audience === "client" ? "J-1 09:00 Europe/Paris" : "J-1 20:00 Europe/Paris";
+}
+
+function logReminderEvent(event: {
+  auditId: string;
+  audience: ReminderAudience;
+  recipient?: string | null;
+  plannedFor: string;
+  status: "sent" | "failed";
+  error?: string | null;
+}) {
+  console.info("external_audit_reminder_manual", event);
+}
+
 export async function POST(req: Request) {
   const auth = await requireLilOwner();
   if (!auth.ok) {
@@ -49,10 +64,27 @@ export async function POST(req: Request) {
     }
 
     const typedAudit = audit as ExternalAuditRow;
-    const email =
-      reminderAudience === "client"
-        ? await sendExternalAuditClientReminder(typedAudit)
-        : await sendExternalAuditLilReminder(typedAudit);
+    const email = await (async () => {
+      try {
+        return reminderAudience === "client"
+          ? await sendExternalAuditClientReminder(typedAudit)
+          : await sendExternalAuditLilReminder(typedAudit);
+      } catch (error) {
+        return {
+          sent: false,
+          error: error instanceof Error ? error.message : "Erreur Resend inconnue.",
+        };
+      }
+    })();
+    const recipient = "to" in email && typeof email.to === "string" ? email.to : null;
+    logReminderEvent({
+      auditId: typedAudit.id,
+      audience: reminderAudience,
+      recipient,
+      plannedFor: plannedHour(reminderAudience),
+      status: email.sent ? "sent" : "failed",
+      error: email.error ?? null,
+    });
     if (email.sent) {
       const now = new Date().toISOString();
       const metadata = metadataOf(typedAudit);
@@ -77,6 +109,8 @@ export async function POST(req: Request) {
                 audience: reminderAudience,
                 method: "manual",
                 status: "sent",
+                recipient,
+                planned_for: plannedHour(reminderAudience),
                 sent_at: now,
                 sent_by: auth.email,
               },

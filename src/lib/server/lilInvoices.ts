@@ -2,6 +2,10 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import {
+  renderSelenEmailFromText,
+  sendSelenEmail,
+} from "@/lib/server/selenEmailLayout";
+import {
   INVOICE_TYPES,
   centsToEuros,
   eurosToCents,
@@ -51,6 +55,9 @@ export type LilInvoiceRow = {
   pdf_path: string | null;
   pdf_url: string | null;
   issued_at: string | null;
+  sent_at: string | null;
+  paid_at: string | null;
+  email_sent_at: string | null;
   cancelled_at: string | null;
   created_by_email: string | null;
   updated_by_email: string | null;
@@ -212,7 +219,7 @@ export function generateLilInvoicePdfBuffer({
   autoTable(doc, {
     startY: 245,
     margin: { left: margin, right: margin },
-    head: [["Designation", "Qté", "PU HT", "Total HT"]],
+    head: [["Designation", "Qte", "PU HT", "Total HT"]],
     body: invoice.lines.map((line) => [
       [line.label, line.details || ""].filter(Boolean).join("\n"),
       String(line.quantity),
@@ -255,7 +262,7 @@ export function generateLilInvoicePdfBuffer({
   doc.text(centsToEuros(invoice.tax_cents), totalsX + 196, y + 32, { align: "right" });
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("Total a payer", totalsX + 14, y + 58);
+  doc.text("Total TTC / a payer", totalsX + 14, y + 58);
   doc.text(centsToEuros(invoice.total_cents), totalsX + 196, y + 58, { align: "right" });
 
   y += 122;
@@ -329,3 +336,66 @@ export const invoiceStorageProvider = {
     };
   },
 };
+
+export function buildLilInvoiceEmail({
+  invoice,
+  settings,
+}: {
+  invoice: LilInvoiceRow;
+  settings: LilInvoiceSettings;
+}) {
+  const subject = `Facture ${invoice.invoice_number || ""} - ${settings.business_name}`.trim();
+  const bodyText = [
+    `Bonjour ${invoice.recipient_name},`,
+    "Veuillez trouver ci-dessous votre facture.",
+    `Numero : ${invoice.invoice_number || "-"}`,
+    `Date : ${formatDateFr(invoice.invoice_date)}`,
+    `Montant total : ${centsToEuros(invoice.total_cents)}`,
+    invoice.pdf_url ? `Lien PDF : ${invoice.pdf_url}` : "",
+    settings.payment_terms,
+    settings.paypal_email ? `PayPal : ${settings.paypal_email}` : "",
+    settings.iban ? `IBAN : ${settings.iban}` : "",
+    settings.bic ? `BIC : ${settings.bic}` : "",
+    settings.vat_status,
+    "Bien cordialement,",
+    settings.business_name,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const rendered = renderSelenEmailFromText({
+    title: subject,
+    bodyText,
+    ctaLabel: invoice.pdf_url ? "Ouvrir la facture PDF" : undefined,
+    ctaUrl: invoice.pdf_url || undefined,
+  });
+
+  return {
+    to: invoice.recipient_email || "",
+    subject,
+    bodyText,
+    html: rendered.html,
+    text: rendered.text,
+  };
+}
+
+export async function sendLilInvoiceEmail({
+  invoice,
+  settings,
+}: {
+  invoice: LilInvoiceRow;
+  settings: LilInvoiceSettings;
+}) {
+  const email = buildLilInvoiceEmail({ invoice, settings });
+  if (!email.to) {
+    return { sent: false, error: "Email destinataire absent.", to: email.to };
+  }
+
+  const result = await sendSelenEmail({
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+
+  return { ...result, to: email.to };
+}

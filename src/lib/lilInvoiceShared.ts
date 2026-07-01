@@ -1,4 +1,4 @@
-export type LilInvoiceStatus = "draft" | "issued" | "cancelled";
+export type LilInvoiceStatus = "draft" | "issued" | "sent" | "paid" | "cancelled";
 export type LilInvoiceType = "certifopac_single_audit" | "icpf_monthly" | "manual";
 
 export type LilInvoiceLine = {
@@ -14,6 +14,8 @@ export const INVOICE_TYPES: { value: LilInvoiceType; label: string }[] = [
   { value: "icpf_monthly", label: "ICPF - facture mensuelle" },
   { value: "manual", label: "Manuelle" },
 ];
+
+export const CERTIFOPAC_AUDIT_AMOUNT_CENTS = 42000;
 
 export function eurosToCents(value: string) {
   const normalized = value.replace(/\s/g, "").replace(",", ".");
