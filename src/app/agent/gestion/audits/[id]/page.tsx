@@ -57,10 +57,18 @@ export default async function ExternalAuditDetailPage({ params }: PageProps) {
 
   return (
     <main style={s.page}>
-      <div>
+      <div style={s.topActions}>
         <Link href="/agent/gestion/audits" style={{ textDecoration: "none" }}>
           <SelenButton type="button" variant="ghost">
-            ← Retour aux audits
+            Retour aux audits
+          </SelenButton>
+        </Link>
+        <Link
+          href={`/agent/gestion/icpf-assistant?auditId=${audit.id}`}
+          style={{ textDecoration: "none" }}
+        >
+          <SelenButton type="button" variant="secondary">
+            Assistant grille ICPF
           </SelenButton>
         </Link>
       </div>
@@ -89,5 +97,11 @@ const s: Record<string, CSSProperties> = {
     padding: "24px 28px 48px",
     display: "grid",
     gap: 14,
+  },
+  topActions: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    alignItems: "center",
   },
 };
