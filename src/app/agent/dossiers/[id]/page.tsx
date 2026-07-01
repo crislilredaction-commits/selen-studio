@@ -361,11 +361,9 @@ function getDocumentWorkflowMeta(doc: DbDocumentRow) {
 const NDA_AGENT_WORKFLOW_STEPS = [
   { label: "Dépôt\ninitial" },
   { label: "Analyse\nprogramme" },
-  { label: "Coordonnées\nclient" },
   { label: "Documents\nà signer" },
-  { label: "Retours\nsignés" },
-  { label: "Contrôle\nfinal" },
-  { label: "Prêt\ndépôt NDA" },
+  { label: "Retour\nclient" },
+  { label: "Dépôt\nNDA" },
 ];
 
 const NDA_FINAL_REQUIRED_DOCUMENT_TYPES = [
@@ -393,6 +391,7 @@ const NDA_INITIAL_RECEPTION_DOCUMENT_TYPES = [
   "cv_formateur",
   "programme_formation",
   "avis_insee",
+  "kbis",
 ];
 
 function getNdaFinalDocumentLabel(documentType: string) {
@@ -413,7 +412,7 @@ function isNdaFinalReturnedDocument(doc: DbDocumentRow) {
   const documentType = normalizeNdaDocumentType(doc.document_type);
 
   return (
-    role === "client_returned_document" &&
+    ["client_returned_document", "agent_uploaded_document", "final_validated_file"].includes(role) &&
     [
       ...NDA_FINAL_REQUIRED_DOCUMENT_TYPES,
       ...NDA_FINAL_OPTIONAL_DOCUMENT_TYPES,
@@ -470,7 +469,12 @@ function getNdaAgentWorkflowState(args: {
   finalReturnedDocuments: DbDocumentRow[];
   missingFinalRequiredTypes: string[];
 }) {
-  const finalStatuses = args.finalReturnedDocuments.map((doc) =>
+  const requiredFinalDocuments = args.finalReturnedDocuments.filter((doc) =>
+    NDA_FINAL_REQUIRED_DOCUMENT_TYPES.includes(
+      normalizeNdaDocumentType(doc.document_type),
+    ),
+  );
+  const finalStatuses = requiredFinalDocuments.map((doc) =>
     inferNdaDocumentReviewStatus({
       reviewStatus: doc.review_status,
       status: doc.status,
@@ -483,7 +487,7 @@ function getNdaAgentWorkflowState(args: {
   const allFinalReceived = args.missingFinalRequiredTypes.length === 0;
   const allFinalValidated =
     allFinalReceived &&
-    args.finalReturnedDocuments.length > 0 &&
+    requiredFinalDocuments.length >= NDA_FINAL_REQUIRED_DOCUMENT_TYPES.length &&
     finalStatuses.every((status) => status === "validated");
 
   if (!args.initialDepositComplete) {
@@ -908,7 +912,7 @@ const NDA_PHASE_SUMMARIES = [
   {
     title: "Réception initiale",
     subtitle:
-      "CV du formateur, programme de formation et avis INSEE / justificatif d’existence.",
+      "CV du formateur, programme de formation et avis INSEE ou KBIS.",
   },
   {
     title: "Analyse du programme",
@@ -924,7 +928,7 @@ const NDA_PHASE_SUMMARIES = [
   },
   {
     title: "Dossier prêt pour dépôt",
-    subtitle: "Synthèse finale avant dépôt NDA.",
+    subtitle: "Procédure de dépôt NDA côté client.",
   },
 ];
 
@@ -2144,7 +2148,8 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
   const initialDepositComplete =
     uniqueReceivedKeys.includes("cv_formateur") &&
     uniqueReceivedKeys.includes("programme_formation") &&
-    uniqueReceivedKeys.includes("avis_insee");
+    (uniqueReceivedKeys.includes("avis_insee") ||
+      uniqueReceivedKeys.includes("kbis"));
   const workflowProgramVersion =
     latestClientProgramVersion ?? latestProgramVersion;
   const programReady = Boolean(
@@ -2273,7 +2278,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
     : isReviewDossier
       ? reviewCurrentStep
       : isNdaDossier
-        ? ndaAgentWorkflowState.currentStep
+        ? getNdaWorkflowPhaseIndex(ndaAgentWorkflowState.currentStep)
         : currentStep;
   const ndaPhaseValidations = normalizeNdaPhaseValidations(
     ndaVariables?.nda_phase_validations,
@@ -2283,7 +2288,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
   const ndaPhaseWarnings: Partial<Record<NdaPhaseKey, string>> = {
     initial_reception: initialDepositComplete
       ? undefined
-      : "Certains documents initiaux semblent manquants : CV formateur, programme de formation ou avis INSEE / justificatif d’existence.",
+      : "Certains documents initiaux semblent manquants : CV formateur, programme de formation ou avis INSEE / KBIS.",
     program_analysis: programReady
       ? undefined
       : "Le programme ne semble pas encore contenir de déroulé pédagogique exploitable.",
@@ -2805,11 +2810,29 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                       margin: 0,
                     }}
                   >
-                    Lorsque vous validez cette phase, les documents sont rendus
-                    disponibles au client et la procédure de dépôt est ouverte
-                    côté Vitrine. Le client reçoit un email l'invitant à
-                    consulter son dossier.
+                    Lorsque vous validez cette phase, la procedure de depot est
+                    ouverte cote Vitrine. Seuls les documents marques "Depot"
+                    seront visibles cote client.
                   </p>
+                </SelenCard>
+                <SelenCard>
+                  <SelenCardTitle>Ajouter une version corrigee</SelenCardTitle>
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "var(--selen-text3)",
+                      lineHeight: 1.5,
+                      margin: "0 0 10px",
+                    }}
+                  >
+                    Ajoutez ici les documents corriges ou finalises par
+                    l'agent, puis selectionnez precisement ceux qui seront
+                    visibles cote client pour le depot DREETS.
+                  </p>
+                  <DocumentUpload
+                    dossierId={dossier.id}
+                    organisationId={organisation?.id}
+                  />
                 </SelenCard>
                 <SelenCard>
                   <SelenCardTitle>
@@ -2961,6 +2984,8 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                               <DocumentReviewActions
                                 documentId={doc.id}
                                 currentStatus={reviewStatus}
+                                isVisibleToClient={doc.is_visible_to_client}
+                                showClientVisibilityToggle
                               />
                             ) : null}
                           </div>
@@ -3235,7 +3260,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
               </SelenCard>
             ) : null}
 
-            <div style={{ order: 501 }}>
+            <div style={{ order: isNdaDossier ? -1 : 501 }}>
               <AgentMessagingDrawer
                 dossierId={dossier.id}
                 initialMessages={(dossierMessages ?? []) as MessageRow[]}
@@ -3280,6 +3305,43 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                     cvAutoTextLength={analysisCvAutoText.length}
                     programAutoTextLength={analysisProgramAutoText.length}
                   />
+                  {canRunAutoAnalysis ? (
+                    <div style={{ marginTop: 12 }}>
+                      {administrativeIdentityWarning ? (
+                        <div
+                          style={{
+                            border: "1px solid rgba(212, 159, 63, 0.35)",
+                            borderRadius: "var(--radius-sm)",
+                            background: "rgba(212, 159, 63, 0.1)",
+                            color: "var(--selen-warning)",
+                            padding: "9px 10px",
+                            fontSize: 12,
+                            lineHeight: 1.45,
+                            marginBottom: 10,
+                          }}
+                        >
+                          {administrativeIdentityWarning}
+                        </div>
+                      ) : null}
+                      <AnalyzeNdaButton dossierId={dossier.id} />
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        border: "1px solid rgba(212, 159, 63, 0.35)",
+                        borderRadius: "var(--radius-sm)",
+                        background: "rgba(212, 159, 63, 0.1)",
+                        color: "var(--selen-warning)",
+                        padding: "9px 10px",
+                        fontSize: 12,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      L'analyse sera disponible lorsqu'un CV formateur et un
+                      programme de formation seront rattaches au dossier.
+                    </div>
+                  )}
                   <div style={{ marginTop: 14 }}>
                     <AnalyzeProgramButton
                       dossierId={dossier.id}
@@ -3996,44 +4058,6 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                     </p>
                   </div>
                 )}
-              </SelenCard>
-            ) : null}
-
-            {dossier.type === "nda" && canRunAutoAnalysis ? (
-              <SelenCard>
-                <SelenCardTitle>Analyse automatique NDA</SelenCardTitle>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "var(--selen-text3)",
-                    lineHeight: 1.5,
-                    margin: 0,
-                  }}
-                >
-                  À utiliser après avoir classé les documents initiaux et
-                  complété les textes exploitables du CV et du programme. Cette
-                  analyse aide à préparer la cohérence CV/programme, la liste
-                  des formateurs et les contrôles du dossier. Les documents
-                  administratifs non extractibles, comme l’avis INSEE, peuvent
-                  être vérifiés manuellement.
-                </p>
-                {administrativeIdentityWarning ? (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      border: "1px solid rgba(212, 159, 63, 0.35)",
-                      borderRadius: "var(--radius-sm)",
-                      background: "rgba(212, 159, 63, 0.1)",
-                      color: "var(--selen-warning)",
-                      padding: "9px 10px",
-                      fontSize: 12,
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {administrativeIdentityWarning}
-                  </div>
-                ) : null}
-                <AnalyzeNdaButton dossierId={dossier.id} />
               </SelenCard>
             ) : null}
 

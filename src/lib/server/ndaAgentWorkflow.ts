@@ -54,11 +54,9 @@ export type NdaWorkflowStatusTone =
 export const NDA_AGENT_WORKFLOW_STEPS = [
   { label: "Dépôt\ninitial" },
   { label: "Analyse\nprogramme" },
-  { label: "Coordonnées\nclient" },
   { label: "Documents\nà signer" },
-  { label: "Retours\nsignés" },
-  { label: "Contrôle\nfinal" },
-  { label: "Prêt\ndépôt NDA" },
+  { label: "Retour\nclient" },
+  { label: "Dépôt\nNDA" },
 ];
 
 export const NDA_FINAL_REQUIRED_DOCUMENT_TYPES = [
@@ -98,7 +96,7 @@ export function isNdaFinalReturnedDocument(doc: NdaWorkflowDocument) {
   const documentType = normalizeNdaDocumentType(doc.document_type);
 
   return (
-    role === "client_returned_document" &&
+    ["client_returned_document", "agent_uploaded_document", "final_validated_file"].includes(role) &&
     [
       ...NDA_FINAL_REQUIRED_DOCUMENT_TYPES,
       ...NDA_FINAL_OPTIONAL_DOCUMENT_TYPES,
@@ -216,7 +214,12 @@ export function getNdaAgentWorkflowState(args: {
   const missingFinalRequiredTypes = NDA_FINAL_REQUIRED_DOCUMENT_TYPES.filter(
     (documentType) => !finalReturnedKeys.includes(documentType),
   );
-  const finalStatuses = finalReturnedDocuments.map((doc) =>
+  const requiredFinalDocuments = finalReturnedDocuments.filter((doc) =>
+    NDA_FINAL_REQUIRED_DOCUMENT_TYPES.includes(
+      normalizeNdaDocumentType(doc.document_type),
+    ),
+  );
+  const finalStatuses = requiredFinalDocuments.map((doc) =>
     inferNdaDocumentReviewStatus({
       reviewStatus: doc.review_status,
       status: doc.status,
@@ -229,7 +232,7 @@ export function getNdaAgentWorkflowState(args: {
   const allFinalReceived = missingFinalRequiredTypes.length === 0;
   const allFinalValidated =
     allFinalReceived &&
-    finalReturnedDocuments.length >= NDA_FINAL_REQUIRED_DOCUMENT_TYPES.length &&
+    requiredFinalDocuments.length >= NDA_FINAL_REQUIRED_DOCUMENT_TYPES.length &&
     finalStatuses.every((status) => status === "validated");
 
   if (!initialDepositComplete) {

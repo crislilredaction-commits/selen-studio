@@ -11,6 +11,7 @@ type NotifyClientVisibleDocumentsArgs = {
     name?: string | null;
     email?: string | null;
   } | null;
+  greetingName?: string | null;
   subject: string;
   message: string;
   buttonLabel?: string;
@@ -20,6 +21,7 @@ export async function notifyClientVisibleDocuments({
   dossierId,
   dossierType = "nda",
   organisation,
+  greetingName,
   subject,
   message,
   buttonLabel = "Accéder à mon espace client",
@@ -38,7 +40,7 @@ export async function notifyClientVisibleDocuments({
   }
 
   const clientUrl = getVitrineClientUrl(dossierType, dossierId);
-  const recipientName = organisation?.name?.trim();
+  const recipientName = greetingName?.trim() || organisation?.name?.trim();
   const bodyText = [
     recipientName ? `Bonjour ${recipientName},` : "Bonjour,",
     message,
@@ -69,4 +71,3 @@ export async function notifyClientVisibleDocuments({
     };
   }
 }
-

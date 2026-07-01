@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { notifyClientVisibleDocuments } from "@/lib/server/notifyClientVisibleDocuments";
+import { buildNdaEmailGreetingName } from "@/lib/server/ndaEmailRecipient";
 
 function getAdminSupabase() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -92,6 +93,12 @@ export async function POST(req: Request) {
 
     const organisation = (organisationRaw ?? null) as OrganisationRow | null;
 
+    const { data: ndaVariables } = await supabase
+      .from("nda_variables")
+      .select("client_representant_prenom, client_representant_nom, stagiaire_prenom, stagiaire_nom")
+      .eq("dossier_id", dossierId)
+      .maybeSingle();
+
     const payload = {
       dossier_id: dossierId,
       source_analysis_id: sourceAnalysisId,
@@ -136,6 +143,10 @@ export async function POST(req: Request) {
       dossierId,
       dossierType: "nda",
       organisation,
+      greetingName: buildNdaEmailGreetingName({
+        organisation,
+        variables: ndaVariables ?? null,
+      }),
       subject: "Votre programme de formation est prêt à être validé",
       message:
         "Selen a préparé une proposition de programme à partir des éléments transmis. Merci de vous connecter à votre espace client pour la consulter. Vous pourrez la valider ou demander une correction.",

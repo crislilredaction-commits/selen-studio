@@ -67,6 +67,9 @@ export default function NdaPhaseValidationActions({
       }
 
       router.refresh();
+      window.setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }, 80);
     } catch (phaseError) {
       console.error(phaseError);
       setError("Impossible de mettre à jour la validation de phase.");

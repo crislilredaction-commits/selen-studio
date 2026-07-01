@@ -83,7 +83,7 @@ export async function extractTextFromBuffer(
       return normalized;
     } catch (error) {
       console.error("PDF extract failed:", filename, error);
-      return "";
+      throw error;
     }
   }
 

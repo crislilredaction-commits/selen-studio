@@ -8,6 +8,7 @@ import {
   NDA_LISTE_FORMATEURS_GENERATED_MODEL,
 } from "@/lib/server/ndaListeFormateursDocumentDocx";
 import { notifyClientVisibleDocuments } from "@/lib/server/notifyClientVisibleDocuments";
+import { buildNdaEmailGreetingName } from "@/lib/server/ndaEmailRecipient";
 
 export const dynamic = "force-dynamic";
 
@@ -254,9 +255,13 @@ export async function POST(req: Request) {
           dossierId: context.dossier.id,
           dossierType: "nda",
           organisation: context.organisation,
-          subject: "Vos documents NDA à signer sont prêts",
+          greetingName: buildNdaEmailGreetingName({
+            organisation: context.organisation,
+            variables: context.variables,
+          }),
+          subject: "Vos documents NDA a signer sont disponibles",
           message:
-            "Vos documents NDA à signer sont maintenant disponibles dans votre espace client Selen : programme de formation, convention de formation et liste des formateurs DREETS. Vous pouvez les télécharger, les signer ou tamponner si nécessaire, puis déposer les documents signés et les pièces finales directement dans l’espace prévu.",
+            "Les documents a signer sont disponibles dans votre espace client Selen : programme de formation, convention de formation et liste des formateurs DREETS. Merci de les telecharger, les signer ou tamponner si necessaire, puis de deposer les versions signees et les pieces finales demandees dans l'espace prevu.",
         });
       } else {
         console.warn(

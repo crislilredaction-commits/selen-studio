@@ -8,6 +8,8 @@ type ReviewStatus = "not_reviewed" | "validated" | "to_correct";
 type Props = {
   documentId: string;
   currentStatus?: string | null;
+  isVisibleToClient?: boolean | null;
+  showClientVisibilityToggle?: boolean;
 };
 
 const ACTIONS: Array<{
@@ -53,9 +55,12 @@ function getVisibleActions(currentStatus?: string | null) {
 export default function DocumentReviewActions({
   documentId,
   currentStatus,
+  isVisibleToClient,
+  showClientVisibilityToggle = false,
 }: Props) {
   const router = useRouter();
   const [pendingStatus, setPendingStatus] = useState<ReviewStatus | null>(null);
+  const [pendingVisibility, setPendingVisibility] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function updateReviewStatus(reviewStatus: ReviewStatus) {
@@ -84,6 +89,41 @@ export default function DocumentReviewActions({
     if (!response.ok) {
       const data = await response.json().catch(() => null);
       setError(data?.error ?? "Impossible de mettre à jour le document.");
+      return;
+    }
+
+    router.refresh();
+  }
+
+  async function updateClientVisibility(nextVisible: boolean) {
+    if (
+      nextVisible &&
+      !window.confirm(
+        "Rendre ce document visible cote client pour la procedure de depot ?",
+      )
+    ) {
+      return;
+    }
+
+    setError(null);
+    setPendingVisibility(true);
+
+    const response = await fetch("/agent/api/documents/review-status", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        documentId,
+        clientVisible: nextVisible,
+      }),
+    });
+
+    setPendingVisibility(false);
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      setError(data?.error ?? "Impossible de mettre a jour la visibilite.");
       return;
     }
 
@@ -136,6 +176,48 @@ export default function DocumentReviewActions({
             </button>
           );
         })}
+        {showClientVisibilityToggle ? (
+          <button
+            type="button"
+            disabled={pendingVisibility}
+            onClick={() => void updateClientVisibility(!isVisibleToClient)}
+            title={
+              isVisibleToClient
+                ? "Masquer ce document cote client"
+                : "Rendre ce document visible cote client"
+            }
+            aria-label={
+              isVisibleToClient
+                ? "Masquer ce document cote client"
+                : "Rendre ce document visible cote client"
+            }
+            style={{
+              border: "1px solid var(--selen-border)",
+              borderRadius: 6,
+              background: isVisibleToClient
+                ? "rgba(81, 138, 103, 0.16)"
+                : "var(--selen-bg3)",
+              color: isVisibleToClient
+                ? "var(--selen-success)"
+                : "var(--selen-text2)",
+              cursor: pendingVisibility ? "default" : "pointer",
+              fontFamily: "var(--font-body)",
+              fontSize: pendingVisibility ? 10 : 11,
+              fontWeight: 700,
+              opacity: pendingVisibility ? 0.7 : 1,
+              minWidth: pendingVisibility ? 82 : 64,
+              height: 32,
+              padding: "0 8px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {pendingVisibility
+              ? "..."
+              : isVisibleToClient
+                ? "Depot OK"
+                : "Depot"}
+          </button>
+        ) : null}
       </div>
       {error ? (
         <div style={{ color: "var(--selen-danger)", fontSize: 11 }}>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { createClient as createSessionClient } from "@/lib/supabase/server";
 import { notifyClientVisibleDocuments } from "@/lib/server/notifyClientVisibleDocuments";
+import { buildNdaEmailGreetingName } from "@/lib/server/ndaEmailRecipient";
 
 export const dynamic = "force-dynamic";
 
@@ -102,8 +103,14 @@ async function openDepositProcedureForClient(args: {
   admin: ReturnType<typeof getAdminClient>;
   dossierId: string;
   organisation: { name?: string | null; email?: string | null } | null;
+  variables?: {
+    client_representant_prenom?: string | null;
+    client_representant_nom?: string | null;
+    stagiaire_prenom?: string | null;
+    stagiaire_nom?: string | null;
+  } | null;
 }) {
-  const { admin, dossierId, organisation } = args;
+  const { admin, dossierId, organisation, variables } = args;
   const now = new Date().toISOString();
 
   const { error: statusError } = await admin
@@ -121,14 +128,11 @@ async function openDepositProcedureForClient(args: {
   const { error: documentsError } = await admin
     .from("documents")
     .update({
-      is_visible_to_client: true,
       requires_client_action: false,
       visible_to_client_at: now,
     })
     .eq("dossier_id", dossierId)
-    .or(
-      "review_status.eq.validated,document_role.eq.client_to_complete,document_role.eq.generated_document,document_role.eq.final_validated_file",
-    );
+    .eq("is_visible_to_client", true);
 
   if (documentsError) {
     return { ok: false as const, error: documentsError.message };
@@ -138,10 +142,11 @@ async function openDepositProcedureForClient(args: {
     dossierId,
     dossierType: "nda",
     organisation,
-    subject: "Vos documents NDA sont prêts",
+    greetingName: buildNdaEmailGreetingName({ organisation, variables }),
+    subject: "Votre dossier NDA est pret pour le depot",
     message:
-      "Vos documents ont été préparés et validés par Selen. Vous pouvez maintenant les télécharger dans votre espace client. Vous y trouverez également la procédure de dépôt de votre demande de déclaration d'activité.",
-    buttonLabel: "Accéder à mon dossier",
+      "La verification finale de votre dossier NDA est terminee. Vous pouvez maintenant consulter la procedure de depot, telecharger uniquement les documents selectionnes par Selen et deposer votre demande sur la plateforme officielle.",
+    buttonLabel: "Ouvrir la procedure de depot",
   });
 
   if (!emailNotification.sent) {
@@ -157,7 +162,7 @@ async function openDepositProcedureForClient(args: {
     dossier_id: dossierId,
     sender_type: "agent",
     content:
-      "Documents validés et procédure de dépôt ouverte au client. Email de consultation envoyé.",
+      "Procedure de depot ouverte au client avec les documents selectionnes comme visibles. Email de depot envoye.",
     read_by_agent_at: now,
     read_by_client_at: null,
   });
@@ -231,7 +236,7 @@ export async function PATCH(req: Request) {
 
     const { data: currentVariables, error: variablesError } = await admin
       .from("nda_variables")
-      .select("nda_phase_validations")
+      .select("nda_phase_validations, client_representant_prenom, client_representant_nom, stagiaire_prenom, stagiaire_nom")
       .eq("dossier_id", dossierId)
       .maybeSingle();
 
@@ -290,6 +295,7 @@ export async function PATCH(req: Request) {
         admin,
         dossierId,
         organisation: organisationRaw ?? null,
+        variables: currentVariables ?? null,
       });
 
       if (!depositOpening.ok) {
