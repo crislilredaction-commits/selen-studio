@@ -42,6 +42,11 @@ type IndicatorDraft = {
 
 type DraftState = Record<string, IndicatorDraft>;
 
+type StoredDraftState = {
+  draft: DraftState;
+  isPristine: boolean;
+};
+
 const FORMATS: EvidenceFormat[] = [
   "PDF",
   "Word",
@@ -57,7 +62,7 @@ function emptyDraft(): DraftState {
   return Object.fromEntries(
     ICPF_INDICATORS.map((indicator) => [
       indicator.id,
-      { status: "non_evalue", note: "", evidences: [] },
+      { status: "", note: "", evidences: [] },
     ]),
   );
 }
@@ -76,6 +81,25 @@ function newEvidence(): Evidence {
     note: "",
     coveredItems: [],
   };
+}
+
+function readStoredDraft(storageKey: string): StoredDraftState {
+  if (typeof window === "undefined") {
+    return { draft: emptyDraft(), isPristine: true };
+  }
+  const saved = window.localStorage.getItem(storageKey);
+  if (!saved) {
+    return { draft: emptyDraft(), isPristine: true };
+  }
+  try {
+    return {
+      draft: { ...emptyDraft(), ...(JSON.parse(saved) as DraftState) },
+      isPristine: false,
+    };
+  } catch {
+    window.localStorage.removeItem(storageKey);
+    return { draft: emptyDraft(), isPristine: true };
+  }
 }
 
 function dateFr(value: string) {
@@ -133,55 +157,66 @@ function evidenceSentence(evidence: Evidence) {
 }
 
 function buildFinding({
-  requiredItems,
+  coveredItems,
   missingItems,
+  note,
   status,
 }: {
-  requiredItems: string[];
+  coveredItems: string[];
   missingItems: string[];
+  note: string;
   status: IcpfIndicatorStatus;
 }) {
-  if (missingItems.length > 0 || status === "non_conforme") {
+  if (!status) {
+    return "Selectionner une conformite pour generer le constat.";
+  }
+  if (status === "conforme") {
+    return [
+      "Les elements observes permettent de verifier l'exigence de l'indicateur.",
+      coveredItems.length ? `Items verifies : ${coveredItems.join(", ")}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (status === "non_conforme") {
     return [
       "Les elements observes ne permettent pas de verifier l'ensemble des attendus de l'indicateur.",
       missingItems.length
-        ? `Items restant a documenter : ${missingItems.join(", ")}.`
+        ? `Items manquants ou insuffisamment justifies : ${missingItems.join(", ")}.`
         : "",
     ]
       .filter(Boolean)
       .join(" ");
   }
-  if (status === "non_evalue") {
-    return "Indicateur non evalue : renseigner les preuves observees avant de formuler le constat.";
-  }
-  return `Les informations et elements observes permettent de verifier la presence des informations attendues concernant ${requiredItems.join(", ")}.`;
+  return [
+    "L'indicateur n'a pas pu etre evalue.",
+    note.trim() ? `Raison : ${note.trim()}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export default function IcpfAssistantClient({ auditId }: { auditId?: string }) {
   const storageKey = `selen:icpf-assistant:${auditId || "standalone"}`;
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [draft, setDraft] = useState<DraftState>(() => emptyDraft());
+  const [{ draft, isPristine }, setDraftState] = useState<StoredDraftState>(() =>
+    readStoredDraft(storageKey),
+  );
   const [copied, setCopied] = useState("");
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(storageKey);
-    if (!saved) return;
-    try {
-      setDraft({ ...emptyDraft(), ...(JSON.parse(saved) as DraftState) });
-    } catch {
-      setDraft(emptyDraft());
-    }
-  }, [storageKey]);
-
-  useEffect(() => {
     const timer = window.setTimeout(() => {
+      if (isPristine) {
+        window.localStorage.removeItem(storageKey);
+        return;
+      }
       window.localStorage.setItem(storageKey, JSON.stringify(draft));
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [draft, storageKey]);
+  }, [draft, isPristine, storageKey]);
 
   const indicator = ICPF_INDICATORS[currentIndex];
-  const indicatorDraft = draft[indicator.id] ?? { status: "non_evalue", note: "", evidences: [] };
+  const indicatorDraft = draft[indicator.id] ?? { status: "", note: "", evidences: [] };
 
   const coverage = useMemo(() => {
     const itemToDocs = new Map<string, string[]>();
@@ -210,15 +245,22 @@ export default function IcpfAssistantClient({ auditId }: { auditId?: string }) {
 
   const evidenceText = indicatorDraft.evidences.map(evidenceSentence).join("\n");
   const findingText = buildFinding({
-    requiredItems: indicator.items,
+    coveredItems: coverage.covered,
     missingItems: coverage.missing,
+    note: indicatorDraft.note,
     status: indicatorDraft.status,
   });
 
   function updateIndicator(patch: Partial<IndicatorDraft>) {
-    setDraft((current) => ({
-      ...current,
-      [indicator.id]: { ...indicatorDraft, ...patch },
+    setDraftState((current) => ({
+      isPristine: false,
+      draft: {
+        ...current.draft,
+        [indicator.id]: {
+          ...(current.draft[indicator.id] ?? { status: "", note: "", evidences: [] }),
+          ...patch,
+        },
+      },
     }));
   }
 
@@ -236,6 +278,13 @@ export default function IcpfAssistantClient({ auditId }: { auditId?: string }) {
     window.setTimeout(() => setCopied(""), 1800);
   }
 
+  function resetAssistant() {
+    if (!window.confirm("Reinitialiser l'assistant et supprimer le brouillon local ?")) return;
+    window.localStorage.removeItem(storageKey);
+    setDraftState({ draft: emptyDraft(), isPristine: true });
+    setCopied("");
+  }
+
   return (
     <main style={s.page}>
       <header style={s.header}>
@@ -247,6 +296,9 @@ export default function IcpfAssistantClient({ auditId }: { auditId?: string }) {
           </p>
         </div>
         <div style={s.actions}>
+          <SelenButton type="button" variant="danger" onClick={resetAssistant}>
+            Reinitialiser
+          </SelenButton>
           <Link href="/agent/gestion/audits" style={{ textDecoration: "none" }}>
             <SelenButton type="button" variant="ghost">Audits</SelenButton>
           </Link>
@@ -256,8 +308,13 @@ export default function IcpfAssistantClient({ auditId }: { auditId?: string }) {
       <SelenCard>
         <div style={s.indicatorHead}>
           <div>
-            <SelenCardTitle>{indicator.id.toUpperCase()} - {indicator.title}</SelenCardTitle>
-            <p style={s.muted}>{indicator.criterion} - {indicator.requirement}</p>
+            <SelenCardTitle>{indicator.criterion} - {indicator.id.toUpperCase()}</SelenCardTitle>
+            <p style={s.official}>{indicator.officialLabel}</p>
+            <p style={s.muted}>{indicator.requirement}</p>
+            <div style={s.expected}>
+              <strong>Attendu</strong>
+              <span>{indicator.expected}</span>
+            </div>
           </div>
           <select
             value={indicator.id}
@@ -299,6 +356,7 @@ export default function IcpfAssistantClient({ auditId }: { auditId?: string }) {
             onChange={(event) => updateIndicator({ status: event.target.value as IcpfIndicatorStatus })}
             style={s.input}
           >
+            <option value="">Selectionner une conformite</option>
             <option value="non_evalue">Non evalue</option>
             <option value="conforme">Conforme</option>
             <option value="non_conforme">Non conforme</option>
@@ -439,6 +497,17 @@ export default function IcpfAssistantClient({ auditId }: { auditId?: string }) {
             <SelenCardTitle>Synthese anti-oubli</SelenCardTitle>
             <p style={s.muted}>Items couverts : {coverage.covered.length ? coverage.covered.join(", ") : "-"}</p>
             <p style={s.muted}>Items non couverts : {coverage.missing.length ? coverage.missing.join(", ") : "-"}</p>
+            <div style={s.itemDocs}>
+              {indicator.items.map((item) => {
+                const docs = coverage.itemToDocs.get(item) ?? [];
+                return (
+                  <p key={item} style={s.itemDocLine}>
+                    <strong>{item}</strong>
+                    <span>{docs.length ? docs.join(", ") : "Aucune preuve rattachee"}</span>
+                  </p>
+                );
+              })}
+            </div>
             <div style={s.alerts}>
               {coverage.alerts.map((alert) => <span key={alert}>{alert}</span>)}
               {coverage.alerts.length === 0 ? <span style={s.ok}>Aucune alerte.</span> : null}
@@ -452,7 +521,7 @@ export default function IcpfAssistantClient({ auditId }: { auditId?: string }) {
             <textarea
               value={indicatorDraft.note}
               onChange={(event) => updateIndicator({ note: event.target.value })}
-              placeholder="Note libre facultative"
+              placeholder="Note libre ou raison si non evalue"
               style={{ ...s.input, minHeight: 70, paddingTop: 10 }}
             />
             <div style={s.actions}>
@@ -489,6 +558,8 @@ const s: Record<string, CSSProperties> = {
   eyebrow: { fontFamily: "var(--font-display)", fontSize: 9, letterSpacing: "0.3em", textTransform: "uppercase", color: "var(--selen-gold)" },
   title: { fontFamily: "var(--font-display)", fontSize: 32, margin: "8px 0", color: "var(--selen-text)" },
   subtitle: { color: "var(--selen-text2)", fontSize: 13, margin: 0 },
+  official: { color: "var(--selen-text)", fontSize: 14, lineHeight: 1.5, margin: "8px 0 6px" },
+  expected: { display: "grid", gap: 4, border: "1px solid var(--selen-border)", borderRadius: "var(--radius-sm)", padding: 10, color: "var(--selen-text2)", fontSize: 13, lineHeight: 1.45, marginTop: 10 },
   actions: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
   actionsRight: { display: "flex", justifyContent: "flex-end", gap: 8 },
   indicatorHead: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" },
@@ -509,6 +580,8 @@ const s: Record<string, CSSProperties> = {
   input: { minHeight: 38, borderRadius: "var(--radius-sm)", border: "1px solid rgba(120, 90, 50, 0.32)", background: "#f7ecd8", color: "#3b281b", padding: "0 10px", fontSize: 13, boxSizing: "border-box", width: "100%" },
   muted: { color: "var(--selen-text2)", fontSize: 13, lineHeight: 1.5 },
   alerts: { display: "grid", gap: 6, color: "var(--selen-danger)", fontSize: 12 },
+  itemDocs: { display: "grid", gap: 6, margin: "10px 0" },
+  itemDocLine: { display: "grid", gap: 2, margin: 0, color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.35 },
   ok: { color: "var(--selen-success)", fontSize: 12 },
   textBlock: { display: "grid", gap: 6, marginBottom: 10, color: "var(--selen-text)" },
   pre: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", border: "1px solid var(--selen-border)", borderRadius: "var(--radius-sm)", padding: 10, color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.5, margin: 0 },
