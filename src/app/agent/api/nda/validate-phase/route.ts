@@ -246,7 +246,7 @@ export async function PATCH(req: Request) {
     const { data: currentVariables, error: variablesError } = await admin
       .from("nda_variables")
       .select(
-        "nda_phase_validations, client_representant_prenom, client_representant_nom, stagiaire_prenom, stagiaire_nom",
+        "nda_phase_validations, nda_deposit_status, client_representant_prenom, client_representant_nom, stagiaire_prenom, stagiaire_nom",
       )
       .eq("dossier_id", dossierId)
       .maybeSingle();
@@ -263,10 +263,18 @@ export async function PATCH(req: Request) {
     );
 
     if (action === "validate") {
+      const validatedAt = new Date().toISOString();
       validations[phaseKey] = {
-        validated_at: new Date().toISOString(),
+        validated_at: validatedAt,
         validated_by: auth.userLabel,
       };
+
+      if (phaseKey === "final_return") {
+        validations.ready_for_deposit = {
+          validated_at: validatedAt,
+          validated_by: auth.userLabel,
+        };
+      }
     } else {
       const phaseIndex = NDA_PHASE_KEYS.indexOf(phaseKey);
       NDA_PHASE_KEYS.slice(phaseIndex).forEach((key) => {
@@ -296,7 +304,8 @@ export async function PATCH(req: Request) {
 
     if (
       action === "validate" &&
-      (phaseKey === "final_return" || phaseKey === "ready_for_deposit")
+      (phaseKey === "final_return" || phaseKey === "ready_for_deposit") &&
+      currentVariables?.nda_deposit_status !== "ready_for_deposit"
     ) {
       const organisationRaw = Array.isArray(dossier.organisations)
         ? dossier.organisations[0]

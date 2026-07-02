@@ -17,7 +17,6 @@ type DepositStatus =
 
 type Props = {
   dossierId: string;
-  dossierStatus?: string | null;
   initialValues: Record<string, unknown> | null;
   hasDreetsRefusalLetter?: boolean;
   mode?: "code" | "followup";
@@ -50,7 +49,6 @@ function getStatusLabel(status?: string | null) {
 }
 
 function inferStatus(args: {
-  dossierStatus?: string | null;
   rawStatus?: string | null;
   submittedAt?: string | null;
   refusalAt?: string | null;
@@ -61,13 +59,11 @@ function inferStatus(args: {
   if (args.obtainedAt) return "nda_obtained";
   if (args.refusalAt || args.hasDreetsRefusalLetter) return "refusal_received";
   if (args.submittedAt) return "dreets_pending";
-  if (args.dossierStatus === "compliant") return "ready";
   return "ready";
 }
 
 export default function NdaDepositFollowUpCard({
   dossierId,
-  dossierStatus,
   initialValues,
   hasDreetsRefusalLetter = false,
   mode = "followup",
@@ -97,7 +93,6 @@ export default function NdaDepositFollowUpCard({
   }, [initialState]);
 
   const depositStatus = inferStatus({
-    dossierStatus,
     rawStatus: text(initialValues?.nda_deposit_status),
     submittedAt: text(initialValues?.nda_deposit_submitted_at),
     refusalAt: text(initialValues?.nda_deposit_refusal_received_at),

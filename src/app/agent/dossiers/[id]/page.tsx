@@ -35,10 +35,7 @@ import AnalyzeProgramButton from "@/components/program/AnalyzeProgramButton";
 import AgentProgramEditor from "@/components/program/AgentProgramEditor";
 import { getVitrineClientUrl } from "@/lib/vitrineLinks";
 import { hasNdaProgramDocumentContent } from "@/lib/server/ndaProgramDocumentHtml";
-import {
-  syncNdaDossierStatus,
-  type NdaWorkflowStatusTone,
-} from "@/lib/server/ndaAgentWorkflow";
+import { type NdaWorkflowStatusTone } from "@/lib/server/ndaAgentWorkflow";
 import {
   inferNdaDocumentReviewStatus,
   inferNdaDocumentRole,
@@ -701,14 +698,6 @@ function MaybeCollapsed({
       </div>
     </details>
   );
-}
-
-function getNdaWorkflowPhaseIndex(currentStep: number) {
-  if (currentStep <= 0) return 0;
-  if (currentStep === 1) return 1;
-  if (currentStep === 2 || currentStep === 3) return 2;
-  if (currentStep === 4 || currentStep === 5) return 3;
-  return 4;
 }
 
 const NDA_PHASE_KEYS: NdaPhaseKey[] = [
@@ -2175,35 +2164,36 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
     !programRefusedByClient &&
     !programValidatedByClient;
   const variablesReady = hasNdaRequiredVariables(ndaVariables);
-  const ndaAgentWorkflowState = getNdaAgentWorkflowState({
-    initialDepositComplete,
-    programReady,
-    programPendingClientDecision,
-    programRefusedByClient,
-    programValidatedByClient,
-    variablesReady,
-    signingDocumentsGenerated,
-    finalReturnedDocuments,
-    missingFinalRequiredTypes,
-  });
-  const syncedDossierStatus =
-    isNdaDossier && ndaAgentWorkflowState.targetDossierStatus
-      ? await syncNdaDossierStatus({
-          admin: getSupabaseAdminClient(),
-          dossierId: dossier.id,
-          currentStatus: dossier.status,
-          targetStatus: ndaAgentWorkflowState.targetDossierStatus,
-        }).catch((error) => {
-          console.error("NDA status sync failed:", error);
-          return { updated: false, status: dossier.status };
-        })
-      : { updated: false, status: dossier.status };
-  const displayDossierStatus = syncedDossierStatus.status ?? dossier.status;
+  const ndaPhaseValidations = normalizeNdaPhaseValidations(
+    ndaVariables?.nda_phase_validations,
+  );
+  const activeNdaPhaseIndex =
+    getActiveNdaPhaseIndexFromValidations(ndaPhaseValidations);
+  const isNdaDepositPhaseOpen = Boolean(
+    ndaPhaseValidations.ready_for_deposit,
+  );
+  const ndaPhaseStatusLabels = [
+    "Réception initiale",
+    "Analyse du programme",
+    "Documents à signer",
+    "Contrôle final",
+    "Dépôt NDA ouvert",
+  ];
+  const ndaPhaseStatusDescriptions = [
+    "Le dossier est en phase de réception et contrôle des premiers documents transmis par le client.",
+    "Le dossier est en phase d'analyse du programme et de préparation des corrections éventuelles.",
+    "Le dossier est en phase de préparation et mise à disposition des documents à signer.",
+    "Le dossier est en phase de retour signé, contrôle final et choix des documents visibles côté client.",
+    "La procédure de dépôt est ouverte côté client. Le suivi DREETS se pilote depuis la zone de dépôt.",
+  ];
+  const displayDossierStatus = dossier.status;
   const visibleDossierStatusLabel = isNdaDossier
-    ? ndaAgentWorkflowState.statusLabel
+    ? ndaPhaseStatusLabels[activeNdaPhaseIndex]
     : getStatusLabel(displayDossierStatus);
   const visibleDossierStatusVariant: SelenBadgeVariant = isNdaDossier
-    ? (ndaAgentWorkflowState.statusTone as SelenBadgeVariant)
+    ? activeNdaPhaseIndex >= 4
+      ? "success"
+      : "warn"
     : getStatusBadgeVariant(displayDossierStatus);
 
   const primaryAssignment =
@@ -2275,16 +2265,11 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
         : undefined;
   const dossierCurrentStep = isPreauditDossier
     ? preauditCurrentStep
-    : isReviewDossier
-      ? reviewCurrentStep
-      : isNdaDossier
-        ? getNdaWorkflowPhaseIndex(ndaAgentWorkflowState.currentStep)
+      : isReviewDossier
+        ? reviewCurrentStep
+        : isNdaDossier
+        ? activeNdaPhaseIndex
         : currentStep;
-  const ndaPhaseValidations = normalizeNdaPhaseValidations(
-    ndaVariables?.nda_phase_validations,
-  );
-  const activeNdaPhaseIndex =
-    getActiveNdaPhaseIndexFromValidations(ndaPhaseValidations);
   const ndaPhaseWarnings: Partial<Record<NdaPhaseKey, string>> = {
     initial_reception: initialDepositComplete
       ? undefined
@@ -2303,7 +2288,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
           : "Attention : aucun code spécifique au domaine de formation n’est renseigné. Le client verra “À confirmer par Selen” dans la procédure de dépôt."
         : "Des documents finaux retournés par le client semblent encore manquants.",
     ready_for_deposit:
-      ndaAgentWorkflowState.currentStep >= 6
+      isNdaDepositPhaseOpen
         ? undefined
         : "Le dossier ne semble pas encore entièrement prêt pour le dépôt NDA.",
   };
@@ -2606,7 +2591,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                 marginBottom: 4,
               }}
             >
-              {ndaAgentWorkflowState.statusLabel}
+              {ndaPhaseStatusLabels[activeNdaPhaseIndex]}
             </div>
             <div
               style={{
@@ -2615,7 +2600,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                 lineHeight: 1.5,
               }}
             >
-              {ndaAgentWorkflowState.agentStatusDescription}
+              {ndaPhaseStatusDescriptions[activeNdaPhaseIndex]}
               <span
                 style={{
                   display: "block",
@@ -3015,7 +3000,6 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                   ) : null}
                   <NdaDepositFollowUpCard
                     dossierId={dossier.id}
-                    dossierStatus={displayDossierStatus}
                     initialValues={ndaVariablesInitialValues}
                     mode="code"
                   />
@@ -3393,7 +3377,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                 >
                   <SelenCard>
                     <SelenCardTitle>Suivi du dépôt officiel</SelenCardTitle>
-                    {ndaAgentWorkflowState.currentStep >= 6 ? (
+                    {isNdaDepositPhaseOpen ? (
                       <p
                         style={{
                           fontSize: 13,
@@ -3423,7 +3407,6 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                     <div style={{ marginTop: 14 }}>
                       <NdaDepositFollowUpCard
                         dossierId={dossier.id}
-                        dossierStatus={displayDossierStatus}
                         initialValues={ndaVariablesInitialValues}
                         hasDreetsRefusalLetter={hasDreetsRefusalLetter}
                         mode="followup"
