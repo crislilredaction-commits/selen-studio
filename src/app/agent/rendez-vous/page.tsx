@@ -7,7 +7,6 @@ import { createClient } from "@/lib/supabase/client";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
-import type { ExternalAuditRow } from "@/lib/server/externalAudits";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
 type JsonObject = { [key: string]: JsonValue };
@@ -156,36 +155,9 @@ function linkValue(row: AppointmentRow, keys: string[]) {
   return first(row, keys) || metaText(row, keys);
 }
 
-function externalAuditMetadata(audit: ExternalAuditRow) {
-  return audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
-}
-
-function externalAuditMode(audit: ExternalAuditRow) {
-  const meta = externalAuditMetadata(audit);
-  const value =
-    audit.audit_delivery_mode ||
-    (typeof meta.audit_delivery_mode === "string" ? meta.audit_delivery_mode : "");
-  return value === "distanciel" ? "Distanciel" : "Presentiel";
-}
-
-function externalAuditMeetLink(audit: ExternalAuditRow) {
-  const meta = externalAuditMetadata(audit);
-  return (
-    audit.google_meet_link ||
-    (typeof meta.meet_link === "string" ? meta.meet_link : "") ||
-    (typeof meta.google_meet_link === "string" ? meta.google_meet_link : "")
-  );
-}
-
-function externalAuditArchived(audit: ExternalAuditRow) {
-  const meta = externalAuditMetadata(audit);
-  return meta.archived === true || meta.archived === "true";
-}
-
 export default function AgentRendezVousPage() {
   const supabase = useMemo(() => createClient(), []);
   const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
-  const [externalAudits, setExternalAudits] = useState<ExternalAuditRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -209,17 +181,6 @@ export default function AgentRendezVousPage() {
     }
 
     setAppointments(((data ?? []) as AppointmentRow[]).filter((row) => row.id));
-    const { data: auditsData } = await supabase
-      .from("external_audits")
-      .select("*")
-      .in("status", ["planned", "confirmed"])
-      .order("audit_date", { ascending: true })
-      .order("start_time", { ascending: true });
-    setExternalAudits(
-      ((auditsData ?? []) as ExternalAuditRow[]).filter(
-        (audit) => !externalAuditArchived(audit),
-      ),
-    );
     setLoading(false);
   }
 
@@ -340,48 +301,6 @@ export default function AgentRendezVousPage() {
       </SelenCard>
 
       <section style={s.list}>
-        {externalAudits.map((audit) => {
-          const mode = externalAuditMode(audit);
-          const meet = externalAuditMeetLink(audit);
-          return (
-            <SelenCard key={`external-audit-${audit.id}`}>
-              <div style={s.rowHeader}>
-                <div>
-                  <div style={s.badges}>
-                    <SelenBadge variant="type" dot>
-                      Audit externe
-                    </SelenBadge>
-                    <SelenBadge variant={mode === "Distanciel" ? "info" : "neutral"} dot>
-                      {mode}
-                    </SelenBadge>
-                  </div>
-                  <h2 style={s.itemTitle}>
-                    {formatDateTime(`${audit.audit_date}T${audit.start_time}`)}
-                  </h2>
-                  <p style={s.person}>{audit.of_name}</p>
-                </div>
-                <div style={s.actions}>
-                  <Link href={`/agent/gestion/audits/${audit.id}`} style={s.actionLink}>
-                    Ouvrir audit
-                  </Link>
-                  {meet ? (
-                    <a href={meet} target="_blank" rel="noreferrer" style={s.actionLink}>
-                      Rejoindre Meet
-                    </a>
-                  ) : null}
-                </div>
-              </div>
-              <div style={s.grid}>
-                <Info label="Contact" value={audit.contact_name || ""} />
-                <Info label="Telephone" value={audit.contact_phone || ""} />
-                <Info
-                  label={mode === "Distanciel" ? "Google Meet" : "Adresse"}
-                  value={mode === "Distanciel" ? meet : audit.address || ""}
-                />
-              </div>
-            </SelenCard>
-          );
-        })}
         {loading ? (
           <SelenCard>Chargement des rendez-vous...</SelenCard>
         ) : filtered.length === 0 ? (
