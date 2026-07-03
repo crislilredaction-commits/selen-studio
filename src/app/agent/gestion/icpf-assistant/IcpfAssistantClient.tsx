@@ -870,6 +870,30 @@ export default function IcpfAssistantClient({
               ) : null}
             </div>
           </SelenCard>
+
+          <SelenCard>
+            <SelenCardTitle>Textes a copier</SelenCardTitle>
+            <TextBlock title="Elements de preuve" text={evidenceText || "Aucune preuve renseignee."} />
+            <TextBlock title="Constat d'audit" text={findingText} />
+            <textarea
+              value={indicatorDraft.note}
+              onChange={(event) => updateIndicator({ note: event.target.value })}
+              placeholder="Note locale, raison si non evalue ou precision si non concerne"
+              style={{ ...s.input, minHeight: 70, paddingTop: 10 }}
+            />
+            <div style={s.actions}>
+              <SelenButton type="button" size="sm" onClick={() => void copy(evidenceText, "preuves")}>
+                Copier elements de preuve
+              </SelenButton>
+              <SelenButton type="button" size="sm" onClick={() => void copy(findingText, "constat")}>
+                Copier constat
+              </SelenButton>
+              <SelenButton type="button" size="sm" variant="secondary" onClick={() => void copy(`${evidenceText}\n\n${findingText}`, "tout")}>
+                Copier les deux
+              </SelenButton>
+            </div>
+            {copied ? <p style={s.ok}>Copie reussie : {copied}</p> : null}
+          </SelenCard>
         </div>
 
         <div style={s.side}>
@@ -906,30 +930,6 @@ export default function IcpfAssistantClient({
                 );
               })}
             </div>
-          </SelenCard>
-
-          <SelenCard>
-            <SelenCardTitle>Textes a copier</SelenCardTitle>
-            <TextBlock title="Elements de preuve" text={evidenceText || "Aucune preuve renseignee."} />
-            <TextBlock title="Constat d'audit" text={findingText} />
-            <textarea
-              value={indicatorDraft.note}
-              onChange={(event) => updateIndicator({ note: event.target.value })}
-              placeholder="Note locale, raison si non evalue ou precision si non concerne"
-              style={{ ...s.input, minHeight: 70, paddingTop: 10 }}
-            />
-            <div style={s.actions}>
-              <SelenButton type="button" size="sm" onClick={() => void copy(evidenceText, "preuves")}>
-                Copier elements de preuve
-              </SelenButton>
-              <SelenButton type="button" size="sm" onClick={() => void copy(findingText, "constat")}>
-                Copier constat
-              </SelenButton>
-              <SelenButton type="button" size="sm" variant="secondary" onClick={() => void copy(`${evidenceText}\n\n${findingText}`, "tout")}>
-                Copier les deux
-              </SelenButton>
-            </div>
-            {copied ? <p style={s.ok}>Copie reussie : {copied}</p> : null}
           </SelenCard>
         </div>
       </section>
