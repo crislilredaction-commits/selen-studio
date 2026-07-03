@@ -78,6 +78,11 @@ const links = [
     ),
   },
   {
+    href: "/agent/daily",
+    label: "Selen Daily",
+    icon: <FileText size={16} strokeWidth={1.5} />,
+  },
+  {
     href: "/agent/rendez-vous",
     label: "Rendez-vous",
     icon: <CalendarDays size={16} strokeWidth={1.5} />,
@@ -210,6 +215,7 @@ export default function AgentSidebar() {
   const navigationOrder = [
     "/agent",
     "/agent/dossiers",
+    "/agent/daily",
     "/agent/rendez-vous",
     "/agent/clients",
     "/agent/profil",
