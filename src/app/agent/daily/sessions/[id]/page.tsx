@@ -10,6 +10,7 @@ import {
   DAILY_POSITIONING_QUESTIONS,
 } from "@/lib/dailyRegistrationConfig";
 import { buildDailyConventionDocumentHtml } from "@/lib/server/dailyConventionDocumentHtml";
+import { buildDailyConvocationDocumentHtml } from "@/lib/server/dailyConvocationDocumentHtml";
 
 type PageProps = { params: Promise<{ id: string }> };
 type JsonRecord = Record<string, unknown>;
@@ -102,6 +103,7 @@ type DailyOnboarding = {
   address?: string | null;
   siret?: string | null;
   nda_number?: string | null;
+  organisation_logo_url?: string | null;
 };
 type DailyRegistrationReview = {
   id: string;
@@ -155,6 +157,22 @@ type DailyPortalAccess = {
   status: "pending" | "viewed" | "expired";
   viewed_at: string | null;
   expires_at: string | null;
+};
+type DailyConvocation = {
+  id: string;
+  recipient_type: "beneficiary" | "company" | "trainer";
+  recipient_key: string;
+  recipient_name: string | null;
+  recipient_email: string | null;
+  company_name: string | null;
+  version: number;
+  document_name: string;
+  storage_path: string;
+  status: "generated" | "sent" | "viewed" | "archived";
+  sent_at: string | null;
+  viewed_at: string | null;
+  last_error: string | null;
+  generated_at: string;
 };
 
 function registrationStatusLabel(status?: string | null) {
@@ -221,6 +239,10 @@ function publicSignatureUrl(token: string) {
 function publicPortalUrl(type: "learner" | "enterprise" | "trainer", token: string) {
   const role = type === "learner" ? "apprenant" : type === "enterprise" ? "entreprise" : "formateur";
   return `${getVitrineBaseUrl()}/daily/portail/${role}/${token}`;
+}
+
+function publicConvocationUrl(id: string) {
+  return `${getVitrineBaseUrl()}/api/client/daily/convocations/download?id=${id}`;
 }
 
 function signatureStatusLabel(status?: string | null) {
@@ -492,6 +514,43 @@ function buildPortalDefinitions(session: DailySessionRow, trainers: DailyTrainer
     }));
 
   return [...learnerPortals, ...enterprisePortals, ...trainerPortals];
+}
+
+function buildConvocationDefinitions(session: DailySessionRow, trainers: DailyTrainer[]) {
+  const beneficiaries = [
+    ...asParticipants(session.individual_beneficiaries),
+    ...asParticipants(session.beneficiaries),
+  ];
+  const trainerIds = Array.isArray(session.trainer_ids) ? session.trainer_ids.map(String) : [];
+
+  return [
+    ...beneficiaries.map((participant, index) => ({
+      recipient_type: "beneficiary" as const,
+      recipient_key: normalizedEmail(participant.email) || `beneficiary_${index + 1}`,
+      recipient_name: fullName(participant.first_name, participant.last_name) || null,
+      recipient_email: normalizedEmail(participant.email) || null,
+      company_name: null,
+      beneficiary_name: fullName(participant.first_name, participant.last_name) || null,
+    })),
+    ...asCompanies(session.companies).map((company, index) => ({
+      recipient_type: "company" as const,
+      recipient_key: normalizedEmail(company.email) || company.name?.trim().toLowerCase() || `company_${index + 1}`,
+      recipient_name: company.name?.trim() || null,
+      recipient_email: normalizedEmail(company.email) || null,
+      company_name: company.name?.trim() || null,
+      beneficiary_name: "",
+    })),
+    ...trainers
+      .filter((trainer) => trainerIds.length === 0 || trainerIds.includes(trainer.id))
+      .map((trainer, index) => ({
+        recipient_type: "trainer" as const,
+        recipient_key: trainer.id || normalizedEmail(trainer.email) || `trainer_${index + 1}`,
+        recipient_name: fullName(trainer.first_name, trainer.last_name) || null,
+        recipient_email: normalizedEmail(trainer.email) || null,
+        company_name: null,
+        beneficiary_name: "",
+      })),
+  ];
 }
 
 async function upsertRecipients(
@@ -1045,13 +1104,186 @@ async function prepareDailyPortalLinks(formData: FormData) {
   revalidatePath("/agent/daily");
 }
 
+async function generateDailyConvocation(formData: FormData) {
+  "use server";
+
+  const auth = await requireSupportAgent();
+  if (!auth.ok) throw new Error(auth.error);
+
+  const id = formText(formData, "id");
+  const recipientType = formText(formData, "recipient_type");
+  const recipientKey = formText(formData, "recipient_key");
+  if (!id || !recipientType || !recipientKey) throw new Error("Contexte convocation incomplet.");
+
+  const admin = createSupabaseAdminClient();
+  const [{ data: rawSession, error: sessionError }, { data: onboarding }, { data: trainers }, { data: latest }, { data: templates }] = await Promise.all([
+    admin.from("daily_sessions").select("*, daily_formations(*)").eq("id", id).maybeSingle(),
+    admin.from("daily_onboarding").select("*").eq("user_id", formText(formData, "user_id")).maybeSingle(),
+    admin.from("daily_trainers").select("id,first_name,last_name,email").eq("user_id", formText(formData, "user_id")),
+    admin
+      .from("daily_convocations")
+      .select("version")
+      .eq("session_id", id)
+      .eq("recipient_type", recipientType)
+      .eq("recipient_key", recipientKey)
+      .order("version", { ascending: false })
+      .limit(1),
+    admin
+      .from("daily_document_templates")
+      .select("*")
+      .eq("user_id", formText(formData, "user_id"))
+      .eq("document_type", "convocation")
+      .eq("status", "active")
+      .order("template_source", { ascending: true })
+      .limit(1),
+  ]);
+  if (sessionError) throw new Error(sessionError.message);
+  const session = rawSession as unknown as DailySessionRow | null;
+  if (!session) throw new Error("Session Daily introuvable.");
+
+  const generatedAt = new Date();
+  const version = Number(latest?.[0]?.version ?? 0) + 1;
+  const formation = session.daily_formations;
+  const recipientName = formText(formData, "recipient_name");
+  const companyName = formText(formData, "company_name");
+  const recipientEmail = formText(formData, "recipient_email");
+  const template = templates?.[0] as JsonRecord | undefined;
+  const templateSource = String(template?.template_source ?? "SELEN");
+  const templateName = String(template?.template_name ?? "selen_daily_convocation");
+  const templateVersion = Number(template?.template_version ?? 1);
+  const documentName = `Convocation Daily - ${formation?.title ?? "formation"} - ${recipientName || companyName || recipientKey} - v${version}.doc`;
+  const storagePath = `generated/daily/${session.user_id}/${session.id}/convocation-${recipientType}-${safeFilename(recipientKey)}-v${version}-${generatedAt.toISOString().replaceAll(":", "-").replaceAll(".", "-")}.doc`;
+  const trainerNames = ((trainers ?? []) as DailyTrainer[]).map((trainer) => fullName(trainer.first_name, trainer.last_name)).filter(Boolean).join(", ");
+
+  const variables = {
+    organisation: onboarding,
+    formation,
+    session: { schedule_blocks: session.schedule_blocks, modality: session.modality, location_address: session.location_address, remote_url: session.remote_url },
+    recipient: { recipientType, recipientKey, recipientName, recipientEmail, companyName },
+  };
+  const html = buildDailyConvocationDocumentHtml({
+    generatedAt,
+    organisationName: formText(formData, "organisation_name") || String(onboarding?.organisation_name ?? ""),
+    organisationAddress: formText(formData, "organisation_address") || String(onboarding?.address ?? ""),
+    organisationEmail: formText(formData, "organisation_email") || String(onboarding?.platform_contact_email ?? ""),
+    organisationLogoUrl: String(onboarding?.organisation_logo_url ?? ""),
+    formationTitle: formText(formData, "formation_title") || String(formation?.title ?? ""),
+    durationHours: formText(formData, "duration_hours") || String(formation?.duration_hours ?? ""),
+    durationDays: formText(formData, "duration_days") || String(formation?.duration_days ?? ""),
+    modality: formText(formData, "modality") || String(session.modality ?? ""),
+    modalityDetails: formText(formData, "modality_details") || String(formation?.modality_details ?? ""),
+    schedule: formText(formData, "schedule") || scheduleText(session.schedule_blocks),
+    location: formText(formData, "location") || sessionLocation(session),
+    trainerNames: formText(formData, "trainer_names") || trainerNames,
+    recipientType: recipientType as "beneficiary" | "company" | "trainer",
+    recipientName: recipientName || "",
+    recipientEmail: recipientEmail || "",
+    companyName: companyName || "",
+    beneficiaryName: formText(formData, "beneficiary_name") || "",
+    practicalNotes: formText(formData, "practical_notes") || "",
+  });
+
+  const upload = await admin.storage.from("documents").upload(storagePath, new TextEncoder().encode(html), {
+    contentType: "application/msword; charset=utf-8",
+    upsert: false,
+  });
+  if (upload.error) throw new Error(upload.error.message);
+
+  const { error } = await admin.from("daily_convocations").insert({
+    session_id: session.id,
+    user_id: session.user_id,
+    recipient_type: recipientType,
+    recipient_key: recipientKey,
+    recipient_name: recipientName || null,
+    recipient_email: recipientEmail || null,
+    company_name: companyName || null,
+    version,
+    document_name: documentName,
+    storage_path: storagePath,
+    template_source: templateSource,
+    template_name: templateName,
+    template_version: templateVersion,
+    variables,
+    metadata: { pack: "convocation", generated_model: "daily_convocation_html_v1" },
+    generated_at: generatedAt.toISOString(),
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/agent/daily/sessions/${id}`);
+  revalidatePath("/agent/daily");
+}
+
+async function sendDailyConvocation(formData: FormData) {
+  "use server";
+
+  const auth = await requireSupportAgent();
+  if (!auth.ok) throw new Error(auth.error);
+
+  const id = formText(formData, "id");
+  const convocationId = formText(formData, "convocation_id");
+  const admin = createSupabaseAdminClient();
+  const { data: convocation, error } = await admin
+    .from("daily_convocations")
+    .select("*, daily_sessions(daily_formations(title)), daily_onboarding:daily_sessions(user_id)")
+    .eq("id", convocationId)
+    .eq("session_id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!convocation) throw new Error("Convocation introuvable.");
+  if (!convocation.recipient_email) throw new Error("Email destinataire manquant.");
+
+  const { data: onboarding } = await admin
+    .from("daily_onboarding")
+    .select("organisation_name")
+    .eq("user_id", convocation.user_id)
+    .maybeSingle();
+  const organisationName = String(onboarding?.organisation_name ?? "l'organisme de formation");
+  const email = renderSelenEmailFromText({
+    title: "Convocation a la formation",
+    bodyText: [
+      "Bonjour,",
+      "",
+      `Nous vous adressons cette convocation a la demande de ${organisationName}.`,
+      "",
+      `Formation : ${String(convocation.daily_sessions?.daily_formations?.title ?? "Selen Daily")}`,
+      "",
+      "Vous pouvez consulter et telecharger votre convocation depuis le lien ci-dessous.",
+      "",
+      "Le Pack Formation complet sera enrichi progressivement avec les informations AF, la politique handicap et les annexes disponibles.",
+      "",
+      "Merci,",
+      "L'equipe Selen",
+    ].join("\n"),
+    ctaLabel: "Telecharger la convocation",
+    ctaUrl: publicConvocationUrl(convocation.id),
+  });
+  const result = await sendSelenEmail({
+    to: convocation.recipient_email,
+    subject: `Votre convocation - ${String(convocation.daily_sessions?.daily_formations?.title ?? "Selen Daily")}`,
+    html: email.html,
+    text: email.text,
+  });
+  const { error: updateError } = await admin
+    .from("daily_convocations")
+    .update({
+      status: result.sent ? "sent" : "generated",
+      sent_at: result.sent ? new Date().toISOString() : convocation.sent_at,
+      last_error: result.sent ? null : result.error,
+    })
+    .eq("id", convocation.id);
+  if (updateError) throw new Error(updateError.message);
+
+  revalidatePath(`/agent/daily/sessions/${id}`);
+  revalidatePath("/agent/daily");
+}
+
 export default async function AgentDailySessionPage({ params }: PageProps) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p style={s.error}>{auth.error}</p></main>;
 
   const { id } = await params;
   const admin = createSupabaseAdminClient();
-  const [sessionRes, responsesRes, recipientsRes, reviewRes, conventionsRes, signaturesRes, portalLinksRes] = await Promise.all([
+  const [sessionRes, responsesRes, recipientsRes, reviewRes, conventionsRes, signaturesRes, portalLinksRes, convocationsRes] = await Promise.all([
     admin
       .from("daily_sessions")
       .select("*, daily_formations(*)")
@@ -1087,10 +1319,15 @@ export default async function AgentDailySessionPage({ params }: PageProps) {
       .select("*")
       .eq("session_id", id)
       .order("portal_type", { ascending: true }),
+    admin
+      .from("daily_convocations")
+      .select("*")
+      .eq("session_id", id)
+      .order("generated_at", { ascending: false }),
   ]);
 
-  if (sessionRes.error || responsesRes.error || recipientsRes.error || reviewRes.error || conventionsRes.error || signaturesRes.error || portalLinksRes.error) {
-    return <main style={s.page}><p style={s.error}>{sessionRes.error?.message ?? responsesRes.error?.message ?? recipientsRes.error?.message ?? reviewRes.error?.message ?? conventionsRes.error?.message ?? signaturesRes.error?.message ?? portalLinksRes.error?.message}</p></main>;
+  if (sessionRes.error || responsesRes.error || recipientsRes.error || reviewRes.error || conventionsRes.error || signaturesRes.error || portalLinksRes.error || convocationsRes.error) {
+    return <main style={s.page}><p style={s.error}>{sessionRes.error?.message ?? responsesRes.error?.message ?? recipientsRes.error?.message ?? reviewRes.error?.message ?? conventionsRes.error?.message ?? signaturesRes.error?.message ?? portalLinksRes.error?.message ?? convocationsRes.error?.message}</p></main>;
   }
 
   const session = sessionRes.data as unknown as DailySessionRow | null;
@@ -1100,6 +1337,7 @@ export default async function AgentDailySessionPage({ params }: PageProps) {
   const conventions = (conventionsRes.data ?? []) as DailyConvention[];
   const signatures = (signaturesRes.data ?? []) as DailyConventionSignature[];
   const portalLinks = (portalLinksRes.data ?? []) as DailyPortalAccess[];
+  const convocations = (convocationsRes.data ?? []) as DailyConvocation[];
   if (!session) return <main style={s.page}><p style={s.error}>Session introuvable.</p></main>;
 
   const [{ data: onboarding }, { data: trainers }] = await Promise.all([
@@ -1141,6 +1379,7 @@ export default async function AgentDailySessionPage({ params }: PageProps) {
   const conventionRecipients = previewRecipients.filter((recipient) => recipient.recipient_type !== "client_contact");
   const onboardingRow = (onboarding as DailyOnboarding | null) ?? null;
   const portalDefinitions = buildPortalDefinitions(session, (trainers ?? []) as DailyTrainer[]);
+  const convocationDefinitions = buildConvocationDefinitions(session, (trainers ?? []) as DailyTrainer[]);
 
   const registrationUrl = session.registration_token
     ? `/daily-inscription/${session.registration_token}`
@@ -1478,6 +1717,122 @@ export default async function AgentDailySessionPage({ params }: PageProps) {
           {conventionRecipients.length === 0 ? (
             <p style={s.subtitle}>Ajoutez au moins un beneficiaire ou une entreprise pour generer une convention.</p>
           ) : null}
+        </div>
+      </section>
+
+      <section style={s.card}>
+        <p style={s.badge}>Convocations</p>
+        <p style={s.subtitle}>
+          Generation avec modele client prioritaire si un modele actif existe, sinon modele Selen. L&apos;envoi reste declenche par l&apos;agent.
+        </p>
+        <div style={s.recipientGrid}>
+          {convocationDefinitions.map((recipient) => {
+            const history = convocations.filter(
+              (convocation) =>
+                convocation.recipient_type === recipient.recipient_type &&
+                convocation.recipient_key === recipient.recipient_key,
+            );
+            return (
+              <article key={`convocation_${recipient.recipient_type}_${recipient.recipient_key}`} style={s.recipientCard}>
+                <strong>{recipient.recipient_type === "trainer" ? "Convocation formateur" : recipient.recipient_type === "company" ? "Convocation entreprise" : "Convocation beneficiaire"}</strong>
+                <span>{recipient.recipient_name || recipient.recipient_email || recipient.recipient_key}</span>
+                <span>{recipient.recipient_email || "email non renseigne"}</span>
+                <form action={generateDailyConvocation} style={s.reviewForm}>
+                  <input type="hidden" name="id" value={session.id} />
+                  <input type="hidden" name="user_id" value={session.user_id} />
+                  <input type="hidden" name="recipient_type" value={recipient.recipient_type} />
+                  <input type="hidden" name="recipient_key" value={recipient.recipient_key} />
+                  <div style={s.formGrid}>
+                    <label style={s.field}>
+                      <span>Organisme</span>
+                      <input name="organisation_name" defaultValue={onboardingRow?.organisation_name ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Email organisme</span>
+                      <input name="organisation_email" defaultValue={onboardingRow?.platform_contact_email ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Destinataire</span>
+                      <input name="recipient_name" defaultValue={recipient.recipient_name ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Email destinataire</span>
+                      <input name="recipient_email" defaultValue={recipient.recipient_email ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Entreprise</span>
+                      <input name="company_name" defaultValue={recipient.company_name ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Beneficiaire</span>
+                      <input name="beneficiary_name" defaultValue={recipient.beneficiary_name ?? ""} style={s.input} />
+                    </label>
+                  </div>
+                  <label style={s.field}>
+                    <span>Adresse organisme</span>
+                    <textarea name="organisation_address" defaultValue={onboardingRow?.address ?? ""} style={s.textarea} />
+                  </label>
+                  <div style={s.formGrid}>
+                    <label style={s.field}>
+                      <span>Formation</span>
+                      <input name="formation_title" defaultValue={session.daily_formations?.title ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Duree heures</span>
+                      <input name="duration_hours" defaultValue={String(session.daily_formations?.duration_hours ?? "")} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Duree jours</span>
+                      <input name="duration_days" defaultValue={String(session.daily_formations?.duration_days ?? "")} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Modalite</span>
+                      <input name="modality" defaultValue={session.modality ?? ""} style={s.input} />
+                    </label>
+                  </div>
+                  <label style={s.field}>
+                    <span>Modalites</span>
+                    <textarea name="modality_details" defaultValue={session.daily_formations?.modality_details ?? ""} style={s.textarea} />
+                  </label>
+                  <label style={s.field}>
+                    <span>Dates et horaires</span>
+                    <textarea name="schedule" defaultValue={scheduleText(session.schedule_blocks)} style={s.textarea} />
+                  </label>
+                  <label style={s.field}>
+                    <span>Lieu / lien</span>
+                    <textarea name="location" defaultValue={sessionLocation(session)} style={s.textarea} />
+                  </label>
+                  <label style={s.field}>
+                    <span>Formateur</span>
+                    <input name="trainer_names" defaultValue={((trainers ?? []) as DailyTrainer[]).map((trainer) => fullName(trainer.first_name, trainer.last_name)).filter(Boolean).join(", ")} style={s.input} />
+                  </label>
+                  <label style={s.field}>
+                    <span>Notes pratiques</span>
+                    <textarea name="practical_notes" defaultValue="" style={s.textarea} />
+                  </label>
+                  <button style={s.primaryButton}>Generer la convocation</button>
+                </form>
+                <div style={s.questionList}>
+                  <strong>Historique</strong>
+                  {history.map((convocation) => (
+                    <div key={convocation.id} style={s.signatureBox}>
+                      <a href={`/agent/api/daily/convocations/download?id=${convocation.id}`} target="_blank" rel="noreferrer" style={s.downloadLink}>
+                        v{convocation.version} - {new Date(convocation.generated_at).toLocaleString("fr-FR")} - telecharger
+                      </a>
+                      <span>Statut : {convocation.status}{convocation.sent_at ? ` le ${new Date(convocation.sent_at).toLocaleString("fr-FR")}` : ""}</span>
+                      {convocation.last_error ? <span style={s.error}>{convocation.last_error}</span> : null}
+                      <form action={sendDailyConvocation} style={s.retryForm}>
+                        <input type="hidden" name="id" value={session.id} />
+                        <input type="hidden" name="convocation_id" value={convocation.id} />
+                        <button style={s.secondaryButton}>Envoyer</button>
+                      </form>
+                    </div>
+                  ))}
+                  {history.length === 0 ? <span>Non generee.</span> : null}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
 
