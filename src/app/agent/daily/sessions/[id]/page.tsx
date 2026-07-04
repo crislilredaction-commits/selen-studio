@@ -9,6 +9,7 @@ import {
   DAILY_COMPANY_NEED_QUESTIONS,
   DAILY_POSITIONING_QUESTIONS,
 } from "@/lib/dailyRegistrationConfig";
+import { buildDailyConventionDocumentHtml } from "@/lib/server/dailyConventionDocumentHtml";
 
 type PageProps = { params: Promise<{ id: string }> };
 type JsonRecord = Record<string, unknown>;
@@ -22,10 +23,26 @@ type DailySessionRow = {
   individual_beneficiaries: unknown;
   companies: unknown;
   beneficiaries: unknown;
+  trainer_ids?: unknown;
+  modality: string | null;
+  distance_mode?: string | null;
+  schedule_blocks: unknown;
+  location_address: string | null;
+  remote_url: string | null;
   daily_formations?: {
     id?: string | null;
     title?: string | null;
     status?: string | null;
+    global_objective?: string | null;
+    target_audience?: string | null;
+    prerequisites?: string | null;
+    duration_hours?: number | string | null;
+    duration_days?: number | string | null;
+    modality_details?: string | null;
+    price?: string | null;
+    pedagogical_resources?: string | null;
+    evaluation_methods?: string | null;
+    accessibility?: string | null;
     positioning_mode?: string | null;
     positioning_questions?: unknown;
   } | null;
@@ -35,6 +52,7 @@ type DailyRegistrationResponse = {
   response_type: string | null;
   respondent_first_name: string | null;
   respondent_last_name: string | null;
+  respondent_email: string | null;
   company_name: string | null;
   need_answers: JsonRecord | null;
   positioning_answers: JsonRecord | null;
@@ -44,11 +62,21 @@ type Participant = {
   first_name?: string | null;
   last_name?: string | null;
   email?: string | null;
+  phone?: string | null;
 };
 type Company = {
   name?: string | null;
   email?: string | null;
+  address?: string | null;
+  siret?: string | null;
+  phone?: string | null;
   participants?: Participant[] | null;
+};
+type DailyTrainer = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
 };
 type DailyRecipient = {
   id: string;
@@ -64,12 +92,16 @@ type DailyRecipient = {
   sent_at: string | null;
   last_attempt_at: string | null;
   resend_count: number;
+  metadata?: JsonRecord | null;
 };
 type DailyOnboarding = {
   platform_contact_first_name: string | null;
   platform_contact_last_name: string | null;
   platform_contact_email: string | null;
   organisation_name: string | null;
+  address?: string | null;
+  siret?: string | null;
+  nda_number?: string | null;
 };
 type DailyRegistrationReview = {
   id: string;
@@ -86,6 +118,43 @@ type DailyRegistrationReview = {
   justification: string | null;
   validated_at: string | null;
   evaluator_name: string | null;
+};
+type DailyConvention = {
+  id: string;
+  recipient_type: "beneficiary" | "company";
+  recipient_key: string;
+  recipient_name: string | null;
+  recipient_email: string | null;
+  company_name: string | null;
+  version: number;
+  document_name: string;
+  storage_path: string;
+  status: string;
+  generated_at: string;
+};
+type DailyConventionSignature = {
+  id: string;
+  convention_id: string;
+  signatory_type: "organisme" | "entreprise" | "beneficiaire";
+  signatory_name: string | null;
+  signatory_email: string | null;
+  token: string;
+  status: "pending" | "viewed" | "signed" | "expired" | "error";
+  viewed_at: string | null;
+  signed_at: string | null;
+  expires_at: string | null;
+  proof_hash: string | null;
+};
+type DailyPortalAccess = {
+  id: string;
+  portal_type: "learner" | "enterprise" | "trainer";
+  entity_key: string;
+  entity_name: string | null;
+  entity_email: string | null;
+  token: string;
+  status: "pending" | "viewed" | "expired";
+  viewed_at: string | null;
+  expires_at: string | null;
 };
 
 function registrationStatusLabel(status?: string | null) {
@@ -126,6 +195,42 @@ function normalizedEmail(value?: string | null) {
   return value?.trim().toLowerCase() || "";
 }
 
+function safeFilename(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9-_ ]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .toLowerCase()
+    .slice(0, 80);
+}
+
+function signatureToken() {
+  return crypto.randomUUID().replaceAll("-", "");
+}
+
+function portalToken() {
+  return crypto.randomUUID().replaceAll("-", "");
+}
+
+function publicSignatureUrl(token: string) {
+  return `${getVitrineBaseUrl()}/daily-signature/${token}`;
+}
+
+function publicPortalUrl(type: "learner" | "enterprise" | "trainer", token: string) {
+  const role = type === "learner" ? "apprenant" : type === "enterprise" ? "entreprise" : "formateur";
+  return `${getVitrineBaseUrl()}/daily/portail/${role}/${token}`;
+}
+
+function signatureStatusLabel(status?: string | null) {
+  if (status === "signed") return "signee";
+  if (status === "viewed") return "consultee";
+  if (status === "expired") return "expiree";
+  if (status === "error") return "erreur";
+  return "a signer";
+}
+
 function formText(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
   return value || null;
@@ -155,10 +260,141 @@ function buildPublicUrl(path?: string | null) {
   return `${getVitrineBaseUrl()}${path}`;
 }
 
+function metadataText(recipient: DailyRecipient, key: string) {
+  return String(recipient.metadata?.[key] ?? "").trim();
+}
+
+function recipientPhone(recipient: DailyRecipient) {
+  const participant = recipient.metadata?.participant;
+  const company = recipient.metadata?.company;
+  if (participant && typeof participant === "object") {
+    return String((participant as JsonRecord).phone ?? "").trim();
+  }
+  if (company && typeof company === "object") {
+    return String((company as JsonRecord).phone ?? "").trim();
+  }
+  return "";
+}
+
+function responseText(response: DailyRegistrationResponse | null, key: string) {
+  return String(response?.need_answers?.[key] ?? "").trim();
+}
+
+function scheduleText(value: unknown) {
+  if (!Array.isArray(value)) return "Non renseigne";
+  return value
+    .map((block) => {
+      const row = block && typeof block === "object" ? block as JsonRecord : {};
+      return [row.date, row.start && row.end ? `${row.start}-${row.end}` : "", row.note]
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean)
+        .join(" ");
+    })
+    .filter(Boolean)
+    .join("\n") || "Non renseigne";
+}
+
+function sessionLocation(session: DailySessionRow) {
+  return [session.location_address, session.remote_url].map((value) => value?.trim()).filter(Boolean).join("\n") || "Non renseigne";
+}
+
+function usefulRegistrationInfo(response: DailyRegistrationResponse | null) {
+  if (!response?.need_answers) return "Aucune information d'inscription transmise.";
+  return [
+    ["Besoin exprime", responseText(response, "expressed_need")],
+    ["Objectif", responseText(response, "objective") || responseText(response, "employee_objectives")],
+    ["Contraintes", responseText(response, "constraints")],
+    ["Adaptations", responseText(response, "adaptation_details") || responseText(response, "company_adaptation_details")],
+  ]
+    .filter(([, value]) => value)
+    .map(([label, value]) => `${label} : ${value}`)
+    .join("\n") || "Aucune information d'inscription transmise.";
+}
+
+function responseForRecipient(
+  recipient: Pick<DailyRecipient, "recipient_type" | "recipient_email" | "company_name">,
+  responses: DailyRegistrationResponse[],
+) {
+  const email = normalizedEmail(recipient.recipient_email);
+  const companyName = recipient.company_name?.trim().toLowerCase();
+  return responses.find((item) => {
+    if (email && normalizedEmail(item.respondent_email) === email) return true;
+    return recipient.recipient_type === "company" &&
+      Boolean(companyName) &&
+      item.company_name?.trim().toLowerCase() === companyName;
+  }) ?? null;
+}
+
+function recipientCompleted(recipient: DailyRecipient, responses: DailyRegistrationResponse[]) {
+  if (recipient.recipient_type === "beneficiary") {
+    const email = normalizedEmail(recipient.recipient_email);
+    return responses.some(
+      (response) =>
+        response.response_type === "beneficiary" &&
+        email &&
+        normalizedEmail(response.respondent_email) === email,
+    );
+  }
+  if (recipient.recipient_type === "company") {
+    const email = normalizedEmail(recipient.recipient_email);
+    const companyName = recipient.company_name?.trim().toLowerCase();
+    return responses.some(
+      (response) =>
+        response.response_type === "company" &&
+        ((email && normalizedEmail(response.respondent_email) === email) ||
+          (companyName && response.company_name?.trim().toLowerCase() === companyName)),
+    );
+  }
+  return true;
+}
+
+function daysSince(value: string) {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return 0;
+  return Math.floor((Date.now() - timestamp) / 86_400_000);
+}
+
+function buildIncompleteReminderRows(recipients: DailyRecipient[], responses: DailyRegistrationResponse[]) {
+  return recipients
+    .filter((recipient) => recipient.recipient_type !== "client_contact")
+    .filter((recipient) => recipient.status === "sent" && recipient.sent_at)
+    .filter((recipient) => !recipientCompleted(recipient, responses))
+    .map((recipient) => {
+      const age = daysSince(recipient.sent_at ?? "");
+      return {
+        recipient,
+        age,
+        level: age >= 10 ? "phone" : age >= 7 ? "email" : "none",
+      };
+    })
+    .filter((row) => row.level !== "none");
+}
+
+function recipientProgressLabel(recipient: DailyRecipient, responses: DailyRegistrationResponse[]) {
+  if (recipient.recipient_type === "client_contact") return "Notification client";
+  if (recipientCompleted(recipient, responses)) return "Dossier complete";
+  if (recipient.status !== "sent" || !recipient.sent_at) return "Dossier non envoye";
+  const age = daysSince(recipient.sent_at);
+  if (age >= 10) return "Relance telephone J+10 recommandee";
+  if (age >= 7) return "Relance J+7 a faire";
+  return "Dossier envoye";
+}
+
+function responsePhoneForRecipient(recipient: DailyRecipient, responses: DailyRegistrationResponse[]) {
+  const email = normalizedEmail(recipient.recipient_email);
+  const response = responses.find((item) => email && normalizedEmail(item.respondent_email) === email);
+  if (!response) return recipientPhone(recipient);
+  return responseText(response, "phone") ||
+    responseText(response, "admin_contact_phone") ||
+    responseText(response, "training_contact_phone") ||
+    recipientPhone(recipient);
+}
+
 function buildRecipientDefinitions(session: DailySessionRow, onboarding: DailyOnboarding | null) {
   const token = session.registration_token;
   const beneficiaryPath = token ? `/daily-inscription/${token}?type=beneficiary` : null;
   const companyPath = token ? `/daily-inscription/${token}?type=company` : null;
+  const organisationName = onboarding?.organisation_name?.trim() || "votre organisme de formation";
   const beneficiaries = [
     ...asParticipants(session.individual_beneficiaries),
     ...asParticipants(session.beneficiaries),
@@ -173,7 +409,7 @@ function buildRecipientDefinitions(session: DailySessionRow, onboarding: DailyOn
     recipient_email: normalizedEmail(participant.email) || null,
     company_name: null,
     public_path: beneficiaryPath,
-    metadata: { participant },
+    metadata: { participant, organisation_name: organisationName },
   }));
 
   const companyRecipients = asCompanies(session.companies).map((company, index) => ({
@@ -185,7 +421,7 @@ function buildRecipientDefinitions(session: DailySessionRow, onboarding: DailyOn
     recipient_email: normalizedEmail(company.email) || null,
     company_name: company.name?.trim() || null,
     public_path: companyPath,
-    metadata: { company },
+    metadata: { company, organisation_name: organisationName },
   }));
 
   const contactEmail = normalizedEmail(onboarding?.platform_contact_email);
@@ -199,7 +435,7 @@ function buildRecipientDefinitions(session: DailySessionRow, onboarding: DailyOn
         recipient_email: contactEmail,
         company_name: onboarding?.organisation_name ?? null,
         public_path: null,
-        metadata: { contact: true },
+        metadata: { contact: true, organisation_name: organisationName },
       }]
     : [];
 
@@ -214,6 +450,48 @@ function buildRecipientDefinitions(session: DailySessionRow, onboarding: DailyOn
     public_path: string | null;
     metadata: Record<string, unknown>;
   }>;
+}
+
+function buildPortalDefinitions(session: DailySessionRow, trainers: DailyTrainer[]) {
+  const beneficiaries = [
+    ...asParticipants(session.individual_beneficiaries),
+    ...asParticipants(session.beneficiaries),
+  ];
+  const trainerIds = Array.isArray(session.trainer_ids) ? session.trainer_ids.map(String) : [];
+
+  const learnerPortals = beneficiaries.map((participant, index) => ({
+    session_id: session.id,
+    user_id: session.user_id,
+    portal_type: "learner" as const,
+    entity_key: normalizedEmail(participant.email) || `learner_${index + 1}`,
+    entity_name: fullName(participant.first_name, participant.last_name) || null,
+    entity_email: normalizedEmail(participant.email) || null,
+    metadata: { participant },
+  }));
+
+  const enterprisePortals = asCompanies(session.companies).map((company, index) => ({
+    session_id: session.id,
+    user_id: session.user_id,
+    portal_type: "enterprise" as const,
+    entity_key: normalizedEmail(company.email) || company.name?.trim().toLowerCase() || `enterprise_${index + 1}`,
+    entity_name: company.name?.trim() || null,
+    entity_email: normalizedEmail(company.email) || null,
+    metadata: { company },
+  }));
+
+  const trainerPortals = trainers
+    .filter((trainer) => trainerIds.length === 0 || trainerIds.includes(trainer.id))
+    .map((trainer, index) => ({
+      session_id: session.id,
+      user_id: session.user_id,
+      portal_type: "trainer" as const,
+      entity_key: trainer.id || normalizedEmail(trainer.email) || `trainer_${index + 1}`,
+      entity_name: fullName(trainer.first_name, trainer.last_name) || null,
+      entity_email: normalizedEmail(trainer.email) || null,
+      metadata: { trainer_id: trainer.id },
+    }));
+
+  return [...learnerPortals, ...enterprisePortals, ...trainerPortals];
 }
 
 async function upsertRecipients(
@@ -241,6 +519,7 @@ async function upsertRecipients(
 
 function renderRegistrationEmail(session: DailySessionRow, recipient: DailyRecipient) {
   const isCompany = recipient.recipient_type === "company";
+  const organisationName = metadataText(recipient, "organisation_name") || "votre organisme de formation";
   const title = isCompany
     ? "Votre dossier entreprise Selen Daily"
     : "Votre dossier d'inscription Selen Daily";
@@ -249,13 +528,20 @@ function renderRegistrationEmail(session: DailySessionRow, recipient: DailyRecip
     `Bonjour${recipient.recipient_name ? ` ${recipient.recipient_name}` : ""},`,
     "",
     isCompany
-      ? "Selen prépare le dossier d'inscription de votre entreprise pour cette session."
-      : "Selen prépare votre dossier d'inscription pour cette session.",
+      ? `Nous vous contactons de la part de ${organisationName}.\n\nSelen accompagne ${organisationName} dans le suivi administratif de ses formations. A sa demande, nous vous transmettons le dossier entreprise a completer pour preparer l'inscription des participants.`
+      : `Nous vous contactons de la part de ${organisationName}.\n\nSelen accompagne ${organisationName} dans le suivi administratif de ses formations. A sa demande, nous vous transmettons le dossier d'inscription a completer pour preparer votre entree en formation.`,
     "",
     `Formation : ${session.daily_formations?.title ?? "Selen Daily"}`,
     "",
-    "Merci de compléter le formulaire d'analyse du besoin et de positionnement via le lien ci-dessous.",
-    "Votre dossier sera relu par Selen afin d'éviter les oublis et de garder un dossier propre.",
+    "Ce dossier permet de verifier les informations necessaires, d'analyser les besoins et, le cas echeant, d'identifier les adaptations utiles.",
+    "",
+    "Attention : tant que le dossier n'est pas complete, l'inscription ne peut pas etre garantie.",
+    "",
+    "Vous pouvez completer votre dossier ici :",
+    url,
+    "",
+    "Merci et a bientot,",
+    "L'equipe Selen",
   ].join("\n");
 
   return renderSelenEmailFromText({
@@ -536,16 +822,239 @@ async function saveRegistrationReview(formData: FormData) {
   revalidatePath("/agent/daily");
 }
 
+async function generateDailyConvention(formData: FormData) {
+  "use server";
+
+  const auth = await requireSupportAgent();
+  if (!auth.ok) throw new Error(auth.error);
+
+  const id = formText(formData, "id");
+  const recipientType = formText(formData, "recipient_type");
+  const recipientKey = formText(formData, "recipient_key");
+  if (!id || !recipientType || !recipientKey) throw new Error("Contexte convention incomplet.");
+  if (recipientType !== "beneficiary" && recipientType !== "company") throw new Error("Type de convention Daily invalide.");
+
+  const admin = createSupabaseAdminClient();
+  const { data: rawSession, error: sessionError } = await admin
+    .from("daily_sessions")
+    .select("*, daily_formations(*)")
+    .eq("id", id)
+    .maybeSingle();
+  if (sessionError) throw new Error(sessionError.message);
+  const session = rawSession as unknown as DailySessionRow | null;
+  if (!session) throw new Error("Session Daily introuvable.");
+
+  const [{ data: onboarding }, { data: responses }, { data: latest }] = await Promise.all([
+    admin
+      .from("daily_onboarding")
+      .select("organisation_name,address,siret,nda_number,platform_contact_first_name,platform_contact_last_name,platform_contact_email")
+      .eq("user_id", session.user_id)
+      .maybeSingle(),
+    admin
+      .from("daily_registration_responses")
+      .select("*")
+      .eq("session_id", id),
+    admin
+      .from("daily_conventions")
+      .select("version")
+      .eq("session_id", id)
+      .eq("recipient_type", recipientType)
+      .eq("recipient_key", recipientKey)
+      .order("version", { ascending: false })
+      .limit(1),
+  ]);
+
+  const responseRows = (responses ?? []) as DailyRegistrationResponse[];
+  const response = responseRows.find((item) => {
+    const email = normalizedEmail(formText(formData, "recipient_email"));
+    if (email && normalizedEmail(item.respondent_email) === email) return true;
+    return recipientType === "company" && item.company_name?.trim().toLowerCase() === formText(formData, "company_name")?.toLowerCase();
+  }) ?? null;
+
+  const version = Number(latest?.[0]?.version ?? 0) + 1;
+  const generatedAt = new Date();
+  const formation = session.daily_formations;
+  const recipientName = formText(formData, "recipient_name") ?? "";
+  const companyName = formText(formData, "company_name") ?? "";
+  const documentName = `Convention Daily - ${formation?.title ?? "formation"} - ${recipientName || companyName || recipientKey} - v${version}.doc`;
+  const storagePath = `generated/daily/${session.user_id}/${session.id}/convention-${recipientType}-${safeFilename(recipientKey)}-v${version}-${generatedAt.toISOString().replaceAll(":", "-").replaceAll(".", "-")}.doc`;
+
+  const html = buildDailyConventionDocumentHtml({
+    generatedAt,
+    conventionType: recipientType,
+    organisationName: formText(formData, "organisation_name") || String(onboarding?.organisation_name ?? ""),
+    organisationAddress: formText(formData, "organisation_address") || String(onboarding?.address ?? ""),
+    organisationEmail: formText(formData, "organisation_email") || String(onboarding?.platform_contact_email ?? ""),
+    organisationPhone: formText(formData, "organisation_phone") || "",
+    organisationSiret: formText(formData, "organisation_siret") || String(onboarding?.siret ?? ""),
+    organisationNda: formText(formData, "organisation_nda") || String(onboarding?.nda_number ?? ""),
+    clientName: formText(formData, "client_name") || companyName || recipientName,
+    clientAddress: formText(formData, "client_address") || responseText(response, "company_address"),
+    clientSiret: formText(formData, "client_siret") || responseText(response, "company_siret"),
+    clientRepresentative: formText(formData, "client_representative") || responseText(response, "admin_contact_name"),
+    beneficiaryName: formText(formData, "beneficiary_name") || recipientName,
+    beneficiaryEmail: formText(formData, "recipient_email") || "",
+    formationTitle: formText(formData, "formation_title") || String(formation?.title ?? ""),
+    formationObjective: formText(formData, "formation_objective") || String(formation?.global_objective ?? ""),
+    targetAudience: formText(formData, "target_audience") || String(formation?.target_audience ?? ""),
+    prerequisites: formText(formData, "prerequisites") || String(formation?.prerequisites ?? ""),
+    durationHours: formText(formData, "duration_hours") || String(formation?.duration_hours ?? ""),
+    durationDays: formText(formData, "duration_days") || String(formation?.duration_days ?? ""),
+    modality: formText(formData, "modality") || String(session.modality ?? ""),
+    modalityDetails: formText(formData, "modality_details") || String(formation?.modality_details ?? ""),
+    schedule: formText(formData, "schedule") || scheduleText(session.schedule_blocks),
+    location: formText(formData, "location") || sessionLocation(session),
+    price: formText(formData, "price") || String(formation?.price ?? ""),
+    pedagogicalResources: String(formation?.pedagogical_resources ?? ""),
+    evaluationMethods: String(formation?.evaluation_methods ?? ""),
+    accessibility: String(formation?.accessibility ?? ""),
+    usefulRegistrationInfo: usefulRegistrationInfo(response),
+    signaturePlace: formText(formData, "signature_place") || "",
+    signatureDate: formText(formData, "signature_date") || generatedAt.toLocaleDateString("fr-FR"),
+  });
+
+  const upload = await admin.storage.from("documents").upload(storagePath, new TextEncoder().encode(html), {
+    contentType: "application/msword; charset=utf-8",
+    upsert: false,
+  });
+  if (upload.error) throw new Error(upload.error.message);
+
+  const { error } = await admin.from("daily_conventions").insert({
+    session_id: session.id,
+    user_id: session.user_id,
+    recipient_type: recipientType,
+    recipient_key: recipientKey,
+    recipient_name: recipientName || null,
+    recipient_email: formText(formData, "recipient_email"),
+    company_name: companyName || null,
+    version,
+    document_name: documentName,
+    storage_path: storagePath,
+    metadata: { pack: "convention", generated_model: "daily_convention_html_v1" },
+    generated_at: generatedAt.toISOString(),
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/agent/daily/sessions/${id}`);
+  revalidatePath("/agent/daily");
+}
+
+async function prepareDailyConventionSignatureLinks(formData: FormData) {
+  "use server";
+
+  const auth = await requireSupportAgent();
+  if (!auth.ok) throw new Error(auth.error);
+
+  const id = formText(formData, "id");
+  const conventionId = formText(formData, "convention_id");
+  if (!id || !conventionId) throw new Error("Convention Daily introuvable.");
+
+  const admin = createSupabaseAdminClient();
+  const { data: convention, error: conventionError } = await admin
+    .from("daily_conventions")
+    .select("*, daily_sessions(id,user_id)")
+    .eq("id", conventionId)
+    .eq("session_id", id)
+    .maybeSingle();
+  if (conventionError) throw new Error(conventionError.message);
+  if (!convention) throw new Error("Convention Daily introuvable.");
+
+  const { data: onboarding } = await admin
+    .from("daily_onboarding")
+    .select("organisation_name,platform_contact_first_name,platform_contact_last_name,platform_contact_email")
+    .eq("user_id", convention.user_id)
+    .maybeSingle();
+
+  const clientName = fullName(onboarding?.platform_contact_first_name, onboarding?.platform_contact_last_name) ||
+    String(onboarding?.organisation_name ?? "").trim() ||
+    "Organisme de formation";
+  const signatories = [
+    {
+      convention_id: convention.id,
+      session_id: convention.session_id,
+      user_id: convention.user_id,
+      signatory_type: "organisme",
+      signatory_name: clientName,
+      signatory_email: normalizedEmail(onboarding?.platform_contact_email) || null,
+      token: signatureToken(),
+      expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 45).toISOString(),
+      metadata: { source: "studio_prepare_links" },
+    },
+    {
+      convention_id: convention.id,
+      session_id: convention.session_id,
+      user_id: convention.user_id,
+      signatory_type: convention.recipient_type === "company" ? "entreprise" : "beneficiaire",
+      signatory_name: convention.company_name || convention.recipient_name || null,
+      signatory_email: normalizedEmail(convention.recipient_email) || null,
+      token: signatureToken(),
+      expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 45).toISOString(),
+      metadata: { source: "studio_prepare_links" },
+    },
+  ];
+
+  const { error } = await admin
+    .from("daily_convention_signatures")
+    .upsert(signatories, { onConflict: "convention_id,signatory_type", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/agent/daily/sessions/${id}`);
+  revalidatePath("/agent/daily");
+}
+
+async function prepareDailyPortalLinks(formData: FormData) {
+  "use server";
+
+  const auth = await requireSupportAgent();
+  if (!auth.ok) throw new Error(auth.error);
+
+  const id = formText(formData, "id");
+  if (!id) throw new Error("Session Daily introuvable.");
+
+  const admin = createSupabaseAdminClient();
+  const { data: rawSession, error: sessionError } = await admin
+    .from("daily_sessions")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (sessionError) throw new Error(sessionError.message);
+  const session = rawSession as unknown as DailySessionRow | null;
+  if (!session) throw new Error("Session Daily introuvable.");
+
+  const { data: trainers, error: trainersError } = await admin
+    .from("daily_trainers")
+    .select("id,first_name,last_name,email")
+    .eq("user_id", session.user_id);
+  if (trainersError) throw new Error(trainersError.message);
+
+  const definitions = buildPortalDefinitions(session, (trainers ?? []) as DailyTrainer[]);
+  if (definitions.length > 0) {
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 90).toISOString();
+    const payload = definitions.map((definition) => ({
+      ...definition,
+      token: portalToken(),
+      expires_at: expiresAt,
+    }));
+    const { error } = await admin
+      .from("daily_portal_access_tokens")
+      .upsert(payload, { onConflict: "session_id,portal_type,entity_key", ignoreDuplicates: true });
+    if (error) throw new Error(error.message);
+  }
+
+  revalidatePath(`/agent/daily/sessions/${id}`);
+  revalidatePath("/agent/daily");
+}
+
 export default async function AgentDailySessionPage({ params }: PageProps) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p style={s.error}>{auth.error}</p></main>;
 
   const { id } = await params;
   const admin = createSupabaseAdminClient();
-  const [sessionRes, responsesRes, recipientsRes, reviewRes] = await Promise.all([
+  const [sessionRes, responsesRes, recipientsRes, reviewRes, conventionsRes, signaturesRes, portalLinksRes] = await Promise.all([
     admin
       .from("daily_sessions")
-      .select("*, daily_formations(id,title,status,global_objective,target_audience,positioning_mode,positioning_questions)")
+      .select("*, daily_formations(*)")
       .eq("id", id)
       .maybeSingle(),
     admin
@@ -563,23 +1072,47 @@ export default async function AgentDailySessionPage({ params }: PageProps) {
       .select("*")
       .eq("session_id", id)
       .maybeSingle(),
+    admin
+      .from("daily_conventions")
+      .select("*")
+      .eq("session_id", id)
+      .order("generated_at", { ascending: false }),
+    admin
+      .from("daily_convention_signatures")
+      .select("*")
+      .eq("session_id", id)
+      .order("created_at", { ascending: true }),
+    admin
+      .from("daily_portal_access_tokens")
+      .select("*")
+      .eq("session_id", id)
+      .order("portal_type", { ascending: true }),
   ]);
 
-  if (sessionRes.error || responsesRes.error || recipientsRes.error || reviewRes.error) {
-    return <main style={s.page}><p style={s.error}>{sessionRes.error?.message ?? responsesRes.error?.message ?? recipientsRes.error?.message ?? reviewRes.error?.message}</p></main>;
+  if (sessionRes.error || responsesRes.error || recipientsRes.error || reviewRes.error || conventionsRes.error || signaturesRes.error || portalLinksRes.error) {
+    return <main style={s.page}><p style={s.error}>{sessionRes.error?.message ?? responsesRes.error?.message ?? recipientsRes.error?.message ?? reviewRes.error?.message ?? conventionsRes.error?.message ?? signaturesRes.error?.message ?? portalLinksRes.error?.message}</p></main>;
   }
 
   const session = sessionRes.data as unknown as DailySessionRow | null;
   const responses = (responsesRes.data ?? []) as unknown as DailyRegistrationResponse[];
   const storedRecipients = (recipientsRes.data ?? []) as DailyRecipient[];
   const review = reviewRes.data as DailyRegistrationReview | null;
+  const conventions = (conventionsRes.data ?? []) as DailyConvention[];
+  const signatures = (signaturesRes.data ?? []) as DailyConventionSignature[];
+  const portalLinks = (portalLinksRes.data ?? []) as DailyPortalAccess[];
   if (!session) return <main style={s.page}><p style={s.error}>Session introuvable.</p></main>;
 
-  const { data: onboarding } = await admin
-    .from("daily_onboarding")
-    .select("platform_contact_first_name,platform_contact_last_name,platform_contact_email,organisation_name")
-    .eq("user_id", session.user_id)
-    .maybeSingle();
+  const [{ data: onboarding }, { data: trainers }] = await Promise.all([
+    admin
+      .from("daily_onboarding")
+      .select("platform_contact_first_name,platform_contact_last_name,platform_contact_email,organisation_name,address,siret,nda_number")
+      .eq("user_id", session.user_id)
+      .maybeSingle(),
+    admin
+      .from("daily_trainers")
+      .select("id,first_name,last_name,email")
+      .eq("user_id", session.user_id),
+  ]);
 
   const previewRecipients = buildRecipientDefinitions(session, (onboarding as DailyOnboarding | null) ?? null).map((definition) => {
     const existing = storedRecipients.find(
@@ -601,8 +1134,13 @@ export default async function AgentDailySessionPage({ params }: PageProps) {
       sent_at: null,
       last_attempt_at: null,
       resend_count: 0,
+      metadata: definition.metadata,
     } satisfies DailyRecipient;
   });
+  const reminderRows = buildIncompleteReminderRows(previewRecipients, responses);
+  const conventionRecipients = previewRecipients.filter((recipient) => recipient.recipient_type !== "client_contact");
+  const onboardingRow = (onboarding as DailyOnboarding | null) ?? null;
+  const portalDefinitions = buildPortalDefinitions(session, (trainers ?? []) as DailyTrainer[]);
 
   const registrationUrl = session.registration_token
     ? `/daily-inscription/${session.registration_token}`
@@ -688,6 +1226,7 @@ export default async function AgentDailySessionPage({ params }: PageProps) {
               <span>{recipient.recipient_type === "company" ? "Entreprise" : recipient.recipient_type === "client_contact" ? "Contact client" : "Bénéficiaire"}</span>
               <span>{recipient.recipient_email || "email entreprise manquant"}</span>
               <span>Statut : {recipientStatusLabel(recipient.status)}</span>
+              <span>Suivi : {recipientProgressLabel(recipient, responses)}</span>
               {recipient.sent_at ? <span>Envoyé le {new Date(recipient.sent_at).toLocaleString("fr-FR")}</span> : null}
               {recipient.last_error ? <span style={s.error}>{recipient.last_error}</span> : null}
               {recipient.public_path ? <span>{buildPublicUrl(recipient.public_path)}</span> : null}
@@ -714,6 +1253,250 @@ export default async function AgentDailySessionPage({ params }: PageProps) {
           ) : null}
         </div>
       </section>
+
+      <section style={s.card}>
+        <p style={s.badge}>Portails</p>
+        <p style={s.subtitle}>
+          Liens filtres par role : apprenant, entreprise ou formateur. Aucun email automatique n&apos;est envoye depuis cette action.
+        </p>
+        <form action={prepareDailyPortalLinks} style={s.actions}>
+          <input type="hidden" name="id" value={session.id} />
+          <button style={s.primaryButton}>Preparer les liens de portails</button>
+        </form>
+        <div style={s.recipientGrid}>
+          {portalDefinitions.map((definition) => {
+            const existing = portalLinks.find(
+              (link) =>
+                link.portal_type === definition.portal_type &&
+                link.entity_key === definition.entity_key,
+            );
+            return (
+              <article key={`${definition.portal_type}_${definition.entity_key}`} style={s.recipientCard}>
+                <strong>
+                  {definition.portal_type === "learner" ? "Portail apprenant" : definition.portal_type === "enterprise" ? "Portail entreprise" : "Portail formateur"}
+                </strong>
+                <span>{definition.entity_name || definition.entity_email || definition.entity_key}</span>
+                <span>{definition.entity_email || "email non renseigne"}</span>
+                <span>
+                  Statut : {existing?.status === "viewed" ? "consulte" : existing ? "a transmettre" : "lien non prepare"}
+                  {existing?.viewed_at ? ` le ${new Date(existing.viewed_at).toLocaleString("fr-FR")}` : ""}
+                </span>
+                {existing ? (
+                  <input readOnly value={publicPortalUrl(existing.portal_type, existing.token)} style={s.input} />
+                ) : null}
+              </article>
+            );
+          })}
+          {portalDefinitions.length === 0 ? (
+            <p style={s.subtitle}>Aucun apprenant, entreprise ou formateur detecte pour cette session.</p>
+          ) : null}
+        </div>
+      </section>
+
+      <section style={s.card}>
+        <p style={s.badge}>Conventions</p>
+        <p style={s.subtitle}>
+          Pack Convention Daily : convention versionnee maintenant, annexes, signature et preuve d&apos;envoi plus tard.
+        </p>
+        <div style={s.recipientGrid}>
+          {conventionRecipients.map((recipient) => {
+            const response = responseForRecipient(recipient, responses);
+            const history = conventions.filter(
+              (convention) =>
+                convention.recipient_type === recipient.recipient_type &&
+                convention.recipient_key === recipient.recipient_key,
+            );
+            const companyMeta = recipient.metadata?.company && typeof recipient.metadata.company === "object"
+              ? recipient.metadata.company as JsonRecord
+              : {};
+            const recipientName = recipient.recipient_name || recipient.recipient_email || recipient.recipient_key;
+            const companyName = recipient.company_name || String(companyMeta.name ?? "").trim();
+            const clientName = recipient.recipient_type === "company" ? companyName : recipientName;
+
+            return (
+              <article key={`convention_${recipient.recipient_type}_${recipient.recipient_key}`} style={s.recipientCard}>
+                <strong>{recipient.recipient_type === "company" ? "Convention entreprise" : "Convention beneficiaire individuel"}</strong>
+                <span>{recipientName}</span>
+                <span>{recipient.recipient_email || "email non renseigne"}</span>
+
+                <form action={generateDailyConvention} style={s.reviewForm}>
+                  <input type="hidden" name="id" value={session.id} />
+                  <input type="hidden" name="recipient_type" value={recipient.recipient_type} />
+                  <input type="hidden" name="recipient_key" value={recipient.recipient_key} />
+                  <div style={s.formGrid}>
+                    <label style={s.field}>
+                      <span>Organisme de formation</span>
+                      <input name="organisation_name" defaultValue={onboardingRow?.organisation_name ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Email organisme</span>
+                      <input name="organisation_email" defaultValue={onboardingRow?.platform_contact_email ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Telephone organisme</span>
+                      <input name="organisation_phone" defaultValue="" style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>SIRET organisme</span>
+                      <input name="organisation_siret" defaultValue={onboardingRow?.siret ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>NDA organisme</span>
+                      <input name="organisation_nda" defaultValue={onboardingRow?.nda_number ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Date signature</span>
+                      <input name="signature_date" defaultValue={new Date().toLocaleDateString("fr-FR")} style={s.input} />
+                    </label>
+                  </div>
+                  <label style={s.field}>
+                    <span>Adresse organisme</span>
+                    <textarea name="organisation_address" defaultValue={onboardingRow?.address ?? ""} style={s.textarea} />
+                  </label>
+
+                  <div style={s.formGrid}>
+                    <label style={s.field}>
+                      <span>Client / entreprise</span>
+                      <input name="client_name" defaultValue={clientName} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Representant</span>
+                      <input name="client_representative" defaultValue={responseText(response, "admin_contact_name")} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>SIRET client</span>
+                      <input name="client_siret" defaultValue={responseText(response, "company_siret") || String(companyMeta.siret ?? "")} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Beneficiaire</span>
+                      <input name="beneficiary_name" defaultValue={recipientName} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Email beneficiaire</span>
+                      <input name="recipient_email" defaultValue={recipient.recipient_email ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Lieu de signature</span>
+                      <input name="signature_place" defaultValue="" style={s.input} />
+                    </label>
+                  </div>
+                  <label style={s.field}>
+                    <span>Adresse client</span>
+                    <textarea name="client_address" defaultValue={responseText(response, "company_address") || String(companyMeta.address ?? "")} style={s.textarea} />
+                  </label>
+
+                  <div style={s.formGrid}>
+                    <label style={s.field}>
+                      <span>Formation</span>
+                      <input name="formation_title" defaultValue={session.daily_formations?.title ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Duree heures</span>
+                      <input name="duration_hours" defaultValue={String(session.daily_formations?.duration_hours ?? "")} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Duree jours</span>
+                      <input name="duration_days" defaultValue={String(session.daily_formations?.duration_days ?? "")} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Modalite</span>
+                      <input name="modality" defaultValue={session.modality ?? ""} style={s.input} />
+                    </label>
+                    <label style={s.field}>
+                      <span>Tarif</span>
+                      <input name="price" defaultValue={String(session.daily_formations?.price ?? "")} style={s.input} />
+                    </label>
+                  </div>
+                  <label style={s.field}>
+                    <span>Objectif</span>
+                    <textarea name="formation_objective" defaultValue={session.daily_formations?.global_objective ?? ""} style={s.textarea} />
+                  </label>
+                  <label style={s.field}>
+                    <span>Public vise</span>
+                    <textarea name="target_audience" defaultValue={session.daily_formations?.target_audience ?? ""} style={s.textarea} />
+                  </label>
+                  <label style={s.field}>
+                    <span>Prerequis</span>
+                    <textarea name="prerequisites" defaultValue={session.daily_formations?.prerequisites ?? ""} style={s.textarea} />
+                  </label>
+                  <label style={s.field}>
+                    <span>Modalites pratiques</span>
+                    <textarea name="modality_details" defaultValue={session.daily_formations?.modality_details ?? ""} style={s.textarea} />
+                  </label>
+                  <label style={s.field}>
+                    <span>Dates et horaires</span>
+                    <textarea name="schedule" defaultValue={scheduleText(session.schedule_blocks)} style={s.textarea} />
+                  </label>
+                  <label style={s.field}>
+                    <span>Lieu / acces</span>
+                    <textarea name="location" defaultValue={sessionLocation(session)} style={s.textarea} />
+                  </label>
+                  <button style={s.primaryButton}>Generer la convention</button>
+                </form>
+
+                <div style={s.questionList}>
+                  <strong>Historique</strong>
+                  {history.map((convention) => {
+                    const conventionSignatures = signatures.filter((signature) => signature.convention_id === convention.id);
+                    return (
+                      <div key={convention.id} style={s.signatureBox}>
+                        <a
+                          href={`/agent/api/daily/conventions/download?id=${convention.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={s.downloadLink}
+                        >
+                          v{convention.version} - {new Date(convention.generated_at).toLocaleString("fr-FR")} - convention originale
+                        </a>
+                        <form action={prepareDailyConventionSignatureLinks} style={s.retryForm}>
+                          <input type="hidden" name="id" value={session.id} />
+                          <input type="hidden" name="convention_id" value={convention.id} />
+                          <button style={s.secondaryButton}>Preparer les liens de signature</button>
+                        </form>
+                        {conventionSignatures.map((signature) => (
+                          <div key={signature.id} style={s.signatureRow}>
+                            <span>
+                              {signature.signatory_type} : {signatureStatusLabel(signature.status)}
+                              {signature.signed_at ? ` le ${new Date(signature.signed_at).toLocaleString("fr-FR")}` : ""}
+                            </span>
+                            <span>{signature.signatory_name || signature.signatory_email || "Signataire a completer"}</span>
+                            {signature.proof_hash ? <span>Preuve : {signature.proof_hash.slice(0, 18)}...</span> : null}
+                            <input readOnly value={publicSignatureUrl(signature.token)} style={s.input} />
+                          </div>
+                        ))}
+                        {conventionSignatures.length === 0 ? (
+                          <span>Liens de signature non prepares.</span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                  {history.length === 0 ? <span>Non generee.</span> : null}
+                </div>
+              </article>
+            );
+          })}
+          {conventionRecipients.length === 0 ? (
+            <p style={s.subtitle}>Ajoutez au moins un beneficiaire ou une entreprise pour generer une convention.</p>
+          ) : null}
+        </div>
+      </section>
+
+      {reminderRows.length > 0 ? (
+        <section style={{ ...s.card, ...s.alertCard }}>
+          <p style={s.badge}>Relances dossier incomplet</p>
+          <div style={s.recipientGrid}>
+            {reminderRows.map(({ recipient, age, level }) => (
+              <article key={`reminder_${recipient.id}`} style={s.recipientCard}>
+                <strong>{recipient.recipient_name || recipient.company_name || recipient.recipient_email || recipient.recipient_key}</strong>
+                <span>{level === "phone" ? "Relance telephonique recommandee" : "Relance J+7 a effectuer"}</span>
+                <span>Dossier envoye depuis {age} jour(s)</span>
+                <span>Email : {recipient.recipient_email || "email manquant"}</span>
+                <span>Telephone : {responsePhoneForRecipient(recipient, responses) || "telephone non renseigne"}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section style={s.card}>
         <p style={s.badge}>Synthèse des besoins</p>
@@ -880,5 +1663,8 @@ const s: Record<string, React.CSSProperties> = {
   secondaryButton: { minHeight: 38, borderRadius: "var(--radius-sm)", padding: "0 14px", border: "1px solid rgba(245,208,138,0.24)", background: "rgba(247,239,224,0.08)", color: "var(--selen-text2-oncard)", fontWeight: 700 },
   response: { display: "grid", gap: 8, border: "1px solid rgba(245,208,138,0.14)", padding: 12, marginTop: 10 },
   pre: { whiteSpace: "pre-wrap", overflow: "auto", background: "rgba(0,0,0,0.2)", padding: 12, color: "var(--selen-text2-oncard)" },
+  signatureBox: { display: "grid", gap: 8, border: "1px solid rgba(245,208,138,0.14)", padding: 10 },
+  signatureRow: { display: "grid", gap: 6, borderTop: "1px solid rgba(245,208,138,0.12)", paddingTop: 8 },
+  downloadLink: { color: "var(--selen-gold2)", fontWeight: 800, textDecoration: "none" },
   error: { color: "var(--selen-danger)" },
 };
