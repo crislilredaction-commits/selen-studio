@@ -1,6 +1,11 @@
 import { revalidatePath } from "next/cache";
+import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import SelenBadge from "@/components/ui/SelenBadge";
+import SelenButton from "@/components/ui/SelenButton";
+import type { CSSProperties, ComponentProps } from "react";
 
 type DailyFormation = {
   id: string;
@@ -31,6 +36,8 @@ type DailyOnboarding = {
   platform_contact_email: string | null;
   updated_at: string;
 };
+
+type BadgeVariant = NonNullable<ComponentProps<typeof SelenBadge>["variant"]>;
 
 type DailySession = {
   id: string;
@@ -65,11 +72,20 @@ function statusLabel(status: string) {
   return "À suivre";
 }
 
-function statusColor(status: string) {
-  if (status === "validated") return "#6f8f4e";
-  if (status === "correction_requested") return "#c76f45";
-  if (status === "archived") return "#8d8174";
-  return "var(--selen-gold)";
+function formationStatusVariant(status: string): BadgeVariant {
+  if (status === "validated") return "success";
+  if (status === "correction_requested") return "warn";
+  if (status === "archived") return "neutral";
+  if (status === "review") return "info";
+  return "status";
+}
+
+function registrationStatusVariant(status?: string | null): BadgeVariant {
+  if (status === "ready_to_send" || status === "summary_validated")
+    return "success";
+  if (status === "sent" || status === "responses_received") return "info";
+  if (status === "to_review" || status === "summary_to_review") return "warn";
+  return "status";
 }
 
 function registrationStatusLabel(status?: string | null) {
@@ -83,16 +99,25 @@ function registrationStatusLabel(status?: string | null) {
   return "À préparer";
 }
 
-function hasPositioningAnswers(value: Record<string, unknown> | null | undefined) {
+function hasPositioningAnswers(
+  value: Record<string, unknown> | null | undefined,
+) {
   const questions = value?.questions;
   return Array.isArray(questions) && questions.length > 0;
 }
 
 function positioningStatus(session: DailySession) {
-  if (session.daily_formations?.positioning_mode !== "selen") return "Positionnement hors plateforme";
-  const expected = Math.max((session.individual_beneficiaries ?? []).length + (session.beneficiaries ?? []).length, 0);
+  if (session.daily_formations?.positioning_mode !== "selen")
+    return "Positionnement hors plateforme";
+  const expected = Math.max(
+    (session.individual_beneficiaries ?? []).length +
+      (session.beneficiaries ?? []).length,
+    0,
+  );
   const received = (session.daily_registration_responses ?? []).filter(
-    (response) => response.response_type === "beneficiary" && hasPositioningAnswers(response.positioning_answers),
+    (response) =>
+      response.response_type === "beneficiary" &&
+      hasPositioningAnswers(response.positioning_answers),
   ).length;
   return expected > 0
     ? `Positionnements : ${received}/${expected} recu(s)`
@@ -100,8 +125,11 @@ function positioningStatus(session: DailySession) {
 }
 
 function formationPositioningSummary(formation: DailyFormation) {
-  if (formation.positioning_mode !== "selen") return "Positionnement hors plateforme";
-  const questions = Array.isArray(formation.positioning_questions) ? formation.positioning_questions : [];
+  if (formation.positioning_mode !== "selen")
+    return "Positionnement hors plateforme";
+  const questions = Array.isArray(formation.positioning_questions)
+    ? formation.positioning_questions
+    : [];
   return `${questions.length} question(s) de positionnement dans Selen`;
 }
 
@@ -143,6 +171,23 @@ async function updateDailyFormation(formData: FormData) {
   revalidatePath("/agent/daily");
 }
 
+function StatTile({
+  label,
+  value,
+  accent = "var(--selen-gold2)",
+}: {
+  label: string;
+  value: number;
+  accent?: string;
+}) {
+  return (
+    <div style={s.statTile}>
+      <p style={s.statLabel}>{label}</p>
+      <p style={{ ...s.statValue, color: accent }}>{value}</p>
+    </div>
+  );
+}
+
 export default async function AgentDailyPage() {
   const auth = await requireSupportAgent();
   if (!auth.ok) {
@@ -163,11 +208,15 @@ export default async function AgentDailyPage() {
       .order("updated_at", { ascending: false }),
     admin
       .from("daily_onboarding")
-      .select("id,user_id,status,current_step,setup_choice,organisation_name,platform_contact_first_name,platform_contact_email,updated_at")
+      .select(
+        "id,user_id,status,current_step,setup_choice,organisation_name,platform_contact_first_name,platform_contact_email,updated_at",
+      )
       .order("updated_at", { ascending: false }),
     admin
       .from("daily_sessions")
-      .select("id,user_id,registration_status,registration_token,adaptation_needed,companies,beneficiaries,individual_beneficiaries,created_at,daily_formations(id,title,status,positioning_mode,positioning_questions),daily_registration_responses(id,response_type,positioning_answers)")
+      .select(
+        "id,user_id,registration_status,registration_token,adaptation_needed,companies,beneficiaries,individual_beneficiaries,created_at,daily_formations(id,title,status,positioning_mode,positioning_questions),daily_registration_responses(id,response_type,positioning_answers)",
+      )
       .neq("status", "archived")
       .order("created_at", { ascending: false }),
   ]);
@@ -176,7 +225,10 @@ export default async function AgentDailyPage() {
     return (
       <main style={s.page}>
         <p style={s.error}>
-          Erreur Daily : {formationsRes.error?.message ?? onboardingRes.error?.message ?? sessionsRes.error?.message}
+          Erreur Daily :{" "}
+          {formationsRes.error?.message ??
+            onboardingRes.error?.message ??
+            sessionsRes.error?.message}
         </p>
       </main>
     );
@@ -185,157 +237,490 @@ export default async function AgentDailyPage() {
   const formations = (formationsRes.data ?? []) as DailyFormation[];
   const onboardings = (onboardingRes.data ?? []) as DailyOnboarding[];
   const sessions = (sessionsRes.data ?? []) as unknown as DailySession[];
-  const toReviewCount = formations.filter((formation) => formation.status === "review").length;
-  const videoCount = onboardings.filter((row) => row.setup_choice === "video").length;
+  const toReviewCount = formations.filter(
+    (formation) => formation.status === "review",
+  ).length;
+  const videoCount = onboardings.filter(
+    (row) => row.setup_choice === "video",
+  ).length;
 
   return (
     <main style={s.page}>
       <header style={s.header}>
         <div>
-          <p style={s.eyebrow}>Selen Daily</p>
-          <h1 style={s.title}>Formations à vérifier</h1>
+          <p style={s.eyebrow}>Studio agent</p>
+          <h1 style={s.title}>Pilotage Daily</h1>
           <p style={s.subtitle}>
-            Vue minimale pour valider les programmes Daily avant les futurs envois officiels.
+            Sessions, formations et alertes Daily à traiter avant les envois
+            officiels.
           </p>
-        </div>
-        <div style={s.counter}>
-          <strong>{toReviewCount}</strong>
-          <span>à vérifier</span>
-        </div>
-        <div style={s.counter}>
-          <strong>{videoCount}</strong>
-          <span>visio demandée</span>
         </div>
       </header>
 
-      <section style={s.card}>
-        <p style={s.badge}>Sessions à préparer</p>
-        <div style={s.onboardingGrid}>
-          {sessions.map((session) => (
-            <article key={session.id} style={s.onboardingItem}>
-              <strong>{session.daily_formations?.title ?? "Formation non reliée"}</strong>
-              <span>Formation : {statusLabel(session.daily_formations?.status ?? "draft")}</span>
-              <span>Dossier : {registrationStatusLabel(session.registration_status)}</span>
-              <span>{positioningStatus(session)}</span>
-              <span>
-                {(session.individual_beneficiaries ?? []).length} individuel(s) ·{" "}
-                {(session.companies ?? []).length} entreprise(s)
-              </span>
-              {session.adaptation_needed ? <span style={s.alert}>Adaptation à suivre</span> : null}
-              <a href={`/agent/daily/sessions/${session.id}`} style={s.linkButton}>
-                Ouvrir le dossier
-              </a>
-            </article>
-          ))}
-          {sessions.length === 0 ? (
-            <p style={s.subtitle}>Aucune session Daily à préparer pour le moment.</p>
-          ) : null}
-        </div>
+      <section style={s.statsGrid}>
+        <StatTile
+          label="Formations à vérifier"
+          value={toReviewCount}
+          accent="var(--selen-gold)"
+        />
+        <StatTile
+          label="Visio demandée"
+          value={videoCount}
+          accent="var(--selen-info)"
+        />
       </section>
 
-      <section style={s.list}>
-        {formations.map((formation) => {
-          const sessions = formation.daily_sessions ?? [];
-          return (
-            <article key={formation.id} style={s.card}>
-              <div style={s.cardHead}>
-                <div>
-                  <p style={s.badge}>{statusLabel(formation.status)}</p>
-                  <h2 style={s.cardTitle}>{formation.title}</h2>
-                  <p style={s.meta}>
-                    v{formation.version ?? 1} · {formation.duration_hours ?? "?"} h · {formation.duration_days ?? "?"} j · {formation.modality ?? "modalité non renseignée"}
+      <SelenCard style={s.sectionCard}>
+        <SelenCardTitle>Sessions à préparer</SelenCardTitle>
+
+        {sessions.length === 0 ? (
+          <p style={s.emptyText}>
+            Aucune session Daily à préparer pour le moment.
+          </p>
+        ) : (
+          <div style={s.sessionGrid}>
+            {sessions.map((session) => (
+              <article key={session.id} style={s.sessionCard}>
+                <div style={s.sessionHead}>
+                  <h2 style={s.sessionTitle}>
+                    {session.daily_formations?.title ?? "Formation non reliée"}
+                  </h2>
+                  <div style={s.badgeRow}>
+                    <SelenBadge
+                      variant={formationStatusVariant(
+                        session.daily_formations?.status ?? "draft",
+                      )}
+                      dot
+                    >
+                      Formation :{" "}
+                      {statusLabel(session.daily_formations?.status ?? "draft")}
+                    </SelenBadge>
+                    <SelenBadge
+                      variant={registrationStatusVariant(
+                        session.registration_status,
+                      )}
+                      dot
+                    >
+                      Dossier :{" "}
+                      {registrationStatusLabel(session.registration_status)}
+                    </SelenBadge>
+                  </div>
+                </div>
+
+                <div style={s.sessionMeta}>
+                  <p style={s.metaLine}>{positioningStatus(session)}</p>
+                  <p style={s.metaLine}>
+                    {(session.individual_beneficiaries ?? []).length}{" "}
+                    individuel(s) · {(session.companies ?? []).length}{" "}
+                    entreprise(s)
                   </p>
                 </div>
-                <span style={{ ...s.statusDot, background: statusColor(formation.status) }} />
-              </div>
 
-              <div style={s.summaryGrid}>
-                <p>
-                  <strong>Objectif</strong>
-                  <span>{formation.global_objective}</span>
-                </p>
-                <p>
-                  <strong>Public visé</strong>
-                  <span>{formation.target_audience}</span>
-                </p>
-                <p>
-                  <strong>Sessions associées</strong>
-                  <span>{sessions.length}</span>
-                </p>
-                <p>
-                  <strong>Positionnement</strong>
-                  <span>{formationPositioningSummary(formation)}</span>
-                </p>
-                <p>
-                  <strong>Dernière mise à jour</strong>
-                  <span>{new Date(formation.updated_at).toLocaleDateString("fr-FR")}</span>
-                </p>
-              </div>
+                {session.adaptation_needed ? (
+                  <p style={s.alertLine}>
+                    <SelenBadge variant="danger">
+                      Adaptation à suivre
+                    </SelenBadge>
+                  </p>
+                ) : null}
 
-              {formation.validation_note ? (
-                <p style={s.note}>Note agent : {formation.validation_note}</p>
-              ) : null}
+                <div style={s.sessionActions}>
+                  <Link
+                    href={`/agent/daily/sessions/${session.id}`}
+                    style={{ textDecoration: "none" }}
+                  >
+                    <SelenButton variant="primary" size="sm">
+                      Ouvrir le dossier
+                    </SelenButton>
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </SelenCard>
 
-              <form action={updateDailyFormation} style={s.actions}>
-                <input type="hidden" name="id" value={formation.id} />
-                <input
-                  name="note"
-                  placeholder="Note agent visible pour le suivi interne"
-                  style={s.input}
-                />
-                <button name="action" value="validate" style={s.primaryButton}>
-                  Valider
-                </button>
-                <button name="action" value="correction" style={s.secondaryButton}>
-                  À corriger
-                </button>
-                {formation.status === "archived" ? (
-                  <button name="action" value="reactivate" style={s.secondaryButton}>
-                    Remettre active
-                  </button>
-                ) : (
-                  <button name="action" value="archive" style={s.secondaryButton}>
-                    Archiver
-                  </button>
-                )}
-              </form>
-            </article>
-          );
-        })}
+      <SelenCard style={s.sectionCard}>
+        <SelenCardTitle>Formations à valider</SelenCardTitle>
 
         {formations.length === 0 ? (
-          <div style={s.card}>
-            <p style={s.subtitle}>Aucune formation Daily pour le moment.</p>
+          <p style={s.emptyText}>Aucune formation Daily pour le moment.</p>
+        ) : (
+          <div style={s.formationList}>
+            {formations.map((formation) => {
+              const linkedSessions = formation.daily_sessions ?? [];
+
+              return (
+                <article key={formation.id} style={s.formationCard}>
+                  <div style={s.formationHead}>
+                    <div style={s.formationIntro}>
+                      <SelenBadge
+                        variant={formationStatusVariant(formation.status)}
+                        dot
+                      >
+                        {statusLabel(formation.status)}
+                      </SelenBadge>
+                      <h2 style={s.formationTitle}>{formation.title}</h2>
+                      <p style={s.formationMeta}>
+                        v{formation.version ?? 1} ·{" "}
+                        {formation.duration_hours ?? "?"} h ·{" "}
+                        {formation.duration_days ?? "?"} j ·{" "}
+                        {formation.modality ?? "modalité non renseignée"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={s.summaryGrid}>
+                    <div style={s.summaryItem}>
+                      <span style={s.summaryLabel}>Objectif</span>
+                      <span style={s.summaryValue}>
+                        {formation.global_objective}
+                      </span>
+                    </div>
+                    <div style={s.summaryItem}>
+                      <span style={s.summaryLabel}>Public visé</span>
+                      <span style={s.summaryValue}>
+                        {formation.target_audience}
+                      </span>
+                    </div>
+                    <div style={s.summaryItem}>
+                      <span style={s.summaryLabel}>Sessions associées</span>
+                      <span style={s.summaryValue}>
+                        {linkedSessions.length}
+                      </span>
+                    </div>
+                    <div style={s.summaryItem}>
+                      <span style={s.summaryLabel}>Positionnement</span>
+                      <span style={s.summaryValue}>
+                        {formationPositioningSummary(formation)}
+                      </span>
+                    </div>
+                    <div style={s.summaryItem}>
+                      <span style={s.summaryLabel}>Dernière mise à jour</span>
+                      <span style={s.summaryValue}>
+                        {new Date(formation.updated_at).toLocaleDateString(
+                          "fr-FR",
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  {formation.validation_note ? (
+                    <p style={s.note}>
+                      <span style={s.summaryLabel}>Note agent</span>
+                      <span style={s.summaryValue}>
+                        {formation.validation_note}
+                      </span>
+                    </p>
+                  ) : null}
+
+                  <form action={updateDailyFormation} style={s.actions}>
+                    <input type="hidden" name="id" value={formation.id} />
+                    <input
+                      name="note"
+                      placeholder="Note agent visible pour le suivi interne"
+                      style={s.input}
+                    />
+                    <button
+                      type="submit"
+                      name="action"
+                      value="validate"
+                      style={s.actionPrimary}
+                    >
+                      Valider
+                    </button>
+                    <button
+                      type="submit"
+                      name="action"
+                      value="correction"
+                      style={s.actionSecondary}
+                    >
+                      À corriger
+                    </button>
+                    {formation.status === "archived" ? (
+                      <button
+                        type="submit"
+                        name="action"
+                        value="reactivate"
+                        style={s.actionGhost}
+                      >
+                        Remettre active
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        name="action"
+                        value="archive"
+                        style={s.actionGhost}
+                      >
+                        Archiver
+                      </button>
+                    )}
+                  </form>
+                </article>
+              );
+            })}
           </div>
-        ) : null}
-      </section>
+        )}
+      </SelenCard>
     </main>
   );
 }
 
-const s: Record<string, React.CSSProperties> = {
-  page: { maxWidth: 1180, margin: "0 auto", padding: "28px 32px 56px", color: "var(--selen-text)" },
-  header: { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", marginBottom: 22 },
-  eyebrow: { fontFamily: "var(--font-display)", fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase", color: "var(--selen-gold)" },
-  title: { fontFamily: "var(--font-display)", fontSize: 34, margin: "8px 0", color: "var(--selen-text)" },
-  subtitle: { color: "var(--selen-text2)", lineHeight: 1.6, margin: 0 },
-  counter: { display: "grid", gap: 2, minWidth: 120, border: "1px solid var(--selen-border)", padding: 14, textAlign: "center", color: "var(--selen-gold2)" },
-  list: { display: "grid", gap: 14 },
-  card: { background: "var(--selen-card-texture), var(--selen-card)", border: "1px solid rgba(245,208,138,0.18)", borderRadius: "var(--radius-sm)", padding: 18, color: "var(--selen-text-oncard)" },
-  cardHead: { display: "flex", justifyContent: "space-between", gap: 12 },
-  badge: { color: "var(--selen-gold2)", fontSize: 12, fontWeight: 800, margin: 0 },
-  cardTitle: { margin: "5px 0", color: "var(--selen-text-oncard)", fontSize: 22 },
-  meta: { color: "var(--selen-text3-oncard)", margin: 0, fontSize: 13 },
-  statusDot: { width: 14, height: 14, borderRadius: 999, flexShrink: 0, marginTop: 8 },
-  summaryGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 14 },
-  onboardingGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 12 },
-  onboardingItem: { display: "grid", gap: 4, border: "1px solid rgba(245,208,138,0.14)", padding: 12, color: "var(--selen-text2-oncard)" },
-  alert: { color: "var(--selen-danger)", fontWeight: 800 },
-  linkButton: { minHeight: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-sm)", padding: "0 12px", background: "linear-gradient(135deg, var(--selen-gold), var(--selen-copper))", color: "var(--selen-ink)", fontWeight: 800, textDecoration: "none" },
-  note: { color: "var(--selen-text2-oncard)", borderTop: "1px solid rgba(245,208,138,0.14)", paddingTop: 10 },
-  actions: { display: "grid", gridTemplateColumns: "minmax(220px, 1fr) repeat(3, auto)", gap: 8, marginTop: 14, alignItems: "center" },
-  input: { minHeight: 38, borderRadius: "var(--radius-sm)", border: "1px solid rgba(245,208,138,0.22)", background: "#f7ecd8", color: "#3b281b", padding: "0 10px" },
-  primaryButton: { minHeight: 38, border: 0, borderRadius: "var(--radius-sm)", padding: "0 14px", background: "linear-gradient(135deg, var(--selen-gold), var(--selen-copper))", color: "var(--selen-ink)", fontWeight: 800 },
-  secondaryButton: { minHeight: 38, borderRadius: "var(--radius-sm)", padding: "0 14px", border: "1px solid rgba(245,208,138,0.24)", background: "rgba(247,239,224,0.08)", color: "var(--selen-text2-oncard)", fontWeight: 700 },
-  error: { color: "var(--selen-danger)" },
+const s: Record<string, CSSProperties> = {
+  page: {
+    maxWidth: 1120,
+    margin: "0 auto",
+    padding: "24px 28px 56px",
+    color: "var(--selen-text)",
+  },
+  header: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+    marginBottom: 20,
+    flexWrap: "wrap",
+  },
+  eyebrow: {
+    fontFamily: "var(--font-display)",
+    fontSize: 9,
+    letterSpacing: "0.3em",
+    textTransform: "uppercase",
+    color: "var(--selen-gold)",
+    opacity: 0.8,
+    margin: 0,
+  },
+  title: {
+    fontFamily: "var(--font-display)",
+    fontSize: 28,
+    fontWeight: 600,
+    letterSpacing: "0.02em",
+    color: "var(--selen-text)",
+    marginTop: 8,
+    marginBottom: 0,
+    lineHeight: 1.2,
+  },
+  subtitle: {
+    marginTop: 8,
+    marginBottom: 0,
+    fontSize: 13,
+    color: "var(--selen-text2)",
+    lineHeight: 1.6,
+    maxWidth: 620,
+  },
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 10,
+    marginBottom: 16,
+  },
+  statTile: {
+    background: "var(--selen-bg2)",
+    border: "1px solid var(--selen-border)",
+    borderRadius: "var(--radius-lg)",
+    padding: "14px 16px",
+    boxShadow: "0 12px 28px rgba(120, 90, 50, 0.08)",
+  },
+  statLabel: {
+    margin: 0,
+    fontSize: 10,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+    color: "var(--selen-text3)",
+    marginBottom: 8,
+  },
+  statValue: {
+    margin: 0,
+    fontFamily: "var(--font-display)",
+    fontSize: 30,
+    fontWeight: 700,
+    lineHeight: 1,
+    color: "var(--selen-gold2)",
+  },
+  sectionCard: {
+    marginBottom: 16,
+  },
+  emptyText: {
+    margin: 0,
+    fontSize: 13,
+    color: "var(--selen-text3)",
+    lineHeight: 1.6,
+  },
+  sessionGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: 12,
+  },
+  sessionCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    padding: "14px 16px",
+    borderRadius: "var(--radius-md)",
+    background: "var(--selen-bg3)",
+    border: "1px solid var(--selen-border)",
+  },
+  sessionHead: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  sessionTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 600,
+    color: "var(--selen-text)",
+    lineHeight: 1.35,
+  },
+  badgeRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  sessionMeta: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  metaLine: {
+    margin: 0,
+    fontSize: 13,
+    color: "var(--selen-text2)",
+    lineHeight: 1.5,
+  },
+  alertLine: {
+    margin: 0,
+  },
+  sessionActions: {
+    marginTop: "auto",
+    paddingTop: 4,
+  },
+  formationList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  },
+  formationCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    padding: "16px 18px",
+    borderRadius: "var(--radius-md)",
+    background: "var(--selen-bg3)",
+    border: "1px solid var(--selen-border)",
+  },
+  formationHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "flex-start",
+  },
+  formationIntro: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    minWidth: 0,
+  },
+  formationTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 600,
+    color: "var(--selen-text)",
+    lineHeight: 1.35,
+  },
+  formationMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: "var(--selen-text3)",
+    lineHeight: 1.5,
+  },
+  summaryGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 12,
+  },
+  summaryItem: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    minWidth: 0,
+  },
+  summaryLabel: {
+    fontSize: 11,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "var(--selen-text3)",
+    fontWeight: 600,
+  },
+  summaryValue: {
+    fontSize: 13,
+    color: "var(--selen-text2)",
+    lineHeight: 1.55,
+    wordBreak: "break-word",
+  },
+  note: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    margin: 0,
+    paddingTop: 12,
+    borderTop: "1px solid var(--selen-border)",
+  },
+  actions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
+    paddingTop: 12,
+    borderTop: "1px solid var(--selen-border)",
+  },
+  input: {
+    flex: "1 1 220px",
+    minHeight: 34,
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--selen-border)",
+    background: "rgba(247, 239, 224, 0.08)",
+    color: "var(--selen-text)",
+    padding: "0 12px",
+    fontSize: 13,
+  },
+  error: {
+    color: "var(--selen-danger)",
+  },
+
+  actionPrimary: {
+    minHeight: 34,
+    border: 0,
+    borderRadius: "var(--radius-sm)",
+    padding: "0 14px",
+    background:
+      "linear-gradient(135deg, var(--selen-gold), var(--selen-copper))",
+    color: "var(--selen-ink)",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  actionSecondary: {
+    minHeight: 34,
+    borderRadius: "var(--radius-sm)",
+    padding: "0 14px",
+    border: "1px solid var(--selen-border)",
+    background: "var(--selen-bg2)",
+    color: "var(--selen-text)",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  actionGhost: {
+    minHeight: 34,
+    borderRadius: "var(--radius-sm)",
+    padding: "0 14px",
+    border: "1px solid transparent",
+    background: "transparent",
+    color: "var(--selen-text2)",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
 };
