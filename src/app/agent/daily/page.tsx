@@ -209,29 +209,6 @@ export default async function AgentDailyPage() {
       </header>
 
       <section style={s.card}>
-        <p style={s.badge}>Paramétrage initial</p>
-        <div style={s.onboardingGrid}>
-          {onboardings.map((row) => (
-            <article key={row.id} style={s.onboardingItem}>
-              <strong>{row.organisation_name || row.platform_contact_email || row.user_id}</strong>
-              <span>
-                {row.status === "completed"
-                  ? "Terminé"
-                  : row.status === "in_progress"
-                    ? `Commencé - étape ${row.current_step}`
-                    : "Non démarré"}
-              </span>
-              <span>{row.setup_choice === "video" ? "Accompagnement visio" : "Paramétrage autonome"}</span>
-              <span>{row.platform_contact_first_name || "Contact à compléter"}</span>
-            </article>
-          ))}
-          {onboardings.length === 0 ? (
-            <p style={s.subtitle}>Aucun paramétrage Daily commencé pour le moment.</p>
-          ) : null}
-        </div>
-      </section>
-
-      <section style={s.card}>
         <p style={s.badge}>Sessions à préparer</p>
         <div style={s.onboardingGrid}>
           {sessions.map((session) => (
