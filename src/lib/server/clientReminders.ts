@@ -54,7 +54,10 @@ function isMissingTableError(
 }
 
 async function tableExistsQuery<T>(
-  query: PromiseLike<{ data: T | null; error: any }>,
+  query: PromiseLike<{
+    data: T | null;
+    error: { code?: string; message?: string } | null;
+  }>,
 ) {
   const { data, error } = await query;
   if (isMissingTableError(error)) return { data: null, error: null };

@@ -402,7 +402,14 @@ export function getNdaAgentWorkflowState(args: {
 
 export async function syncNdaDossierStatus(args: {
   admin: {
-    from: (table: string) => any;
+    from: (table: string) => {
+      update: (values: Record<string, unknown>) => {
+        eq: (
+          column: string,
+          value: string,
+        ) => PromiseLike<{ error: { message?: string } | null }>;
+      };
+    };
   };
   dossierId: string;
   currentStatus?: string | null;

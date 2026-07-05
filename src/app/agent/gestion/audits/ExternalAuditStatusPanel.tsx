@@ -273,7 +273,7 @@ export default function ExternalAuditStatusPanel({
             disabled={busy === "calendar"}
             onClick={() => void createCalendar()}
           >
-            Creer l'evenement Google Calendar
+            Creer l&apos;evenement Google Calendar
           </SelenButton>
         </div>
       ) : meetLink(audit) ? (

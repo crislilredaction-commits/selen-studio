@@ -15,7 +15,7 @@ type PageProps = {
   }>;
 };
 
-type AdminClient = SupabaseClient<any>;
+type AdminClient = SupabaseClient;
 
 type Answer = "yes" | "partial" | "no" | "unknown";
 type Diagnostic = "a_verifier" | "majeure" | "mineure" | "conforme";

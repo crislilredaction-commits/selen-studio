@@ -197,7 +197,7 @@ export default function NdaChecklist({
             color: "var(--selen-text3)",
           }}
         >
-          La phase 2 apparaîtra une fois les pièces nécessaires à l'analyse
+          La phase 2 apparaîtra une fois les pièces nécessaires à l&apos;analyse
           programme / CV reçues. Les compléments recommandés ne bloquent pas
           cette étape.
         </div>

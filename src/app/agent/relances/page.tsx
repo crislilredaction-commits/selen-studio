@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -134,7 +134,7 @@ export default function AgentRelancesPage() {
   >({});
   const [openHistoryId, setOpenHistoryId] = useState("");
 
-  async function loadReminders() {
+  const loadReminders = useCallback(async () => {
     setLoading(true);
     setError("");
     const { data, error: loadError } = await supabase
@@ -157,7 +157,7 @@ export default function AgentRelancesPage() {
       >,
     );
     setLoading(false);
-  }
+  }, [supabase]);
 
   async function loadHistory(reminderId: string) {
     if (openHistoryId === reminderId) {
@@ -191,8 +191,12 @@ export default function AgentRelancesPage() {
   }
 
   useEffect(() => {
-    void loadReminders();
-  }, []);
+    const timeout = window.setTimeout(() => {
+      void loadReminders();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [loadReminders]);
 
   async function generateNow() {
     setGenerating(true);

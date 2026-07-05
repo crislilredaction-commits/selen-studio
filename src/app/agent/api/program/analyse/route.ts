@@ -11,9 +11,19 @@ import {
   type NdaQuickDiagnostic,
 } from "@/lib/server/ndaAnalysisEnrichment";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY manquante.");
+  }
+
+  openaiClient ??= new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+
+  return openaiClient;
+}
 
 type NdaVariablesRow = {
   dossier_id: string;
@@ -580,6 +590,7 @@ export async function POST(req: Request) {
       sourceUsed,
     });
 
+    const openai = getOpenAIClient();
     const response = await openai.responses.create({
       model: "gpt-4.1",
       input: [

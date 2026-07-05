@@ -746,7 +746,7 @@ export default function IcpfAssistantClient({
 
           <SelenCard>
             <div style={s.cardHead}>
-              <SelenCardTitle>Preuves observees dans l'assistant</SelenCardTitle>
+              <SelenCardTitle>Preuves observees dans l&apos;assistant</SelenCardTitle>
               <SelenButton
                 type="button"
                 size="sm"

@@ -86,10 +86,14 @@ export default function NdaDepositFollowUpCard({
   const pendingRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
-    setSpecificCode(initialState.specificCode);
-    setSpecificCodeLabel(initialState.specificCodeLabel);
-    pendingRef.current = {};
-    setStatus("idle");
+    const timeout = window.setTimeout(() => {
+      setSpecificCode(initialState.specificCode);
+      setSpecificCodeLabel(initialState.specificCodeLabel);
+      pendingRef.current = {};
+      setStatus("idle");
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [initialState]);
 
   const depositStatus = inferStatus({

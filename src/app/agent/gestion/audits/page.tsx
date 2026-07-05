@@ -188,7 +188,7 @@ function MonthlyStatsBlock({ stats }: { stats: ExternalAuditMonthlyStats }) {
           <SelenCardTitle style={{ marginBottom: 4 }}>Suivi mensuel</SelenCardTitle>
           <p style={s.muted}>
             Activite audits externes hors audits annules, comptee selon la date
-            d'audit.
+            d&apos;audit.
           </p>
         </div>
         <span style={s.meta}>{stats.currentMonthLabel}</span>
@@ -211,7 +211,7 @@ function MonthlyStatsBlock({ stats }: { stats: ExternalAuditMonthlyStats }) {
           </span>
         </div>
         <div style={s.splitBox}>
-          <strong>Donneurs d'ordre</strong>
+          <strong>Donneurs d&apos;ordre</strong>
           <span>
             Certifopac : {formatShare(stats.orderGiverCurrentMonth.certifopac, currentMonthTotal)}
           </span>

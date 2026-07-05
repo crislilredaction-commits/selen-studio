@@ -12,7 +12,7 @@ import { getVitrineBaseUrl } from "@/lib/vitrineLinks";
 
 export const dynamic = "force-dynamic";
 
-type AdminClient = SupabaseClient<any>;
+type AdminClient = SupabaseClient;
 
 type OrganisationAccessRow = {
   id: string;

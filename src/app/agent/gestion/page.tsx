@@ -188,9 +188,9 @@ export default async function GestionLilPage() {
 
       {planAlerts.length > 0 ? (
         <SelenCard>
-          <SelenCardTitle>Plans d'audit urgents</SelenCardTitle>
+          <SelenCardTitle>Plans d&apos;audit urgents</SelenCardTitle>
           <p style={s.muted}>
-            Audits dans moins de 10 jours avec plan d'audit non envoye.
+            Audits dans moins de 10 jours avec plan d&apos;audit non envoye.
           </p>
           <div style={s.list}>
             {planAlerts.slice(0, 5).map((audit) => (
@@ -208,7 +208,7 @@ export default async function GestionLilPage() {
           </div>
           <div style={s.compactGrid}>
             <Info label="CA du mois" value={amount(monthTotal)} />
-            <Info label="CA de l'annee" value={amount(yearTotal)} />
+            <Info label="CA de l&apos;annee" value={amount(yearTotal)} />
             <Info label="Paiements mois" value={String(monthPayments.length)} />
             <Info label="Paiements annee" value={String(yearPayments.length)} />
             <Info label="Net mois" value={amount(monthTotal - monthExpenseTotal)} />
@@ -269,7 +269,7 @@ export default async function GestionLilPage() {
 
         <SelenCard>
           <div style={s.cardHead}>
-            <SelenCardTitle>Plans d'audit a envoyer</SelenCardTitle>
+          <SelenCardTitle>Plans d&apos;audit a envoyer</SelenCardTitle>
             <span style={s.meta}>{plansToSend.length}</span>
           </div>
           <div style={s.list}>
@@ -277,7 +277,7 @@ export default async function GestionLilPage() {
               <MiniAudit key={audit.id} audit={audit} />
             ))}
             {plansToSend.length === 0 ? (
-              <p style={s.muted}>Tous les plans d'audit actifs sont marques envoyes.</p>
+              <p style={s.muted}>Tous les plans d&apos;audit actifs sont marques envoyes.</p>
             ) : null}
           </div>
         </SelenCard>

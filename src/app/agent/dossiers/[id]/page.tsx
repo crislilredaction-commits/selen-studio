@@ -2836,7 +2836,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                     >
                       Lorsque vous validez cette phase, la procedure de depot
                       est ouverte cote Vitrine. Seuls les documents marques
-                      "Depot" seront visibles cote client.
+                      &quot;Depot&quot; seront visibles cote client.
                     </p>
                   </SelenCard>
                   <SelenCard>
@@ -2852,7 +2852,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                       }}
                     >
                       Ajoutez ici les documents corriges ou finalises par
-                      l'agent, puis selectionnez precisement ceux qui seront
+                      l&apos;agent, puis selectionnez precisement ceux qui seront
                       visibles cote client pour le depot DREETS.
                     </p>
                     <DocumentUpload
@@ -3310,7 +3310,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
               {dossier.type === "nda" ? (
                 <SelenCard>
                   <SelenCardTitle>
-                    Textes exploitables pour l'analyse
+                    Textes exploitables pour l&apos;analyse
                   </SelenCardTitle>
                   <p
                     style={{
@@ -3365,7 +3365,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                         lineHeight: 1.45,
                       }}
                     >
-                      L'analyse sera disponible lorsqu'un CV formateur et un
+                      L&apos;analyse sera disponible lorsqu&apos;un CV formateur et un
                       programme de formation seront rattaches au dossier.
                     </div>
                   )}

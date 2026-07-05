@@ -497,8 +497,8 @@ export function extractTrainerNameFromCv(text: string): {
     }
 
     // Pattern B : NOM(S) puis Prénom(s) — ex: "BARTHAUX Pascale"
-    let nomWordsB: string[] = [];
-    let prenomWordsB: string[] = [];
+    const nomWordsB: string[] = [];
+    const prenomWordsB: string[] = [];
 
     for (let i = 0; i < tokens.length; i++) {
       const tok = tokens[i];

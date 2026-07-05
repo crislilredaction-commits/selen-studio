@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-export type SupabaseAdminClient = SupabaseClient<any>;
+export type SupabaseAdminClient = SupabaseClient;
 
 export function createSupabaseAdminClient(): SupabaseAdminClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -19,4 +19,3 @@ export function createSupabaseAdminClient(): SupabaseAdminClient {
     },
   }) as SupabaseAdminClient;
 }
-

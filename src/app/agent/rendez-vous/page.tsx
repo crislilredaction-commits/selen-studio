@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { createClient } from "@/lib/supabase/client";
 import SelenBadge from "@/components/ui/SelenBadge";
@@ -165,8 +165,9 @@ export default function AgentRendezVousPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState("");
+  const [now] = useState(() => Date.now());
 
-  async function loadAppointments() {
+  const loadAppointments = useCallback(async () => {
     setLoading(true);
     setError("");
     const { data, error: loadError } = await supabase
@@ -182,11 +183,15 @@ export default function AgentRendezVousPage() {
 
     setAppointments(((data ?? []) as AppointmentRow[]).filter((row) => row.id));
     setLoading(false);
-  }
+  }, [supabase]);
 
   useEffect(() => {
-    void loadAppointments();
-  }, []);
+    const timeout = window.setTimeout(() => {
+      void loadAppointments();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [loadAppointments]);
 
   async function updateAppointment(
     row: AppointmentRow,
@@ -223,7 +228,6 @@ export default function AgentRendezVousPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const now = Date.now();
     const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
     return appointments.filter((row) => {
@@ -254,7 +258,7 @@ export default function AgentRendezVousPage() {
 
       return matchesSearch && matchesType && matchesStatus && matchesPeriod;
     });
-  }, [appointments, periodFilter, search, statusFilter, typeFilter]);
+  }, [appointments, now, periodFilter, search, statusFilter, typeFilter]);
 
   const visibleForStats = appointments.filter((row) => metadata(row).archived !== true);
   const stats = {

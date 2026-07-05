@@ -266,7 +266,7 @@ export default function ExternalAuditForm({
             name="planAuditSent"
             defaultChecked={audit?.metadata?.plan_audit_sent === true}
           />
-          <span>Plan d'audit envoyé</span>
+          <span>Plan d&apos;audit envoyé</span>
         </label>
         {auditDeliveryMode === "distanciel" ? (
           <div style={s.section}>
@@ -288,7 +288,7 @@ export default function ExternalAuditForm({
           </div>
         ) : (
         <div style={s.section}>
-          <h3 style={s.sectionTitle}>Départ vers l'audit</h3>
+          <h3 style={s.sectionTitle}>Départ vers l&apos;audit</h3>
           <label style={s.field}>
             <span>Lieu de départ</span>
             <select

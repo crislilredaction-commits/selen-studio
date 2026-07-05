@@ -75,7 +75,7 @@ export default async function AgentCodesReductionPage({ searchParams }: PageProp
           <h1 style={s.title}>Codes de reduction</h1>
           <p style={s.subtitle}>
             Retrouvez les codes crees depuis les tickets support, suivez leur
-            utilisation et conservez l'historique sans suppression physique.
+            utilisation et conservez l&apos;historique sans suppression physique.
           </p>
         </div>
         <Link href="/agent/support" style={{ textDecoration: "none" }}>
