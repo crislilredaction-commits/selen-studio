@@ -240,7 +240,12 @@ function getStatusBadgeVariant(status: string): SelenBadgeVariant {
 }
 
 function isPreauditDossierType(type: string) {
-  return type === "preaudit";
+  return (
+    type === "preaudit" ||
+    type === "prepa" ||
+    type === "mise_en_conformite" ||
+    type === "audit_reel"
+  );
 }
 
 function isReviewDossierType(type: string) {
@@ -409,7 +414,11 @@ function isNdaFinalReturnedDocument(doc: DbDocumentRow) {
   const documentType = normalizeNdaDocumentType(doc.document_type);
 
   return (
-    ["client_returned_document", "agent_uploaded_document", "final_validated_file"].includes(role) &&
+    [
+      "client_returned_document",
+      "agent_uploaded_document",
+      "final_validated_file",
+    ].includes(role) &&
     [
       ...NDA_FINAL_REQUIRED_DOCUMENT_TYPES,
       ...NDA_FINAL_OPTIONAL_DOCUMENT_TYPES,
@@ -539,7 +548,8 @@ function getNdaAgentWorkflowState(args: {
     return {
       currentStep: 1,
       statusLabel: "Programme a transmettre au client",
-      actionLabel: "L'agent doit envoyer la proposition de programme au client.",
+      actionLabel:
+        "L'agent doit envoyer la proposition de programme au client.",
       agentStatusDescription:
         "Le programme est pret cote agent, mais il n'a pas encore ete valide par le client.",
       statusTone: "status" satisfies NdaWorkflowStatusTone,
@@ -900,8 +910,7 @@ function NdaWorkflowPhaseCard({
 const NDA_PHASE_SUMMARIES = [
   {
     title: "Réception initiale",
-    subtitle:
-      "CV du formateur, programme de formation et avis INSEE ou KBIS.",
+    subtitle: "CV du formateur, programme de formation et avis INSEE ou KBIS.",
   },
   {
     title: "Analyse du programme",
@@ -1803,6 +1812,33 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
   const isNdaDossier = dossier.type === "nda";
   const isPreauditDossier = isPreauditDossierType(dossier.type);
   const isReviewDossier = isReviewDossierType(dossier.type);
+
+  if (!isNdaDossier) {
+    if (isPreauditDossier) {
+      redirect(`/agent/dossiers/${dossier.id}/preaudit`);
+    }
+
+    if (isReviewDossier) {
+      const { data: reviewCaseForRedirect } = await supabase
+        .from("audit_blanc_cases")
+        .select("id")
+        .eq("dossier_id", dossier.id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (reviewCaseForRedirect?.id) {
+        redirect(`/agent/audits-blancs/${reviewCaseForRedirect.id}`);
+      }
+
+      redirect("/agent/audits-blancs");
+    }
+
+    if (dossier.type === "daily") {
+      redirect("/agent/daily");
+    }
+  }
+
   const resolvedClientUrl = getVitrineClientUrl(dossier.type, dossier.id);
 
   const { data: assignments, error: assignmentsError } = await supabase
@@ -2086,7 +2122,8 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
     ]),
   );
   const hasDreetsRefusalLetter = allNdaDocuments.some(
-    (doc) => normalizeNdaDocumentType(doc.document_type) === "dreets_refusal_letter",
+    (doc) =>
+      normalizeNdaDocumentType(doc.document_type) === "dreets_refusal_letter",
   );
   const generatedSigningDocuments = allNdaDocuments.filter(
     isNdaGeneratedSigningDocument,
@@ -2097,14 +2134,18 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
       new Date(a.created_at ?? "").getTime(),
   );
   const analysisCvDocument = sortedNdaDocumentsByDate.find((doc) =>
-    ["cv_formateur", "cv"].includes(normalizeNdaDocumentType(doc.document_type)),
+    ["cv_formateur", "cv"].includes(
+      normalizeNdaDocumentType(doc.document_type),
+    ),
   );
   const analysisProgramDocument = sortedNdaDocumentsByDate.find((doc) => {
     const normalizedType = normalizeNdaDocumentType(doc.document_type);
     return (
-      ["programme_formation", "programme_client_corrige", "programme_reformule"].includes(
-        normalizedType,
-      ) ||
+      [
+        "programme_formation",
+        "programme_client_corrige",
+        "programme_reformule",
+      ].includes(normalizedType) ||
       doc.document_role === "client_returned_document" ||
       doc.storage_path?.includes("program-versions")
     );
@@ -2117,7 +2158,9 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
   const analysisProgramInitialText =
     ndaVariables?.program_manual_text?.trim() || analysisProgramAutoText;
   const administrativeIdentityDocument = sortedNdaDocumentsByDate.find((doc) =>
-    ["avis_insee", "kbis"].includes(normalizeNdaDocumentType(doc.document_type)),
+    ["avis_insee", "kbis"].includes(
+      normalizeNdaDocumentType(doc.document_type),
+    ),
   );
   const administrativeIdentityWarning =
     administrativeIdentityDocument &&
@@ -2143,7 +2186,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
     latestClientProgramVersion ?? latestProgramVersion;
   const programReady = Boolean(
     workflowProgramVersion &&
-      hasNdaProgramDocumentContent(workflowProgramVersion),
+    hasNdaProgramDocumentContent(workflowProgramVersion),
   );
   const workflowProgramStatus = workflowProgramVersion?.status ?? null;
   const workflowProgramDecision =
@@ -2169,9 +2212,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
   );
   const activeNdaPhaseIndex =
     getActiveNdaPhaseIndexFromValidations(ndaPhaseValidations);
-  const isNdaDepositPhaseOpen = Boolean(
-    ndaPhaseValidations.ready_for_deposit,
-  );
+  const isNdaDepositPhaseOpen = Boolean(ndaPhaseValidations.ready_for_deposit);
   const ndaPhaseStatusLabels = [
     "Réception initiale",
     "Analyse du programme",
@@ -2265,9 +2306,9 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
         : undefined;
   const dossierCurrentStep = isPreauditDossier
     ? preauditCurrentStep
-      : isReviewDossier
-        ? reviewCurrentStep
-        : isNdaDossier
+    : isReviewDossier
+      ? reviewCurrentStep
+      : isNdaDossier
         ? activeNdaPhaseIndex
         : currentStep;
   const ndaPhaseWarnings: Partial<Record<NdaPhaseKey, string>> = {
@@ -2287,10 +2328,9 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
           ? undefined
           : "Attention : aucun code spécifique au domaine de formation n’est renseigné. Le client verra “À confirmer par Selen” dans la procédure de dépôt."
         : "Des documents finaux retournés par le client semblent encore manquants.",
-    ready_for_deposit:
-      isNdaDepositPhaseOpen
-        ? undefined
-        : "Le dossier ne semble pas encore entièrement prêt pour le dépôt NDA.",
+    ready_for_deposit: isNdaDepositPhaseOpen
+      ? undefined
+      : "Le dossier ne semble pas encore entièrement prêt pour le dépôt NDA.",
   };
 
   const docsReceived = NDA_REQUIRED_DOCUMENT_KEYS.filter((key) =>
@@ -2449,7 +2489,6 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
             {getTypeLabel(dossier.type)} · {dossier.title}
           </span>
         </div>
-
       </div>
 
       <div style={{ padding: "24px 28px", maxWidth: 1120, margin: "0 auto" }}>
@@ -2786,43 +2825,45 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                   title="Retour client et contrôle final"
                   subtitle="Suivez les documents signés retournés par le client et validez les pièces finales."
                 >
-                <SelenCard>
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: "var(--selen-text3)",
-                      lineHeight: 1.5,
-                      margin: 0,
-                    }}
-                  >
-                    Lorsque vous validez cette phase, la procedure de depot est
-                    ouverte cote Vitrine. Seuls les documents marques "Depot"
-                    seront visibles cote client.
-                  </p>
-                </SelenCard>
-                <SelenCard>
-                  <SelenCardTitle>Ajouter une version corrigee</SelenCardTitle>
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: "var(--selen-text3)",
-                      lineHeight: 1.5,
-                      margin: "0 0 10px",
-                    }}
-                  >
-                    Ajoutez ici les documents corriges ou finalises par
-                    l'agent, puis selectionnez precisement ceux qui seront
-                    visibles cote client pour le depot DREETS.
-                  </p>
-                  <DocumentUpload
-                    dossierId={dossier.id}
-                    organisationId={organisation?.id}
-                  />
-                </SelenCard>
-                <SelenCard>
-                  <SelenCardTitle>
-                    Documents finaux retournés par le client
-                  </SelenCardTitle>
+                  <SelenCard>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--selen-text3)",
+                        lineHeight: 1.5,
+                        margin: 0,
+                      }}
+                    >
+                      Lorsque vous validez cette phase, la procedure de depot
+                      est ouverte cote Vitrine. Seuls les documents marques
+                      "Depot" seront visibles cote client.
+                    </p>
+                  </SelenCard>
+                  <SelenCard>
+                    <SelenCardTitle>
+                      Ajouter une version corrigee
+                    </SelenCardTitle>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--selen-text3)",
+                        lineHeight: 1.5,
+                        margin: "0 0 10px",
+                      }}
+                    >
+                      Ajoutez ici les documents corriges ou finalises par
+                      l'agent, puis selectionnez precisement ceux qui seront
+                      visibles cote client pour le depot DREETS.
+                    </p>
+                    <DocumentUpload
+                      dossierId={dossier.id}
+                      organisationId={organisation?.id}
+                    />
+                  </SelenCard>
+                  <SelenCard>
+                    <SelenCardTitle>
+                      Documents finaux retournés par le client
+                    </SelenCardTitle>
 
                     <div
                       style={{
@@ -2893,10 +2934,10 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                       </div>
                     ) : null}
 
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {[
-                      ...NDA_FINAL_REQUIRED_DOCUMENT_TYPES,
-                      ...NDA_FINAL_OPTIONAL_DOCUMENT_TYPES,
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {[
+                        ...NDA_FINAL_REQUIRED_DOCUMENT_TYPES,
+                        ...NDA_FINAL_OPTIONAL_DOCUMENT_TYPES,
                       ].map((documentType) => {
                         const doc = finalReturnedByType.get(documentType);
                         const reviewStatus = doc
@@ -2975,35 +3016,35 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                             ) : null}
                           </div>
                         );
-                    })}
-                  </div>
-                </SelenCard>
-                <SelenCard>
-                  <SelenCardTitle>Code de dépôt NDA</SelenCardTitle>
-                  {!ndaVariables?.nda_deposit_specific_code ? (
-                    <div
-                      style={{
-                        border: "1px solid rgba(212, 159, 63, 0.34)",
-                        background: "rgba(212, 159, 63, 0.08)",
-                        borderRadius: "var(--radius-sm)",
-                        padding: "9px 11px",
-                        color: "var(--selen-text2)",
-                        fontSize: 12,
-                        lineHeight: 1.5,
-                        marginBottom: 12,
-                      }}
-                    >
-                      Attention : aucun code spécifique au domaine de formation
-                      n’est renseigné. Le client verra “À confirmer par Selen”
-                      dans la procédure de dépôt.
+                      })}
                     </div>
-                  ) : null}
-                  <NdaDepositFollowUpCard
-                    dossierId={dossier.id}
-                    initialValues={ndaVariablesInitialValues}
-                    mode="code"
-                  />
-                </SelenCard>
+                  </SelenCard>
+                  <SelenCard>
+                    <SelenCardTitle>Code de dépôt NDA</SelenCardTitle>
+                    {!ndaVariables?.nda_deposit_specific_code ? (
+                      <div
+                        style={{
+                          border: "1px solid rgba(212, 159, 63, 0.34)",
+                          background: "rgba(212, 159, 63, 0.08)",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "9px 11px",
+                          color: "var(--selen-text2)",
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                          marginBottom: 12,
+                        }}
+                      >
+                        Attention : aucun code spécifique au domaine de
+                        formation n’est renseigné. Le client verra “À confirmer
+                        par Selen” dans la procédure de dépôt.
+                      </div>
+                    ) : null}
+                    <NdaDepositFollowUpCard
+                      dossierId={dossier.id}
+                      initialValues={ndaVariablesInitialValues}
+                      mode="code"
+                    />
+                  </SelenCard>
                 </NdaWorkflowPhaseCard>
               </div>
             ) : null}
@@ -3268,7 +3309,9 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
             >
               {dossier.type === "nda" ? (
                 <SelenCard>
-                  <SelenCardTitle>Textes exploitables pour l'analyse</SelenCardTitle>
+                  <SelenCardTitle>
+                    Textes exploitables pour l'analyse
+                  </SelenCardTitle>
                   <p
                     style={{
                       fontSize: 12,
