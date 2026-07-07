@@ -7,6 +7,7 @@ import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenButton from "@/components/ui/SelenButton";
 import { createAgentAssistanceToken } from "@/lib/server/agentAssistanceTokens";
+import ClientAccessManager from "../ClientAccessManager";
 
 type PageProps = {
   params: Promise<{
@@ -564,6 +565,15 @@ export default async function ClientPage({ params, searchParams }: PageProps) {
               </button>
             </form>
           </div>
+
+          <ClientAccessManager
+            initialEmail={typedClient.email}
+            initialName={typedClient.name}
+            organisationId={typedClient.id}
+            clientNotificationsPaused={emailsPaused}
+            embeddedMode
+            title="Accès Bureau Selen"
+          />
 
           {isEditing ? (
             <form action={updateClientAction} style={{ display: "grid", gap: 14 }}>

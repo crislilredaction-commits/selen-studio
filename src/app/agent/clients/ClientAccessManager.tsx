@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import SelenBadge from "@/components/ui/SelenBadge";
@@ -42,6 +42,15 @@ type AccessResponse = {
   error?: string;
 };
 
+type ClientAccessManagerProps = {
+  initialEmail?: string | null;
+  initialName?: string | null;
+  organisationId?: string | null;
+  clientNotificationsPaused?: boolean;
+  embeddedMode?: boolean;
+  title?: string;
+};
+
 function getDefaultEndDate() {
   const date = new Date();
   date.setMonth(date.getMonth() + 3);
@@ -62,9 +71,18 @@ function getToolName(tools: Tool[], slug: string) {
   return tools.find((tool) => tool.slug === slug)?.name ?? slug;
 }
 
-export default function ClientAccessManager() {
-  const [email, setEmail] = useState("");
-  const [fullName, setFullName] = useState("");
+export default function ClientAccessManager({
+  initialEmail = "",
+  initialName = "",
+  organisationId = null,
+  clientNotificationsPaused = false,
+  embeddedMode = false,
+  title,
+}: ClientAccessManagerProps = {}) {
+  const defaultEmail = initialEmail?.trim().toLowerCase() ?? "";
+  const defaultName = initialName?.trim() ?? "";
+  const [email, setEmail] = useState(defaultEmail);
+  const [fullName, setFullName] = useState(defaultName);
   const [password, setPassword] = useState("");
   const [selectedToolSlug, setSelectedToolSlug] = useState("");
   const [accessType, setAccessType] = useState<"limited" | "unlimited">(
@@ -80,15 +98,20 @@ export default function ClientAccessManager() {
   const tools = data?.tools ?? [];
   const accesses = data?.accesses ?? [];
   const client = data?.client ?? null;
+  const hasLoaded = data !== null;
+  const selectedAccess = accesses.find(
+    (access) => access.tool_slug === selectedToolSlug,
+  );
+  const hasActiveAccess = accesses.some((access) => access.status === "active");
 
-  const activeTools = useMemo(() => {
-    return tools.filter((tool) => tool.is_active);
-  }, [tools]);
+  void organisationId;
+
+  const activeTools = tools.filter((tool) => tool.is_active);
 
   useEffect(() => {
-    loadAccesses("");
+    loadAccesses(defaultEmail);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [defaultEmail]);
 
   async function loadAccesses(targetEmail = email) {
     const cleanEmail = targetEmail.trim().toLowerCase();
@@ -278,12 +301,47 @@ export default function ClientAccessManager() {
 
   return (
     <SelenCard>
-      <SelenCardTitle>Accès aux prestations</SelenCardTitle>
+      <SelenCardTitle>
+        {title ?? (embeddedMode ? "Accès Bureau Selen" : "Accès aux prestations")}
+      </SelenCardTitle>
+
+      {embeddedMode ? (
+        <p
+          style={{
+            margin: "8px 0 0",
+            color: "var(--selen-text2)",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          Créez le compte de connexion, activez une prestation et vérifiez les
+          accès client sans quitter cette fiche.
+        </p>
+      ) : null}
+
+      {clientNotificationsPaused ? (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            borderRadius: "var(--radius-md)",
+            border: "1px solid rgba(214, 161, 74, 0.45)",
+            background: "rgba(214, 161, 74, 0.1)",
+            color: "var(--selen-text)",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          Les emails client sont suspendus. Vous pouvez préparer l’accès, mais
+          aucun email ne sera envoyé tant que le mode préparation silencieuse
+          est actif.
+        </div>
+      ) : null}
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1.4fr 1fr auto",
+          gridTemplateColumns: embeddedMode ? "1fr" : "1.4fr 1fr auto",
           gap: 12,
           alignItems: "end",
           marginTop: 14,
@@ -332,14 +390,14 @@ export default function ClientAccessManager() {
           onClick={() => loadAccesses()}
           disabled={loading || actionLoading}
         >
-          {loading ? "Recherche..." : "Rechercher"}
+          {loading ? "Recherche..." : "Rechercher le compte"}
         </SelenButton>
       </div>
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr auto",
+          gridTemplateColumns: embeddedMode ? "1fr" : "1fr auto",
           gap: 12,
           alignItems: "end",
           marginTop: 12,
@@ -367,10 +425,42 @@ export default function ClientAccessManager() {
         <SelenButton
           variant="ghost"
           onClick={createUser}
-          disabled={actionLoading || loading}
+          disabled={Boolean(client) || actionLoading || loading}
         >
-          Créer le client gratuitement
+          {client ? "Compte Bureau Selen existant" : "Créer le compte Bureau Selen"}
         </SelenButton>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: embeddedMode ? "1fr" : "repeat(2, minmax(0, 1fr))",
+          gap: 10,
+          marginTop: 14,
+        }}
+      >
+        <StatusLine
+          label="Compte de connexion"
+          value={
+            client
+              ? "Compte de connexion existant"
+              : hasLoaded
+                ? "Aucun compte de connexion trouvé"
+                : "Recherche à lancer"
+          }
+          tone={client ? "success" : hasLoaded ? "warning" : "neutral"}
+        />
+        <StatusLine
+          label="Accès prestation"
+          value={
+            hasActiveAccess
+              ? "Accès prestation actif"
+              : hasLoaded
+                ? "Aucun accès prestation actif"
+                : "Recherche à lancer"
+          }
+          tone={hasActiveAccess ? "success" : hasLoaded ? "warning" : "neutral"}
+        />
       </div>
 
       {notice ? (
@@ -423,7 +513,7 @@ export default function ClientAccessManager() {
         >
           {client ? (
             <>
-              Client trouvé :{" "}
+              Compte Bureau Selen trouvé :{" "}
               <strong style={{ color: "var(--selen-text)" }}>
                 {client.email}
               </strong>
@@ -436,7 +526,7 @@ export default function ClientAccessManager() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1.4fr 0.8fr 0.8fr auto",
+            gridTemplateColumns: embeddedMode ? "1fr" : "1.4fr 0.8fr 0.8fr auto",
             gap: 12,
             alignItems: "end",
           }}
@@ -518,9 +608,25 @@ export default function ClientAccessManager() {
             onClick={grantAccess}
             disabled={!client || actionLoading || loading}
           >
-            Activer gratuitement
+            {selectedAccess?.status === "active"
+              ? "Mettre à jour l’accès"
+              : "Activer l’accès"}
           </SelenButton>
         </div>
+
+        {selectedAccess ? (
+          <p
+            style={{
+              margin: "12px 0 0",
+              color: "var(--selen-text2)",
+              fontSize: 12,
+              lineHeight: 1.5,
+            }}
+          >
+            Cet accès existe déjà. L’action met à jour l’accès existant sans
+            créer de doublon.
+          </p>
+        ) : null}
       </div>
 
       <div style={{ marginTop: 18 }}>
@@ -642,5 +748,54 @@ export default function ClientAccessManager() {
         )}
       </div>
     </SelenCard>
+  );
+}
+
+function StatusLine({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "success" | "warning" | "neutral";
+}) {
+  const borderColor =
+    tone === "success"
+      ? "rgba(108, 190, 140, 0.45)"
+      : tone === "warning"
+        ? "rgba(214, 161, 74, 0.45)"
+        : "var(--selen-border)";
+  const background =
+    tone === "success"
+      ? "rgba(108, 190, 140, 0.08)"
+      : tone === "warning"
+        ? "rgba(214, 161, 74, 0.1)"
+        : "var(--selen-bg3)";
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${borderColor}`,
+        background,
+        borderRadius: "var(--radius-md)",
+        padding: 12,
+      }}
+    >
+      <div
+        style={{
+          color: "var(--selen-text3)",
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ color: "var(--selen-text)", fontSize: 13, fontWeight: 700 }}>
+        {value}
+      </div>
+    </div>
   );
 }
