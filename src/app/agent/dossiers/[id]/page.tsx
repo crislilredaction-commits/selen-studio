@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenButton from "@/components/ui/SelenButton";
@@ -35,6 +36,7 @@ import AnalyzeProgramButton from "@/components/program/AnalyzeProgramButton";
 import AgentProgramEditor from "@/components/program/AgentProgramEditor";
 import { getVitrineClientUrl } from "@/lib/vitrineLinks";
 import { hasNdaProgramDocumentContent } from "@/lib/server/ndaProgramDocumentHtml";
+import { createAgentAssistanceToken } from "@/lib/server/agentAssistanceTokens";
 import { type NdaWorkflowStatusTone } from "@/lib/server/ndaAgentWorkflow";
 import {
   inferNdaDocumentReviewStatus,
@@ -1768,6 +1770,32 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
     redirect("/agent/dossiers");
   }
 
+  async function openDossierAssistanceMode(formData: FormData) {
+    "use server";
+
+    const dossierId = String(formData.get("dossier_id") ?? "").trim();
+    const organisationId = String(formData.get("organisation_id") ?? "").trim();
+
+    if (!dossierId || !organisationId) {
+      redirect(`/agent/dossiers/${id}`);
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const result = await createAgentAssistanceToken({
+      agentUserId: user?.id ?? null,
+      agentEmail: user?.email ?? null,
+      organisationId,
+      dossierId,
+      headersList: await headers(),
+    });
+
+    redirect(result.url);
+  }
+
   const { data: dossier, error } = await supabase
     .from("dossiers")
     .select(
@@ -2549,6 +2577,27 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
               </span>
             ) : null}
           </div>
+
+          {organisation?.id ? (
+            <form
+              action={openDossierAssistanceMode}
+              style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 10 }}
+            >
+              <input type="hidden" name="dossier_id" value={dossier.id} />
+              <input
+                type="hidden"
+                name="organisation_id"
+                value={organisation.id}
+              />
+              <SelenButton type="submit" variant="ghost">
+                Ouvrir en mode assistance agent
+              </SelenButton>
+              <span style={{ fontSize: 12, color: "var(--selen-text3)" }}>
+                Permet d’aider le client sans utiliser ses identifiants. Les
+                actions réalisées sont tracées.
+              </span>
+            </form>
+          ) : null}
         </div>
 
         {relatedActiveDossiers.length > 0 ||

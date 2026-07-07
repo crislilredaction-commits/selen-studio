@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenButton from "@/components/ui/SelenButton";
+import { createAgentAssistanceToken } from "@/lib/server/agentAssistanceTokens";
 
 type PageProps = {
   params: Promise<{
@@ -274,6 +276,32 @@ export default async function ClientPage({ params, searchParams }: PageProps) {
     redirect(`/agent/clients/${clientId}?silence=${paused ? "paused" : "active"}`);
   }
 
+  async function openAssistanceModeAction(formData: FormData) {
+    "use server";
+
+    const clientId = String(formData.get("client_id") ?? "").trim();
+    const dossierId = String(formData.get("dossier_id") ?? "").trim() || null;
+
+    if (!clientId) {
+      redirect(`/agent/clients/${id}?error=assistance`);
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const result = await createAgentAssistanceToken({
+      agentUserId: user?.id ?? null,
+      agentEmail: user?.email ?? null,
+      organisationId: clientId,
+      dossierId,
+      headersList: await headers(),
+    });
+
+    redirect(result.url);
+  }
+
   async function reopenDossierAction(formData: FormData) {
     "use server";
 
@@ -433,6 +461,12 @@ export default async function ClientPage({ params, searchParams }: PageProps) {
         >
           <SelenButton variant="primary">+ Nouveau dossier</SelenButton>
         </Link>
+        <form action={openAssistanceModeAction}>
+          <input type="hidden" name="client_id" value={typedClient.id} />
+          <SelenButton type="submit" variant="ghost">
+            Ouvrir le Bureau Selen en mode assistance
+          </SelenButton>
+        </form>
       </div>
 
       <div
@@ -513,6 +547,20 @@ export default async function ClientPage({ params, searchParams }: PageProps) {
                 {emailsPaused
                   ? "Réactiver les emails client"
                   : "Bloquer temporairement les emails client"}
+              </button>
+            </form>
+          </div>
+
+          <div style={assistanceNoticeStyle}>
+            <strong>Mode assistance agent</strong>
+            <p style={{ margin: "6px 0 12px", lineHeight: 1.5 }}>
+              Permet d’aider un client dans son Bureau Selen sans utiliser ses
+              identifiants. Les actions réalisées sont tracées.
+            </p>
+            <form action={openAssistanceModeAction}>
+              <input type="hidden" name="client_id" value={typedClient.id} />
+              <button type="submit" style={smallButtonStyle}>
+                Assister côté client
               </button>
             </form>
           </div>
@@ -787,6 +835,21 @@ export default async function ClientPage({ params, searchParams }: PageProps) {
                     >
                       Consulter →
                     </Link>
+                    <form action={openAssistanceModeAction}>
+                      <input
+                        type="hidden"
+                        name="client_id"
+                        value={typedClient.id}
+                      />
+                      <input
+                        type="hidden"
+                        name="dossier_id"
+                        value={dossier.id}
+                      />
+                      <button type="submit" style={smallButtonStyle}>
+                        Assister côté client
+                      </button>
+                    </form>
                     <form action={reopenDossierAction}>
                       <input
                         type="hidden"
@@ -1021,6 +1084,16 @@ const activeNoticeStyle = {
 const pausedNoticeStyle = {
   border: "1px solid rgba(214, 171, 91, 0.45)",
   background: "rgba(214, 171, 91, 0.12)",
+  borderRadius: "var(--radius-md)",
+  padding: 12,
+  color: "var(--selen-text)",
+  fontSize: 13,
+  marginBottom: 14,
+};
+
+const assistanceNoticeStyle = {
+  border: "1px solid rgba(128, 160, 190, 0.35)",
+  background: "rgba(128, 160, 190, 0.08)",
   borderRadius: "var(--radius-md)",
   padding: 12,
   color: "var(--selen-text)",
