@@ -149,7 +149,7 @@ export async function POST(req: Request) {
       }),
       subject: "Votre programme de formation est prêt à être validé",
       message:
-        "Selen a préparé une proposition de programme à partir des éléments transmis. Merci de vous connecter à votre espace client pour la consulter. Vous pourrez la valider ou demander une correction.",
+        "Selen a préparé une proposition de programme à partir des éléments transmis. Une petite étape vous attend dans votre espace client : vous pourrez la relire, la valider ou demander une correction si nécessaire.",
       buttonLabel: "Consulter mon programme",
     });
 

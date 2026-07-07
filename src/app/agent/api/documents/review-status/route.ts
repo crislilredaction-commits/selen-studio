@@ -255,7 +255,7 @@ export async function POST(req: Request) {
               organisation: organisationRaw ?? null,
               subject: "Votre dossier NDA est prêt à être déposé",
               message:
-                "Votre dossier NDA a été vérifié par Selen. Vous pouvez maintenant accéder à votre espace client pour consulter la procédure de dépôt et récupérer les documents à déposer sur la plateforme officielle.",
+                "Votre dossier NDA est prêt pour le dépôt. Les documents vérifiés par Selen sont disponibles dans votre espace client, avec la procédure à suivre sur la plateforme officielle.",
             }).catch((emailError) => {
               console.error(
                 "Notification client dossier NDA prêt au dépôt échouée.",

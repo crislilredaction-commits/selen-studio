@@ -44,7 +44,7 @@ export async function notifyClientVisibleDocuments({
   const bodyText = [
     recipientName ? `Bonjour ${recipientName},` : "Bonjour,",
     message,
-    "Rappel : votre identifiant est l'email utilisé lors de l'achat.",
+    "Pour vous connecter, utilisez l'email renseigné lors de votre achat.",
   ].join("\n\n");
   const rendered = renderSelenEmailFromText({
     title: subject,

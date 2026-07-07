@@ -587,20 +587,20 @@ function renderRegistrationEmail(session: DailySessionRow, recipient: DailyRecip
     `Bonjour${recipient.recipient_name ? ` ${recipient.recipient_name}` : ""},`,
     "",
     isCompany
-      ? `Nous vous contactons de la part de ${organisationName}.\n\nSelen accompagne ${organisationName} dans le suivi administratif de ses formations. A sa demande, nous vous transmettons le dossier entreprise a completer pour preparer l'inscription des participants.`
-      : `Nous vous contactons de la part de ${organisationName}.\n\nSelen accompagne ${organisationName} dans le suivi administratif de ses formations. A sa demande, nous vous transmettons le dossier d'inscription a completer pour preparer votre entree en formation.`,
+      ? `Nous vous contactons de la part de ${organisationName}.\n\nSelen accompagne ${organisationName} dans le suivi administratif de ses formations. À sa demande, nous vous transmettons le dossier entreprise à compléter pour préparer l'inscription des participants.`
+      : `Nous vous contactons de la part de ${organisationName}.\n\nSelen accompagne ${organisationName} dans le suivi administratif de ses formations. À sa demande, nous vous transmettons le dossier d'inscription à compléter pour préparer votre entrée en formation.`,
     "",
     `Formation : ${session.daily_formations?.title ?? "Selen Daily"}`,
     "",
-    "Ce dossier permet de verifier les informations necessaires, d'analyser les besoins et, le cas echeant, d'identifier les adaptations utiles.",
+    "Ce dossier permet de vérifier les informations nécessaires, d'analyser les besoins et, le cas échéant, d'identifier les adaptations utiles.",
     "",
-    "Attention : tant que le dossier n'est pas complete, l'inscription ne peut pas etre garantie.",
+    "Tant que le dossier n'est pas complété, l'inscription ne peut pas encore être garantie. Dès réception, Selen pourra vérifier les éléments avec l'organisme de formation.",
     "",
-    "Vous pouvez completer votre dossier ici :",
+    "Vous pouvez compléter votre dossier ici :",
     url,
     "",
-    "Merci et a bientot,",
-    "L'equipe Selen",
+    "Merci et à bientôt,",
+    "L'équipe Selen",
   ].join("\n");
 
   return renderSelenEmailFromText({
@@ -625,7 +625,7 @@ function renderContactSummaryEmail({
   const bodyText = [
     "Bonjour,",
     "",
-    `Selen a traité l'envoi des dossiers d'inscription pour la session : ${session.daily_formations?.title ?? "Selen Daily"}.`,
+    `Selen a préparé le récapitulatif des dossiers d'inscription pour la session : ${session.daily_formations?.title ?? "Selen Daily"}.`,
     "",
     `Dossiers envoyés : ${sent.length}`,
     ...sent.map((recipient) => `- ${recipient.recipient_name || recipient.recipient_email || recipient.recipient_key}`),
@@ -633,8 +633,8 @@ function renderContactSummaryEmail({
     `Dossiers non envoyés : ${skipped.length}`,
     ...skipped.map((recipient) => `- ${recipient.recipient_name || recipient.company_name || recipient.recipient_key} : ${recipient.last_error || "email manquant"}`),
     "",
-    `Erreurs éventuelles : ${errors.length}`,
-    ...errors.map((recipient) => `- ${recipient.recipient_name || recipient.recipient_email || recipient.recipient_key} : ${recipient.last_error || "erreur inconnue"}`),
+    `Dossiers à reprendre : ${errors.length}`,
+    ...errors.map((recipient) => `- ${recipient.recipient_name || recipient.recipient_email || recipient.recipient_key} : ${recipient.last_error || "point à vérifier"}`),
   ].join("\n");
 
   return renderSelenEmailFromText({
@@ -1239,22 +1239,22 @@ async function sendDailyConvocation(formData: FormData) {
     .maybeSingle();
   const organisationName = String(onboarding?.organisation_name ?? "l'organisme de formation");
   const email = renderSelenEmailFromText({
-    title: "Convocation a la formation",
+    title: "Convocation à la formation",
     bodyText: [
       "Bonjour,",
       "",
-      `Nous vous adressons cette convocation a la demande de ${organisationName}.`,
+      `Nous vous adressons cette convocation à la demande de ${organisationName}.`,
       "",
       `Formation : ${String(convocation.daily_sessions?.daily_formations?.title ?? "Selen Daily")}`,
       "",
-      "Vous pouvez consulter et telecharger votre convocation depuis le lien ci-dessous.",
+      "Vous pouvez consulter et télécharger votre convocation depuis le lien ci-dessous. Elle rassemble les informations utiles pour préparer votre participation.",
       "",
-      "Le Pack Formation complet sera enrichi progressivement avec les informations AF, la politique handicap et les annexes disponibles.",
+      "Les autres éléments utiles seront ajoutés progressivement dans votre espace Selen Daily.",
       "",
       "Merci,",
-      "L'equipe Selen",
+      "L'équipe Selen",
     ].join("\n"),
-    ctaLabel: "Telecharger la convocation",
+    ctaLabel: "Télécharger la convocation",
     ctaUrl: publicConvocationUrl(convocation.id),
   });
   const result = await sendSelenEmail({
