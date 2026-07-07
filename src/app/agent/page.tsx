@@ -484,6 +484,13 @@ async function getDashboardData(
     ...buildDossierItem(dossier),
     subtitle: `${formatType(dossier.type)} · message client non lu`,
   }));
+  const activeUnreadDossierIds = new Set(
+    unreadDossiersRaw.map((dossier) => dossier.id),
+  );
+  const activeUnreadMessagesCount = unreadMessagesRaw.filter(
+    (message) =>
+      message.dossier_id && activeUnreadDossierIds.has(message.dossier_id),
+  ).length;
 
   const { data: reminderData } = await supabase
     .from("client_reminders")
@@ -655,7 +662,7 @@ async function getDashboardData(
     actionDossiers: actionDossiers.slice(0, 8),
     auditBlancItems,
     unassignedItems: [...unassignedDossiers, ...unassignedAudits].slice(0, 8),
-    unreadMessagesCount: unreadMessagesRaw.length,
+    unreadMessagesCount: activeUnreadMessagesCount,
     canAccessGestionLil,
   };
 }
