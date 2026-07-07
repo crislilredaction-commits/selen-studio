@@ -1,13 +1,14 @@
 import { getVitrineClientUrl } from "@/lib/vitrineLinks";
 import {
   renderSelenEmailFromText,
-  sendSelenEmail,
 } from "@/lib/server/selenEmailLayout";
+import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 
 type NotifyClientVisibleDocumentsArgs = {
   dossierId: string;
   dossierType?: string;
   organisation?: {
+    id?: string | null;
     name?: string | null;
     email?: string | null;
   } | null;
@@ -54,7 +55,8 @@ export async function notifyClientVisibleDocuments({
   });
 
   try {
-    return await sendSelenEmail({
+    return await sendClientEmailWithSilence({
+      organisationId: organisation?.id,
       to: recipient,
       subject,
       html: rendered.html,

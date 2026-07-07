@@ -3,7 +3,8 @@ import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getVitrineBaseUrl } from "@/lib/vitrineLinks";
-import { renderSelenEmailFromText, sendSelenEmail } from "@/lib/server/selenEmailLayout";
+import { renderSelenEmailFromText } from "@/lib/server/selenEmailLayout";
+import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 import {
   DAILY_BENEFICIARY_NEED_QUESTIONS,
   DAILY_COMPANY_NEED_QUESTIONS,
@@ -670,7 +671,9 @@ async function sendOneRecipient(
   }
 
   const email = renderRegistrationEmail(session, recipient);
-  const result = await sendSelenEmail({
+  const result = await sendClientEmailWithSilence({
+    supabase: admin,
+    email: recipient.recipient_email,
     to: recipient.recipient_email,
     subject: session.daily_formations?.title
       ? `Votre dossier d'inscription - ${session.daily_formations.title}`
@@ -708,7 +711,9 @@ async function notifyClientContact(
   const skipped = processed.filter((recipient) => recipient.status === "skipped");
   const errors = processed.filter((recipient) => recipient.status === "error");
   const email = renderContactSummaryEmail({ session, sent, skipped, errors });
-  const result = await sendSelenEmail({
+  const result = await sendClientEmailWithSilence({
+    supabase: admin,
+    email: contact.recipient_email,
     to: contact.recipient_email,
     subject: `Récapitulatif des dossiers envoyés - ${session.daily_formations?.title ?? "Selen Daily"}`,
     html: email.html,
@@ -1257,7 +1262,9 @@ async function sendDailyConvocation(formData: FormData) {
     ctaLabel: "Télécharger la convocation",
     ctaUrl: publicConvocationUrl(convocation.id),
   });
-  const result = await sendSelenEmail({
+  const result = await sendClientEmailWithSilence({
+    supabase: admin,
+    email: convocation.recipient_email,
     to: convocation.recipient_email,
     subject: `Votre convocation - ${String(convocation.daily_sessions?.daily_formations?.title ?? "Selen Daily")}`,
     html: email.html,
