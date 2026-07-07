@@ -83,7 +83,6 @@ export default function ClientAccessManager({
   const defaultName = initialName?.trim() ?? "";
   const [email, setEmail] = useState(defaultEmail);
   const [fullName, setFullName] = useState(defaultName);
-  const [password, setPassword] = useState("");
   const [selectedToolSlug, setSelectedToolSlug] = useState("");
   const [accessType, setAccessType] = useState<"limited" | "unlimited">(
     "limited",
@@ -175,7 +174,6 @@ export default function ClientAccessManager({
           action: "create_user",
           email: cleanEmail,
           fullName,
-          password,
         }),
       });
 
@@ -185,13 +183,7 @@ export default function ClientAccessManager({
         throw new Error(result.error ?? "Erreur pendant la création client.");
       }
 
-      if (result.temporaryPassword) {
-        setNotice(
-          `Utilisateur créé. Mot de passe temporaire : ${result.temporaryPassword}`,
-        );
-      } else {
-        setNotice(result.message ?? "Utilisateur retrouvé.");
-      }
+      setNotice(result.message ?? "Compte Bureau Selen prêt.");
 
       await loadAccesses(cleanEmail);
     } catch (caughtError) {
@@ -248,13 +240,61 @@ export default function ClientAccessManager({
         throw new Error(result.error ?? "Erreur pendant l’activation.");
       }
 
-      setNotice(result.message ?? "Accès activé.");
+      setNotice(
+        result.email?.paused
+          ? "Les emails client sont suspendus : l’accès est préparé, mais aucun email n’a été envoyé."
+          : result.message ?? "Accès à la prestation activé.",
+      );
       await loadAccesses(cleanEmail);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
           ? caughtError.message
           : "Erreur inconnue pendant l’activation.",
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function sendAccessLink() {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setError("Renseigne d’abord l’email du client.");
+      return;
+    }
+
+    setActionLoading(true);
+    setNotice(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/agent/api/access", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "send_access_link",
+          email: cleanEmail,
+          toolSlug: selectedToolSlug || null,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error ?? "Erreur pendant l’envoi de l’accès.");
+      }
+
+      setNotice(result.message ?? "Accès envoyé au client.");
+      await loadAccesses(cleanEmail);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Erreur inconnue pendant l’envoi de l’accès.",
       );
     } finally {
       setActionLoading(false);
@@ -397,37 +437,27 @@ export default function ClientAccessManager({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: embeddedMode ? "1fr" : "1fr auto",
+          gridTemplateColumns: embeddedMode ? "1fr" : "repeat(2, auto)",
           gap: 12,
           alignItems: "end",
           marginTop: 12,
+          justifyContent: embeddedMode ? "stretch" : "start",
         }}
       >
-        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={{ fontSize: 12, color: "var(--selen-text2)" }}>
-            Mot de passe temporaire optionnel
-          </span>
-          <input
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Laisser vide pour générer automatiquement"
-            style={{
-              height: 42,
-              borderRadius: "var(--radius-md)",
-              border: "1px solid var(--selen-border)",
-              background: "var(--selen-bg3)",
-              color: "var(--selen-text)",
-              padding: "0 12px",
-            }}
-          />
-        </label>
-
         <SelenButton
           variant="ghost"
           onClick={createUser}
           disabled={Boolean(client) || actionLoading || loading}
         >
           {client ? "Compte Bureau Selen existant" : "Créer le compte Bureau Selen"}
+        </SelenButton>
+
+        <SelenButton
+          variant="primary"
+          onClick={sendAccessLink}
+          disabled={!client || actionLoading || loading}
+        >
+          Envoyer le lien d’accès
         </SelenButton>
       </div>
 

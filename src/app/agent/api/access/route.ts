@@ -42,6 +42,10 @@ type ClientToolAccessRow = {
   ends_at: string | null;
 };
 
+type GeneratedAuthLink = Awaited<
+  ReturnType<AdminClient["auth"]["admin"]["generateLink"]>
+>;
+
 type GrantableTool = {
   id: string;
   slug: string;
@@ -255,32 +259,117 @@ async function notifyClientAccessActivated({
   email: string;
   toolName: string;
 }) {
-  const clientUrl = `${getVitrineBaseUrl()}/client`;
+  const passwordLink = await generateClientPasswordSetupLink({
+    admin,
+    email,
+    nextPath: "/client",
+  });
   const bodyText = [
     "Bonjour,",
     "",
-    `Votre accès à la prestation ${toolName} vient d'être activé gratuitement dans votre espace Selen.`,
+    "Votre Bureau Selen est prêt.",
     "",
-    "Vous pouvez accéder à votre espace client ici :",
-    clientUrl,
+    `Votre accès ${toolName} est activé.`,
     "",
-    "Si vous n'avez pas encore créé votre accès, suivez le lien reçu ou utilisez la procédure d'activation prévue.",
+    "Vous pouvez maintenant créer votre mot de passe pour accéder à votre espace, retrouver vos documents et suivre l'avancement de votre dossier.",
+    "",
+    `Créer mon mot de passe : ${passwordLink}`,
+    "",
+    "Ce lien est personnel. Si vous avez la moindre difficulté, répondez simplement à ce message : nous vous accompagnerons.",
+    "",
+    "À bientôt,",
+    "Pascale",
+    "Selen Éditions",
   ].join("\n");
   const emailContent = renderSelenEmailFromText({
-    title: "Votre accès Selen est activé",
+    title: "Votre Bureau Selen est prêt",
     bodyText,
-    ctaLabel: "Accéder à mon espace client",
-    ctaUrl: clientUrl,
+    ctaLabel: "Créer mon mot de passe",
+    ctaUrl: passwordLink,
   });
 
   return sendClientEmailWithSilence({
     supabase: admin,
     email,
     to: email,
-    subject: "Votre accès Selen est activé",
+    subject: "Votre Bureau Selen est prêt",
     html: emailContent.html,
     text: emailContent.text,
   });
+}
+
+async function generateClientPasswordSetupLink({
+  admin,
+  email,
+  nextPath = "/client",
+}: {
+  admin: AdminClient;
+  email: string;
+  nextPath?: string;
+}) {
+  const cleanNextPath = nextPath.startsWith("/") ? nextPath : `/${nextPath}`;
+  const baseActivationUrl = `${getVitrineBaseUrl()}/client/activation`;
+  const fallbackRedirectUrl = `${baseActivationUrl}?next=${encodeURIComponent(
+    cleanNextPath,
+  )}`;
+  const buildActivationUrl = (tokenHash: string, type: "invite" | "recovery") =>
+    `${baseActivationUrl}?token_hash=${encodeURIComponent(
+      tokenHash,
+    )}&type=${type}&next=${encodeURIComponent(cleanNextPath)}`;
+
+  const getInternalLink = (
+    generatedLink: GeneratedAuthLink,
+    type: "invite" | "recovery",
+  ) => {
+    const properties = generatedLink.data?.properties as
+      | {
+          hashed_token?: string;
+          action_link?: string;
+        }
+      | undefined;
+
+    if (properties?.hashed_token) {
+      return buildActivationUrl(properties.hashed_token, type);
+    }
+
+    return properties?.action_link ?? null;
+  };
+
+  const inviteLink = await admin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: {
+      redirectTo: fallbackRedirectUrl,
+    },
+  });
+  const inviteActivationLink = getInternalLink(inviteLink, "invite");
+
+  if (!inviteLink.error && inviteActivationLink) {
+    return inviteActivationLink;
+  }
+
+  const recoveryLink = await admin.auth.admin.generateLink({
+    type: "recovery",
+    email,
+    options: {
+      redirectTo: fallbackRedirectUrl,
+    },
+  });
+
+  if (recoveryLink.error) {
+    throw new Error(
+      `Impossible de générer le lien de création de mot de passe. ${recoveryLink.error.message}`,
+    );
+  }
+
+  const recoveryActivationLink = getInternalLink(recoveryLink, "recovery");
+  if (!recoveryActivationLink) {
+    throw new Error(
+      "Supabase n'a pas retourné de lien de création de mot de passe.",
+    );
+  }
+
+  return recoveryActivationLink;
 }
 
 async function ensureOrganisationForClient({
@@ -635,8 +724,7 @@ export async function POST(request: NextRequest) {
         .trim()
         .toLowerCase();
       const fullName = String(body.fullName ?? "").trim();
-      const password =
-        String(body.password ?? "").trim() || generateTemporaryPassword();
+      const password = generateTemporaryPassword();
 
       if (!email) {
         return jsonResponse({ error: "Email obligatoire." }, 400);
@@ -647,7 +735,6 @@ export async function POST(request: NextRequest) {
       if (existingUser) {
         return jsonResponse({
           created: false,
-          temporaryPassword: null,
           client: {
             id: existingUser.id,
             email: existingUser.email,
@@ -671,13 +758,69 @@ export async function POST(request: NextRequest) {
 
       return jsonResponse({
         created: true,
-        temporaryPassword: password,
         client: {
           id: data.user.id,
           email: data.user.email,
         },
         message:
-          "Utilisateur créé. Notez le mot de passe temporaire maintenant, il ne sera plus affiché ensuite.",
+          "Compte Bureau Selen créé. Vous pouvez maintenant envoyer le lien de création de mot de passe.",
+      });
+    }
+
+    if (action === "send_access_link") {
+      const email = String(body.email ?? "")
+        .trim()
+        .toLowerCase();
+      const toolSlug = String(body.toolSlug ?? "").trim();
+
+      if (!email) {
+        return jsonResponse({ error: "Email obligatoire." }, 400);
+      }
+
+      const client = await findAuthUserByEmail(admin, email);
+
+      if (!client) {
+        return jsonResponse(
+          {
+            error:
+              "Aucun compte Bureau Selen n'existe encore pour cet email.",
+          },
+          404,
+        );
+      }
+
+      let toolName = "Bureau Selen";
+
+      if (toolSlug) {
+        const { data: tool, error: toolError } = await admin
+          .from("selen_tools_catalog")
+          .select("slug, name, is_active")
+          .eq("slug", toolSlug)
+          .maybeSingle();
+
+        if (toolError) {
+          return jsonResponse({ error: toolError.message }, 500);
+        }
+
+        const fallbackTool = getFallbackGrantableTool(toolSlug);
+        toolName =
+          typeof tool?.name === "string" && tool.name.trim()
+            ? tool.name.trim()
+            : fallbackTool?.name || "Bureau Selen";
+      }
+
+      const emailResult = await notifyClientAccessActivated({
+        admin,
+        email,
+        toolName,
+      });
+
+      return jsonResponse({
+        sent: emailResult.sent,
+        email: emailResult,
+        message: emailResult.paused
+          ? "Les emails client sont suspendus : l'accès est préparé, mais aucun email n'a été envoyé."
+          : "Accès envoyé au client.",
       });
     }
 
