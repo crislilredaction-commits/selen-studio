@@ -4,7 +4,7 @@ import {
   buildReminderTemplate,
   type ClientReminderType,
 } from "@/lib/server/clientReminderTemplates";
-import { sendSelenEmail } from "@/lib/server/selenEmailLayout";
+import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -635,7 +635,9 @@ export async function sendClientReminder({
   const nextHtml = bodyHtml?.trim() || reminder.body_html;
   const nextText = bodyText?.trim() || reminder.body_text;
 
-  const emailResult = await sendSelenEmail({
+  const emailResult = await sendClientEmailWithSilence({
+    supabase: admin,
+    email: reminder.client_email,
     to: reminder.client_email,
     subject: nextSubject,
     html: nextHtml,

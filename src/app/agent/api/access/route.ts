@@ -6,8 +6,8 @@ import {
 import { createClient as createSessionClient } from "@/lib/supabase/server";
 import {
   renderSelenEmailFromText,
-  sendSelenEmail,
 } from "@/lib/server/selenEmailLayout";
+import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 import { getVitrineBaseUrl } from "@/lib/vitrineLinks";
 
 export const dynamic = "force-dynamic";
@@ -247,9 +247,11 @@ function shouldSendAccessActivationEmail(
 }
 
 async function notifyClientAccessActivated({
+  admin,
   email,
   toolName,
 }: {
+  admin: AdminClient;
   email: string;
   toolName: string;
 }) {
@@ -271,7 +273,9 @@ async function notifyClientAccessActivated({
     ctaUrl: clientUrl,
   });
 
-  return sendSelenEmail({
+  return sendClientEmailWithSilence({
+    supabase: admin,
+    email,
     to: email,
     subject: "Votre accès Selen est activé",
     html: emailContent.html,
@@ -807,7 +811,7 @@ export async function POST(request: NextRequest) {
           toolSlug,
         });
         const emailResult = shouldNotifyClient
-          ? await notifyClientAccessActivated({ email, toolName })
+          ? await notifyClientAccessActivated({ admin, email, toolName })
           : { sent: false, error: null };
 
         return jsonResponse({
@@ -858,7 +862,7 @@ export async function POST(request: NextRequest) {
         toolSlug,
       });
       const emailResult = shouldNotifyClient
-        ? await notifyClientAccessActivated({ email, toolName })
+        ? await notifyClientAccessActivated({ admin, email, toolName })
         : { sent: false, error: null };
 
       return jsonResponse({

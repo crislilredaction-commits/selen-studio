@@ -3,8 +3,8 @@ import autoTable from "jspdf-autotable";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import {
   renderSelenEmailFromText,
-  sendSelenEmail,
 } from "@/lib/server/selenEmailLayout";
+import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 import {
   INVOICE_TYPES,
   centsToEuros,
@@ -462,7 +462,8 @@ export async function sendLilInvoiceEmail({
     return { sent: false, error: "Email destinataire absent.", to: email.to };
   }
 
-  const result = await sendSelenEmail({
+  const result = await sendClientEmailWithSilence({
+    email: email.to,
     to: email.to,
     subject: email.subject,
     html: email.html,

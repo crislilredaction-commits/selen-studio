@@ -3,8 +3,8 @@ import crypto from "crypto";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import {
   renderSelenEmailFromText,
-  sendSelenEmail,
 } from "@/lib/server/selenEmailLayout";
+import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
 function hashToken(token: string) {
@@ -116,7 +116,9 @@ export async function POST(req: Request) {
       ctaUrl: replyUrl,
     });
 
-    const emailResult = await sendSelenEmail({
+    const emailResult = await sendClientEmailWithSilence({
+      supabase: admin,
+      email: ticket.client_email,
       to: ticket.client_email,
       subject: `Reponse de Selen - ${ticket.subject}`,
       html: rendered.html,

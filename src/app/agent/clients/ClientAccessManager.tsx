@@ -291,7 +291,7 @@ export default function ClientAccessManager() {
       >
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: 12, color: "var(--selen-text2)" }}>
-            Email client
+            Email de connexion Bureau Selen
           </span>
           <input
             value={email}
@@ -429,7 +429,7 @@ export default function ClientAccessManager() {
               </strong>
             </>
           ) : (
-            "Recherchez un client ou créez-le avant d’activer une prestation."
+            "Recherchez un compte de connexion Bureau Selen ou créez-le avant d’activer une prestation."
           )}
         </div>
 

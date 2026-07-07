@@ -4,8 +4,8 @@ import { createAgentNotification } from "@/lib/server/notifications";
 import { getVitrineClientUrl } from "@/lib/vitrineLinks";
 import {
   renderSelenEmailFromText,
-  sendSelenEmail,
 } from "@/lib/server/selenEmailLayout";
+import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 
 export async function POST(req: Request) {
   try {
@@ -91,12 +91,26 @@ export async function POST(req: Request) {
             ctaUrl: clientUrl,
           });
 
-          await sendSelenEmail({
+          const emailResult = await sendClientEmailWithSilence({
+            supabase,
+            organisationId: dossier.organisation_id,
             to: organisation.email,
             subject: "Nouveau message concernant votre dossier",
             html: rendered.html,
             text: rendered.text,
           });
+
+          if (emailResult.paused) {
+            return NextResponse.json(
+              {
+                success: false,
+                message: insertedMessage,
+                emailed: false,
+                error: emailResult.error,
+              },
+              { status: 409 },
+            );
+          }
         }
       }
     }
@@ -112,4 +126,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

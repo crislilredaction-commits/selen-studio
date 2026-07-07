@@ -10,6 +10,13 @@ type PageProps = {
   params: Promise<{
     id: string;
   }>;
+  searchParams?: Promise<{
+    saved?: string;
+    edit?: string;
+    silence?: string;
+    reopened?: string;
+    error?: string;
+  }>;
 };
 
 type DossierRow = {
@@ -29,8 +36,16 @@ type ClientRow = {
   siret: string | null;
   nda_number: string | null;
   address: string | null;
+  client_notifications_paused: boolean | null;
   dossiers: DossierRow[] | null;
 };
+
+function formText(formData: FormData, key: string) {
+  const value = formData.get(key);
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 function getTypeLabel(type: string): string {
   switch (type) {
@@ -131,8 +146,9 @@ function getStatusBadgeVariant(status: string) {
   }
 }
 
-export default async function ClientPage({ params }: PageProps) {
+export default async function ClientPage({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const query = searchParams ? await searchParams : {};
   const supabase = await createClient();
 
   const { data: client, error } = await supabase
@@ -143,9 +159,11 @@ export default async function ClientPage({ params }: PageProps) {
         name,
         status,
         email,
+        phone,
         siret,
         nda_number,
         address,
+        client_notifications_paused,
         dossiers (
           id,
           title,
@@ -198,6 +216,89 @@ export default async function ClientPage({ params }: PageProps) {
   const archivedDossierCount = archivedDossiers.length;
 
   const activeDossierCount = activeDossiers.length;
+  const isEditing = query.edit === "1";
+  const emailsPaused = Boolean(typedClient.client_notifications_paused);
+
+  async function updateClientAction(formData: FormData) {
+    "use server";
+
+    const clientId = String(formData.get("client_id") ?? "").trim();
+    const name = formText(formData, "name");
+
+    if (!clientId || !name) {
+      redirect(`/agent/clients/${id}?error=missing-client-fields`);
+    }
+
+    const supabase = await createClient();
+    const { error: updateError } = await supabase
+      .from("organisations")
+      .update({
+        name,
+        email: formText(formData, "email"),
+        phone: formText(formData, "phone"),
+        siret: formText(formData, "siret"),
+        nda_number: formText(formData, "nda_number"),
+        address: formText(formData, "address"),
+      })
+      .eq("id", clientId);
+
+    if (updateError) {
+      console.error(updateError);
+      redirect(`/agent/clients/${clientId}?error=save-client`);
+    }
+
+    redirect(`/agent/clients/${clientId}?saved=1`);
+  }
+
+  async function setClientNotificationsPausedAction(formData: FormData) {
+    "use server";
+
+    const clientId = String(formData.get("client_id") ?? "").trim();
+    const paused = String(formData.get("paused") ?? "") === "true";
+
+    if (!clientId) {
+      redirect(`/agent/clients/${id}?error=save-client`);
+    }
+
+    const supabase = await createClient();
+    const { error: updateError } = await supabase
+      .from("organisations")
+      .update({ client_notifications_paused: paused })
+      .eq("id", clientId);
+
+    if (updateError) {
+      console.error(updateError);
+      redirect(`/agent/clients/${clientId}?error=save-client`);
+    }
+
+    redirect(`/agent/clients/${clientId}?silence=${paused ? "paused" : "active"}`);
+  }
+
+  async function reopenDossierAction(formData: FormData) {
+    "use server";
+
+    const clientId = String(formData.get("client_id") ?? "").trim();
+    const dossierId = String(formData.get("dossier_id") ?? "").trim();
+
+    if (!clientId || !dossierId) {
+      redirect(`/agent/clients/${id}?error=reopen-dossier`);
+    }
+
+    const supabase = await createClient();
+    const { error: reopenError } = await supabase
+      .from("dossiers")
+      .update({ status: "assignable" })
+      .eq("id", dossierId)
+      .eq("organisation_id", clientId)
+      .eq("status", "archived");
+
+    if (reopenError) {
+      console.error(reopenError);
+      redirect(`/agent/clients/${clientId}?error=reopen-dossier`);
+    }
+
+    redirect(`/agent/clients/${clientId}?reopened=1`);
+  }
 
   async function archiveClientAction(formData: FormData) {
     "use server";
@@ -342,47 +443,167 @@ export default async function ClientPage({ params }: PageProps) {
           alignItems: "start",
         }}
       >
-        <SelenCard>
-          <SelenCardTitle>Informations client</SelenCardTitle>
+        {query.saved === "1" ? (
+          <div style={successStyle}>Modifications enregistrées</div>
+        ) : null}
+        {query.reopened === "1" ? (
+          <div style={successStyle}>Dossier rouvert</div>
+        ) : null}
+        {query.silence === "paused" ? (
+          <div style={successStyle}>
+            Mode préparation silencieuse activé. Les emails automatiques
+            destinés à ce client sont suspendus.
+          </div>
+        ) : null}
+        {query.silence === "active" ? (
+          <div style={successStyle}>
+            Les emails client sont réactivés. Les prochains messages pourront
+            être envoyés normalement.
+          </div>
+        ) : null}
+        {query.error ? (
+          <div style={errorStyle}>
+            {query.error === "missing-client-fields"
+              ? "Le nom de l’organisation est obligatoire."
+              : "Erreur lors de l’enregistrement"}
+          </div>
+        ) : null}
 
+        <SelenCard>
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "1fr",
-              gap: 14,
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "center",
+              marginBottom: 14,
             }}
           >
-            {[
-              { label: "Email", value: typedClient.email },
-              { label: "Téléphone", value: typedClient.phone },
-              { label: "SIRET", value: typedClient.siret },
-              { label: "N° NDA", value: typedClient.nda_number },
-              { label: "Adresse", value: typedClient.address },
-            ].map((field) => (
-              <div key={field.label}>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: "var(--selen-text3)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    marginBottom: 4,
-                  }}
-                >
-                  {field.label}
-                </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--selen-text)",
-                    lineHeight: 1.45,
-                  }}
-                >
-                  {field.value ?? "—"}
-                </div>
-              </div>
-            ))}
+            <SelenCardTitle>Informations client</SelenCardTitle>
+            {!isEditing ? (
+              <Link
+                href={`/agent/clients/${typedClient.id}?edit=1`}
+                style={{ textDecoration: "none" }}
+              >
+                <SelenButton variant="ghost">Modifier les informations</SelenButton>
+              </Link>
+            ) : null}
           </div>
+
+          <div style={emailsPaused ? pausedNoticeStyle : activeNoticeStyle}>
+            <strong>
+              {emailsPaused ? "Emails client suspendus" : "Emails client actifs"}
+            </strong>
+            <p style={{ margin: "6px 0 0", lineHeight: 1.5 }}>
+              {emailsPaused
+                ? "Mode préparation silencieuse activé. Les emails automatiques destinés à ce client sont suspendus. Vous pouvez préparer le dossier sans notifier le client."
+                : "Les prochains messages client pourront être envoyés normalement."}
+            </p>
+            <form
+              action={setClientNotificationsPausedAction}
+              style={{ marginTop: 12 }}
+            >
+              <input type="hidden" name="client_id" value={typedClient.id} />
+              <input
+                type="hidden"
+                name="paused"
+                value={emailsPaused ? "false" : "true"}
+              />
+              <button type="submit" style={smallButtonStyle}>
+                {emailsPaused
+                  ? "Réactiver les emails client"
+                  : "Bloquer temporairement les emails client"}
+              </button>
+            </form>
+          </div>
+
+          {isEditing ? (
+            <form action={updateClientAction} style={{ display: "grid", gap: 14 }}>
+              <input type="hidden" name="client_id" value={typedClient.id} />
+              <EditableField
+                label="Nom affiché / organisation / organisme"
+                name="name"
+                defaultValue={typedClient.name}
+                required
+              />
+              <EditableField
+                label="Email de contact Studio"
+                name="email"
+                type="email"
+                defaultValue={typedClient.email}
+              />
+              <p style={helpStyle}>
+                Cet email est l’email de contact Studio. Il ne modifie pas
+                l’email de connexion Bureau Selen / Supabase Auth.
+              </p>
+              <ReadOnlyInfo
+                label="Email de connexion Bureau Selen"
+                value="Géré dans Accès aux prestations / Supabase Auth"
+              />
+              <EditableField
+                label="Téléphone"
+                name="phone"
+                defaultValue={typedClient.phone}
+              />
+              <EditableField
+                label="SIRET"
+                name="siret"
+                defaultValue={typedClient.siret}
+              />
+              <EditableField
+                label="N° NDA"
+                name="nda_number"
+                defaultValue={typedClient.nda_number}
+              />
+              <EditableField
+                label="Adresse"
+                name="address"
+                defaultValue={typedClient.address}
+                multiline
+              />
+              <p style={helpStyle}>
+                Les champs prénom, nom du contact et notes internes ne sont pas
+                stockés séparément dans cette fiche client pour le moment.
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <Link
+                  href={`/agent/clients/${typedClient.id}`}
+                  style={{ textDecoration: "none" }}
+                >
+                  <SelenButton variant="ghost">Annuler</SelenButton>
+                </Link>
+                <SelenButton type="submit" variant="primary">
+                  Enregistrer
+                </SelenButton>
+              </div>
+            </form>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              <ReadOnlyInfo
+                label="Nom affiché / organisation / organisme"
+                value={typedClient.name}
+              />
+              <ReadOnlyInfo
+                label="Email de contact Studio"
+                value={typedClient.email}
+              />
+              <ReadOnlyInfo
+                label="Email de connexion Bureau Selen"
+                value="Géré dans Accès aux prestations / Supabase Auth"
+              />
+              <ReadOnlyInfo label="Téléphone" value={typedClient.phone} />
+              <ReadOnlyInfo label="SIRET" value={typedClient.siret} />
+              <ReadOnlyInfo label="N° NDA" value={typedClient.nda_number} />
+              <ReadOnlyInfo label="Adresse" value={typedClient.address} />
+            </div>
+          )}
         </SelenCard>
 
         <SelenCard>
@@ -494,6 +715,99 @@ export default async function ClientPage({ params }: PageProps) {
           )}
         </SelenCard>
       </div>
+      {archivedDossiers.length > 0 ? (
+        <div style={{ marginTop: 16 }}>
+          <SelenCard>
+            <SelenCardTitle>Dossiers archivés</SelenCardTitle>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              {archivedDossiers
+                .sort(
+                  (a, b) =>
+                    new Date(b.created_at).getTime() -
+                    new Date(a.created_at).getTime(),
+                )
+                .map((dossier) => (
+                  <div
+                    key={dossier.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.5fr 0.7fr 0.8fr 0.7fr 1fr",
+                      gap: 12,
+                      alignItems: "center",
+                      padding: "14px 16px",
+                      borderRadius: "var(--radius-md)",
+                      background: "var(--selen-bg3)",
+                      border: "1px solid var(--selen-border)",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "var(--selen-text)",
+                          marginBottom: 4,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {dossier.title}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--selen-text3)" }}>
+                        Créé le{" "}
+                        {new Date(dossier.created_at).toLocaleDateString(
+                          "fr-FR",
+                        )}
+                      </div>
+                    </div>
+                    <SelenBadge variant={getTypeBadgeVariant(dossier.type)} dot>
+                      {getTypeLabel(dossier.type)}
+                    </SelenBadge>
+                    <SelenBadge
+                      variant={getStatusBadgeVariant(dossier.status)}
+                      dot
+                    >
+                      {getStatusLabel(dossier.status)}
+                    </SelenBadge>
+                    <Link
+                      href={`/agent/dossiers/${dossier.id}`}
+                      style={{
+                        color: "var(--selen-gold2)",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        textDecoration: "none",
+                      }}
+                    >
+                      Consulter →
+                    </Link>
+                    <form action={reopenDossierAction}>
+                      <input
+                        type="hidden"
+                        name="client_id"
+                        value={typedClient.id}
+                      />
+                      <input
+                        type="hidden"
+                        name="dossier_id"
+                        value={dossier.id}
+                      />
+                      <button type="submit" style={smallButtonStyle}>
+                        Rouvrir
+                      </button>
+                    </form>
+                  </div>
+                ))}
+            </div>
+          </SelenCard>
+        </div>
+      ) : null}
       <div style={{ marginTop: 16 }}>
         <SelenCard>
           <SelenCardTitle>Zone danger</SelenCardTitle>
@@ -590,3 +904,155 @@ export default async function ClientPage({ params }: PageProps) {
     </main>
   );
 }
+
+function EditableField({
+  label,
+  name,
+  defaultValue,
+  type = "text",
+  required = false,
+  multiline = false,
+}: {
+  label: string;
+  name: string;
+  defaultValue?: string | null;
+  type?: string;
+  required?: boolean;
+  multiline?: boolean;
+}) {
+  return (
+    <label style={fieldStyle}>
+      <span style={fieldLabelStyle}>{label}</span>
+      {multiline ? (
+        <textarea
+          name={name}
+          defaultValue={defaultValue ?? ""}
+          rows={3}
+          style={{ ...inputStyle, resize: "vertical" }}
+        />
+      ) : (
+        <input
+          name={name}
+          type={type}
+          defaultValue={defaultValue ?? ""}
+          required={required}
+          style={inputStyle}
+        />
+      )}
+    </label>
+  );
+}
+
+function ReadOnlyInfo({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | null;
+}) {
+  return (
+    <div style={readOnlyFieldStyle}>
+      <span style={fieldLabelStyle}>{label}</span>
+      <span style={readOnlyValueStyle}>{value?.trim() || "Non renseigné"}</span>
+    </div>
+  );
+}
+
+const fieldStyle = {
+  display: "grid",
+  gap: 6,
+  fontSize: 12,
+  color: "var(--selen-text2)",
+};
+
+const fieldLabelStyle = {
+  fontSize: 10,
+  color: "var(--selen-text3)",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.1em",
+};
+
+const inputStyle = {
+  width: "100%",
+  background: "var(--selen-bg3)",
+  border: "1px solid var(--selen-border)",
+  borderRadius: "var(--radius-md)",
+  padding: "10px 12px",
+  color: "var(--selen-text)",
+  fontSize: 13,
+  outline: "none",
+  boxSizing: "border-box" as const,
+  fontFamily: "inherit",
+};
+
+const helpStyle = {
+  margin: "-4px 0 0",
+  fontSize: 11,
+  lineHeight: 1.45,
+  color: "var(--selen-text3)",
+};
+
+const readOnlyFieldStyle = {
+  display: "grid",
+  gap: 5,
+  padding: "10px 12px",
+  border: "1px solid var(--selen-border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--selen-bg3)",
+};
+
+const readOnlyValueStyle = {
+  fontSize: 13,
+  color: "var(--selen-text)",
+  lineHeight: 1.45,
+  whiteSpace: "pre-wrap" as const,
+};
+
+const activeNoticeStyle = {
+  border: "1px solid rgba(99, 179, 124, 0.35)",
+  background: "rgba(99, 179, 124, 0.08)",
+  borderRadius: "var(--radius-md)",
+  padding: 12,
+  color: "var(--selen-text)",
+  fontSize: 13,
+  marginBottom: 14,
+};
+
+const pausedNoticeStyle = {
+  border: "1px solid rgba(214, 171, 91, 0.45)",
+  background: "rgba(214, 171, 91, 0.12)",
+  borderRadius: "var(--radius-md)",
+  padding: 12,
+  color: "var(--selen-text)",
+  fontSize: 13,
+  marginBottom: 14,
+};
+
+const successStyle = {
+  border: "1px solid rgba(99, 179, 124, 0.35)",
+  background: "rgba(99, 179, 124, 0.1)",
+  borderRadius: "var(--radius-md)",
+  padding: "10px 12px",
+  color: "var(--selen-success)",
+  fontSize: 13,
+};
+
+const errorStyle = {
+  border: "1px solid rgba(201, 122, 122, 0.35)",
+  background: "rgba(201, 122, 122, 0.1)",
+  borderRadius: "var(--radius-md)",
+  padding: "10px 12px",
+  color: "var(--selen-danger)",
+  fontSize: 13,
+};
+
+const smallButtonStyle = {
+  border: "1px solid var(--selen-border)",
+  background: "var(--selen-card)",
+  color: "var(--selen-gold2)",
+  borderRadius: "var(--radius-md)",
+  padding: "8px 10px",
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+};

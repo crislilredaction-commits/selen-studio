@@ -2,6 +2,7 @@ import {
   renderSelenEmailFromText,
   sendSelenEmail,
 } from "@/lib/server/selenEmailLayout";
+import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 import {
   auditDeliveryMode,
   auditEnd,
@@ -274,7 +275,8 @@ export async function sendExternalAuditConfirmation(
     return { sent: false, error: "Email contact absent." };
   }
 
-  return sendSelenEmail({
+  return sendClientEmailWithSilence({
+    email: email.to,
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -432,7 +434,8 @@ export async function sendExternalAuditClientReminder(audit: ExternalAuditRow) {
     return { sent: false, error: "Email contact absent.", to: email.to };
   }
 
-  const result = await sendSelenEmail({
+  const result = await sendClientEmailWithSilence({
+    email: email.to,
     to: email.to,
     subject: email.subject,
     html: email.html,
