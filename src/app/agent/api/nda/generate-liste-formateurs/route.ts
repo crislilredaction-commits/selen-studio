@@ -7,8 +7,6 @@ import {
   getNdaListeFormateursGenerationReadiness,
   NDA_LISTE_FORMATEURS_GENERATED_MODEL,
 } from "@/lib/server/ndaListeFormateursDocumentDocx";
-import { notifyClientVisibleDocuments } from "@/lib/server/notifyClientVisibleDocuments";
-import { buildNdaEmailGreetingName } from "@/lib/server/ndaEmailRecipient";
 
 export const dynamic = "force-dynamic";
 
@@ -200,9 +198,9 @@ export async function POST(req: Request) {
         dossier_id: context.dossier.id,
         scope: "dossier",
         document_role: "client_to_complete",
-        review_status: "pending_client",
-        is_visible_to_client: true,
-        requires_client_action: true,
+        review_status: "not_reviewed",
+        is_visible_to_client: false,
+        requires_client_action: false,
         generated_from_model: NDA_LISTE_FORMATEURS_GENERATED_MODEL,
         metadata: {
           generated_at: generatedAt.toISOString(),
@@ -220,65 +218,8 @@ export async function POST(req: Request) {
       );
     }
 
-    let emailNotification = { sent: false };
-
-    try {
-      const {
-        data: signingDocumentsForEmail,
-        error: signingDocumentsEmailError,
-      } = await admin
-        .from("documents")
-        .select("id, document_type")
-        .eq("dossier_id", context.dossier.id)
-        .eq("document_role", "client_to_complete")
-        .eq("is_visible_to_client", true)
-        .eq("requires_client_action", true)
-        .in("document_type", ["programme_formation", "convention_formation"]);
-
-      if (signingDocumentsEmailError) {
-        console.warn(
-          "Vérification des documents à signer impossible avant notification.",
-          signingDocumentsEmailError,
-        );
-      }
-
-      const signingTypes = new Set(
-        (signingDocumentsForEmail ?? []).map((doc) => doc.document_type),
-      );
-
-      const hasProgrammeAndConvention =
-        signingTypes.has("programme_formation") &&
-        signingTypes.has("convention_formation");
-
-      if (hasProgrammeAndConvention) {
-        emailNotification = await notifyClientVisibleDocuments({
-          dossierId: context.dossier.id,
-          dossierType: "nda",
-          organisation: context.organisation,
-          greetingName: buildNdaEmailGreetingName({
-            organisation: context.organisation,
-            variables: context.variables,
-          }),
-          subject: "Vos documents NDA a signer sont disponibles",
-          message:
-            "Les documents a signer sont disponibles dans votre espace client Selen : programme de formation, convention de formation et liste des formateurs DREETS. Merci de les telecharger, les signer ou tamponner si necessaire, puis de deposer les versions signees et les pieces finales demandees dans l'espace prevu.",
-        });
-      } else {
-        console.warn(
-          "Notification NDA non envoyée : programme et convention ne sont pas encore tous les deux disponibles.",
-          {
-            dossierId: context.dossier.id,
-            hasProgramme: signingTypes.has("programme_formation"),
-            hasConvention: signingTypes.has("convention_formation"),
-          },
-        );
-      }
-    } catch (emailError) {
-      console.error(
-        "Notification client après préparation de la liste des formateurs échouée.",
-        emailError,
-      );
-    }
+    // La génération crée un brouillon agent : aucune notification client ici.
+    const emailNotification = { sent: false };
 
     return NextResponse.json({
       ok: true,

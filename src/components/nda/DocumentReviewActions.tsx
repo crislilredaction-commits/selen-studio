@@ -10,6 +10,7 @@ type Props = {
   currentStatus?: string | null;
   isVisibleToClient?: boolean | null;
   showClientVisibilityToggle?: boolean;
+  showSendToClientAction?: boolean;
 };
 
 const ACTIONS: Array<{
@@ -57,6 +58,7 @@ export default function DocumentReviewActions({
   currentStatus,
   isVisibleToClient,
   showClientVisibilityToggle = false,
+  showSendToClientAction = false,
 }: Props) {
   const router = useRouter();
   const [pendingStatus, setPendingStatus] = useState<ReviewStatus | null>(null);
@@ -124,6 +126,40 @@ export default function DocumentReviewActions({
     if (!response.ok) {
       const data = await response.json().catch(() => null);
       setError(data?.error ?? "Impossible de mettre a jour la visibilite.");
+      return;
+    }
+
+    router.refresh();
+  }
+
+  async function sendDocumentToClient() {
+    if (
+      !window.confirm(
+        "Envoyer ce document au client pour téléchargement et signature ?",
+      )
+    ) {
+      return;
+    }
+
+    setError(null);
+    setPendingVisibility(true);
+
+    const response = await fetch("/agent/api/documents/review-status", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        documentId,
+        sendToClient: true,
+      }),
+    });
+
+    setPendingVisibility(false);
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      setError(data?.error ?? "Impossible d'envoyer ce document au client.");
       return;
     }
 
@@ -216,6 +252,32 @@ export default function DocumentReviewActions({
               : isVisibleToClient
                 ? "Depot OK"
                 : "Depot"}
+          </button>
+        ) : null}
+        {showSendToClientAction && !isVisibleToClient ? (
+          <button
+            type="button"
+            disabled={pendingVisibility}
+            onClick={() => void sendDocumentToClient()}
+            title="Envoyer ce document au client"
+            aria-label="Envoyer ce document au client"
+            style={{
+              border: "1px solid var(--selen-border)",
+              borderRadius: 6,
+              background: "var(--selen-gold)",
+              color: "var(--selen-ink)",
+              cursor: pendingVisibility ? "default" : "pointer",
+              fontFamily: "var(--font-body)",
+              fontSize: pendingVisibility ? 10 : 11,
+              fontWeight: 700,
+              opacity: pendingVisibility ? 0.7 : 1,
+              minWidth: pendingVisibility ? 82 : 118,
+              height: 32,
+              padding: "0 8px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {pendingVisibility ? "..." : "Envoyer client"}
           </button>
         ) : null}
       </div>

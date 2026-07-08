@@ -432,10 +432,8 @@ function isNdaGeneratedSigningDocument(doc: DbDocumentRow) {
   const documentType = normalizeNdaDocumentType(doc.document_type);
 
   return (
-    doc.document_role === "client_to_complete" &&
-    doc.review_status === "pending_client" &&
-    doc.is_visible_to_client === true &&
-    doc.requires_client_action === true &&
+    (doc.source === "generated" || doc.source === "agent_upload") &&
+    doc.review_status !== "superseded" &&
     [
       "programme_formation",
       "convention_formation",
@@ -2789,7 +2787,9 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                   />
 
                   <SelenCard>
-                    <SelenCardTitle>Documents à signer prêts</SelenCardTitle>
+                    <SelenCardTitle>
+                      Documents générés / à valider
+                    </SelenCardTitle>
                     {generatedSigningDocuments.length ? (
                       <div style={{ display: "grid", gap: 8 }}>
                         {generatedSigningDocuments.map((doc) => (
@@ -2838,6 +2838,16 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                                 {getDocumentWorkflowMeta(doc)}
                               </div>
                             </div>
+                            <DocumentReviewActions
+                              documentId={doc.id}
+                              currentStatus={inferNdaDocumentReviewStatus({
+                                reviewStatus: doc.review_status,
+                                status: doc.status,
+                                source: doc.source,
+                              })}
+                              isVisibleToClient={doc.is_visible_to_client}
+                              showSendToClientAction
+                            />
                           </div>
                         ))}
                       </div>
@@ -2850,7 +2860,7 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
                           margin: 0,
                         }}
                       >
-                        Aucun document à signer prêt pour le moment.
+                        Aucun document généré ou importé à valider pour le moment.
                       </p>
                     )}
                   </SelenCard>

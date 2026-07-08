@@ -177,9 +177,9 @@ async function uploadAndCreateDocument(args: {
       dossier_id: dossierId,
       scope: "dossier",
       document_role: "client_to_complete",
-      review_status: "pending_client",
-      is_visible_to_client: true,
-      requires_client_action: true,
+      review_status: "not_reviewed",
+      is_visible_to_client: false,
+      requires_client_action: false,
       generated_from_model: GENERATED_MODEL,
       metadata,
     })

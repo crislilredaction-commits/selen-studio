@@ -116,6 +116,7 @@ export async function POST(req: Request) {
     const reviewStatus = body?.reviewStatus;
     const clientVisible =
       typeof body?.clientVisible === "boolean" ? body.clientVisible : null;
+    const sendToClient = body?.sendToClient === true;
     const rawNotes = body?.notes;
 
     if (!documentId || typeof documentId !== "string") {
@@ -125,11 +126,35 @@ export async function POST(req: Request) {
       );
     }
 
-    if (clientVisible === null && !isAllowedReviewStatus(reviewStatus)) {
+    if (
+      clientVisible === null &&
+      !sendToClient &&
+      !isAllowedReviewStatus(reviewStatus)
+    ) {
       return NextResponse.json(
         { error: "reviewStatus invalide." },
         { status: 400 },
       );
+    }
+
+    if (sendToClient) {
+      const admin = getAdminClient();
+      const now = new Date().toISOString();
+      const { error } = await admin
+        .from("documents")
+        .update({
+          review_status: "pending_client",
+          is_visible_to_client: true,
+          visible_to_client_at: now,
+          requires_client_action: true,
+        })
+        .eq("id", documentId);
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true });
     }
 
     if (clientVisible !== null) {

@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
 
+const REPLACEABLE_NDA_SIGNING_DOCUMENT_TYPES = new Set([
+  "programme_formation",
+  "convention_formation",
+  "liste_formateurs",
+]);
+
 export async function POST(req: Request) {
   try {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -107,12 +113,40 @@ export async function POST(req: Request) {
       );
     }
 
+    const isReplacementSigningDocument =
+      Boolean(dossier_id) &&
+      REPLACEABLE_NDA_SIGNING_DOCUMENT_TYPES.has(document_type);
+
+    if (isReplacementSigningDocument) {
+      const { error: supersedeError } = await supabase
+        .from("documents")
+        .update({
+          review_status: "superseded",
+          is_visible_to_client: false,
+          requires_client_action: false,
+        })
+        .eq("dossier_id", dossier_id)
+        .eq("document_type", document_type)
+        .eq("document_role", "client_to_complete")
+        .neq("review_status", "superseded");
+
+      if (supersedeError) {
+        console.error("SUPERSEDE ERROR:", supersedeError);
+        return NextResponse.json(
+          { error: `Database: ${supersedeError.message}` },
+          { status: 500 },
+        );
+      }
+    }
+
     const { error: dbError } = await supabase.from("documents").insert({
       name: file.name,
       document_type,
       status: "uploaded",
       source: "agent_upload",
-      document_role: "agent_uploaded_document",
+      document_role: isReplacementSigningDocument
+        ? "client_to_complete"
+        : "agent_uploaded_document",
       review_status: "not_reviewed",
       is_visible_to_client: false,
       requires_client_action: false,

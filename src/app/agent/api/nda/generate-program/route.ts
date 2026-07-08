@@ -220,7 +220,6 @@ export async function POST(req: Request) {
       .eq("dossier_id", context.dossier.id)
       .eq("document_type", "programme_formation")
       .eq("document_role", "client_to_complete")
-      .eq("review_status", "pending_client")
       .eq("generated_from_model", GENERATED_MODEL);
 
     if (supersedeError) {
@@ -248,9 +247,9 @@ export async function POST(req: Request) {
         dossier_id: context.dossier.id,
         scope: "dossier",
         document_role: "client_to_complete",
-        review_status: "pending_client",
-        is_visible_to_client: true,
-        requires_client_action: true,
+        review_status: "not_reviewed",
+        is_visible_to_client: false,
+        requires_client_action: false,
         generated_from_model: GENERATED_MODEL,
         metadata: {
           generated_at: generatedAt.toISOString(),
