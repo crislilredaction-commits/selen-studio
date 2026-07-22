@@ -166,7 +166,7 @@ export async function sendSelenEmail({
   }
 
   const resend = new Resend(resendApiKey);
-  await resend.emails.send({
+  const result = await resend.emails.send({
     from,
     to,
     subject,
@@ -174,7 +174,15 @@ export async function sendSelenEmail({
     text: text || undefined,
   });
 
-  return { sent: true, error: null };
+  if (result.error) {
+    return {
+      sent: false,
+      error: result.error.message || "Erreur Resend inconnue.",
+      resendId: null,
+    };
+  }
+
+  return { sent: true, error: null, resendId: result.data?.id ?? null };
 }
 
 export function renderSelenEmailLayout(contentHtml: string) {

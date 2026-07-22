@@ -125,7 +125,9 @@ export default function ExternalAuditStatusPanel({
     );
     if (!result) return;
     setNotice(
-      result.email?.sent
+      result.warning === "email_sent_but_status_update_failed"
+        ? "Rappel Lil envoye, mais le statut Studio n'a pas pu etre mis a jour."
+        : result.email?.sent
         ? "Rappel Lil envoye."
         : result.email?.error ?? "Rappel non envoye.",
     );

@@ -23,12 +23,28 @@ function plannedHour(audience: ReminderAudience) {
   return audience === "client" ? "J-1 09:00 Europe/Paris" : "J-1 20:00 Europe/Paris";
 }
 
+function maskEmail(value?: string | null) {
+  if (!value) return null;
+  const [local, domain] = value.split("@");
+  if (!local || !domain) return "***";
+  const visible = local.slice(0, 2);
+  return `${visible}${"*".repeat(Math.max(3, local.length - visible.length))}@${domain}`;
+}
+
+function lilRecipientSource(audience: ReminderAudience) {
+  if (audience !== "lil") return null;
+  return process.env.LIL_REMINDER_EMAIL?.trim() ? "env" : "fallback";
+}
+
 function logReminderEvent(event: {
   auditId: string;
   audience: ReminderAudience;
-  recipient?: string | null;
+  recipientMasked?: string | null;
+  recipientSource?: "env" | "fallback" | null;
   plannedFor: string;
   status: "sent" | "failed";
+  resendId?: string | null;
+  statusPersisted?: boolean;
   error?: string | null;
 }) {
   console.info("external_audit_reminder_manual", event);
@@ -77,19 +93,25 @@ export async function POST(req: Request) {
       }
     })();
     const recipient = "to" in email && typeof email.to === "string" ? email.to : null;
+    const resendId =
+      "resendId" in email && typeof email.resendId === "string" ? email.resendId : null;
     logReminderEvent({
       auditId: typedAudit.id,
       audience: reminderAudience,
-      recipient,
+      recipientMasked: maskEmail(recipient),
+      recipientSource: lilRecipientSource(reminderAudience),
       plannedFor: plannedHour(reminderAudience),
       status: email.sent ? "sent" : "failed",
+      resendId,
       error: email.error ?? null,
     });
+    let statusUpdate = { persisted: false, error: null as string | null };
+    let warning: string | null = null;
     if (email.sent) {
       const now = new Date().toISOString();
       const metadata = metadataOf(typedAudit);
       const history = asHistory(metadata.reminder_history);
-      await admin
+      const { error: updateError } = await admin
         .from("external_audits")
         .update({
           reminder_email_sent_at:
@@ -118,9 +140,38 @@ export async function POST(req: Request) {
           },
         })
         .eq("id", id);
+      statusUpdate = {
+        persisted: !updateError,
+        error: updateError?.message ?? null,
+      };
+      warning = updateError ? "email_sent_but_status_update_failed" : null;
+
+      if (updateError) {
+        console.error("external_audit_reminder_manual_status_update_failed", {
+          auditId: typedAudit.id,
+          audience: reminderAudience,
+          recipientMasked: maskEmail(recipient),
+          recipientSource: lilRecipientSource(reminderAudience),
+          resendId,
+          emailSent: true,
+          error: updateError.message,
+        });
+      }
     }
 
-    return NextResponse.json({ ok: true, email });
+    logReminderEvent({
+      auditId: typedAudit.id,
+      audience: reminderAudience,
+      recipientMasked: maskEmail(recipient),
+      recipientSource: lilRecipientSource(reminderAudience),
+      plannedFor: plannedHour(reminderAudience),
+      status: email.sent ? "sent" : "failed",
+      resendId,
+      statusPersisted: statusUpdate.persisted,
+      error: warning ?? email.error ?? statusUpdate.error,
+    });
+
+    return NextResponse.json({ ok: true, email, statusUpdate, warning });
   } catch (error) {
     console.error("Rappel audit externe echoue.", error);
     return NextResponse.json(
