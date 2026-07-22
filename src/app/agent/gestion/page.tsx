@@ -50,6 +50,15 @@ function metadata(audit: ExternalAuditRow) {
   return audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {};
 }
 
+function metadataText(audit: ExternalAuditRow, key: string) {
+  const value = metadata(audit)[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function auditReference(audit: ExternalAuditRow) {
+  return metadataText(audit, "audit_reference") || audit.id.slice(0, 8);
+}
+
 function planSent(audit: ExternalAuditRow) {
   return metadata(audit).plan_audit_sent === true;
 }
@@ -71,6 +80,16 @@ function formatAuditDate(audit: ExternalAuditRow) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(`${audit.audit_date}T${audit.start_time}`));
+}
+
+function formatDeliveryMode(audit: ExternalAuditRow) {
+  const mode =
+    audit.audit_delivery_mode?.trim() ||
+    metadataText(audit, "audit_delivery_mode");
+
+  if (mode === "distanciel") return "Distanciel";
+  if (mode === "presentiel") return "Presentiel";
+  return "Mode non renseigne";
 }
 
 export default async function GestionLilPage() {
@@ -307,10 +326,14 @@ function Info({ label, value }: { label: string; value: string }) {
 function MiniAudit({ audit }: { audit: ExternalAuditRow }) {
   return (
     <Link href={`/agent/gestion/audits/${audit.id}`} style={s.auditRow}>
-      <span>
+      <span style={s.auditDetails}>
         <strong>{audit.of_name}</strong>
         <small>
           {formatAuditDate(audit)} - {audit.audit_type}
+        </small>
+        <small style={s.auditMeta}>
+          {audit.certifier || "Certificateur non renseigne"} - Ref.{" "}
+          {auditReference(audit)} - {formatDeliveryMode(audit)}
         </small>
       </span>
       <span style={planSent(audit) ? s.badgeOk : s.badgeTodo}>
@@ -402,6 +425,8 @@ const s: Record<string, CSSProperties> = {
     textDecoration: "none",
     fontSize: 13,
   },
+  auditDetails: { display: "grid", gap: 3, minWidth: 0 },
+  auditMeta: { color: "var(--selen-text3-oncard)" },
   badgeOk: {
     whiteSpace: "nowrap",
     color: "var(--selen-success)",

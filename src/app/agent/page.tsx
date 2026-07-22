@@ -571,7 +571,14 @@ async function getDashboardData(
 
   const actionDossiers = uniqueItems([
     ...unreadMessageDossiers,
-    ...relanceDossiers,
+    ...relanceDossiers.filter(
+      (item) =>
+        !((reminderData ?? []) as ReminderRow[]).some(
+          (reminder) =>
+            reminder.id === item.id &&
+            reminder.reminder_type === "preaudit_incomplete_15_days",
+        ),
+    ),
   ]);
 
   const { data: allAssignmentData } = await supabase
