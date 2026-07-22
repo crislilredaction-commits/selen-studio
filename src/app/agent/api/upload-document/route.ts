@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
+import { requireStudioAgent } from "@/lib/server/studioAuth";
+import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 const REPLACEABLE_NDA_SIGNING_DOCUMENT_TYPES = new Set([
   "programme_formation",
@@ -10,32 +11,11 @@ const REPLACEABLE_NDA_SIGNING_DOCUMENT_TYPES = new Set([
 
 export async function POST(req: Request) {
   try {
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      return NextResponse.json(
-        { error: "NEXT_PUBLIC_SUPABASE_URL manquante." },
-        { status: 500 },
-      );
-    }
-
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json(
-        { error: "SUPABASE_SERVICE_ROLE_KEY manquante dans .env.local." },
-        { status: 500 },
-      );
-    }
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
+    const auth = await requireStudioAgent();
+    if (!auth.ok) return auth.response;
 
     const formData = await req.formData();
+    const supabase = createSupabaseAdminClient();
 
     const file = formData.get("file") as File | null;
     const rawDossierId = formData.get("dossier_id");
@@ -68,6 +48,49 @@ export async function POST(req: Request) {
         { error: "Fichier ou organisation manquants." },
         { status: 400 },
       );
+    }
+
+    if (dossier_id) {
+      const { data: dossier, error: dossierError } = await supabase
+        .from("dossiers")
+        .select("id, organisation_id")
+        .eq("id", dossier_id)
+        .maybeSingle();
+
+      if (dossierError) {
+        return NextResponse.json({ error: dossierError.message }, { status: 500 });
+      }
+
+      if (!dossier) {
+        return NextResponse.json({ error: "Dossier introuvable." }, { status: 404 });
+      }
+
+      if (dossier.organisation_id !== organisation_id) {
+        return NextResponse.json(
+          { error: "Dossier et organisation incoherents." },
+          { status: 400 },
+        );
+      }
+    } else {
+      const { data: organisation, error: organisationError } = await supabase
+        .from("organisations")
+        .select("id")
+        .eq("id", organisation_id)
+        .maybeSingle();
+
+      if (organisationError) {
+        return NextResponse.json(
+          { error: organisationError.message },
+          { status: 500 },
+        );
+      }
+
+      if (!organisation) {
+        return NextResponse.json(
+          { error: "Organisation introuvable." },
+          { status: 404 },
+        );
+      }
     }
 
     const filePath = `${organisation_id}/${dossier_id ?? "global"}/${Date.now()}-${file.name}`;

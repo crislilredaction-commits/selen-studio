@@ -1,34 +1,17 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import {
   buildNdaProgramDocumentHtml,
   hasNdaProgramDocumentContent,
 } from "@/lib/server/ndaProgramDocumentHtml";
-
-function getAdminSupabase() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL manquante.");
-  }
-
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY manquante.");
-  }
-
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    },
-  );
-}
+import { requireStudioAgent } from "@/lib/server/studioAuth";
+import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 export async function GET(req: Request) {
   try {
-    const supabase = getAdminSupabase();
+    const auth = await requireStudioAgent();
+    if (!auth.ok) return auth.response;
+
+    const supabase = createSupabaseAdminClient();
     const { searchParams } = new URL(req.url);
 
     const programVersionId = searchParams.get("programVersionId");
@@ -128,6 +111,13 @@ export async function GET(req: Request) {
       return NextResponse.json(
         { error: "Impossible de charger l'organisme du dossier." },
         { status: 500 },
+      );
+    }
+
+    if (!dossier) {
+      return NextResponse.json(
+        { error: "Dossier introuvable." },
+        { status: 404 },
       );
     }
 

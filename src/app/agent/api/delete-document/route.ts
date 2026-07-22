@@ -1,32 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { requireStudioAgent } from "@/lib/server/studioAuth";
+import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 export async function POST(req: Request) {
   try {
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      return NextResponse.json(
-        { error: "NEXT_PUBLIC_SUPABASE_URL manquante." },
-        { status: 500 },
-      );
-    }
+    const auth = await requireStudioAgent();
+    if (!auth.ok) return auth.response;
 
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json(
-        { error: "SUPABASE_SERVICE_ROLE_KEY manquante." },
-        { status: 500 },
-      );
-    }
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
+    const supabase = createSupabaseAdminClient();
 
     const { documentId } = await req.json();
 
@@ -39,7 +20,7 @@ export async function POST(req: Request) {
 
     const { data: doc, error: fetchError } = await supabase
       .from("documents")
-      .select("id, storage_path")
+      .select("id, storage_path, dossier_id, organisation_id")
       .eq("id", documentId)
       .maybeSingle();
 
@@ -48,6 +29,59 @@ export async function POST(req: Request) {
         { error: "Document introuvable." },
         { status: 404 },
       );
+    }
+
+    if (!doc.dossier_id && !doc.organisation_id) {
+      return NextResponse.json(
+        { error: "Document sans rattachement dossier ou organisation." },
+        { status: 422 },
+      );
+    }
+
+    if (doc.dossier_id) {
+      const { data: dossier, error: dossierError } = await supabase
+        .from("dossiers")
+        .select("id, organisation_id")
+        .eq("id", doc.dossier_id)
+        .maybeSingle();
+
+      if (dossierError) {
+        return NextResponse.json({ error: dossierError.message }, { status: 500 });
+      }
+
+      if (!dossier) {
+        return NextResponse.json(
+          { error: "Dossier rattache introuvable." },
+          { status: 409 },
+        );
+      }
+
+      if (doc.organisation_id && dossier.organisation_id !== doc.organisation_id) {
+        return NextResponse.json(
+          { error: "Document incoherent avec son dossier." },
+          { status: 409 },
+        );
+      }
+    } else if (doc.organisation_id) {
+      const { data: organisation, error: organisationError } = await supabase
+        .from("organisations")
+        .select("id")
+        .eq("id", doc.organisation_id)
+        .maybeSingle();
+
+      if (organisationError) {
+        return NextResponse.json(
+          { error: organisationError.message },
+          { status: 500 },
+        );
+      }
+
+      if (!organisation) {
+        return NextResponse.json(
+          { error: "Organisation rattachee introuvable." },
+          { status: 409 },
+        );
+      }
     }
 
     if (doc.storage_path) {

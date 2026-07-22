@@ -1,88 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
-import { createClient as createSessionClient } from "@/lib/supabase/server";
+import { requireStudioAgent } from "@/lib/server/studioAuth";
+import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error(
-      "Configuration Supabase manquante : NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY.",
-    );
-  }
-
-  return createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
-
-async function requireAgent() {
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.SELEN_DEV_ADMIN_BYPASS === "true"
-  ) {
-    return { ok: true as const };
-  }
-
-  const sessionClient = await createSessionClient();
-  const {
-    data: { user },
-    error,
-  } = await sessionClient.auth.getUser();
-
-  if (error || !user?.id) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { ok: false, error: "unauthorized" },
-        { status: 401 },
-      ),
-    };
-  }
-
-  const admin = getAdminClient();
-  const { data: adminUser, error: adminError } = await admin
-    .from("selen_admin_users")
-    .select("id, user_id, role, is_active")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (adminError) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { ok: false, error: "unauthorized" },
-        { status: 500 },
-      ),
-    };
-  }
-
-  if (
-    !adminUser ||
-    (adminUser.role !== "agent" && adminUser.role !== "admin")
-  ) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { ok: false, error: "unauthorized" },
-        { status: 403 },
-      ),
-    };
-  }
-
-  return { ok: true as const };
-}
-
 export async function POST(req: Request) {
   try {
-    const auth = await requireAgent();
+    const auth = await requireStudioAgent();
 
     if (!auth.ok) {
       return auth.response;
@@ -103,7 +27,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const admin = getAdminClient();
+    const admin = createSupabaseAdminClient();
     const { data: doc, error: fetchError } = await admin
       .from("documents")
       .select(
@@ -117,6 +41,55 @@ export async function POST(req: Request) {
         { ok: false, error: "document_not_found" },
         { status: 404 },
       );
+    }
+
+    if (!doc.dossier_id && !doc.organisation_id) {
+      return NextResponse.json(
+        { ok: false, error: "invalid_document_scope" },
+        { status: 422 },
+      );
+    }
+
+    if (doc.dossier_id) {
+      const { data: dossier, error: dossierError } = await admin
+        .from("dossiers")
+        .select("id, organisation_id")
+        .eq("id", doc.dossier_id)
+        .maybeSingle();
+
+      if (dossierError) {
+        return NextResponse.json(
+          { ok: false, error: "document_scope_check_failed" },
+          { status: 500 },
+        );
+      }
+
+      if (!dossier || (doc.organisation_id && dossier.organisation_id !== doc.organisation_id)) {
+        return NextResponse.json(
+          { ok: false, error: "invalid_document_scope" },
+          { status: 409 },
+        );
+      }
+    } else if (doc.organisation_id) {
+      const { data: organisation, error: organisationError } = await admin
+        .from("organisations")
+        .select("id")
+        .eq("id", doc.organisation_id)
+        .maybeSingle();
+
+      if (organisationError) {
+        return NextResponse.json(
+          { ok: false, error: "document_scope_check_failed" },
+          { status: 500 },
+        );
+      }
+
+      if (!organisation) {
+        return NextResponse.json(
+          { ok: false, error: "invalid_document_scope" },
+          { status: 409 },
+        );
+      }
     }
 
     const storagePath = String(doc.storage_path ?? "").trim();
