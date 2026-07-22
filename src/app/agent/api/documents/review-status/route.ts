@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
-import { createClient as createSessionClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { requireStudioAgent } from "@/lib/server/studioAuth";
 import {
   getNdaAgentWorkflowState,
   syncNdaDossierStatus,
@@ -18,24 +18,6 @@ const ALLOWED_REVIEW_STATUSES = [
 
 type AllowedReviewStatus = (typeof ALLOWED_REVIEW_STATUSES)[number];
 
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error(
-      "Configuration Supabase manquante : NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY.",
-    );
-  }
-
-  return createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
-
 function isAllowedReviewStatus(value: unknown): value is AllowedReviewStatus {
   return (
     typeof value === "string" &&
@@ -49,64 +31,9 @@ function isUuid(value: string) {
   );
 }
 
-async function requireAgent() {
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.SELEN_DEV_ADMIN_BYPASS === "true"
-  ) {
-    return { ok: true as const, userId: null as string | null };
-  }
-
-  const sessionClient = await createSessionClient();
-  const {
-    data: { user },
-    error,
-  } = await sessionClient.auth.getUser();
-
-  if (error || !user?.id) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { error: "Vous devez être connecté côté agent." },
-        { status: 401 },
-      ),
-    };
-  }
-
-  const admin = getAdminClient();
-  const { data: adminUser, error: adminError } = await admin
-    .from("selen_admin_users")
-    .select("id, user_id, is_active")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (adminError) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { error: `Impossible de vérifier les droits agent. ${adminError.message}` },
-        { status: 500 },
-      ),
-    };
-  }
-
-  if (!adminUser) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { error: "Accès agent non autorisé." },
-        { status: 403 },
-      ),
-    };
-  }
-
-  return { ok: true as const, userId: user.id };
-}
-
 export async function POST(req: Request) {
   try {
-    const auth = await requireAgent();
+    const auth = await requireStudioAgent();
     if (!auth.ok) {
       return auth.response;
     }
@@ -137,8 +64,73 @@ export async function POST(req: Request) {
       );
     }
 
+    const admin = createSupabaseAdminClient();
+    const { data: document, error: documentError } = await admin
+      .from("documents")
+      .select("id, dossier_id, organisation_id")
+      .eq("id", documentId)
+      .maybeSingle();
+
+    if (documentError) {
+      return NextResponse.json({ error: documentError.message }, { status: 500 });
+    }
+
+    if (!document) {
+      return NextResponse.json(
+        { error: "Document introuvable." },
+        { status: 404 },
+      );
+    }
+
+    if (!document.dossier_id && !document.organisation_id) {
+      return NextResponse.json(
+        { error: "Document sans rattachement dossier ou organisation." },
+        { status: 422 },
+      );
+    }
+
+    if (document.dossier_id) {
+      const { data: dossier, error: dossierError } = await admin
+        .from("dossiers")
+        .select("id")
+        .eq("id", document.dossier_id)
+        .maybeSingle();
+
+      if (dossierError) {
+        return NextResponse.json({ error: dossierError.message }, { status: 500 });
+      }
+
+      if (!dossier) {
+        return NextResponse.json(
+          { error: "Dossier rattache introuvable." },
+          { status: 409 },
+        );
+      }
+    }
+
+    if (document.organisation_id) {
+      const { data: organisation, error: organisationError } = await admin
+        .from("organisations")
+        .select("id")
+        .eq("id", document.organisation_id)
+        .maybeSingle();
+
+      if (organisationError) {
+        return NextResponse.json(
+          { error: organisationError.message },
+          { status: 500 },
+        );
+      }
+
+      if (!organisation) {
+        return NextResponse.json(
+          { error: "Organisation rattachee introuvable." },
+          { status: 409 },
+        );
+      }
+    }
+
     if (sendToClient) {
-      const admin = getAdminClient();
       const now = new Date().toISOString();
       const { error } = await admin
         .from("documents")
@@ -158,7 +150,6 @@ export async function POST(req: Request) {
     }
 
     if (clientVisible !== null) {
-      const admin = getAdminClient();
       const now = new Date().toISOString();
       const { error } = await admin
         .from("documents")
@@ -176,8 +167,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    const notes =
-      typeof rawNotes === "string" ? rawNotes.trim() : undefined;
+    const notes = typeof rawNotes === "string" ? rawNotes.trim() : undefined;
 
     const updatePayload: Record<string, unknown> = {
       review_status: reviewStatus,
@@ -193,7 +183,6 @@ export async function POST(req: Request) {
         auth.userId && isUuid(auth.userId) ? auth.userId : null;
     }
 
-    const admin = getAdminClient();
     const { error } = await admin
       .from("documents")
       .update(updatePayload)
@@ -204,13 +193,7 @@ export async function POST(req: Request) {
     }
 
     try {
-      const { data: document } = await admin
-        .from("documents")
-        .select("dossier_id")
-        .eq("id", documentId)
-        .maybeSingle();
-
-      if (document?.dossier_id) {
+      if (document.dossier_id) {
         const { data: dossier } = await admin
           .from("dossiers")
           .select(
