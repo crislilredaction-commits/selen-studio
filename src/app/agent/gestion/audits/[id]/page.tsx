@@ -63,14 +63,6 @@ export default async function ExternalAuditDetailPage({ params }: PageProps) {
             Retour aux audits
           </SelenButton>
         </Link>
-        <Link
-          href={`/agent/gestion/icpf-assistant?auditId=${audit.id}`}
-          style={{ textDecoration: "none" }}
-        >
-          <SelenButton type="button" variant="secondary">
-            Assistant grille ICPF
-          </SelenButton>
-        </Link>
       </div>
       <ExternalAuditForm audit={audit} />
       <ExternalAuditTravelCard audit={audit} />

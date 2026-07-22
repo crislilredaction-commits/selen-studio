@@ -104,11 +104,6 @@ export default async function ExternalAuditsPage({
           <h1 style={s.title}>Audits externes</h1>
         </div>
         <div style={s.headerActions}>
-          <Link href="/agent/gestion/icpf-assistant" style={{ textDecoration: "none" }}>
-            <SelenButton type="button" variant="secondary">
-              Assistant grille ICPF
-            </SelenButton>
-          </Link>
           <Link
             href={showArchives ? "/agent/gestion/audits" : "/agent/gestion/audits?archives=1"}
             style={{ textDecoration: "none" }}
