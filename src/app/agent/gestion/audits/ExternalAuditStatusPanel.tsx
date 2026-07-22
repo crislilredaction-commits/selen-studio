@@ -54,12 +54,14 @@ export default function ExternalAuditStatusPanel({
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [messageAction, setMessageAction] = useState("");
   const [subject, setSubject] = useState(confirmationEmail.subject);
   const [bodyText, setBodyText] = useState(confirmationEmail.bodyText);
   const [hasDraft, setHasDraft] = useState(confirmationEmail.hasDraft);
 
   async function post(url: string, body: Record<string, unknown>, action: string) {
     setBusy(action);
+    setMessageAction(action);
     setNotice("");
     setError("");
     const response = await fetch(url, {
@@ -154,9 +156,6 @@ export default function ExternalAuditStatusPanel({
 
   return (
     <div style={s.stack}>
-      {notice ? <div style={s.notice}>{notice}</div> : null}
-      {error ? <div style={s.error}>Erreur : {error}</div> : null}
-
       <SelenCard>
         <SelenCardTitle>Mail de confirmation audit</SelenCardTitle>
         <div style={s.grid}>
@@ -209,6 +208,12 @@ export default function ExternalAuditStatusPanel({
               : "Envoyer confirmation"}
           </SelenButton>
         </div>
+        <ActionMessage
+          action={messageAction}
+          actions={["confirmation", "draft", "reset"]}
+          notice={notice}
+          error={error}
+        />
       </SelenCard>
 
       <SelenCard>
@@ -262,6 +267,12 @@ export default function ExternalAuditStatusPanel({
             Envoyer rappel Lil maintenant
           </SelenButton>
         </div>
+        <ActionMessage
+          action={messageAction}
+          actions={["reminder"]}
+          notice={notice}
+          error={error}
+        />
       </SelenCard>
 
       {!audit.google_calendar_event_id ? (
@@ -277,6 +288,12 @@ export default function ExternalAuditStatusPanel({
           >
             Creer l&apos;evenement Google Calendar
           </SelenButton>
+          <ActionMessage
+            action={messageAction}
+            actions={["calendar"]}
+            notice={notice}
+            error={error}
+          />
         </div>
       ) : meetLink(audit) ? (
         <div style={s.discreetActions}>
@@ -287,6 +304,23 @@ export default function ExternalAuditStatusPanel({
       ) : null}
     </div>
   );
+}
+
+function ActionMessage({
+  action,
+  actions,
+  notice,
+  error,
+}: {
+  action: string;
+  actions: string[];
+  notice: string;
+  error: string;
+}) {
+  if (!actions.includes(action)) return null;
+  if (error) return <div style={{ ...s.error, ...s.actionMessage }}>Erreur : {error}</div>;
+  if (notice) return <div style={{ ...s.notice, ...s.actionMessage }}>{notice}</div>;
+  return null;
 }
 
 function Info({ label, value }: { label: string; value: string }) {
@@ -380,6 +414,7 @@ const s: Record<string, CSSProperties> = {
     color: "var(--selen-success)",
     fontSize: 13,
   },
+  actionMessage: { flexBasis: "100%", marginTop: 8 },
   error: {
     padding: 12,
     borderRadius: "var(--radius-sm)",
