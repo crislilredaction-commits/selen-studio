@@ -59,6 +59,10 @@ function auditReference(audit: ExternalAuditRow) {
   return metadataText(audit, "audit_reference") || audit.id.slice(0, 8);
 }
 
+function profileName(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function lineFromAudit(audit: ExternalAuditRow): LilInvoiceLine[] {
   const reference = auditReference(audit);
   const auditAmount = metadataCents(audit, "audit_amount_cents");
@@ -117,7 +121,7 @@ function lineFromAudit(audit: ExternalAuditRow): LilInvoiceLine[] {
       eurosToCents(metadataText(audit, "invoice_amount") || metadataText(audit, "fee_amount")) ||
       0;
   return [{
-    label: `Audit Qualiopi - ${audit.of_name}`,
+    label: `Audit Qualiopi - ${audit.of_name} - Ref. ${reference}`,
     details: `${audit.audit_type} - ${audit.audit_date}`,
     quantity: 1,
     unitAmountCents: amount,
@@ -210,6 +214,25 @@ export default function InvoiceForm({
     return { subtotal, total: subtotal };
   }, [lines]);
 
+  function findProfile(name: string) {
+    const normalized = profileName(name);
+    return profiles.find(
+      (item) => item.normalized_name === normalized || profileName(item.name) === normalized,
+    );
+  }
+
+  function applyBillingProfile(profile: LilBillingProfile, onlyEmpty = false) {
+    if (!onlyEmpty || !clientLegalForm) setClientLegalForm(profile.legal_form ?? "");
+    if (!onlyEmpty || !recipientEmail) setRecipientEmail(profile.email ?? "");
+    if (!onlyEmpty || !recipientAddress) setRecipientAddress(profile.address ?? "");
+    if (!onlyEmpty || !clientPostalCode) setClientPostalCode(profile.postal_code ?? "");
+    if (!onlyEmpty || !clientCity) setClientCity(profile.city ?? "");
+    if (!onlyEmpty || !clientSirenSiret) setClientSirenSiret(profile.siren_siret ?? "");
+    if (!onlyEmpty || !clientVatNumber) setClientVatNumber(profile.vat_number ?? "");
+    if (!onlyEmpty || !clientPhone) setClientPhone(profile.phone ?? "");
+    if (!onlyEmpty || !paymentTerms) setPaymentTerms(profile.default_payment_terms ?? "");
+  }
+
   function applyAuditSelection(nextIds: string[]) {
     setSelectedAuditIds(nextIds);
     if (invoiceType === "manual") return;
@@ -219,27 +242,20 @@ export default function InvoiceForm({
     if (!invoice?.recipient_name && selectedAudits[0]) {
       const first = selectedAudits[0];
       const recipient = first.certifier || "";
-      if (recipient) setRecipientName(recipient);
+      if (recipient) {
+        setRecipientName(recipient);
+        const profile = findProfile(recipient);
+        if (profile) applyBillingProfile(profile, true);
+      }
     }
     scheduleAutosave();
   }
 
   function applyProfile(name: string) {
     setRecipientName(name);
-    const normalized = name.trim().toLowerCase().replace(/\s+/g, " ");
-    const profile = profiles.find(
-      (item) => item.normalized_name === normalized || item.name.trim().toLowerCase() === normalized,
-    );
+    const profile = findProfile(name);
     if (!profile) return;
-    setClientLegalForm(profile.legal_form ?? "");
-    setRecipientEmail(profile.email ?? "");
-    setRecipientAddress(profile.address ?? "");
-    setClientPostalCode(profile.postal_code ?? "");
-    setClientCity(profile.city ?? "");
-    setClientSirenSiret(profile.siren_siret ?? "");
-    setClientVatNumber(profile.vat_number ?? "");
-    setClientPhone(profile.phone ?? "");
-    setPaymentTerms(profile.default_payment_terms ?? "");
+    applyBillingProfile(profile);
     scheduleAutosave();
   }
 

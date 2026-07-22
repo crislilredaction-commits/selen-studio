@@ -23,6 +23,18 @@ const EDITABLE_STATUSES = new Set(["draft", "generated"]);
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
+type BillingProfileRow = {
+  legal_form: string | null;
+  email: string | null;
+  address: string | null;
+  postal_code: string | null;
+  city: string | null;
+  siren_siret: string | null;
+  vat_number: string | null;
+  phone: string | null;
+  default_payment_terms: string | null;
+};
+
 function parseLines(value: unknown): LilInvoiceLine[] {
   if (!Array.isArray(value)) return [];
   return value.map((line) => ({
@@ -41,6 +53,14 @@ function parseAuditIds(value: unknown) {
 
 function normalizedName(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function cleanText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function keepExisting(nextValue: string | null, existingValue?: string | null) {
+  return nextValue ?? existingValue ?? null;
 }
 
 async function loadInvoice(id: string) {
@@ -67,46 +87,51 @@ async function saveBillingProfile(
   if (!normalized) return;
 
   const now = new Date().toISOString();
-  await admin.from("lil_billing_profiles").upsert(
+  const { data: existingProfile, error: existingError } = await admin
+    .from("lil_billing_profiles")
+    .select(
+      "legal_form,email,address,postal_code,city,siren_siret,vat_number,phone,default_payment_terms",
+    )
+    .eq("normalized_name", normalized)
+    .maybeSingle();
+
+  if (existingError) {
+    console.error("Chargement profil de facturation echoue.", {
+      normalizedName: normalized,
+      error: existingError.message,
+    });
+  }
+
+  const existing = existingProfile as BillingProfileRow | null;
+  const { error } = await admin.from("lil_billing_profiles").upsert(
     {
       normalized_name: normalized,
       name: payload.recipient_name,
-      legal_form:
-        typeof payload.metadata.client_legal_form === "string"
-          ? payload.metadata.client_legal_form
-          : null,
-      email: payload.recipient_email,
-      address: payload.recipient_address,
-      postal_code:
-        typeof payload.metadata.client_postal_code === "string"
-          ? payload.metadata.client_postal_code
-          : null,
-      city:
-        typeof payload.metadata.client_city === "string"
-          ? payload.metadata.client_city
-          : null,
-      siren_siret:
-        typeof payload.metadata.client_siren_siret === "string"
-          ? payload.metadata.client_siren_siret
-          : null,
-      vat_number:
-        typeof payload.metadata.client_vat_number === "string"
-          ? payload.metadata.client_vat_number
-          : null,
-      phone:
-        typeof payload.metadata.client_phone === "string"
-          ? payload.metadata.client_phone
-          : null,
-      default_payment_terms:
-        typeof payload.metadata.payment_terms === "string"
-          ? payload.metadata.payment_terms
-          : null,
+      legal_form: keepExisting(cleanText(payload.metadata.client_legal_form), existing?.legal_form),
+      email: keepExisting(payload.recipient_email, existing?.email),
+      address: keepExisting(payload.recipient_address, existing?.address),
+      postal_code: keepExisting(cleanText(payload.metadata.client_postal_code), existing?.postal_code),
+      city: keepExisting(cleanText(payload.metadata.client_city), existing?.city),
+      siren_siret: keepExisting(cleanText(payload.metadata.client_siren_siret), existing?.siren_siret),
+      vat_number: keepExisting(cleanText(payload.metadata.client_vat_number), existing?.vat_number),
+      phone: keepExisting(cleanText(payload.metadata.client_phone), existing?.phone),
+      default_payment_terms: keepExisting(
+        cleanText(payload.metadata.payment_terms),
+        existing?.default_payment_terms,
+      ),
       metadata: {
         updated_from_invoice_at: now,
       },
     },
     { onConflict: "normalized_name" },
   );
+
+  if (error) {
+    console.error("Sauvegarde profil de facturation echouee.", {
+      normalizedName: normalized,
+      error: error.message,
+    });
+  }
 }
 
 async function archiveLinkedAudits(
