@@ -1,36 +1,36 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getAdminSupabase() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL manquante.");
-  }
-
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY manquante.");
-  }
-
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    },
-  );
-}
+import { requireStudioAgent } from "@/lib/server/studioAuth";
+import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 export async function POST(req: Request) {
   try {
-    const supabase = getAdminSupabase();
+    const auth = await requireStudioAgent();
+    if (!auth.ok) return auth.response;
+
+    const supabase = createSupabaseAdminClient();
     const { messageId, action } = await req.json();
 
     if (!messageId || !action) {
       return NextResponse.json(
         { error: "messageId ou action manquant." },
         { status: 400 },
+      );
+    }
+
+    const { data: message, error: messageError } = await supabase
+      .from("internal_messages")
+      .select("id")
+      .eq("id", messageId)
+      .maybeSingle();
+
+    if (messageError) {
+      return NextResponse.json({ error: messageError.message }, { status: 500 });
+    }
+
+    if (!message) {
+      return NextResponse.json(
+        { error: "Message introuvable." },
+        { status: 404 },
       );
     }
 
