@@ -499,10 +499,15 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log("PROGRAM DOC SELECTED:", selectedProgramDoc?.name ?? null);
-    console.log("CV DOC SELECTED:", selectedCvDoc?.name ?? null);
-    console.log("PROGRAM TEXT LENGTH:", programText.length);
-    console.log("CV TEXT LENGTH:", cvText.length);
+    console.log("Analyse programme textes prets.", {
+      dossierId,
+      programDocumentType: selectedProgramDoc?.document_type ?? null,
+      cvDocumentType: selectedCvDoc?.document_type ?? null,
+      programTextLength: programText.length,
+      cvTextLength: cvText.length,
+      programTextSource,
+      cvTextSource,
+    });
 
     const missingUsableTextMessage =
       "L’analyse automatique a besoin d’un texte exploitable pour le CV et le programme. Collez un résumé ou le contenu du document dans les zones prévues.";

@@ -416,17 +416,17 @@ export async function POST(req: Request) {
     const dossierDocs = (dossierDocsRaw ?? []) as DocRow[];
     const globalDocs = (globalDocsRaw ?? []) as DocRow[];
 
-    console.log("DOSSIER DOCS COUNT:", dossierDocs.length);
-    console.log("GLOBAL DOCS COUNT:", globalDocs.length);
-    console.log(
-      "DOSSIER DOCS:",
-      dossierDocs.map((d) => ({
-        name: d.name,
-        type: d.document_type,
-        path: d.storage_path,
-        created_at: d.created_at,
-      })),
-    );
+    console.log("Analyse NDA demarree.", {
+      dossierId,
+      dossierDocsCount: dossierDocs.length,
+      globalDocsCount: globalDocs.length,
+      dossierDocumentTypes: dossierDocs.map(
+        (doc) => doc.document_type ?? "unknown",
+      ),
+      globalDocumentTypes: globalDocs.map(
+        (doc) => doc.document_type ?? "unknown",
+      ),
+    });
 
     const cvDoc = pickPreferredDoc(dossierDocs, globalDocs, ["cv_formateur"]);
     const programmeDoc = pickPreferredDoc(dossierDocs, globalDocs, [
@@ -597,15 +597,14 @@ export async function POST(req: Request) {
           ? "Avis INSEE / KBIS non trouvé. Vérification administrative manuelle requise."
           : null;
 
-    console.log("CV TEXT LENGTH:", cvText.length);
-    console.log("PROGRAMME TEXT LENGTH:", programmeText.length);
-    console.log("ENTREPRISE TEXT LENGTH:", entrepriseText.length);
-    console.log("CV EXTRACTION SOURCE:", cvTextSource);
-    console.log("PROGRAMME EXTRACTION SOURCE:", programmeTextSource);
-    console.log("ENTREPRISE EXTRACTION SOURCE:", entrepriseTextResult.source);
-    console.log("CV TEXT PREVIEW:", cvText.slice(0, 300));
-    console.log("PROGRAMME TEXT PREVIEW:", programmeText.slice(0, 300));
-    console.log("ENTREPRISE TEXT PREVIEW:", entrepriseText.slice(0, 300));
+    console.log("Analyse NDA textes extraits.", {
+      cvTextLength: cvText.length,
+      programmeTextLength: programmeText.length,
+      entrepriseTextLength: entrepriseText.length,
+      cvTextSource,
+      programmeTextSource,
+      entrepriseTextSource: entrepriseTextResult.source,
+    });
 
     // -------------------------------------------------------------------------
     // Extraction nom formateur : CV en priorité, programme en fallback
@@ -624,9 +623,6 @@ export async function POST(req: Request) {
         sourceFormateur = "programme";
       }
     }
-
-    console.log("source_formateur:", sourceFormateur);
-    console.log("trainerName:", trainerName);
 
     // -------------------------------------------------------------------------
     // Email : depuis le CV uniquement
@@ -649,14 +645,6 @@ export async function POST(req: Request) {
       programmeDoc.name.replace(/\.[^/.]+$/, "").trim();
 
     const dureeFormation = extractDuration(programmeText);
-
-    console.log("trainerEmail:", trainerEmail);
-    console.log("siret:", siret);
-    console.log("codePostal:", codePostal);
-    console.log("ville:", ville);
-    console.log("region:", region);
-    console.log("intituleFormation:", intituleFormation);
-    console.log("dureeFormation:", dureeFormation);
 
     const listeFormateursDirigeantResume = buildNdaListeFormateursResumeFromCv(
       cvText,
@@ -689,7 +677,20 @@ export async function POST(req: Request) {
       payload.region = region || null;
     }
 
-    console.log("Analyse NDA payload:", payload);
+    console.log("Analyse NDA extraction structuree.", {
+      sourceFormateur,
+      hasTrainerName: Boolean(
+        trainerName.formateur_prenom || trainerName.formateur_nom,
+      ),
+      hasTrainerEmail: Boolean(trainerEmail),
+      hasSiret: Boolean(siret),
+      hasPostalCode: Boolean(codePostal),
+      hasCity: Boolean(ville),
+      hasRegion: Boolean(region),
+      hasTrainingTitle: Boolean(intituleFormation),
+      hasDuration: Boolean(dureeFormation),
+      payloadFields: Object.keys(payload),
+    });
 
     const deterministicControls = buildDeterministicNdaChecks({
       cvText,
@@ -747,7 +748,9 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
-    console.error("Analyse NDA fatal error:", error);
+    console.error("Analyse NDA fatal error.", {
+      message: error instanceof Error ? error.message : "unknown_error",
+    });
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Erreur inconnue",
