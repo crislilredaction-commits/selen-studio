@@ -225,6 +225,23 @@ function googleCalendarDateTime(date: string, time: string) {
   return `${date}T${cleanTime}`;
 }
 
+async function readGoogleErrorBody(response: Response) {
+  try {
+    return await response.text();
+  } catch {
+    return "";
+  }
+}
+
+function googleCalendarAuditContext(audit: ExternalAuditRow) {
+  return {
+    auditId: audit.id,
+    auditType: audit.audit_type,
+    auditDate: audit.audit_date,
+    deliveryMode: auditDeliveryMode(audit),
+  };
+}
+
 export async function findSelenAppointmentConflicts(
   audit: Pick<ExternalAuditRow, "audit_date" | "start_time" | "end_time">,
 ) {
@@ -263,7 +280,19 @@ async function getGoogleAccessToken() {
   const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  if (!refreshToken || !clientId || !clientSecret) return null;
+  if (!refreshToken || !clientId || !clientSecret) {
+    console.error(
+      "Google Calendar: access token unavailable. Check OAuth env vars / refresh token.",
+      {
+        missing: {
+          GOOGLE_CLIENT_ID: !clientId,
+          GOOGLE_CLIENT_SECRET: !clientSecret,
+          GOOGLE_REFRESH_TOKEN: !refreshToken,
+        },
+      },
+    );
+    return null;
+  }
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -276,7 +305,17 @@ async function getGoogleAccessToken() {
     }),
   });
 
-  if (!response.ok) return null;
+  if (!response.ok) {
+    const body = await readGoogleErrorBody(response);
+    console.error(
+      "Google Calendar: OAuth token request failed.",
+      {
+        status: response.status,
+        body,
+      },
+    );
+    return null;
+  }
   const payload = (await response.json()) as { access_token?: string };
   return payload.access_token ?? null;
 }
@@ -305,6 +344,14 @@ export async function createGoogleCalendarEvent(audit: ExternalAuditRow) {
 
   if (!accessToken) {
     const status = getGoogleCalendarConfigStatus();
+    console.error(
+      "Google Calendar: access token unavailable. Check OAuth env vars / refresh token.",
+      {
+        ...googleCalendarAuditContext(audit),
+        configured: status.configured,
+        missing: status.missing,
+      },
+    );
     return {
       created: false,
       error: status.configured
@@ -361,6 +408,15 @@ export async function createGoogleCalendarEvent(audit: ExternalAuditRow) {
   );
 
   if (!response.ok) {
+    const body = await readGoogleErrorBody(response);
+    console.error(
+      "Google Calendar: event creation failed.",
+      {
+        ...googleCalendarAuditContext(audit),
+        status: response.status,
+        body,
+      },
+    );
     return {
       created: false,
       error: `Google Calendar a refuse la creation (${response.status}).`,

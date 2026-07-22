@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import SelenButton from "@/components/ui/SelenButton";
@@ -14,6 +14,19 @@ const STATUSES = [
   ["to_invoice", "A facturer"],
   ["cancelled", "Annule"],
 ];
+
+type CalendarSaveResult = {
+  audit?: {
+    id?: string;
+    google_calendar_event_id?: string | null;
+  };
+  calendar?: {
+    created?: boolean;
+    error?: string | null;
+    eventId?: string | null;
+  };
+  conflictWarning?: string | null;
+};
 
 function metadataText(audit: ExternalAuditRow | null | undefined, key: string) {
   const metadata =
@@ -31,6 +44,26 @@ function metadataMoney(audit: ExternalAuditRow | null | undefined, key: string) 
   }
   if (typeof value === "string") return value;
   return "";
+}
+
+function calendarWarningFromResult(result: CalendarSaveResult) {
+  const calendar = result.calendar;
+  const hasEventId =
+    Boolean(calendar?.eventId) || Boolean(result.audit?.google_calendar_event_id);
+  if (!calendar || calendar.created !== false || hasEventId) return "";
+
+  const detail =
+    typeof calendar.error === "string" && calendar.error.trim()
+      ? ` Detail : ${calendar.error.trim()}`
+      : "";
+  return `Audit enregistre, mais l'evenement Google Calendar n'a pas pu etre cree. Vous pouvez utiliser le bouton de creation manuelle ou verifier la configuration Google.${detail}`;
+}
+
+function noticeFromResult(result: CalendarSaveResult) {
+  const messages = [result.conflictWarning, calendarWarningFromResult(result)].filter(
+    (message): message is string => Boolean(message),
+  );
+  return messages.length > 0 ? messages.join(" ") : "Audit enregistre.";
 }
 
 export default function ExternalAuditForm({
@@ -52,6 +85,16 @@ export default function ExternalAuditForm({
     audit?.audit_delivery_mode || metadataText(audit, "audit_delivery_mode") || "presentiel",
   );
   const currentMeetLink = audit?.google_meet_link || metadataText(audit, "meet_link");
+
+  useEffect(() => {
+    if (!audit?.id) return;
+    const key = `externalAuditCalendarWarning:${audit.id}`;
+    const warning = window.sessionStorage.getItem(key);
+    if (!warning) return;
+    window.sessionStorage.removeItem(key);
+    const timer = window.setTimeout(() => setNotice(warning), 0);
+    return () => window.clearTimeout(timer);
+  }, [audit?.id]);
 
   async function post(url: string, body: Record<string, unknown>) {
     setBusy(true);
@@ -120,13 +163,22 @@ export default function ExternalAuditForm({
       planAuditSent: formData.get("planAuditSent") === "on",
     });
     if (!result) return;
+    const calendarWarning = calendarWarningFromResult(result);
+    const saveNotice = noticeFromResult(result);
     if (autosave) {
       setSaveState("Sauvegarde OK");
+      if (calendarWarning) setNotice(calendarWarning);
       router.refresh();
       return;
     }
-    setNotice(result.conflictWarning || "Audit enregistre.");
+    setNotice(saveNotice);
     if (!audit?.id && result.audit?.id) {
+      if (calendarWarning) {
+        window.sessionStorage.setItem(
+          `externalAuditCalendarWarning:${result.audit.id}`,
+          calendarWarning,
+        );
+      }
       router.push(`/agent/gestion/audits/${result.audit.id}`);
       return;
     }
