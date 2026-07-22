@@ -1,32 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { requireStudioAgent } from "@/lib/server/studioAuth";
+import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 export async function POST(req: Request) {
   try {
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      return NextResponse.json(
-        { error: "NEXT_PUBLIC_SUPABASE_URL manquante." },
-        { status: 500 },
-      );
-    }
+    const auth = await requireStudioAgent();
+    if (!auth.ok) return auth.response;
 
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json(
-        { error: "SUPABASE_SERVICE_ROLE_KEY manquante." },
-        { status: 500 },
-      );
-    }
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
+    const supabase = createSupabaseAdminClient();
 
     const body = await req.json();
     const { dossierId, ...rawValues } = body;
@@ -38,8 +19,26 @@ export async function POST(req: Request) {
       );
     }
 
+    const { data: dossier, error: dossierError } = await supabase
+      .from("dossiers")
+      .select("id, organisation_id, type")
+      .eq("id", dossierId)
+      .maybeSingle();
+
+    if (dossierError) {
+      return NextResponse.json({ error: dossierError.message }, { status: 500 });
+    }
+
+    if (!dossier) {
+      return NextResponse.json(
+        { error: "Dossier introuvable." },
+        { status: 404 },
+      );
+    }
+
     const payload = {
       dossier_id: dossierId,
+      organisation_id: dossier.organisation_id ?? null,
       representant_prenom: rawValues.representant_prenom ?? null,
       representant_nom: rawValues.representant_nom ?? null,
       formateur_nom: rawValues.formateur_nom ?? null,

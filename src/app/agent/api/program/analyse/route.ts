@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeNdaDocumentType } from "@/lib/ndaDocumentTypes";
+import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { requireStudioAgent } from "@/lib/server/studioAuth";
 import { getOrExtractDocumentText } from "@/lib/server/documentTextExtraction";
 import {
   buildDeterministicNdaChecks,
@@ -315,23 +317,12 @@ function getNdaVariablesFallbackText(ndaVariables: NdaVariablesRow | null) {
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireStudioAgent();
+    if (!auth.ok) return auth.response;
+
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
         { error: "OPENAI_API_KEY manquante." },
-        { status: 500 },
-      );
-    }
-
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      return NextResponse.json(
-        { error: "NEXT_PUBLIC_SUPABASE_URL manquante." },
-        { status: 500 },
-      );
-    }
-
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json(
-        { error: "SUPABASE_SERVICE_ROLE_KEY manquante." },
         { status: 500 },
       );
     }
@@ -370,19 +361,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: ndaError.message }, { status: 500 });
     }
 
-    const { createClient: createServiceClient } =
-      await import("@supabase/supabase-js");
-
-    const serviceSupabase = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
+    const serviceSupabase = createSupabaseAdminClient();
 
     const { data: documents, error: docsError } = await supabase
       .from("documents")

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { requireStudioAgent } from "@/lib/server/studioAuth";
 import {
   extractCity,
   extractDuration,
@@ -316,6 +317,9 @@ function buildNdaListeFormateursResumeFromCv(
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireStudioAgent();
+    if (!auth.ok) return auth.response;
+
     const formData = await req.formData();
     const dossierId = formData.get("dossier_id") as string | null;
 
@@ -328,30 +332,7 @@ export async function POST(req: Request) {
 
     const supabase = await createClient();
 
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      return NextResponse.json(
-        { error: "NEXT_PUBLIC_SUPABASE_URL manquante." },
-        { status: 500 },
-      );
-    }
-
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json(
-        { error: "SUPABASE_SERVICE_ROLE_KEY manquante." },
-        { status: 500 },
-      );
-    }
-
-    const serviceSupabase = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
+    const serviceSupabase = createSupabaseAdminClient();
 
     const { data: dossier, error: dossierError } = await supabase
       .from("dossiers")
