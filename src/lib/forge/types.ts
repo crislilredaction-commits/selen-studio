@@ -17,6 +17,25 @@ export type MissionStatus =
 
 export type MissionPriority = "low" | "normal" | "high" | "urgent";
 
+export type MissionCheckpointKey =
+  | "analysis_completed"
+  | "plan_generated"
+  | "plan_validated"
+  | "branch_created"
+  | "development_started"
+  | "migrations_prepared"
+  | "tests_executed"
+  | "commits_pushed"
+  | "preview_created"
+  | "final_report_produced";
+
+export type MissionCheckpointStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "failed"
+  | "skipped";
+
 export type ActivityType =
   | "mission_received"
   | "analysis"
@@ -39,7 +58,9 @@ export type ActivityType =
   | "plan_failed"
   | "priority_changed"
   | "mission_paused"
-  | "mission_resumed";
+  | "mission_resumed"
+  | "checkpoint_updated"
+  | "checkpoint_failed";
 
 export type MissionPlanStatus =
   | "draft"
@@ -211,5 +232,30 @@ export type Mission = {
   brief?: MissionBrief;
   currentPlan?: MissionPlan;
   planHistory: MissionPlan[];
+  checkpoints: MissionCheckpoint[];
   lastVerifiedAt?: string;
+};
+
+export type MissionCheckpointHistory = {
+  id: string;
+  fromStatus?: MissionCheckpointStatus;
+  toStatus: MissionCheckpointStatus;
+  startedAt?: string;
+  completedAt?: string;
+  message?: string;
+  planId?: string;
+  createdAt: string;
+};
+
+export type MissionCheckpoint = {
+  id: string;
+  key: MissionCheckpointKey;
+  position: number;
+  status: MissionCheckpointStatus;
+  startedAt?: string;
+  completedAt?: string;
+  message?: string;
+  planId?: string;
+  updatedAt: string;
+  history: MissionCheckpointHistory[];
 };

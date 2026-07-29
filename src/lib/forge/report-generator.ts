@@ -47,6 +47,7 @@ function missionStatusLabel(status: Mission["status"]): string {
 
 export function buildDemoMissionReport(mission: Mission): MissionReportDraft {
   const generatedAt = new Date().toISOString();
+  const failedCheckpoints = mission.checkpoints.filter((checkpoint) => checkpoint.status === "failed");
   const manualTestItems: ReportManualTestItem[] = mission.checklist.map((item) => ({
     label: item.label,
     priority: "high",
@@ -72,6 +73,7 @@ export function buildDemoMissionReport(mission: Mission): MissionReportDraft {
     "Génération de démonstration locale, sans appel à Codex ni à une API externe.",
     "Liste détaillée des fichiers et hash Git non collectés automatiquement.",
     "Les résultats lint et build ne sont pas exécutés par cette action navigateur.",
+    ...failedCheckpoints.map((checkpoint) => `Checkpoint en échec : ${checkpoint.key} — ${checkpoint.message ?? "sans résultat"}`),
   ];
   const lintStatus: ReportCheckStatus = "not_run";
   const buildStatus: ReportCheckStatus = "not_run";
@@ -170,6 +172,16 @@ ${summary}
 - Résultats exacts : ${manualTestItems.filter((item) => item.state === "passed").length}/${manualTestItems.length} vérifications réussies.
 - Avertissements préexistants : non collectés automatiquement.
 - Nouveaux avertissements : aucun identifié.
+
+## Checkpoints de mission
+${mission.checkpoints.length
+  ? mission.checkpoints.map((checkpoint) => `- ${checkpoint.position}. ${checkpoint.key} : ${checkpoint.status}${checkpoint.message ? ` — ${checkpoint.message}` : ""}`).join("\n")
+  : "- Mission historique sans checkpoints."}
+
+### Échecs de checkpoint
+${failedCheckpoints.length
+  ? failedCheckpoints.map((checkpoint) => `- ${checkpoint.key} : ${checkpoint.message ?? "Résultat non renseigné"}`).join("\n")
+  : "- Aucun."}
 
 ## Git et déploiement
 - Dépôt : selen-studio

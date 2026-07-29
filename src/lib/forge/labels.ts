@@ -1,6 +1,8 @@
 import type {
   ActivityType,
   AgentState,
+  MissionCheckpointKey,
+  MissionCheckpointStatus,
   MissionPriority,
   MissionStatus,
 } from "./types";
@@ -35,6 +37,27 @@ export const priorityLabels: Record<MissionPriority, string> = {
   urgent: "Urgente",
 };
 
+export const checkpointLabels: Record<MissionCheckpointKey, string> = {
+  analysis_completed: "Analyse terminée",
+  plan_generated: "Plan généré",
+  plan_validated: "Plan validé",
+  branch_created: "Branche créée",
+  development_started: "Développement commencé",
+  migrations_prepared: "Migrations préparées",
+  tests_executed: "Tests exécutés",
+  commits_pushed: "Commits poussés",
+  preview_created: "Preview créée",
+  final_report_produced: "Rapport final produit",
+};
+
+export const checkpointStatusLabels: Record<MissionCheckpointStatus, string> = {
+  pending: "En attente",
+  in_progress: "En cours",
+  completed: "Terminé",
+  failed: "Échec",
+  skipped: "Ignoré",
+};
+
 export const activityTypeLabels: Record<ActivityType, string> = {
   mission_received: "Mission reçue",
   analysis: "Analyse",
@@ -58,6 +81,8 @@ export const activityTypeLabels: Record<ActivityType, string> = {
   priority_changed: "Priorité modifiée",
   mission_paused: "Mission mise en pause",
   mission_resumed: "Mission reprise",
+  checkpoint_updated: "Checkpoint mis à jour",
+  checkpoint_failed: "Échec de checkpoint",
 };
 
 export const missionFilters = [

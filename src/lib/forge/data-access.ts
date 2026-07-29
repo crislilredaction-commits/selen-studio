@@ -6,6 +6,9 @@ import type {
   Correction,
   Mission,
   MissionBrief,
+  MissionCheckpoint,
+  MissionCheckpointKey,
+  MissionCheckpointStatus,
   MissionPlan,
   MissionPlanDraft,
   MissionPlanStatus,
@@ -112,6 +115,30 @@ type ForgePlanRow = {
   validated_at: string | null;
 };
 
+type ForgeCheckpointHistoryRow = {
+  id: string;
+  from_status: MissionCheckpointStatus | null;
+  to_status: MissionCheckpointStatus;
+  started_at: string | null;
+  completed_at: string | null;
+  message: string | null;
+  plan_id: string | null;
+  created_at: string;
+};
+
+type ForgeCheckpointRow = {
+  id: string;
+  checkpoint_key: MissionCheckpointKey;
+  position: number;
+  status: MissionCheckpointStatus;
+  started_at: string | null;
+  completed_at: string | null;
+  message: string | null;
+  plan_id: string | null;
+  updated_at: string;
+  forge_mission_checkpoint_history?: ForgeCheckpointHistoryRow[];
+};
+
 type ForgeMissionRow = {
   id: string;
   title: string;
@@ -136,6 +163,7 @@ type ForgeMissionRow = {
   forge_mission_reports?: ForgeReportRow | ForgeReportRow[] | null;
   forge_mission_briefs?: ForgeBriefRow | ForgeBriefRow[] | null;
   forge_mission_plans?: ForgePlanRow[];
+  forge_mission_checkpoints?: ForgeCheckpointRow[];
 };
 
 function parseScope(value: string | null): string[] {
@@ -255,6 +283,32 @@ function mapPlan(row: ForgePlanRow): MissionPlan {
   };
 }
 
+function mapCheckpoint(row: ForgeCheckpointRow): MissionCheckpoint {
+  return {
+    id: row.id,
+    key: row.checkpoint_key,
+    position: row.position,
+    status: row.status,
+    startedAt: row.started_at ?? undefined,
+    completedAt: row.completed_at ?? undefined,
+    message: row.message ?? undefined,
+    planId: row.plan_id ?? undefined,
+    updatedAt: row.updated_at,
+    history: [...(row.forge_mission_checkpoint_history ?? [])]
+      .sort((left, right) => right.created_at.localeCompare(left.created_at))
+      .map((entry) => ({
+        id: entry.id,
+        fromStatus: entry.from_status ?? undefined,
+        toStatus: entry.to_status,
+        startedAt: entry.started_at ?? undefined,
+        completedAt: entry.completed_at ?? undefined,
+        message: entry.message ?? undefined,
+        planId: entry.plan_id ?? undefined,
+        createdAt: entry.created_at,
+      })),
+  };
+}
+
 function mapMission(row: ForgeMissionRow): Mission {
   const checklist = [...(row.forge_validation_items ?? [])]
     .sort((a, b) => a.position - b.position)
@@ -303,6 +357,9 @@ function mapMission(row: ForgeMissionRow): Mission {
     brief: briefRow ? mapBrief(briefRow) : undefined,
     currentPlan: planHistory.find((plan) => plan.isCurrent),
     planHistory,
+    checkpoints: [...(row.forge_mission_checkpoints ?? [])]
+      .sort((left, right) => left.position - right.position)
+      .map(mapCheckpoint),
     lastVerifiedAt,
   };
 }
@@ -314,7 +371,11 @@ const missionSelection = `
   forge_corrections (*),
   forge_mission_reports (*),
   forge_mission_briefs (*),
-  forge_mission_plans (*)
+  forge_mission_plans (*),
+  forge_mission_checkpoints (
+    *,
+    forge_mission_checkpoint_history (*)
+  )
 `;
 
 export async function listMissions(agentKey = "cody"): Promise<Mission[]> {
@@ -540,6 +601,24 @@ export async function resumeMission(missionId: string): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.rpc("forge_resume_mission", {
     p_mission_id: missionId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function updateMissionCheckpoint(
+  missionId: string,
+  checkpointKey: MissionCheckpointKey,
+  status: MissionCheckpointStatus,
+  message?: string,
+  planId?: string,
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_update_mission_checkpoint", {
+    p_mission_id: missionId,
+    p_checkpoint_key: checkpointKey,
+    p_status: status,
+    p_message: message?.trim() || null,
+    p_plan_id: planId ?? null,
   });
   if (error) throw new Error(error.message);
 }

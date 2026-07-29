@@ -166,6 +166,28 @@
 .forge-mission-controls select option { color: var(--selen-ink); }
 .forge-mission-controls small, .forge-mission-controls__dates { color: var(--selen-text3-oncard); font-size: 9px; }
 .forge-mission-controls__dates { display: grid; flex: 1; gap: 3px; }
+.forge-checkpoints__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.forge-checkpoints__heading h3 { margin-bottom: 5px; }
+.forge-checkpoints__heading p { color: var(--selen-text3-oncard); font-size: 10px; }
+.forge-checkpoints__heading > strong { color: var(--selen-gold2); font-family: var(--font-display); font-size: 20px; }
+.forge-checkpoints > ol { display: grid; gap: 9px; margin: 16px 0 0; padding: 0; list-style: none; }
+.forge-checkpoint { display: grid; grid-template-columns: 30px minmax(0,1fr); gap: 10px; padding: 11px; border: 1px solid rgba(245,208,138,.13); border-radius: 10px; background: rgba(247,239,224,.04); }
+.forge-checkpoint--failed { border-color: rgba(176,74,74,.38); background: rgba(176,74,74,.08); }
+.forge-checkpoint__position { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: rgba(245,208,138,.1); color: var(--selen-gold2); font-size: 10px; font-weight: 800; }
+.forge-checkpoint__title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.forge-checkpoint__title strong { color: var(--selen-text-oncard); font-size: 12px; }
+.forge-checkpoint__title span { display: inline-flex; align-items: center; gap: 5px; color: var(--selen-gold2); font-size: 9px; font-weight: 700; }
+.forge-checkpoint__dates { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 5px; color: var(--selen-text3-oncard); font-size: 9px; }
+.forge-checkpoint__body > p { display: flex; align-items: center; gap: 5px; margin-top: 7px; color: var(--selen-text2-oncard); font-size: 10px; }
+.forge-checkpoint__body > p.is-error { color: #ef9d92; }
+.forge-checkpoint__editor { display: grid; gap: 7px; margin-top: 9px; }
+.forge-checkpoint__editor input { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid rgba(245,208,138,.18); border-radius: 8px; background: rgba(247,239,224,.08); color: var(--selen-text-oncard); font-size: 10px; }
+.forge-checkpoint__editor > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.forge-checkpoint__history { margin-top: 8px; color: var(--selen-text3-oncard); font-size: 9px; }
+.forge-checkpoint__history summary { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.forge-checkpoint__history ul { display: grid; gap: 6px; margin: 7px 0 0; padding: 8px 0 0 14px; border-top: 1px solid rgba(245,208,138,.1); }
+.forge-checkpoint__history li { display: grid; grid-template-columns: 120px 1fr; gap: 6px; }
+.forge-checkpoint__history p { grid-column: 2; }
 .forge-detail__section { padding: 22px; border-top: 1px solid rgba(245,208,138,.12); }
 .forge-detail__section ul { color: var(--selen-text2-oncard); font-size: 12px; line-height: 1.7; }
 .forge-resource-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
@@ -304,6 +326,10 @@
   .forge-detail__header, .forge-detail__actions { align-items: flex-start; flex-direction: column; }
   .forge-mission-controls { align-items: stretch; flex-direction: column; }
   .forge-mission-controls .forge-button { width: 100%; }
+  .forge-checkpoint__title { align-items: flex-start; flex-direction: column; }
+  .forge-checkpoint__editor .forge-button { width: 100%; }
+  .forge-checkpoint__history li { grid-template-columns: 1fr; }
+  .forge-checkpoint__history p { grid-column: auto; }
   .forge-detail__header, .forge-detail__section, .forge-detail__facts > div, .forge-detail__actions { padding: 17px; }
   .forge-check-item { grid-template-columns: 1fr; }
   .forge-check-item input[type="text"] { grid-column: auto; }

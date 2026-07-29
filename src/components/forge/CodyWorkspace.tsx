@@ -16,13 +16,14 @@ import {
   setPlanningAnalysisState,
   storeMissionPlan,
   updateMissionPriority,
+  updateMissionCheckpoint,
   updateValidationItem,
   validateMission,
   validateMissionPlan,
   type NewPlanningMissionInput,
 } from "@/lib/forge/data-access";
 import { missionFilters } from "@/lib/forge/labels";
-import type { Mission, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
+import type { Mission, MissionCheckpoint, MissionCheckpointStatus, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
 import { AgentStatusBadge } from "./Badges";
 import MissionCard from "./MissionCard";
 import MissionDetail from "./MissionDetail";
@@ -223,6 +224,34 @@ export default function CodyWorkspace() {
     }
   }
 
+  async function changeCheckpoint(
+    checkpoint: MissionCheckpoint,
+    status: MissionCheckpointStatus,
+    message?: string,
+  ) {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await updateMissionCheckpoint(
+        missionId,
+        checkpoint.key,
+        status,
+        message,
+        checkpoint.key === "plan_validated" && status === "completed"
+          ? selectedMission.currentPlan?.id
+          : undefined,
+      );
+      await loadMissions(missionId);
+      setFeedback(status === "failed" ? "Échec enregistré dans les checkpoints et le journal." : "Checkpoint enregistré.");
+    } catch (checkpointError) {
+      setFeedback(checkpointError instanceof Error ? checkpointError.message : "Le checkpoint n’a pas pu être mis à jour.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function createAndAnalyzeMission(input: NewPlanningMissionInput) {
     setPlanningBusy(true);
     setFeedback(null);
@@ -396,6 +425,7 @@ export default function CodyWorkspace() {
           onPause={pauseSelectedMission}
           onResume={resumeSelectedMission}
           missionActionBusy={saving}
+          onCheckpointUpdate={changeCheckpoint}
         />
       </div>
       )}

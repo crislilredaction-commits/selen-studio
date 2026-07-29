@@ -1,12 +1,13 @@
 import { ExternalLink, GitBranch, Pause, Play, ShieldCheck } from "lucide-react";
 import { priorityLabels } from "@/lib/forge/labels";
-import type { Mission, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
+import type { Mission, MissionCheckpoint, MissionCheckpointStatus, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
 import { MissionStatusBadge } from "./Badges";
 import ActivityJournal from "./ActivityJournal";
 import ValidationChecklist from "./ValidationChecklist";
 import CorrectionComposer from "./CorrectionComposer";
 import MissionReportPanel from "./MissionReportPanel";
 import MissionPlanningPanel from "./MissionPlanningPanel";
+import MissionCheckpointPanel from "./MissionCheckpointPanel";
 
 export default function MissionDetail({
   mission,
@@ -24,6 +25,7 @@ export default function MissionDetail({
   onPause,
   onResume,
   missionActionBusy,
+  onCheckpointUpdate,
 }: {
   mission: Mission;
   onChecklistChange: (id: string, patch: Partial<ValidationItem>) => void;
@@ -40,6 +42,7 @@ export default function MissionDetail({
   onPause: () => Promise<void>;
   onResume: () => Promise<void>;
   missionActionBusy: boolean;
+  onCheckpointUpdate: (checkpoint: MissionCheckpoint, status: MissionCheckpointStatus, message?: string) => Promise<void>;
 }) {
   const planningOnly = mission.planningRequired && [
     "draft",
@@ -114,6 +117,12 @@ export default function MissionDetail({
         <h3>Journal de Cody</h3>
         <ActivityJournal entries={mission.activities} />
       </section>
+
+      <MissionCheckpointPanel
+        checkpoints={mission.checkpoints}
+        busy={missionActionBusy}
+        onUpdate={onCheckpointUpdate}
+      />
 
       {mission.planningRequired && (
         <MissionPlanningPanel
