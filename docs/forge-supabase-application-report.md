@@ -271,3 +271,166 @@ Alternative acceptable uniquement après validation humaine : produire des
 sauvegardes restaurables équivalentes avec `pg_dump`/`psql` et une connexion
 sécurisée, sans afficher ni enregistrer le mot de passe dans le dépôt ou le
 rapport.
+
+## Vérification et réalignement du 29 juillet 2026
+
+### Contexte
+
+Le correctif
+`20260729173634_realign_daily_and_satisfaction_access.sql` a été exécuté
+manuellement par l'utilisatrice dans le SQL Editor du projet Selen Studio. Le
+SQL Editor a indiqué : `Success. No rows returned.`
+
+La reprise décrite ci-dessous a commencé par une introspection exclusivement en
+lecture seule. Aucun SQL métier supplémentaire n'a été appliqué.
+
+### Vérifications post-correctif
+
+Toutes les vérifications demandées sont conformes :
+
+- `annual_period_start` et `annual_period_end` existent, sont de type `date`,
+  non nulles et possèdent les valeurs par défaut attendues ;
+- l'unique abonnement est toujours actif ;
+- sa période est `2026-07-05` → `2027-07-05` ;
+- `annual_period_end` est exactement douze mois après
+  `annual_period_start` ;
+- la contrainte
+  `daily_subscriptions_annual_period_exact_year_check` est présente et
+  validée ;
+- les traces locales de création et d'acceptation tarifaire restent datées du
+  5 juillet 2026 ;
+- l'abonnement conserve son identifiant Stripe, sa session Checkout, le palier
+  `base` et `tier_change_pending = false` ;
+- la politique SELECT
+  `Studio staff can read satisfaction surveys` existe pour `authenticated` ;
+- aucune politique n'existe sur `lil_billing_profiles` ;
+- aucune surcharge Daily `(uuid, integer)` ne subsiste ;
+- les trois fonctions présentes ont uniquement la signature `(uuid)` :
+  - `daily_refresh_subscription_period(uuid)` ;
+  - `daily_annual_learner_count(uuid)` ;
+  - `daily_prepare_upper_tier_if_needed(uuid)` ;
+- les trois fonctions sont `security invoker` ;
+- leurs ACL accordent EXECUTE à `service_role` et au propriétaire technique
+  `postgres` uniquement ; `PUBLIC`, `anon` et `authenticated` n'ont aucun
+  grant EXECUTE.
+
+Les indicateurs métier disponibles avant et après correction restent
+cohérents : une ligne d'abonnement active, même statut, mêmes traces Stripe,
+même palier et aucun changement de palier en attente. Aucun changement métier
+inattendu n'a été détecté dans le périmètre contrôlé.
+
+### Repairs exécutés
+
+Après conformité complète, exactement 34 versions documentées et validées ont
+été marquées `applied`, individuellement et dans l'ordre chronologique. Chaque
+commande a réussi :
+
+```text
+20260616000000
+20260617000000
+20260617001000
+20260617002000
+20260617003000
+20260624000000
+20260625000000
+20260625001000
+20260625002000
+20260626000000
+20260626001000
+20260626002000
+20260626003000
+20260629090000
+20260629110000
+20260701090000
+20260701100000
+20260701110000
+20260701120000
+20260701130000
+20260703090000
+20260703100000
+20260703110000
+20260703120000
+20260703130000
+20260703140000
+20260704100000
+20260704110000
+20260704120000
+20260704130000
+20260705110000
+20260707100000
+20260707110000
+20260729173634
+```
+
+Ce total comprend :
+
+- 29 migrations confirmées intégralement présentes ;
+- les trois migrations partielles `20260624000000`, `20260701110000` et
+  `20260703100000` ;
+- la migration obsolète absorbée `20260701090000` ;
+- la migration corrective `20260729173634`.
+
+Aucun repair supplémentaire n'a été exécuté. Un repair a uniquement modifié
+`supabase_migrations.schema_migrations` ; aucun SQL de migration historique n'a
+été rejoué.
+
+### État final de l'historique
+
+La commande exécutée :
+
+```powershell
+npx.cmd supabase migration list --linked
+```
+
+montre une correspondance locale/distante pour les 34 versions, de
+`20260616000000` à `20260729173634`. La seule version locale sans équivalent
+distant est :
+
+```text
+20260729183000
+```
+
+### Résultat exact du dry-run
+
+Commande exécutée :
+
+```powershell
+npx.cmd supabase db push --dry-run --linked
+```
+
+Résultat structuré de la CLI :
+
+```json
+{
+  "upToDate": false,
+  "dryRun": true,
+  "migrations": [
+    "20260729183000_create_forge_persistence.sql"
+  ],
+  "seeds": [],
+  "roles": [],
+  "message": "Finished supabase db push."
+}
+```
+
+Sortie lisible :
+
+```text
+DRY RUN: migrations will not be pushed to the database.
+Would push these migrations:
+ • 20260729183000_create_forge_persistence.sql
+```
+
+Le résultat satisfait exactement la condition d'arrêt : seule la migration
+Forge reste à appliquer.
+
+### État d'arrêt et anomalies
+
+- aucun vrai `db push` exécuté ;
+- migration Forge non appliquée ;
+- aucune anomalie détectée pendant l'introspection, les repairs ou le dry-run ;
+- les sauvegardes CLI de la tentative précédente restent invalides, car Docker
+  Desktop n'était pas disponible ; l'exécution manuelle du correctif a été
+  réalisée par l'utilisatrice en dehors de cette tentative automatisée ;
+- aucun merge vers `main` ;
+- aucun déploiement Vercel, Preview ou production.
