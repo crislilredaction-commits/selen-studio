@@ -170,21 +170,37 @@ Le rapport Cody préexistant reste présent.
 
 ## Tests Preview
 
-À compléter après création de la Preview Vercel :
+Déploiement automatique :
 
-- création depuis une demande libre et génération réelle ;
-- persistance après actualisation ;
-- modification, régénération et historique ;
-- blocage réel et question non bloquante ;
-- copie et téléchargement Markdown ;
-- journalisation ;
-- contrôle des missions et rapports existants ;
-- affichage à 390 px et 1440 px.
+- URL :
+  `https://selen-studio-k3iqsxfer-crislilredaction-4256s-projects.vercel.app`
+- cible : Preview, jamais production ;
+- commit : `f0aa5277d1aed86df39118f8f1f89f90ccf9613f` ;
+- état Vercel : `READY` ;
+- contrôle HTTP non authentifié de `/agent/forge/cody` : réponse 200 avec
+  routage vers `/login`, comportement attendu sans cookie Studio.
 
 La contrainte de test impose de réutiliser l’instance Chrome et le profil
 utilisateur existants. Aucun profil navigateur temporaire ne doit être lancé.
-Si l’automatisation ne peut pas piloter cette instance persistante, les tests
-visuels devront rester manuels et cette limite sera signalée.
+La Preview a été ouverte dans Google Chrome sans argument de profil et
+l’utilisatrice a confirmé sa connexion Studio. Toutefois, cette instance
+existante n’expose pas d’interface d’automatisation réutilisable dans
+l’environnement Codex. Conformément à la consigne, elle n’a pas été relancée
+avec un profil temporaire ou un port de débogage.
+
+Les tests visuels et fonctionnels authentifiés suivants n’ont donc pas été
+automatisés :
+
+- génération réelle via OpenAI ;
+- persistance après actualisation ;
+- modification, régénération et historique visibles ;
+- copie et téléchargement Markdown ;
+- contrôle visuel du journal ;
+- rendu à 390 px et 1440 px.
+
+Les garanties correspondantes couvertes hors navigateur sont le build complet,
+la présence de la route, les contrôles RLS et les scénarios PostgreSQL
+transactionnels de versionnement et de garde-fou.
 
 ## Retour arrière
 
@@ -207,8 +223,8 @@ logique du schéma, des données publiques et de l’historique.
 
 ## Risques et limites restants
 
-- Les tests navigateur et l’appel OpenAI réel dépendent de la Preview et d’une
-  session Studio persistante.
+- Les tests navigateur authentifiés et l’appel OpenAI réel restent à valider
+  manuellement dans la fenêtre Chrome déjà authentifiée.
 - Les deux avertissements de clés étrangères circulaires doivent être pris en
   compte lors d’une restauration des données.
 - Le modèle autorise les membres Studio actifs à créer et éditer les versions
