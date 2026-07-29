@@ -1,7 +1,7 @@
 # La Forge — checkpoints persistants de Cody
 
-Date : 30 juillet 2026  
-Branche : `feature/forge-cody-checkpoints`  
+Date : 30 juillet 2026
+Branche : `feature/forge-cody-checkpoints`
 Projet Supabase : Selen Studio (`pjbilmywwkpghhayftph`)
 
 ## Périmètre réalisé
@@ -182,7 +182,9 @@ Résultat : toutes les assertions métier passent. Aucun test ne persiste.
 
 ## Preview et validation visuelle
 
-URL de branche Preview : à compléter après le premier push.
+Preview automatique Vercel du commit d’implémentation, statut `READY` :
+
+`https://selen-studio-fbdn4os71-crislilredaction-4256s-projects.vercel.app`
 
 La session Chrome Studio existante ne peut pas être pilotée par l’environnement
 Codex sans ouvrir un autre profil, ce qui est interdit. Aucun test visuel
@@ -217,6 +219,7 @@ réparer l’historique de migrations qu’après validation humaine.
 
 ## Livraison
 
-Commit d’implémentation : à compléter après création.  
-Commit de documentation Preview : à compléter après création.  
+Commit d’implémentation : `ff7edf659261e6f7ef7b3f97967f688282b3d6a7` — `Ajoute les checkpoints des missions Cody`.
+
+Le commit documentaire qui inscrit la Preview dans ce rapport est indiqué dans le compte rendu final Git.
 Aucun merge vers `main` et aucun déploiement production manuel.
