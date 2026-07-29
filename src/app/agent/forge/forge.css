@@ -186,6 +186,15 @@
 .forge-detail__actions { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 18px 22px; border-top: 1px solid rgba(245,208,138,.14); background: rgba(0,0,0,.08); }
 .forge-detail__actions p { display: flex; align-items: center; gap: 7px; color: var(--selen-text3-oncard); font-size: 10px; }
 .forge-empty { padding: 24px; border: 1px dashed var(--selen-border2); border-radius: 14px; color: var(--selen-text3); font-size: 12px; text-align: center; }
+.forge-state { display: flex; min-height: 110px; align-items: center; justify-content: center; gap: 10px; padding: 24px; border: 1px dashed var(--selen-border2); border-radius: 14px; background: rgba(247,239,224,.45); color: var(--selen-text2); font-size: 12px; text-align: center; }
+.forge-state--error { border-color: rgba(176,74,74,.3); color: var(--selen-danger); }
+.forge-state--error span { max-width: 520px; }
+.forge-save-status { display: flex; width: fit-content; align-items: center; gap: 7px; margin: 0 0 10px auto !important; color: var(--selen-text2); font-size: 10px; }
+.forge-spin { animation: forge-spin 1s linear infinite; }
+
+@keyframes forge-spin {
+  to { transform: rotate(360deg); }
+}
 
 @media (max-width: 1100px) {
   .forge-workspace { grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); }

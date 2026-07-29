@@ -41,6 +41,7 @@ export const activityTypeLabels: Record<ActivityType, string> = {
   deployment: "Déploiement",
   blocked: "Blocage",
   completed: "Mission terminée",
+  user_validation: "Validation utilisateur",
 };
 
 export const missionFilters = [

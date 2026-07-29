@@ -23,6 +23,7 @@ const icons: Record<ActivityType, React.ReactNode> = {
   deployment: <Rocket size={15} />,
   blocked: <AlertTriangle size={15} />,
   completed: <CheckCircle2 size={15} />,
+  user_validation: <CheckCircle2 size={15} />,
 };
 
 export default function ActivityJournal({ entries }: { entries: ActivityEntry[] }) {

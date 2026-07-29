@@ -1,4 +1,30 @@
+"use client";
+
+import { useState } from "react";
 import type { CheckResult, ValidationItem } from "@/lib/forge/types";
+
+function ValidationNote({
+  item,
+  onChange,
+}: {
+  item: ValidationItem;
+  onChange: (id: string, patch: Partial<ValidationItem>) => void;
+}) {
+  const [value, setValue] = useState(item.note ?? "");
+
+  return (
+    <input
+      type="text"
+      value={value}
+      placeholder="Note facultative"
+      aria-label={`Note pour ${item.label}`}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={() => {
+        if (value !== (item.note ?? "")) onChange(item.id, { note: value });
+      }}
+    />
+  );
+}
 
 export default function ValidationChecklist({
   items,
@@ -46,12 +72,10 @@ export default function ValidationChecklist({
               <option value="issue">Anomalie</option>
               <option value="not_applicable">Non applicable</option>
             </select>
-            <input
-              type="text"
-              value={item.note ?? ""}
-              placeholder="Note facultative"
-              aria-label={`Note pour ${item.label}`}
-              onChange={(event) => onChange(item.id, { note: event.target.value })}
+            <ValidationNote
+              key={`${item.id}:${item.updatedAt ?? ""}`}
+              item={item}
+              onChange={onChange}
             />
           </div>
         ))}

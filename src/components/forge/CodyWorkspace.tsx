@@ -2,45 +2,62 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Hammer, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { initialMissions } from "@/lib/forge/demo-data";
+import { AlertTriangle, ArrowLeft, Hammer, RefreshCw, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  addCorrection,
+  getMissionDetails,
+  listMissions,
+  updateValidationItem,
+  validateMission,
+} from "@/lib/forge/data-access";
 import { missionFilters } from "@/lib/forge/labels";
-import type { Mission, MissionStatus, ValidationItem } from "@/lib/forge/types";
+import type { Mission, ValidationItem } from "@/lib/forge/types";
 import { AgentStatusBadge } from "./Badges";
 import MissionCard from "./MissionCard";
 import MissionDetail from "./MissionDetail";
 
-const storageKey = "selen-forge-cody-v1";
 type Filter = (typeof missionFilters)[number]["value"];
 
 export default function CodyWorkspace() {
-  const [missions, setMissions] = useState<Mission[]>(initialMissions);
-  const [selectedId, setSelectedId] = useState(initialMissions[0].id);
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
-  const [hydrated, setHydrated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadMissions = useCallback(async (preferredId?: string) => {
+    setLoading(true);
+    setError(null);
     try {
-      const stored = window.localStorage.getItem(storageKey);
-      if (stored) setMissions(JSON.parse(stored) as Mission[]);
+      const nextMissions = await listMissions();
+      setMissions(nextMissions);
+      setSelectedId((current) => {
+        const candidate = preferredId ?? current;
+        return nextMissions.some((mission) => mission.id === candidate)
+          ? candidate
+          : nextMissions[0]?.id ?? null;
+      });
     } catch {
-      // Une donnée locale invalide ne doit jamais empêcher l'ouverture de La Forge.
+      setError("Les missions de Cody ne peuvent pas être chargées. Vérifiez que la migration Forge est appliquée.");
     } finally {
-      setHydrated(true);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
-    window.localStorage.setItem(storageKey, JSON.stringify(missions));
-  }, [hydrated, missions]);
+    void loadMissions();
+  }, [loadMissions]);
 
   const visibleMissions = useMemo(
     () => missions.filter((mission) => filter === "all" || mission.status === filter),
     [filter, missions],
   );
-  const selectedMission = missions.find((mission) => mission.id === selectedId) ?? visibleMissions[0] ?? missions[0];
+  const selectedMission = missions.find((mission) => mission.id === selectedId)
+    ?? visibleMissions[0]
+    ?? missions[0];
 
   function updateMission(id: string, updater: (mission: Mission) => Mission) {
     setMissions((current) => current.map((mission) => (mission.id === id ? updater(mission) : mission)));
@@ -52,54 +69,62 @@ export default function CodyWorkspace() {
     if (first) setSelectedId(first.id);
   }
 
-  function changeChecklist(id: string, patch: Partial<ValidationItem>) {
-    updateMission(selectedMission.id, (mission) => ({
+  async function changeChecklist(id: string, patch: Partial<ValidationItem>) {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setFeedback(null);
+    updateMission(missionId, (mission) => ({
       ...mission,
       lastVerifiedAt: new Date().toISOString(),
       checklist: mission.checklist.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     }));
+    setSaving(true);
+    try {
+      await updateValidationItem(id, patch);
+      const refreshed = await getMissionDetails(missionId);
+      updateMission(missionId, () => refreshed);
+      setFeedback("Vérification enregistrée.");
+    } catch {
+      setFeedback("L’enregistrement a échoué. Les données ont été rechargées.");
+      await loadMissions(missionId);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function addCorrection(content: string) {
-    updateMission(selectedMission.id, (mission) => ({
-      ...mission,
-      status: "changes_requested",
-      corrections: [
-        ...mission.corrections,
-        { id: crypto.randomUUID(), content, createdAt: new Date().toISOString() },
-      ],
-      activities: [
-        ...mission.activities,
-        {
-          id: crypto.randomUUID(),
-          occurredAt: new Date().toISOString(),
-          type: "correction",
-          message: `Correction demandée : ${content}`,
-          status: "changes_requested",
-        },
-      ],
-    }));
-    setFilter("all");
+  async function submitCorrection(content: string) {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await addCorrection(missionId, content);
+      await loadMissions(missionId);
+      setFilter("all");
+      setFeedback("Correction ajoutée et journal mis à jour.");
+    } catch {
+      setFeedback("La correction n’a pas pu être enregistrée.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function validateMission() {
+  async function submitValidation() {
+    if (!selectedMission) return;
     if (!window.confirm(`Confirmer la validation de la mission « ${selectedMission.title} » ?`)) return;
-    updateMission(selectedMission.id, (mission) => ({
-      ...mission,
-      status: "validated" as MissionStatus,
-      progress: 100,
-      activities: [
-        ...mission.activities,
-        {
-          id: crypto.randomUUID(),
-          occurredAt: new Date().toISOString(),
-          type: "completed",
-          message: "Mission validée par Lil",
-          status: "validated",
-        },
-      ],
-    }));
-    setFilter("all");
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await validateMission(missionId);
+      await loadMissions(missionId);
+      setFilter("all");
+      setFeedback("Mission validée et journal mis à jour.");
+    } catch {
+      setFeedback("La mission n’a pas pu être validée.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -127,6 +152,25 @@ export default function CodyWorkspace() {
         ))}
       </nav>
 
+      {saving && <p className="forge-save-status" role="status"><RefreshCw className="forge-spin" /> Enregistrement…</p>}
+      {feedback && <p className="forge-save-status" role="status">{feedback}</p>}
+
+      {loading && (
+        <div className="forge-state" role="status"><RefreshCw className="forge-spin" /> Chargement des missions de Cody…</div>
+      )}
+
+      {!loading && error && (
+        <div className="forge-state forge-state--error" role="alert">
+          <AlertTriangle /> <span>{error}</span>
+          <button className="forge-button forge-button--secondary" onClick={() => void loadMissions()}>Réessayer</button>
+        </div>
+      )}
+
+      {!loading && !error && missions.length === 0 && (
+        <div className="forge-state">Aucune mission n’est encore enregistrée pour Cody.</div>
+      )}
+
+      {!loading && !error && selectedMission && (
       <div className="forge-workspace">
         <aside className="forge-mission-list" aria-label="Missions de Cody">
           {visibleMissions.length ? visibleMissions.map((mission) => (
@@ -141,10 +185,11 @@ export default function CodyWorkspace() {
         <MissionDetail
           mission={selectedMission}
           onChecklistChange={changeChecklist}
-          onAddCorrection={addCorrection}
-          onValidate={validateMission}
+          onAddCorrection={submitCorrection}
+          onValidate={submitValidation}
         />
       </div>
+      )}
     </main>
   );
 }

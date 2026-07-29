@@ -22,7 +22,8 @@ export type ActivityType =
   | "build"
   | "deployment"
   | "blocked"
-  | "completed";
+  | "completed"
+  | "user_validation";
 
 export type CheckResult = "compliant" | "issue" | "not_applicable" | null;
 
@@ -32,6 +33,8 @@ export type ValidationItem = {
   checked: boolean;
   result: CheckResult;
   note?: string;
+  checkedAt?: string;
+  updatedAt?: string;
 };
 
 export type ActivityEntry = {
@@ -46,6 +49,8 @@ export type Correction = {
   id: string;
   content: string;
   createdAt: string;
+  status: "open" | "resolved";
+  resolvedAt?: string;
 };
 
 export type Mission = {
