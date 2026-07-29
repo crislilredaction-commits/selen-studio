@@ -609,3 +609,220 @@ d'autorisation dont la vérification de sécurité a échoué.
 
 Aucun merge vers `main` et aucun déploiement Vercel manuel ou production n'ont
 été effectués.
+
+## Correction des privilèges et tests fonctionnels — 29 juillet 2026
+
+### Migration corrective
+
+Une migration distincte, postérieure à la migration Forge, a été créée :
+
+```text
+20260729184632_tighten_forge_privileges.sql
+```
+
+Elle contient uniquement trois opérations de privilèges :
+
+1. révocation de tous les droits table pour `anon` et `authenticated` sur les
+   quatre tables Forge ;
+2. réattribution à `authenticated` de SELECT, INSERT, UPDATE et DELETE
+   uniquement ;
+3. révocation d'EXECUTE sur `set_forge_updated_at()` pour `PUBLIC`, `anon` et
+   `authenticated`.
+
+Elle ne contient aucun DML, ne modifie aucune fonction métier, politique,
+trigger ou donnée.
+
+### Privilèges avant et après
+
+Avant correction, les quatre tables avaient l'ACL :
+
+```text
+authenticated=arwdDxtm
+```
+
+`authenticated` possédait donc également TRUNCATE, REFERENCES et TRIGGER.
+`set_forge_updated_at()` était exécutable par `PUBLIC`, `anon` et
+`authenticated`.
+
+Après correction :
+
+- `authenticated` possède SELECT, INSERT, UPDATE et DELETE sur chaque table ;
+- `authenticated` ne possède plus TRUNCATE, REFERENCES ni TRIGGER ;
+- `anon` ne possède aucun privilège sur les quatre tables ;
+- RLS reste active sur les quatre tables ;
+- chaque table conserve son unique politique ALL pour les profils Studio
+  actifs ;
+- les deux triggers `updated_at` sont présents et actifs ;
+- `set_forge_updated_at()` n'est plus exécutable par `PUBLIC`, `anon` ou
+  `authenticated` ; son ACL ne conserve que `postgres` et `service_role` ;
+- `forge_add_correction(uuid, text)` et `forge_validate_mission(uuid)` restent
+  `security invoker`, exécutables par `authenticated` et inaccessibles à
+  `anon`.
+
+Le trigger a continué de fonctionner : une mise à jour de checklist effectuée
+depuis la Preview a modifié `updated_at` alors que le compte authentifié n'avait
+plus EXECUTE direct sur la fonction trigger.
+
+### Validations locales
+
+- parse PostgreSQL : 3 instructions valides ;
+- `git diff --check` : conforme ;
+- `npm.cmd run lint` : succès, 0 erreur et 18 avertissements préexistants ;
+- `npm.cmd run build` : succès, 83 pages générées ;
+- avertissements build préexistants : `pdfjs/canvas` et convention Next.js
+  `middleware`.
+
+### Dry-run et application
+
+Dry-run :
+
+```powershell
+npx.cmd supabase db push --dry-run --linked
+```
+
+Résultat :
+
+```json
+{
+  "upToDate": false,
+  "dryRun": true,
+  "migrations": [
+    "20260729184632_tighten_forge_privileges.sql"
+  ],
+  "seeds": [],
+  "roles": []
+}
+```
+
+La correction était l'unique migration proposée.
+
+Application :
+
+```powershell
+npx.cmd supabase db push --linked
+```
+
+Résultat :
+
+```json
+{
+  "upToDate": false,
+  "dryRun": false,
+  "migrations": [
+    "20260729184632_tighten_forge_privileges.sql"
+  ],
+  "seeds": [],
+  "roles": []
+}
+```
+
+`npx.cmd supabase migration list --linked` confirme que
+`20260729184632` est présente localement et au distant.
+
+### Preview testée
+
+URL stable de la branche :
+
+```text
+https://selen-studio-git-feature-dc70f7-crislilredaction-4256s-projects.vercel.app
+```
+
+La Preview était READY et protégée par Vercel Authentication. Un lien
+temporaire Vercel, expirant le 30 juillet 2026, a servi uniquement à franchir
+cette protection. La connexion Studio a ensuite été réalisée manuellement par
+l'utilisatrice, sans transmission d'identifiants.
+
+Parcours vérifiés :
+
+- `/agent/forge` ;
+- `/agent/forge/cody` ;
+- état vide initial sans erreur Supabase ;
+- affichage desktop ;
+- affichage mobile avec émulation iPhone 12.
+
+### Mission technique
+
+Mission conservée dans la base :
+
+```text
+ID : fdf81665-91a2-4910-af61-b89aaefd393c
+Titre : [TEST TECHNIQUE] Validation persistance Forge – 29/07/2026
+```
+
+L'insertion contrôlée a créé :
+
+- une mission Cody au statut initial `in_progress` ;
+- deux items de checklist ;
+- une entrée `mission_received`.
+
+Tests réalisés depuis la Preview authentifiée :
+
+1. mission affichée dans la liste et le détail ;
+2. premier item coché ;
+3. résultat automatique `compliant` ;
+4. note `Note technique persistée depuis la Preview` ajoutée ;
+5. actualisation : coche, résultat et note toujours présents ;
+6. correction
+   `Correction technique : vérifier le cycle de persistance` ajoutée ;
+7. statut passé à `changes_requested` / « À corriger » ;
+8. entrée automatique `correction` présente dans le journal ;
+9. mission validée via `forge_validate_mission` ;
+10. statut final `validated`, progression 100 et `validated_at` renseigné ;
+11. entrée automatique `user_validation` présente ;
+12. nouvelle actualisation : toutes les données persistent ;
+13. session navigateur entièrement effacée, puis nouvelle connexion Studio ;
+14. après reconnexion, mission, statut, checklist, note, correction et journal
+    sont toujours présents ;
+15. rendu desktop et mobile lisible, sans erreur Supabase visible.
+
+L'introspection SQL finale confirme :
+
+- mission `validated`, progression 100 ;
+- `validated_at` non nul ;
+- `updated_at > created_at` ;
+- premier item coché, `checked_at` non nul, résultat `compliant` et note
+  persistée ;
+- une correction ouverte ;
+- trois événements dans l'ordre :
+  `mission_received`, `correction`, `user_validation`.
+
+La mission n'a pas été supprimée.
+
+### Captures
+
+Captures locales conservées dans le dossier temporaire ignoré par Git :
+
+```text
+supabase/.temp/forge-test-captures/01-empty-desktop.png
+supabase/.temp/forge-test-captures/02-changes-requested-desktop.png
+supabase/.temp/forge-test-captures/03-validated-desktop.png
+supabase/.temp/forge-test-captures/04-validated-mobile.png
+supabase/.temp/forge-test-captures/05-after-reconnect.png
+```
+
+Elles montrent l'état vide, le statut À corriger, le statut Validée, le rendu
+iPhone 12 et la persistance après reconnexion. Elles ne contiennent aucun
+secret et ne sont pas ajoutées au dépôt.
+
+### Anomalies et risques restants
+
+- aucune anomalie de sécurité ou de persistance après correction ;
+- le compte Studio actif peut effectuer le CRUD prévu sous RLS ;
+- les default privileges du projet restent susceptibles d'accorder des droits
+  larges à de futures tables : chaque nouvelle migration doit continuer à
+  révoquer puis réaccorder explicitement les privilèges nécessaires ;
+- la correction ouverte de la mission reste ouverte après validation, ce qui
+  correspond au modèle actuel mais pourra nécessiter une décision produit ;
+- la mission validée conserve un second item non coché : la fonction de
+  validation ne requiert actuellement pas une checklist complète ;
+- les captures temporaires ne constituent pas un artefact durable du dépôt.
+
+### Prochaine étape recommandée
+
+Faire tester la même Preview par Lil sur ses appareils réels, puis décider si
+la validation doit automatiquement résoudre les corrections ouvertes et/ou
+exiger une checklist entièrement conforme. Aucun changement de ce type n'a été
+introduit dans cette correction strictement limitée aux privilèges.
+
+Aucun merge vers `main` et aucun déploiement production manuel n'ont été
+effectués.
