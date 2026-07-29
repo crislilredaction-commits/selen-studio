@@ -170,15 +170,42 @@ en sections `<details>` repliables. Sous 600 px :
 - contrainte du journal étendue aux trois événements de rapport ;
 - unique mission technique existante conservée, sans création de mission.
 
-### À réaliser sur la Preview
+### Réalisés sur la Preview
 
-- génération sur l’unique mission technique existante ;
-- régénération et journal ;
-- statut `outdated` après modification contrôlée ;
-- actualisation et reconnexion ;
-- copie du Markdown ;
-- téléchargement `.md` ;
-- affichage desktop et mobile.
+Preview testée :
+`https://selen-studio-git-feature-dd59f7-crislilredaction-4256s-projects.vercel.app`
+
+- déploiement automatique Vercel `dpl_26xcPFHBnsddR4Hun4m651jkngHZ`,
+  état `READY`, cible Preview et commit `93d63f8` ;
+- ouverture de `/agent/forge`, puis `/agent/forge/cody` avec un compte Studio
+  actif ;
+- une seule mission affichée : la mission technique existante
+  `fdf81665-91a2-4910-af61-b89aaefd393c` ;
+- génération du rapport réussie, statut `ready` et message de confirmation ;
+- synthèse, risques, tests manuels, limites et recommandation affichés ;
+- onze sections Markdown présentes, de `Identification` à
+  `Recommandation finale` ;
+- copie réussie avec confirmation `Rapport copié.` ;
+- téléchargement réussi :
+  `rapport-cody-test-technique-validation-persistance-forge-29-07-2026.md`,
+  4 871 octets ;
+- persistance confirmée après actualisation de la page ;
+- régénération réussie et événement `RAPPORT RÉGÉNÉRÉ` visible dans le
+  journal ;
+- déclencheur `outdated` vérifié dans une transaction avec modification
+  temporaire du titre : statut observé `outdated`, puis `ROLLBACK` ;
+- après le rollback, titre original, mission `validated` et rapport `ready`
+  confirmés ;
+- affichage mobile contrôlé à 390 × 844 et desktop à 1440 × 1000 ;
+- absence de débordement horizontal :
+  `scrollWidth = clientWidth` dans les deux tailles ;
+- lecture finale distante : un rapport, Markdown de 4 697 caractères,
+  sections requises présentes, un événement `report_generated`, un événement
+  `report_updated` et aucun `report_failed`.
+
+La reconnexion à la Preview protégée et la connexion Studio ont été réalisées
+avant les tests. La persistance applicative a ensuite été revérifiée par
+actualisation et par lecture distante.
 
 ## Limites
 
@@ -190,6 +217,16 @@ en sections `<details>` repliables. Sous 600 px :
 - la copie dépend de Clipboard API ;
 - le téléchargement est produit dans le navigateur ;
 - une seule version courante du rapport est conservée par mission.
+
+## Anomalies observées
+
+- aucune anomalie fonctionnelle ou Supabase pendant les tests ;
+- la mission technique conserve volontairement sa branche historique
+  `feature/forge-cody-supabase` dans le rapport : la génération reflète la
+  donnée de la mission et ne la remplace pas par la branche de l’interface ;
+- les indicateurs lint et build du rapport de démonstration restent
+  `Non exécuté` par conception, même si les contrôles locaux de cette
+  implémentation ont réussi.
 
 ## Prochaine étape pour Codex
 
