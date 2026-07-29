@@ -1,6 +1,6 @@
 import { ExternalLink, GitBranch, Pause, Play, ShieldCheck } from "lucide-react";
 import { priorityLabels } from "@/lib/forge/labels";
-import type { Mission, MissionCheckpoint, MissionCheckpointStatus, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
+import type { Mission, MissionCheckpoint, MissionCheckpointStatus, MissionIncident, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
 import { MissionStatusBadge } from "./Badges";
 import ActivityJournal from "./ActivityJournal";
 import ValidationChecklist from "./ValidationChecklist";
@@ -8,6 +8,7 @@ import CorrectionComposer from "./CorrectionComposer";
 import MissionReportPanel from "./MissionReportPanel";
 import MissionPlanningPanel from "./MissionPlanningPanel";
 import MissionCheckpointPanel from "./MissionCheckpointPanel";
+import MissionIncidentPanel from "./MissionIncidentPanel";
 
 export default function MissionDetail({
   mission,
@@ -26,6 +27,8 @@ export default function MissionDetail({
   onResume,
   missionActionBusy,
   onCheckpointUpdate,
+  onIncidentResolve,
+  onBlockedResume,
 }: {
   mission: Mission;
   onChecklistChange: (id: string, patch: Partial<ValidationItem>) => void;
@@ -43,6 +46,8 @@ export default function MissionDetail({
   onResume: () => Promise<void>;
   missionActionBusy: boolean;
   onCheckpointUpdate: (checkpoint: MissionCheckpoint, status: MissionCheckpointStatus, message?: string) => Promise<void>;
+  onIncidentResolve: (incident: MissionIncident, status: "resolved" | "ignored_with_justification", message: string) => Promise<void>;
+  onBlockedResume: () => Promise<void>;
 }) {
   const planningOnly = mission.planningRequired && [
     "draft",
@@ -122,6 +127,15 @@ export default function MissionDetail({
         checkpoints={mission.checkpoints}
         busy={missionActionBusy}
         onUpdate={onCheckpointUpdate}
+      />
+
+      <MissionIncidentPanel
+        incidents={mission.incidents}
+        checkpoints={mission.checkpoints}
+        busy={missionActionBusy}
+        onResolve={onIncidentResolve}
+        onResume={onBlockedResume}
+        missionBlocked={mission.status === "blocked"}
       />
 
       {mission.planningRequired && (

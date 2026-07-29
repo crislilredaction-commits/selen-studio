@@ -12,6 +12,8 @@ import {
   listMissions,
   pauseMission,
   requestMissionPlan,
+  resolveMissionIncident,
+  resumeBlockedMission,
   resumeMission,
   setPlanningAnalysisState,
   storeMissionPlan,
@@ -23,7 +25,7 @@ import {
   type NewPlanningMissionInput,
 } from "@/lib/forge/data-access";
 import { missionFilters } from "@/lib/forge/labels";
-import type { Mission, MissionCheckpoint, MissionCheckpointStatus, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
+import type { Mission, MissionCheckpoint, MissionCheckpointStatus, MissionIncident, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
 import { AgentStatusBadge } from "./Badges";
 import MissionCard from "./MissionCard";
 import MissionDetail from "./MissionDetail";
@@ -252,6 +254,53 @@ export default function CodyWorkspace() {
     }
   }
 
+  async function resolveIncident(
+    incident: MissionIncident,
+    status: "resolved" | "ignored_with_justification",
+    message: string,
+  ) {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await resolveMissionIncident(
+        incident.id,
+        status,
+        message,
+        status === "ignored_with_justification" ? message : undefined,
+      );
+      await loadMissions(missionId);
+      setFeedback(status === "resolved"
+        ? "Incident résolu et historique conservé."
+        : "Incident ignoré avec justification enregistrée.");
+    } catch (incidentError) {
+      setFeedback(incidentError instanceof Error
+        ? incidentError.message
+        : "L’incident n’a pas pu être mis à jour.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resumeBlockedSelectedMission() {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await resumeBlockedMission(missionId);
+      await loadMissions(missionId);
+      setFeedback("Mission reprise au checkpoint concerné.");
+    } catch (resumeError) {
+      setFeedback(resumeError instanceof Error
+        ? resumeError.message
+        : "La mission bloquée n’a pas pu être reprise.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function createAndAnalyzeMission(input: NewPlanningMissionInput) {
     setPlanningBusy(true);
     setFeedback(null);
@@ -426,6 +475,8 @@ export default function CodyWorkspace() {
           onResume={resumeSelectedMission}
           missionActionBusy={saving}
           onCheckpointUpdate={changeCheckpoint}
+          onIncidentResolve={resolveIncident}
+          onBlockedResume={resumeBlockedSelectedMission}
         />
       </div>
       )}

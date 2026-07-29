@@ -42,6 +42,10 @@ const icons: Record<ActivityType, React.ReactNode> = {
   mission_resumed: <Play size={15} />,
   checkpoint_updated: <RefreshCw size={15} />,
   checkpoint_failed: <FileWarning size={15} />,
+  incident_detected: <AlertTriangle size={15} />,
+  incident_retrying: <RefreshCw size={15} />,
+  incident_resolved: <CheckCircle2 size={15} />,
+  incident_blocked: <FileWarning size={15} />,
 };
 
 export default function ActivityJournal({ entries }: { entries: ActivityEntry[] }) {

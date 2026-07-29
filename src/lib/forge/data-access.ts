@@ -9,6 +9,9 @@ import type {
   MissionCheckpoint,
   MissionCheckpointKey,
   MissionCheckpointStatus,
+  MissionIncident,
+  MissionIncidentCategory,
+  MissionIncidentStatus,
   MissionPlan,
   MissionPlanDraft,
   MissionPlanStatus,
@@ -139,6 +142,38 @@ type ForgeCheckpointRow = {
   forge_mission_checkpoint_history?: ForgeCheckpointHistoryRow[];
 };
 
+type ForgeIncidentAttemptRow = {
+  id: string;
+  attempt_number: number;
+  strategy: string;
+  result_status: "succeeded" | "failed" | "refused";
+  result_message: string;
+  technical_details: Record<string, unknown> | null;
+  plan_id: string;
+  started_at: string;
+  completed_at: string;
+};
+
+type ForgeIncidentRow = {
+  id: string;
+  checkpoint_id: string;
+  action_key: string | null;
+  category: MissionIncidentCategory;
+  code: string;
+  message: string;
+  technical_details: Record<string, unknown> | null;
+  detected_at: string;
+  attempt_count: number;
+  max_attempts: number;
+  resolution_status: MissionIncidentStatus;
+  resolved_at: string | null;
+  correction_strategy: string | null;
+  ignore_justification: string | null;
+  human_decision_required: string | null;
+  mission_status_at_detection: MissionStatus;
+  forge_mission_incident_attempts?: ForgeIncidentAttemptRow[];
+};
+
 type ForgeMissionRow = {
   id: string;
   title: string;
@@ -164,7 +199,42 @@ type ForgeMissionRow = {
   forge_mission_briefs?: ForgeBriefRow | ForgeBriefRow[] | null;
   forge_mission_plans?: ForgePlanRow[];
   forge_mission_checkpoints?: ForgeCheckpointRow[];
+  forge_mission_incidents?: ForgeIncidentRow[];
 };
+
+function mapIncident(row: ForgeIncidentRow): MissionIncident {
+  return {
+    id: row.id,
+    checkpointId: row.checkpoint_id,
+    actionKey: row.action_key ?? undefined,
+    category: row.category,
+    code: row.code,
+    message: row.message,
+    technicalDetails: row.technical_details ?? {},
+    detectedAt: row.detected_at,
+    attemptCount: row.attempt_count,
+    maxAttempts: row.max_attempts,
+    resolutionStatus: row.resolution_status,
+    resolvedAt: row.resolved_at ?? undefined,
+    correctionStrategy: row.correction_strategy ?? undefined,
+    ignoreJustification: row.ignore_justification ?? undefined,
+    humanDecisionRequired: row.human_decision_required ?? undefined,
+    missionStatusAtDetection: row.mission_status_at_detection,
+    attempts: [...(row.forge_mission_incident_attempts ?? [])]
+      .sort((left, right) => left.attempt_number - right.attempt_number)
+      .map((attempt) => ({
+        id: attempt.id,
+        attemptNumber: attempt.attempt_number,
+        strategy: attempt.strategy,
+        resultStatus: attempt.result_status,
+        resultMessage: attempt.result_message,
+        technicalDetails: attempt.technical_details ?? {},
+        planId: attempt.plan_id,
+        startedAt: attempt.started_at,
+        completedAt: attempt.completed_at,
+      })),
+  };
+}
 
 function parseScope(value: string | null): string[] {
   if (!value) return [];
@@ -360,6 +430,9 @@ function mapMission(row: ForgeMissionRow): Mission {
     checkpoints: [...(row.forge_mission_checkpoints ?? [])]
       .sort((left, right) => left.position - right.position)
       .map(mapCheckpoint),
+    incidents: [...(row.forge_mission_incidents ?? [])]
+      .sort((left, right) => right.detected_at.localeCompare(left.detected_at))
+      .map(mapIncident),
     lastVerifiedAt,
   };
 }
@@ -375,6 +448,10 @@ const missionSelection = `
   forge_mission_checkpoints (
     *,
     forge_mission_checkpoint_history (*)
+  ),
+  forge_mission_incidents (
+    *,
+    forge_mission_incident_attempts (*)
   )
 `;
 
@@ -619,6 +696,30 @@ export async function updateMissionCheckpoint(
     p_status: status,
     p_message: message?.trim() || null,
     p_plan_id: planId ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function resolveMissionIncident(
+  incidentId: string,
+  status: "resolved" | "ignored_with_justification",
+  message: string,
+  justification?: string,
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_resolve_mission_incident", {
+    p_incident_id: incidentId,
+    p_resolution_status: status,
+    p_message: message,
+    p_ignore_justification: justification?.trim() || null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function resumeBlockedMission(missionId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_resume_blocked_mission", {
+    p_mission_id: missionId,
   });
   if (error) throw new Error(error.message);
 }

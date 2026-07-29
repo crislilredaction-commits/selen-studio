@@ -48,6 +48,9 @@ function missionStatusLabel(status: Mission["status"]): string {
 export function buildDemoMissionReport(mission: Mission): MissionReportDraft {
   const generatedAt = new Date().toISOString();
   const failedCheckpoints = mission.checkpoints.filter((checkpoint) => checkpoint.status === "failed");
+  const openIncidents = mission.incidents.filter((incident) =>
+    !["resolved", "ignored_with_justification"].includes(incident.resolutionStatus)
+  );
   const manualTestItems: ReportManualTestItem[] = mission.checklist.map((item) => ({
     label: item.label,
     priority: "high",
@@ -74,6 +77,9 @@ export function buildDemoMissionReport(mission: Mission): MissionReportDraft {
     "Liste détaillée des fichiers et hash Git non collectés automatiquement.",
     "Les résultats lint et build ne sont pas exécutés par cette action navigateur.",
     ...failedCheckpoints.map((checkpoint) => `Checkpoint en échec : ${checkpoint.key} — ${checkpoint.message ?? "sans résultat"}`),
+    ...openIncidents.map((incident) =>
+      `Incident ouvert : ${incident.code} — ${incident.message} (${incident.resolutionStatus})`
+    ),
   ];
   const lintStatus: ReportCheckStatus = "not_run";
   const buildStatus: ReportCheckStatus = "not_run";
@@ -182,6 +188,20 @@ ${mission.checkpoints.length
 ${failedCheckpoints.length
   ? failedCheckpoints.map((checkpoint) => `- ${checkpoint.key} : ${checkpoint.message ?? "Résultat non renseigné"}`).join("\n")
   : "- Aucun."}
+
+## Incidents de mission
+${mission.incidents.length
+  ? mission.incidents.map((incident) =>
+    `- ${incident.code} — ${incident.category} — ${incident.resolutionStatus} — ${incident.message} — tentatives ${incident.attemptCount}/${incident.maxAttempts}`
+  ).join("\n")
+  : "- Aucun incident enregistré."}
+
+### Tentatives de correction
+${mission.incidents.flatMap((incident) =>
+  incident.attempts.map((attempt) =>
+    `- ${incident.code} #${attempt.attemptNumber} — ${attempt.strategy} — ${attempt.resultStatus} — ${attempt.resultMessage}`
+  )
+).join("\n") || "- Aucune tentative enregistrée."}
 
 ## Git et déploiement
 - Dépôt : selen-studio

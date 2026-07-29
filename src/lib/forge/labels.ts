@@ -83,6 +83,10 @@ export const activityTypeLabels: Record<ActivityType, string> = {
   mission_resumed: "Mission reprise",
   checkpoint_updated: "Checkpoint mis à jour",
   checkpoint_failed: "Échec de checkpoint",
+  incident_detected: "Incident détecté",
+  incident_retrying: "Correction en cours",
+  incident_resolved: "Incident résolu",
+  incident_blocked: "Mission bloquée par un incident",
 };
 
 export const missionFilters = [

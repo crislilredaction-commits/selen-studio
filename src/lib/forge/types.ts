@@ -60,7 +60,57 @@ export type ActivityType =
   | "mission_paused"
   | "mission_resumed"
   | "checkpoint_updated"
-  | "checkpoint_failed";
+  | "checkpoint_failed"
+  | "incident_detected"
+  | "incident_retrying"
+  | "incident_resolved"
+  | "incident_blocked";
+
+export type MissionIncidentCategory =
+  | "warning"
+  | "recoverable_error"
+  | "critical_error"
+  | "human_decision_required";
+
+export type MissionIncidentStatus =
+  | "detected"
+  | "retrying"
+  | "resolved"
+  | "blocked"
+  | "failed"
+  | "ignored_with_justification";
+
+export type MissionIncidentAttempt = {
+  id: string;
+  attemptNumber: number;
+  strategy: string;
+  resultStatus: "succeeded" | "failed" | "refused";
+  resultMessage: string;
+  technicalDetails: Record<string, unknown>;
+  planId: string;
+  startedAt: string;
+  completedAt: string;
+};
+
+export type MissionIncident = {
+  id: string;
+  checkpointId: string;
+  actionKey?: string;
+  category: MissionIncidentCategory;
+  code: string;
+  message: string;
+  technicalDetails: Record<string, unknown>;
+  detectedAt: string;
+  attemptCount: number;
+  maxAttempts: number;
+  resolutionStatus: MissionIncidentStatus;
+  resolvedAt?: string;
+  correctionStrategy?: string;
+  ignoreJustification?: string;
+  humanDecisionRequired?: string;
+  missionStatusAtDetection: MissionStatus;
+  attempts: MissionIncidentAttempt[];
+};
 
 export type MissionPlanStatus =
   | "draft"
@@ -233,6 +283,7 @@ export type Mission = {
   currentPlan?: MissionPlan;
   planHistory: MissionPlan[];
   checkpoints: MissionCheckpoint[];
+  incidents: MissionIncident[];
   lastVerifiedAt?: string;
 };
 
