@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { BriefcaseBusiness, CalendarDays, FileText, Star } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, FileText, Hammer, Star } from "lucide-react";
 import AgentSidebarMessaging from "@/components/layout/AgentSidebarMessaging";
 import { createClient } from "@/lib/supabase/client";
 import { isOwnerLil } from "@/lib/ownerLil";
@@ -81,6 +81,11 @@ const links = [
     href: "/agent/daily",
     label: "Selen Daily",
     icon: <FileText size={16} strokeWidth={1.5} />,
+  },
+  {
+    href: "/agent/forge",
+    label: "La Forge",
+    icon: <Hammer size={16} strokeWidth={1.5} />,
   },
   {
     href: "/agent/rendez-vous",
@@ -216,6 +221,7 @@ export default function AgentSidebar() {
     "/agent",
     "/agent/dossiers",
     "/agent/daily",
+    "/agent/forge",
     "/agent/rendez-vous",
     "/agent/clients",
     "/agent/profil",
@@ -236,7 +242,7 @@ export default function AgentSidebar() {
 
   return (
     <aside
-      className="flex h-screen flex-col"
+      className="agent-sidebar flex h-screen flex-col"
       style={{
         ...({
           "--selen-text": "var(--selen-text-oncard)",
@@ -313,7 +319,7 @@ export default function AgentSidebar() {
         </p>
       </div>
 
-      <nav style={{ flex: 1, padding: "14px 10px" }}>
+      <nav className="agent-sidebar__nav" style={{ flex: 1, padding: "14px 10px" }}>
         <p
           style={{
             fontSize: 9,

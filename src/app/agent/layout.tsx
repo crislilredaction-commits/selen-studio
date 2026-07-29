@@ -7,6 +7,7 @@ export default function AgentLayout({
 }) {
   return (
     <div
+      className="agent-shell"
       style={{
         display: "flex",
         minHeight: "100vh",
@@ -17,6 +18,7 @@ export default function AgentLayout({
       <AgentSidebar />
 
       <main
+        className="agent-content"
         style={{
           flex: 1,
           background:
