@@ -206,3 +206,68 @@ modifier les douze tables existantes signalées sans RLS.
 - aucune modification des douze tables existantes signalées sans RLS ;
 - aucune suppression de table ;
 - aucune migration appliquée.
+
+## Tentative contrôlée du 29 juillet 2026 — arrêt sur sauvegarde
+
+### Préconditions
+
+- branche vérifiée : `feature/forge-cody-supabase` ;
+- dépôt propre et synchronisé avec
+  `origin/feature/forge-cody-supabase` avant la tentative ;
+- projet lié : Selen Studio (`pjbilmywwkpghhayftph`) ;
+- Supabase CLI : `2.110.0`.
+
+La procédure imposait quatre sauvegardes valides avant toute modification
+distante. Le dossier local choisi était :
+
+```text
+supabase/.temp/backups/20260729-forge-realignment/
+```
+
+Ce chemin est ignoré par Git. Aucun contenu de sauvegarde ni secret n'a été
+affiché.
+
+### Commandes de sauvegarde tentées
+
+```powershell
+npx.cmd supabase db dump --linked --schema public --file supabase/.temp/backups/20260729-forge-realignment/public-schema.sql
+npx.cmd supabase db dump --linked --schema public --data-only --use-copy --file supabase/.temp/backups/20260729-forge-realignment/public-data.sql
+npx.cmd supabase db dump --linked --schema supabase_migrations --file supabase/.temp/backups/20260729-forge-realignment/migration-history-schema.sql
+npx.cmd supabase db dump --linked --schema supabase_migrations --data-only --use-copy --file supabase/.temp/backups/20260729-forge-realignment/migration-history-data.sql
+```
+
+Les quatre commandes ont échoué avec `LegacyDockerRunError` : Docker Desktop,
+prérequis de `supabase db dump`, n'est pas disponible. Les quatre fichiers
+créés par la CLI ont une taille de zéro octet et ne constituent donc pas des
+sauvegardes valides.
+
+La sauvegarde séparée des fonctions, politiques et grants concernés n'a pas été
+tentée après cet échec, conformément à la consigne d'arrêt immédiat.
+
+### État des opérations distantes
+
+Aucune opération mutante n'a été exécutée :
+
+- migration corrective
+  `20260729173634_realign_daily_and_satisfaction_access.sql` non appliquée ;
+- aucun `migration repair` ;
+- aucun `db push` ;
+- aucun objet ni donnée distante modifié.
+
+Par conséquent, les vérifications post-application, `migration list` final et
+`db push --dry-run` final n'ont pas été lancés. Il serait incorrect de prétendre
+que seule Forge reste à appliquer tant que la sauvegarde, la correction et les
+repairs validés n'ont pas abouti.
+
+### Condition de reprise
+
+Installer ou démarrer Docker Desktop, puis reprendre depuis le début des
+sauvegardes. Les quatre dumps doivent terminer avec un code de sortie nul,
+avoir une taille non nulle et recevoir une empreinte SHA-256 avant toute
+application SQL. Les fichiers de zéro octet doivent être considérés comme
+invalides et remplacés.
+
+Alternative acceptable uniquement après validation humaine : produire des
+sauvegardes restaurables équivalentes avec `pg_dump`/`psql` et une connexion
+sécurisée, sans afficher ni enregistrer le mot de passe dans le dépôt ou le
+rapport.
