@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     const sourceContext = cleanOptional(body?.sourceContext, 12_000);
     const sourceConstraints = cleanOptional(body?.sourceConstraints, 12_000);
     const requestedTitle = cleanOptional(body?.requestedTitle, 240);
+    const priority = cleanOptional(body?.priority, 20);
 
     if (!sourceRequest) {
       return NextResponse.json(
@@ -72,6 +73,9 @@ ${sourceContext || "(aucun)"}
 
 Contraintes ou exclusions fournies :
 ${sourceConstraints || "(aucune)"}
+
+Priorité choisie :
+${priority || "normal"}
 `;
 
     const response = await getOpenAIClient().responses.create({

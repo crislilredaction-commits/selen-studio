@@ -128,6 +128,8 @@ type ForgeMissionRow = {
   created_at: string;
   planning_required: boolean;
   planning_validated_at: string | null;
+  paused_at: string | null;
+  resumed_at: string | null;
   forge_activity_logs?: ForgeActivityRow[];
   forge_validation_items?: ForgeValidationRow[];
   forge_corrections?: ForgeCorrectionRow[];
@@ -296,6 +298,8 @@ function mapMission(row: ForgeMissionRow): Mission {
     report: reportRow ? mapReport(reportRow) : undefined,
     planningRequired: row.planning_required ?? false,
     planningValidatedAt: row.planning_validated_at ?? undefined,
+    pausedAt: row.paused_at ?? undefined,
+    resumedAt: row.resumed_at ?? undefined,
     brief: briefRow ? mapBrief(briefRow) : undefined,
     currentPlan: planHistory.find((plan) => plan.isCurrent),
     planHistory,
@@ -397,6 +401,7 @@ export type NewPlanningMissionInput = {
   sourceRequest: string;
   sourceContext: string;
   sourceConstraints: string;
+  priority: MissionPriority;
 };
 
 export async function createPlanningMission(
@@ -408,6 +413,7 @@ export async function createPlanningMission(
     p_source_request: input.sourceRequest,
     p_source_context: input.sourceContext || null,
     p_source_constraints: input.sourceConstraints || null,
+    p_priority: input.priority,
   });
   if (error) throw new Error(error.message);
   return data as string;
@@ -438,6 +444,7 @@ export async function requestMissionPlan(
       sourceRequest: input.sourceRequest,
       sourceContext: input.sourceContext,
       sourceConstraints: input.sourceConstraints,
+      priority: input.priority,
     }),
   });
   const payload = await response.json();
@@ -504,6 +511,34 @@ export async function storeMissionPlan(
 export async function validateMissionPlan(missionId: string): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.rpc("forge_validate_mission_plan", {
+    p_mission_id: missionId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function updateMissionPriority(
+  missionId: string,
+  priority: MissionPriority,
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_update_mission_priority", {
+    p_mission_id: missionId,
+    p_priority: priority,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function pauseMission(missionId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_pause_mission", {
+    p_mission_id: missionId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function resumeMission(missionId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_resume_mission", {
     p_mission_id: missionId,
   });
   if (error) throw new Error(error.message);

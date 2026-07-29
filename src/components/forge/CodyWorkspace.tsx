@@ -10,27 +10,39 @@ import {
   generateDemoMissionReport,
   getMissionDetails,
   listMissions,
+  pauseMission,
   requestMissionPlan,
+  resumeMission,
   setPlanningAnalysisState,
   storeMissionPlan,
+  updateMissionPriority,
   updateValidationItem,
   validateMission,
   validateMissionPlan,
   type NewPlanningMissionInput,
 } from "@/lib/forge/data-access";
 import { missionFilters } from "@/lib/forge/labels";
-import type { Mission, MissionPlanDraft, ValidationItem } from "@/lib/forge/types";
+import type { Mission, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
 import { AgentStatusBadge } from "./Badges";
 import MissionCard from "./MissionCard";
 import MissionDetail from "./MissionDetail";
 import NewMissionForm from "./NewMissionForm";
 
 type Filter = (typeof missionFilters)[number]["value"];
+type SortOrder = "priority" | "newest";
+
+const priorityRank: Record<MissionPriority, number> = {
+  urgent: 0,
+  high: 1,
+  normal: 2,
+  low: 3,
+};
 
 export default function CodyWorkspace() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("priority");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reportGenerating, setReportGenerating] = useState(false);
@@ -61,10 +73,16 @@ export default function CodyWorkspace() {
     void loadMissions();
   }, [loadMissions]);
 
-  const visibleMissions = useMemo(
-    () => missions.filter((mission) => filter === "all" || mission.status === filter),
-    [filter, missions],
-  );
+  const visibleMissions = useMemo(() => (
+    missions
+      .filter((mission) => filter === "all" || mission.status === filter)
+      .toSorted((left, right) => {
+        if (sortOrder === "newest") return right.createdAt.localeCompare(left.createdAt);
+        return priorityRank[left.priority] - priorityRank[right.priority]
+          || left.createdAt.localeCompare(right.createdAt)
+          || left.id.localeCompare(right.id);
+      })
+  ), [filter, missions, sortOrder]);
   const selectedMission = missions.find((mission) => mission.id === selectedId)
     ?? visibleMissions[0]
     ?? missions[0];
@@ -154,6 +172,57 @@ export default function CodyWorkspace() {
     }
   }
 
+  async function changePriority(priority: MissionPriority) {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await updateMissionPriority(missionId, priority);
+      await loadMissions(missionId);
+      setFeedback("Priorité mise à jour.");
+    } catch (priorityError) {
+      setFeedback(priorityError instanceof Error ? priorityError.message : "La priorité n’a pas pu être mise à jour.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function pauseSelectedMission() {
+    if (!selectedMission) return;
+    if (!window.confirm(`Mettre en pause « ${selectedMission.title} » ? Le traitement en cours sera interrompu.`)) return;
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await pauseMission(missionId);
+      await loadMissions(missionId);
+      setFilter("all");
+      setFeedback("Mission mise en pause. Son cadrage et sa progression sont conservés.");
+    } catch (pauseError) {
+      setFeedback(pauseError instanceof Error ? pauseError.message : "La mission n’a pas pu être mise en pause.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resumeSelectedMission() {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await resumeMission(missionId);
+      await loadMissions(missionId);
+      setFilter("all");
+      setFeedback("Mission reprise avec sa progression existante.");
+    } catch (resumeError) {
+      setFeedback(resumeError instanceof Error ? resumeError.message : "La mission n’a pas pu être reprise.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function createAndAnalyzeMission(input: NewPlanningMissionInput) {
     setPlanningBusy(true);
     setFeedback(null);
@@ -194,6 +263,7 @@ export default function CodyWorkspace() {
       sourceRequest: selectedMission.brief.sourceRequest,
       sourceContext: selectedMission.brief.sourceContext,
       sourceConstraints: selectedMission.brief.sourceConstraints,
+      priority: selectedMission.priority,
     };
     setPlanningBusy(true);
     setFeedback(null);
@@ -262,14 +332,23 @@ export default function CodyWorkspace() {
 
       <NewMissionForm busy={planningBusy} onSubmit={createAndAnalyzeMission} />
 
-      <nav className="forge-filters" aria-label="Filtrer les missions">
-        {missionFilters.map((item) => (
-          <button key={item.value} className={filter === item.value ? "is-active" : ""} onClick={() => selectFilter(item.value)}>
-            {item.label}
-            <span>{missions.filter((mission) => item.value === "all" || mission.status === item.value).length}</span>
-          </button>
-        ))}
-      </nav>
+      <div className="forge-queue-toolbar">
+        <nav className="forge-filters" aria-label="Filtrer les missions">
+          {missionFilters.map((item) => (
+            <button key={item.value} className={filter === item.value ? "is-active" : ""} onClick={() => selectFilter(item.value)}>
+              {item.label}
+              <span>{missions.filter((mission) => item.value === "all" || mission.status === item.value).length}</span>
+            </button>
+          ))}
+        </nav>
+        <label className="forge-sort">
+          <span>Trier</span>
+          <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as SortOrder)}>
+            <option value="priority">Priorité, puis ancienneté</option>
+            <option value="newest">Plus récentes</option>
+          </select>
+        </label>
+      </div>
 
       {saving && <p className="forge-save-status" role="status"><RefreshCw className="forge-spin" /> Enregistrement…</p>}
       {feedback && <p className="forge-save-status" role="status">{feedback}</p>}
@@ -313,6 +392,10 @@ export default function CodyWorkspace() {
           onSavePlan={(plan) => savePlan(plan)}
           onValidatePlan={submitPlanValidation}
           onDraftPlan={(plan) => savePlan(plan, "draft")}
+          onPriorityChange={changePriority}
+          onPause={pauseSelectedMission}
+          onResume={resumeSelectedMission}
+          missionActionBusy={saving}
         />
       </div>
       )}

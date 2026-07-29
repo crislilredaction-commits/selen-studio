@@ -20,6 +20,7 @@ export const missionStatusLabels: Record<MissionStatus, string> = {
   plan_validated: "Cadrage validé",
   ready: "Prête",
   in_progress: "En cours",
+  paused: "En pause",
   deployed: "Déployée",
   to_review: "À vérifier",
   changes_requested: "À corriger",
@@ -54,6 +55,9 @@ export const activityTypeLabels: Record<ActivityType, string> = {
   plan_validated: "Cadrage validé",
   plan_reopened: "Cadrage rouvert",
   plan_failed: "Échec du cadrage",
+  priority_changed: "Priorité modifiée",
+  mission_paused: "Mission mise en pause",
+  mission_resumed: "Mission reprise",
 };
 
 export const missionFilters = [
@@ -64,6 +68,7 @@ export const missionFilters = [
   { value: "plan_ready", label: "Plans prêts" },
   { value: "plan_validated", label: "Plans validés" },
   { value: "in_progress", label: "En cours" },
+  { value: "paused", label: "En pause" },
   { value: "to_review", label: "À vérifier" },
   { value: "changes_requested", label: "À corriger" },
   { value: "validated", label: "Validées" },

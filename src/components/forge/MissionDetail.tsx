@@ -1,5 +1,6 @@
-import { ExternalLink, GitBranch, ShieldCheck } from "lucide-react";
-import type { Mission, MissionPlanDraft, ValidationItem } from "@/lib/forge/types";
+import { ExternalLink, GitBranch, Pause, Play, ShieldCheck } from "lucide-react";
+import { priorityLabels } from "@/lib/forge/labels";
+import type { Mission, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
 import { MissionStatusBadge } from "./Badges";
 import ActivityJournal from "./ActivityJournal";
 import ValidationChecklist from "./ValidationChecklist";
@@ -19,6 +20,10 @@ export default function MissionDetail({
   onSavePlan,
   onValidatePlan,
   onDraftPlan,
+  onPriorityChange,
+  onPause,
+  onResume,
+  missionActionBusy,
 }: {
   mission: Mission;
   onChecklistChange: (id: string, patch: Partial<ValidationItem>) => void;
@@ -31,6 +36,10 @@ export default function MissionDetail({
   onSavePlan: (plan: MissionPlanDraft) => Promise<void>;
   onValidatePlan: () => Promise<void>;
   onDraftPlan: (plan: MissionPlanDraft) => Promise<void>;
+  onPriorityChange: (priority: MissionPriority) => Promise<void>;
+  onPause: () => Promise<void>;
+  onResume: () => Promise<void>;
+  missionActionBusy: boolean;
 }) {
   const planningOnly = mission.planningRequired && [
     "draft",
@@ -54,6 +63,37 @@ export default function MissionDetail({
         <div><span>Objectif</span><p>{mission.objective}</p></div>
         <div><span>Résultat annoncé</span><p>{mission.announcedResult}</p></div>
       </div>
+
+      <section className="forge-detail__section forge-mission-controls">
+        <div>
+          <label htmlFor={`forge-priority-${mission.id}`}>Priorité</label>
+          <select
+            id={`forge-priority-${mission.id}`}
+            value={mission.priority}
+            disabled={mission.status === "validated" || missionActionBusy}
+            onChange={(event) => void onPriorityChange(event.target.value as MissionPriority)}
+          >
+            {(Object.entries(priorityLabels) as [MissionPriority, string][]).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+          {mission.status === "validated" && <small>Une mission terminée conserve sa priorité finale.</small>}
+        </div>
+        <div className="forge-mission-controls__dates">
+          {mission.pausedAt && <span>Pause : {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(mission.pausedAt))}</span>}
+          {mission.resumedAt && <span>Reprise : {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(mission.resumedAt))}</span>}
+        </div>
+        {mission.status === "in_progress" && (
+          <button className="forge-button forge-button--secondary" type="button" disabled={missionActionBusy} onClick={onPause}>
+            <Pause size={16} /> Mettre en pause
+          </button>
+        )}
+        {mission.status === "paused" && (
+          <button className="forge-button forge-button--primary" type="button" disabled={missionActionBusy} onClick={onResume}>
+            <Play size={16} /> Reprendre
+          </button>
+        )}
+      </section>
 
       <section className="forge-detail__section">
         <h3>Périmètre</h3>
@@ -130,9 +170,9 @@ export default function MissionDetail({
           className="forge-button forge-button--primary"
           type="button"
           onClick={onValidate}
-          disabled={mission.status === "validated"}
+          disabled={mission.status === "validated" || mission.status === "paused"}
         >
-          {mission.status === "validated" ? "Mission validée" : "Valider la mission"}
+          {mission.status === "validated" ? "Mission validée" : mission.status === "paused" ? "Reprendre avant validation" : "Valider la mission"}
         </button>
       </footer>
         </>

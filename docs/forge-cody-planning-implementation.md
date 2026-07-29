@@ -230,3 +230,145 @@ logique du schéma, des données publiques et de l’historique.
 - Le modèle autorise les membres Studio actifs à créer et éditer les versions
   non validées conformément au fonctionnement actuel de La Forge.
 - Aucune fonctionnalité de pause, priorité ou file de missions n’a été ajoutée.
+
+> Mise à jour : la remarque précédente décrivait la première livraison du
+> cadrage. Elle est remplacée par le complément livré ci-dessous.
+
+## Complément — priorités, pause/reprise et file d’exécution
+
+### Modèle retenu
+
+Les niveaux persistés sont `low`, `normal`, `high` et `urgent`. La priorité est
+choisie à la création, modifiable tant que la mission n’est pas `validated`, et
+affichée dans la carte comme dans le détail.
+
+L’ordre par défaut est urgente, haute, normale, basse, puis date de création
+croissante et identifiant. Cet ordre ne déclenche aucune exécution et ne
+préempte jamais une mission en cours. Un tri « plus récentes » reste disponible.
+
+Le statut `paused` est ajouté. La seule entrée autorisée est
+`in_progress → paused` et la seule sortie est `paused → in_progress`.
+`paused_at` et `resumed_at` tracent les actions. Le plan courant validé, la
+progression, les journaux et les résultats ne sont ni recréés ni effacés.
+
+Une contrainte unique partielle sur `agent_key` autorise au maximum une mission
+`in_progress` par agent. Une mission en pause libère ce créneau ; sa reprise
+explicite échoue si une autre mission Cody est en cours. Il n’existe pas
+d’ordonnanceur automatique : l’utilisatrice choisit la prochaine mission dans
+la file triée.
+
+Le schéma actuel ne définit aucun statut `cancelled`. Aucun parcours
+d’annulation n’a été inventé ; le blocage de modification de priorité s’applique
+au seul état terminal existant, `validated`.
+
+### Migrations
+
+- `20260729232319_add_forge_mission_priority_controls.sql` : création avec
+  priorité, RPC de modification, journal `priority_changed`, index de tri et
+  trigger interdisant la modification directe après validation.
+- `20260729232320_add_forge_mission_pause_and_queue_guards.sql` : statut et
+  horodatages, journal dédié, RPC, trigger de transitions et index unique
+  d’activité par agent.
+
+`npx.cmd supabase migration new` a été tenté, mais la CLI Windows a retourné
+`LegacyMigrationNewWriteError AlreadyExists` sur `supabase/migrations`. Les
+deux fichiers ont donc été créés avec des horodatages successifs, sans modifier
+les migrations historiques.
+
+### Sauvegardes de cette intervention
+
+Répertoire local ignoré par Git :
+`supabase/.temp/backups/20260729-forge-cody-priority-pause`.
+
+| Archive | Taille | Entrées | SHA-256 |
+|---|---:|---:|---|
+| `public-schema.dump` | 474 236 | 827 | `719ADB4B7944425A56F67422D235B8585858E1B5CF18AFDEA6BA3C6883B5010E` |
+| `public-data.dump` | 754 783 729 | 92 | `B816035B9EC8C1CFEDB78006B1E46C7695F704D1314A9679F2312A55664DBBA5` |
+| `migration-history-schema.dump` | 2 231 | 3 | `C78C265FC90401D19CBF60E7355B52B4A004ADDB39D159EE6FCDF52FCE4202D4` |
+| `migration-history-data.dump` | 19 042 | 1 | `921808DCB82E8D82114EB8A4206CDC51A5E1285A39C57ECD7EFAC6F8E1F07E22` |
+
+Les quatre archives sont non vides et reconnues par PostgreSQL 17.10 avec
+`pg_restore --list`. Les objets et données attendus sont présents. Aucune erreur
+`pg_dump` n’est présente ; seuls les cycles préexistants `documents` et
+`daily_formations` sont signalés. La connexion a utilisé le Session Pooler IPv4
+et un rôle CLI temporaire resté en mémoire.
+
+Commandes neutralisées :
+
+```powershell
+npx.cmd supabase db dump --linked --dry-run
+pg_dump -Fc --schema-only --schema=public --no-owner --no-privileges --role=postgres
+pg_dump -Fc --data-only --schema=public --no-owner --no-privileges --role=postgres
+pg_dump -Fc --schema-only --schema=supabase_migrations --no-owner --no-privileges --role=postgres
+pg_dump -Fc --data-only --schema=supabase_migrations --no-owner --no-privileges --role=postgres
+pg_restore --list <archive>
+```
+
+### Application et contrôles
+
+Le dry-run avant application a proposé uniquement les deux migrations ci-dessus
+avec `seeds=[]` et `roles=[]`. `supabase db push` les a appliquées seules.
+
+Après application :
+
+- les deux colonnes, deux index et deux triggers sont présents ;
+- les contraintes contiennent les quatre priorités et le statut `paused` ;
+- RLS reste active sur les six tables Forge concernées et les politiques
+  existantes sont conservées ;
+- les cinq fonctions sont `security invoker` avec `search_path` vide ;
+- `anon` ne peut exécuter aucun nouveau RPC ;
+- `authenticated` exécute les trois RPC métier, pas les fonctions de trigger ;
+- les totaux restent à une mission et un rapport ;
+- l’historique est aligné jusqu’à `20260729232320` ;
+- le dry-run final est vide : `migrations=[]`, `seeds=[]`, `roles=[]`.
+
+### Tests transactionnels
+
+Un scénario annulé par `ROLLBACK` a validé :
+
+1. création et modification de priorité ;
+2. tri par priorité puis ancienneté ;
+3. refus de pause hors `in_progress` et refus d’une deuxième pause ;
+4. pause avec plan validé et progression à 37 % conservés ;
+5. refus de reprise lorsqu’une autre mission Cody est active ;
+6. reprise après libération du créneau ;
+7. refus de `paused → validated` ;
+8. refus de modifier la priorité après `validated`.
+
+Toutes les assertions sont passées. Aucun titre `CODEX_TEST_%` ne persiste et
+les totaux métier restent inchangés.
+
+### Validation application
+
+- `npm.cmd run lint` : succès, 0 erreur, 18 avertissements préexistants hors
+  Forge.
+- `npm.cmd run build` : succès, TypeScript et 84 routes compilées.
+- Avertissements préexistants uniquement : module `canvas` de `pdfjs` et
+  convention Next.js `middleware`.
+- Revue React : tri sans mutation, état local minimal, actions asynchrones
+  verrouillées et erreurs rendues visibles.
+
+### Contrôles visuels manuels
+
+La session Chrome Studio existante doit être conservée. Elle n’est pas pilotable
+depuis Codex ; aucun profil temporaire ne sera ouvert. Dans la Preview :
+
+1. à 1440 px, créer une mission urgente et vérifier ses deux libellés ;
+2. créer une mission basse et vérifier l’ordre du tri par priorité ;
+3. vérifier qu’une urgence n’interrompt pas une mission en cours ;
+4. mettre en pause une mission en cours après confirmation ;
+5. actualiser et contrôler statut, progression, plan, journal et date ;
+6. reprendre, actualiser et contrôler la date de reprise ;
+7. vérifier l’erreur si une autre mission Cody est déjà active ;
+8. répéter à 390 px et vérifier tri, priorité et boutons.
+
+### Risques et retour arrière
+
+- Aucun worker d’exécution n’existe ici : tout futur worker devra ignorer les
+  missions `paused`.
+- `cancelled`, sélection automatique et préemption restent des décisions
+  produit non implémentées.
+- Pour revenir en arrière : arrêter tout consommateur, refaire une sauvegarde,
+  retirer RPC et triggers, restaurer les contraintes antérieures, puis retirer
+  index et colonnes seulement après vérification humaine. Ne réparer
+  l’historique qu’après validation.

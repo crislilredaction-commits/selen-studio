@@ -5,6 +5,8 @@ import {
   Code2,
   FileWarning,
   Hammer,
+  Pause,
+  Play,
   RefreshCw,
   Rocket,
   Search,
@@ -35,6 +37,9 @@ const icons: Record<ActivityType, React.ReactNode> = {
   plan_validated: <CheckCircle2 size={15} />,
   plan_reopened: <RefreshCw size={15} />,
   plan_failed: <FileWarning size={15} />,
+  priority_changed: <RefreshCw size={15} />,
+  mission_paused: <Pause size={15} />,
+  mission_resumed: <Play size={15} />,
 };
 
 export default function ActivityJournal({ entries }: { entries: ActivityEntry[] }) {

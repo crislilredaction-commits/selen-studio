@@ -8,6 +8,7 @@ export type MissionStatus =
   | "plan_validated"
   | "ready"
   | "in_progress"
+  | "paused"
   | "deployed"
   | "to_review"
   | "changes_requested"
@@ -35,7 +36,10 @@ export type ActivityType =
   | "plan_updated"
   | "plan_validated"
   | "plan_reopened"
-  | "plan_failed";
+  | "plan_failed"
+  | "priority_changed"
+  | "mission_paused"
+  | "mission_resumed";
 
 export type MissionPlanStatus =
   | "draft"
@@ -202,6 +206,8 @@ export type Mission = {
   report?: MissionReport;
   planningRequired: boolean;
   planningValidatedAt?: string;
+  pausedAt?: string;
+  resumedAt?: string;
   brief?: MissionBrief;
   currentPlan?: MissionPlan;
   planHistory: MissionPlan[];

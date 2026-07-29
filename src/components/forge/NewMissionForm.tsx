@@ -3,13 +3,18 @@
 import { Plus, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { NewPlanningMissionInput } from "@/lib/forge/data-access";
+import { priorityLabels } from "@/lib/forge/labels";
+import type { MissionPriority } from "@/lib/forge/types";
 
 const emptyForm: NewPlanningMissionInput = {
   title: "",
   sourceRequest: "",
   sourceContext: "",
   sourceConstraints: "",
+  priority: "normal",
 };
+
+const priorities: MissionPriority[] = ["low", "normal", "high", "urgent"];
 
 export default function NewMissionForm({
   busy,
@@ -50,6 +55,22 @@ export default function NewMissionForm({
               maxLength={240}
               placeholder="Cody proposera un titre si ce champ reste vide"
             />
+          </label>
+          <label>
+            <span>Priorité</span>
+            <select
+              value={form.priority}
+              onChange={(event) => setForm({
+                ...form,
+                priority: event.target.value as MissionPriority,
+              })}
+            >
+              {priorities.map((priority) => (
+                <option key={priority} value={priority}>
+                  {priorityLabels[priority]}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="forge-planning-form__wide">
             <span>Demande ou cahier des charges *</span>
