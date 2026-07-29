@@ -65,7 +65,8 @@ create table if not exists public.forge_validation_items (
   constraint forge_validation_items_result_check check (
     result is null or result in ('compliant', 'issue', 'not_applicable')
   ),
-  constraint forge_validation_items_position_check check (position >= 0)
+  constraint forge_validation_items_position_check check (position >= 0),
+  constraint forge_validation_items_mission_position_key unique (mission_id, position)
 );
 
 create table if not exists public.forge_corrections (
@@ -322,92 +323,3 @@ revoke all on function public.forge_add_correction(uuid, text) from public, anon
 revoke all on function public.forge_validate_mission(uuid) from public, anon;
 grant execute on function public.forge_add_correction(uuid, text) to authenticated;
 grant execute on function public.forge_validate_mission(uuid) to authenticated;
-
--- Données de démonstration Forge V1. Les UUID fixes rendent ce seed idempotent.
-insert into public.forge_missions (
-  id, agent_key, title, project_key, description, objective, scope,
-  expected_result, priority, status, progress, git_branch, preview_url, created_at
-)
-values
-(
-  '10000000-0000-4000-8000-000000000001', 'cody',
-  'Créer la vue hebdomadaire', 'Selen Studio · Planning',
-  'Rassembler les rendez-vous et échéances dans une vue claire.',
-  'Donner à Lil une lecture immédiate de la semaine et des actions à venir.',
-  '["Vue des sept prochains jours","Cartes rendez-vous et échéances","Adaptation mobile et desktop"]',
-  'La vue est construite, le build est valide et une vérification utilisateur est attendue.',
-  'high', 'to_review', 100, 'feature/weekly-planning',
-  'https://example.com/preview/weekly-planning', '2026-07-27T09:20:00+02:00'
-),
-(
-  '10000000-0000-4000-8000-000000000002', 'cody',
-  'Installer l’espace de Cody', 'Selen Studio · La Forge',
-  'Créer le centre de suivi manuel des missions du premier agent.',
-  'Poser les fondations visuelles et fonctionnelles de La Forge.',
-  '["Accueil de La Forge","Espace Cody","Suivi persistant des validations"]',
-  'La Forge est disponible avec une persistance Supabase.',
-  'urgent', 'in_progress', 68, 'feature/forge-cody-supabase',
-  null, '2026-07-29T10:00:00+02:00'
-),
-(
-  '10000000-0000-4000-8000-000000000003', 'cody',
-  'Affiner la fiche client', 'Selen Studio · Clients',
-  'Clarifier les informations et actions principales d’un client.',
-  'Rendre la fiche client plus rapide à parcourir.',
-  '["Hiérarchie des informations","Actions principales"]',
-  'Mission vérifiée et validée par Lil.',
-  'normal', 'validated', 100, null, null, '2026-07-22T08:30:00+02:00'
-)
-on conflict (id) do nothing;
-
-insert into public.forge_validation_items (
-  id, mission_id, label, position, checked, result, checked_at
-)
-select
-  (
-    substr(md5(mission.id::text || ':' || item.position::text), 1, 8) || '-' ||
-    substr(md5(mission.id::text || ':' || item.position::text), 9, 4) || '-4' ||
-    substr(md5(mission.id::text || ':' || item.position::text), 14, 3) || '-8' ||
-    substr(md5(mission.id::text || ':' || item.position::text), 18, 3) || '-' ||
-    substr(md5(mission.id::text || ':' || item.position::text), 21, 12)
-  )::uuid,
-  mission.id,
-  item.label,
-  item.position,
-  item.position <= mission.checked_count,
-  case when item.position <= mission.checked_count then 'compliant' else null end,
-  case when item.position <= mission.checked_count then mission.checked_at else null end
-from (
-  values
-    ('10000000-0000-4000-8000-000000000001'::uuid, 4, '2026-07-28T16:45:00+02:00'::timestamptz),
-    ('10000000-0000-4000-8000-000000000002'::uuid, 2, '2026-07-29T14:10:00+02:00'::timestamptz),
-    ('10000000-0000-4000-8000-000000000003'::uuid, 9, '2026-07-24T15:30:00+02:00'::timestamptz)
-) as mission(id, checked_count, checked_at)
-cross join (
-  values
-    (1, 'La page s’ouvre correctement'),
-    (2, 'L’affichage mobile est correct'),
-    (3, 'L’affichage desktop est correct'),
-    (4, 'La création fonctionne'),
-    (5, 'La modification fonctionne'),
-    (6, 'La suppression fonctionne'),
-    (7, 'Le style correspond à Selen'),
-    (8, 'Le fonctionnement respecte le cahier des charges'),
-    (9, 'Aucun parcours existant ne semble cassé')
-) as item(position, label)
-on conflict (id) do nothing;
-
-insert into public.forge_activity_logs (
-  id, mission_id, event_type, message, metadata, created_at
-)
-values
-  ('20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'mission_received', 'Mission lancée : création de la vue hebdomadaire', '{}', '2026-07-27T09:20:00+02:00'),
-  ('20000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'analysis', 'Analyse de la structure existante terminée', '{}', '2026-07-27T10:05:00+02:00'),
-  ('20000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001', 'development', 'Composants principaux créés', '{}', '2026-07-27T14:30:00+02:00'),
-  ('20000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000001', 'build', 'Build terminé avec succès', '{}', '2026-07-28T11:10:00+02:00'),
-  ('20000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000001', 'test', 'En attente de vérification utilisateur', '{"status":"to_review"}', '2026-07-28T11:30:00+02:00'),
-  ('20000000-0000-4000-8000-000000000006', '10000000-0000-4000-8000-000000000002', 'mission_received', 'Mission reçue et cadrée', '{}', '2026-07-29T10:00:00+02:00'),
-  ('20000000-0000-4000-8000-000000000007', '10000000-0000-4000-8000-000000000002', 'analysis', 'Conventions Supabase de Selen Studio analysées', '{}', '2026-07-29T11:15:00+02:00'),
-  ('20000000-0000-4000-8000-000000000008', '10000000-0000-4000-8000-000000000002', 'development', 'Connexion de La Forge à Supabase', '{}', '2026-07-29T14:10:00+02:00'),
-  ('20000000-0000-4000-8000-000000000009', '10000000-0000-4000-8000-000000000003', 'completed', 'Mission terminée et validée', '{"status":"validated"}', '2026-07-24T15:30:00+02:00')
-on conflict (id) do nothing;
