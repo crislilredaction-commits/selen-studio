@@ -29,13 +29,15 @@ preuve historique de la commande qui les a créés. Une migration n’est class�
 index, fonctions, triggers, RLS et politiques qu’elle attend sont présents, ou
 qu’une migration locale suivante explique explicitement leur remplacement.
 
-Le réalignement ne doit pas commencer avant une décision humaine sur trois
-migrations partielles et une migration obsolète :
+Le réalignement ne doit pas commencer avant validation humaine de la correction
+préparée pour trois migrations partielles et une migration obsolète :
 
 - `20260624000000` : politique SELECT de `satisfaction_surveys` absente ;
 - `20260701110000` : politique de `lil_billing_profiles` absente ;
 - `20260703100000` : deux colonnes annuelles absentes de
-  `daily_subscriptions`, alors que des fonctions distantes les référencent ;
+  `daily_subscriptions`, alors que des fonctions distantes les référencent ; le
+  produit a depuis confirmé le modèle glissant et une correction locale est
+  prête, mais non appliquée ;
 - `20260701090000` : ancienne contrainte de statuts des factures remplacée par
   `20260701120000`.
 
@@ -227,10 +229,17 @@ Rejouer le fichier ne corrigerait pas cet écart : `create table if not exists`
 ne complète pas une table existante. Le rejeu atteindrait ensuite des créations
 de politiques déjà présentes.
 
-Conclusion : migration partielle et dangereuse. Une décision fonctionnelle est
-requise pour savoir si le modèle annuel par périodes doit être restauré ou si
-les anciennes fonctions à un argument doivent être remplacées dans une
-migration corrective.
+Conclusion : migration partielle et dangereuse à rejouer. La décision produit
+du 29 juillet 2026 confirme une période glissante de douze mois à partir de la
+souscription. La migration corrective locale restaure les deux bornes sans
+écraser de valeurs valides, retire les surcharges hors historique à `p_year` et
+recrée les trois fonctions à un argument. Elle n'a pas été appliquée.
+
+L'introspection distante confirme une seule ligne active, créée le 5 juillet
+2026, avec règles tarifaires acceptées le même jour et abonnement Stripe
+présent. Le début de période Stripe exact n'est pas stocké. Le backfill proposé
+utilise donc `pricing_rule_accepted_at`, puis `created_at` en repli ; cette
+approximation doit être validée avant toute application.
 
 ### Parcours d’inscription Daily — `20260703110000` à `20260703140000`
 
@@ -299,11 +308,13 @@ Aucune migration entière n’est absente, mais trois ensembles d’effets manqu
 1. politique `Studio staff can read satisfaction surveys` ;
 2. politique `Lil owner can manage billing profiles` ;
 3. `daily_subscriptions.annual_period_start`,
-   `daily_subscriptions.annual_period_end` et leur contrainte de cohérence.
+   `daily_subscriptions.annual_period_end`, leur contrainte de douze mois et
+   les fonctions cohérentes de renouvellement et de comptage glissant.
 
-Ces éléments devraient, si leur comportement reste souhaité, être ajoutés dans
-une nouvelle migration corrective ciblée. Ils ne doivent pas être obtenus en
-rejouant les fichiers historiques.
+Ces éléments sont préparés dans la migration corrective ciblée
+`20260729173634_realign_daily_and_satisfaction_access.sql`. Ils ne doivent pas
+être obtenus en rejouant les fichiers historiques, et la correction locale ne
+doit être appliquée qu'après sauvegarde et validation humaine.
 
 ## Migrations ambiguës ou dangereuses
 
