@@ -434,3 +434,178 @@ Forge reste à appliquer.
   réalisée par l'utilisatrice en dehors de cette tentative automatisée ;
 - aucun merge vers `main` ;
 - aucun déploiement Vercel, Preview ou production.
+
+## Application de la migration Forge — 29 juillet 2026
+
+### Dernier dry-run
+
+Commande :
+
+```powershell
+npx.cmd supabase db push --dry-run --linked
+```
+
+Résultat :
+
+```json
+{
+  "upToDate": false,
+  "dryRun": true,
+  "migrations": [
+    "20260729183000_create_forge_persistence.sql"
+  ],
+  "seeds": [],
+  "roles": [],
+  "message": "Finished supabase db push."
+}
+```
+
+Le garde-fou était conforme : Forge était l'unique migration proposée.
+
+### Application
+
+Commande :
+
+```powershell
+npx.cmd supabase db push --linked
+```
+
+Résultat :
+
+```json
+{
+  "upToDate": false,
+  "dryRun": false,
+  "migrations": [
+    "20260729183000_create_forge_persistence.sql"
+  ],
+  "seeds": [],
+  "roles": [],
+  "message": "Finished supabase db push."
+}
+```
+
+La CLI a confirmé :
+
+```text
+Applying migration 20260729183000_create_forge_persistence.sql...
+```
+
+### Objets vérifiés en lecture seule
+
+Les quatre tables existent :
+
+- `public.forge_missions` ;
+- `public.forge_activity_logs` ;
+- `public.forge_validation_items` ;
+- `public.forge_corrections`.
+
+Contrôles conformes :
+
+- RLS active sur les quatre tables ;
+- quatre politiques ALL réservées à `authenticated`, conditionnées par un
+  profil Studio actif de rôle `agent` ou `admin` ;
+- aucune ligne présente dans les quatre tables immédiatement après migration :
+  aucune donnée de démonstration ;
+- cinq clés étrangères présentes ;
+- `mission_id` utilise `ON DELETE CASCADE` dans activity logs, validation items
+  et corrections ;
+- `created_by` utilise `ON DELETE SET NULL` dans missions et corrections ;
+- contrainte unique `(mission_id, position)` présente ;
+- sept index métier présents, en plus des index de clés primaires et de la
+  contrainte unique ;
+- triggers `updated_at` présents et actifs sur missions et validation items ;
+- `forge_add_correction(uuid, text)` et
+  `forge_validate_mission(uuid)` présentes, `security invoker` et exécutables
+  par `authenticated` ;
+- aucun privilège table ni EXECUTE sur les deux fonctions métier pour `anon`.
+
+La migration ne contient aucune modification de table préexistante, hormis
+`create extension if not exists pgcrypto`, et aucun DML visant une autre table.
+L'absence de sauvegarde exploitable empêche cependant une comparaison
+exhaustive ligne par ligne de toutes les autres tables.
+
+### Anomalie de grants bloquante
+
+L'introspection a révélé un écart entre l'intention SQL et les droits effectifs.
+Les ACL des quatre nouvelles tables sont :
+
+```text
+authenticated=arwdDxtm
+```
+
+Le rôle `authenticated` possède donc, en plus de
+SELECT/INSERT/UPDATE/DELETE :
+
+- `TRUNCATE` ;
+- `REFERENCES` ;
+- `TRIGGER`.
+
+Ces privilèges proviennent des privilèges par défaut déjà actifs lors de la
+création des tables. Le `grant select, insert, update, delete` de la migration
+n'a pas retiré les droits supplémentaires. RLS ne protège pas `TRUNCATE` :
+cet écart est donc bloquant.
+
+Par ailleurs, `public.set_forge_updated_at()` conserve un ACL EXECUTE pour
+`PUBLIC`, `anon` et `authenticated`. Les deux fonctions métier sont correctement
+fermées à `anon`, mais l'exigence globale d'absence d'accès anonyme n'est pas
+entièrement satisfaite.
+
+La correction minimale recommandée, dans une nouvelle migration dédiée et
+après validation, est :
+
+```sql
+revoke truncate, references, trigger
+  on table public.forge_missions,
+           public.forge_activity_logs,
+           public.forge_validation_items,
+           public.forge_corrections
+  from authenticated;
+
+revoke all on function public.set_forge_updated_at()
+  from public, anon, authenticated;
+```
+
+Le propriétaire PostgreSQL conserve les droits nécessaires. L'exécution d'une
+fonction trigger par un trigger existant ne nécessite pas de grant EXECUTE au
+rôle qui modifie la ligne.
+
+Cette correction n'a pas été créée ni appliquée dans ce run, car l'objectif
+autorisait uniquement l'application de la migration Forge.
+
+### Historique final
+
+```powershell
+npx.cmd supabase migration list --linked
+```
+
+La commande confirme que `20260729183000` est présente localement et au
+distant. Toutes les migrations locales sont désormais alignées.
+
+### Tests Preview et mission technique
+
+Les tests Preview ont été arrêtés avant authentification et avant toute
+création de donnée, en raison de l'anomalie de grants :
+
+- `/agent/forge` non testé dans ce run ;
+- `/agent/forge/cody` non testé dans ce run ;
+- desktop et mobile non testés ;
+- URL Preview non utilisée ;
+- aucune capture produite ;
+- aucune mission technique créée ;
+- aucun item, note, correction, journal ou cycle de validation testé.
+
+Cette décision évite de poursuivre un test fonctionnel sur un modèle
+d'autorisation dont la vérification de sécurité a échoué.
+
+### Prochaine étape recommandée
+
+1. Créer et relire une migration corrective limitée aux revokes ci-dessus.
+2. Effectuer un dry-run confirmant que cette correction est l'unique migration.
+3. L'appliquer et vérifier les ACL effectifs ainsi que l'absence d'accès anon.
+4. Reprendre ensuite les tests Preview desktop/mobile avec un compte Studio
+   actif et créer la mission technique demandée.
+5. Conserver la mission jusqu'à finalisation du rapport fonctionnel.
+
+Aucun merge vers `main` et aucun déploiement Vercel manuel ou production n'ont
+été effectués.
