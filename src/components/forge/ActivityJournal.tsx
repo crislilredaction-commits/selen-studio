@@ -30,6 +30,11 @@ const icons: Record<ActivityType, React.ReactNode> = {
   report_generated: <ScrollText size={15} />,
   report_updated: <RefreshCw size={15} />,
   report_failed: <FileWarning size={15} />,
+  plan_generated: <ScrollText size={15} />,
+  plan_updated: <RefreshCw size={15} />,
+  plan_validated: <CheckCircle2 size={15} />,
+  plan_reopened: <RefreshCw size={15} />,
+  plan_failed: <FileWarning size={15} />,
 };
 
 export default function ActivityJournal({ entries }: { entries: ActivityEntry[] }) {

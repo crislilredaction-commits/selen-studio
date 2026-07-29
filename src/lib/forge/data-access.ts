@@ -5,6 +5,10 @@ import type {
   CheckResult,
   Correction,
   Mission,
+  MissionBrief,
+  MissionPlan,
+  MissionPlanDraft,
+  MissionPlanStatus,
   MissionReport,
   MissionReportStatus,
   MissionPriority,
@@ -69,6 +73,45 @@ type ForgeReportRow = {
   updated_at: string;
 };
 
+type ForgeBriefRow = {
+  id: string;
+  source_request: string;
+  source_context: string | null;
+  source_constraints: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ForgePlanRow = {
+  id: string;
+  mission_id: string;
+  version: number;
+  is_current: boolean;
+  status: MissionPlanStatus;
+  proposed_title: string;
+  summary: string;
+  functional_objective: string;
+  included_scope: string[];
+  excluded_scope: string[];
+  constraints: string[];
+  repository_areas: string[];
+  technical_dependencies: string[];
+  risks: MissionPlan["risks"];
+  blocking_questions: string[];
+  non_blocking_questions: string[];
+  assumptions: string[];
+  recommendations: string[];
+  acceptance_criteria: string[];
+  execution_steps: MissionPlan["executionSteps"];
+  verification_plan: string[];
+  markdown_content: string;
+  created_by: string | null;
+  validated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  validated_at: string | null;
+};
+
 type ForgeMissionRow = {
   id: string;
   title: string;
@@ -83,10 +126,14 @@ type ForgeMissionRow = {
   git_branch: string | null;
   preview_url: string | null;
   created_at: string;
+  planning_required: boolean;
+  planning_validated_at: string | null;
   forge_activity_logs?: ForgeActivityRow[];
   forge_validation_items?: ForgeValidationRow[];
   forge_corrections?: ForgeCorrectionRow[];
   forge_mission_reports?: ForgeReportRow | ForgeReportRow[] | null;
+  forge_mission_briefs?: ForgeBriefRow | ForgeBriefRow[] | null;
+  forge_mission_plans?: ForgePlanRow[];
 };
 
 function parseScope(value: string | null): string[] {
@@ -163,6 +210,49 @@ function mapReport(row: ForgeReportRow): MissionReport {
   };
 }
 
+function mapBrief(row: ForgeBriefRow): MissionBrief {
+  return {
+    id: row.id,
+    sourceRequest: row.source_request,
+    sourceContext: row.source_context ?? "",
+    sourceConstraints: row.source_constraints ?? "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapPlan(row: ForgePlanRow): MissionPlan {
+  return {
+    id: row.id,
+    missionId: row.mission_id,
+    version: row.version,
+    isCurrent: row.is_current,
+    status: row.status,
+    proposedTitle: row.proposed_title,
+    summary: row.summary,
+    functionalObjective: row.functional_objective,
+    includedScope: row.included_scope ?? [],
+    excludedScope: row.excluded_scope ?? [],
+    constraints: row.constraints ?? [],
+    repositoryAreas: row.repository_areas ?? [],
+    technicalDependencies: row.technical_dependencies ?? [],
+    risks: row.risks ?? [],
+    blockingQuestions: row.blocking_questions ?? [],
+    nonBlockingQuestions: row.non_blocking_questions ?? [],
+    assumptions: row.assumptions ?? [],
+    recommendations: row.recommendations ?? [],
+    acceptanceCriteria: row.acceptance_criteria ?? [],
+    executionSteps: row.execution_steps ?? [],
+    verificationPlan: row.verification_plan ?? [],
+    markdownContent: row.markdown_content,
+    createdBy: row.created_by ?? undefined,
+    validatedBy: row.validated_by ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    validatedAt: row.validated_at ?? undefined,
+  };
+}
+
 function mapMission(row: ForgeMissionRow): Mission {
   const checklist = [...(row.forge_validation_items ?? [])]
     .sort((a, b) => a.position - b.position)
@@ -175,6 +265,12 @@ function mapMission(row: ForgeMissionRow): Mission {
   const reportRow = Array.isArray(row.forge_mission_reports)
     ? row.forge_mission_reports[0]
     : row.forge_mission_reports;
+  const briefRow = Array.isArray(row.forge_mission_briefs)
+    ? row.forge_mission_briefs[0]
+    : row.forge_mission_briefs;
+  const planHistory = [...(row.forge_mission_plans ?? [])]
+    .sort((a, b) => b.version - a.version)
+    .map(mapPlan);
 
   return {
     id: row.id,
@@ -198,6 +294,11 @@ function mapMission(row: ForgeMissionRow): Mission {
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
       .map(mapCorrection),
     report: reportRow ? mapReport(reportRow) : undefined,
+    planningRequired: row.planning_required ?? false,
+    planningValidatedAt: row.planning_validated_at ?? undefined,
+    brief: briefRow ? mapBrief(briefRow) : undefined,
+    currentPlan: planHistory.find((plan) => plan.isCurrent),
+    planHistory,
     lastVerifiedAt,
   };
 }
@@ -207,7 +308,9 @@ const missionSelection = `
   forge_activity_logs (*),
   forge_validation_items (*),
   forge_corrections (*),
-  forge_mission_reports (*)
+  forge_mission_reports (*),
+  forge_mission_briefs (*),
+  forge_mission_plans (*)
 `;
 
 export async function listMissions(agentKey = "cody"): Promise<Mission[]> {
@@ -285,6 +388,123 @@ export async function addActivityLog(
     event_type: eventType,
     message,
     metadata,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export type NewPlanningMissionInput = {
+  title: string;
+  sourceRequest: string;
+  sourceContext: string;
+  sourceConstraints: string;
+};
+
+export async function createPlanningMission(
+  input: NewPlanningMissionInput,
+): Promise<string> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("forge_create_planning_mission", {
+    p_title: input.title || null,
+    p_source_request: input.sourceRequest,
+    p_source_context: input.sourceContext || null,
+    p_source_constraints: input.sourceConstraints || null,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+export async function setPlanningAnalysisState(
+  missionId: string,
+  state: "draft" | "analyzing",
+  message: string,
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_set_planning_analysis_state", {
+    p_mission_id: missionId,
+    p_state: state,
+    p_message: message,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function requestMissionPlan(
+  input: NewPlanningMissionInput,
+): Promise<MissionPlanDraft> {
+  const response = await fetch("/agent/api/forge/planning", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      requestedTitle: input.title,
+      sourceRequest: input.sourceRequest,
+      sourceContext: input.sourceContext,
+      sourceConstraints: input.sourceConstraints,
+    }),
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload?.plan) {
+    throw new Error(payload?.error ?? "La génération du cadrage a échoué.");
+  }
+  return {
+    proposedTitle: payload.plan.proposed_title,
+    summary: payload.plan.summary,
+    functionalObjective: payload.plan.functional_objective,
+    includedScope: payload.plan.included_scope,
+    excludedScope: payload.plan.excluded_scope,
+    constraints: payload.plan.constraints,
+    repositoryAreas: payload.plan.repository_areas,
+    technicalDependencies: payload.plan.technical_dependencies,
+    risks: payload.plan.risks,
+    blockingQuestions: payload.plan.blocking_questions,
+    nonBlockingQuestions: payload.plan.non_blocking_questions,
+    assumptions: payload.plan.assumptions,
+    recommendations: payload.plan.recommendations,
+    acceptanceCriteria: payload.plan.acceptance_criteria,
+    executionSteps: payload.plan.execution_steps,
+    verificationPlan: payload.plan.verification_plan,
+    markdownContent: payload.plan.markdown_content,
+  };
+}
+
+function planPayload(plan: MissionPlanDraft) {
+  return {
+    proposed_title: plan.proposedTitle,
+    summary: plan.summary,
+    functional_objective: plan.functionalObjective,
+    included_scope: plan.includedScope,
+    excluded_scope: plan.excludedScope,
+    constraints: plan.constraints,
+    repository_areas: plan.repositoryAreas,
+    technical_dependencies: plan.technicalDependencies,
+    risks: plan.risks,
+    blocking_questions: plan.blockingQuestions,
+    non_blocking_questions: plan.nonBlockingQuestions,
+    assumptions: plan.assumptions,
+    recommendations: plan.recommendations,
+    acceptance_criteria: plan.acceptanceCriteria,
+    execution_steps: plan.executionSteps,
+    verification_plan: plan.verificationPlan,
+    markdown_content: plan.markdownContent,
+  };
+}
+
+export async function storeMissionPlan(
+  missionId: string,
+  plan: MissionPlanDraft,
+  action: "generate" | "regenerate" | "edit" | "draft",
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_store_mission_plan", {
+    p_mission_id: missionId,
+    p_plan: planPayload(plan),
+    p_action: action,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function validateMissionPlan(missionId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_validate_mission_plan", {
+    p_mission_id: missionId,
   });
   if (error) throw new Error(error.message);
 }

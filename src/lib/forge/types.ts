@@ -2,6 +2,10 @@ export type AgentState = "available" | "in_progress" | "paused" | "blocked";
 
 export type MissionStatus =
   | "draft"
+  | "analyzing"
+  | "needs_clarification"
+  | "plan_ready"
+  | "plan_validated"
   | "ready"
   | "in_progress"
   | "deployed"
@@ -26,7 +30,74 @@ export type ActivityType =
   | "user_validation"
   | "report_generated"
   | "report_updated"
-  | "report_failed";
+  | "report_failed"
+  | "plan_generated"
+  | "plan_updated"
+  | "plan_validated"
+  | "plan_reopened"
+  | "plan_failed";
+
+export type MissionPlanStatus =
+  | "draft"
+  | "needs_clarification"
+  | "plan_ready"
+  | "validated"
+  | "superseded"
+  | "failed";
+
+export type PlanningRisk = {
+  level: "low" | "medium" | "high" | "critical";
+  label: string;
+  detail: string;
+};
+
+export type PlanningStep = {
+  position: number;
+  title: string;
+  detail: string;
+};
+
+export type MissionBrief = {
+  id: string;
+  sourceRequest: string;
+  sourceContext: string;
+  sourceConstraints: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MissionPlanDraft = {
+  proposedTitle: string;
+  summary: string;
+  functionalObjective: string;
+  includedScope: string[];
+  excludedScope: string[];
+  constraints: string[];
+  repositoryAreas: string[];
+  technicalDependencies: string[];
+  risks: PlanningRisk[];
+  blockingQuestions: string[];
+  nonBlockingQuestions: string[];
+  assumptions: string[];
+  recommendations: string[];
+  acceptanceCriteria: string[];
+  executionSteps: PlanningStep[];
+  verificationPlan: string[];
+  markdownContent: string;
+};
+
+export type MissionPlan = MissionPlanDraft & {
+  id: string;
+  missionId: string;
+  version: number;
+  isCurrent: boolean;
+  status: MissionPlanStatus;
+  createdBy?: string;
+  validatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+  validatedAt?: string;
+};
 
 export type MissionReportStatus =
   | "pending"
@@ -129,5 +200,10 @@ export type Mission = {
   checklist: ValidationItem[];
   corrections: Correction[];
   report?: MissionReport;
+  planningRequired: boolean;
+  planningValidatedAt?: string;
+  brief?: MissionBrief;
+  currentPlan?: MissionPlan;
+  planHistory: MissionPlan[];
   lastVerifiedAt?: string;
 };

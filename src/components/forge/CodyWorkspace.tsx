@@ -6,17 +6,24 @@ import { AlertTriangle, ArrowLeft, Hammer, RefreshCw, Sparkles } from "lucide-re
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addCorrection,
+  createPlanningMission,
   generateDemoMissionReport,
   getMissionDetails,
   listMissions,
+  requestMissionPlan,
+  setPlanningAnalysisState,
+  storeMissionPlan,
   updateValidationItem,
   validateMission,
+  validateMissionPlan,
+  type NewPlanningMissionInput,
 } from "@/lib/forge/data-access";
 import { missionFilters } from "@/lib/forge/labels";
-import type { Mission, ValidationItem } from "@/lib/forge/types";
+import type { Mission, MissionPlanDraft, ValidationItem } from "@/lib/forge/types";
 import { AgentStatusBadge } from "./Badges";
 import MissionCard from "./MissionCard";
 import MissionDetail from "./MissionDetail";
+import NewMissionForm from "./NewMissionForm";
 
 type Filter = (typeof missionFilters)[number]["value"];
 
@@ -27,6 +34,7 @@ export default function CodyWorkspace() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reportGenerating, setReportGenerating] = useState(false);
+  const [planningBusy, setPlanningBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -146,6 +154,96 @@ export default function CodyWorkspace() {
     }
   }
 
+  async function createAndAnalyzeMission(input: NewPlanningMissionInput) {
+    setPlanningBusy(true);
+    setFeedback(null);
+    let missionId: string | null = null;
+    try {
+      missionId = await createPlanningMission(input);
+      await setPlanningAnalysisState(missionId, "analyzing", "Cody analyse la demande et prépare le cadrage");
+      await loadMissions(missionId);
+      const plan = await requestMissionPlan(input);
+      await storeMissionPlan(missionId, plan, "generate");
+      await loadMissions(missionId);
+      setFilter("all");
+      setFeedback(plan.blockingQuestions.length
+        ? "Cadrage généré. Une ou plusieurs précisions bloquantes sont requises."
+        : "Cadrage généré et prêt à être relu.");
+    } catch (planningError) {
+      if (missionId) {
+        await setPlanningAnalysisState(
+          missionId,
+          "draft",
+          "La génération du cadrage a échoué ; la demande source est conservée",
+        ).catch(() => undefined);
+        await loadMissions(missionId);
+      }
+      setFeedback(planningError instanceof Error
+        ? planningError.message
+        : "La création du cadrage a échoué.");
+    } finally {
+      setPlanningBusy(false);
+    }
+  }
+
+  async function regeneratePlan() {
+    if (!selectedMission?.brief) return;
+    const missionId = selectedMission.id;
+    const input: NewPlanningMissionInput = {
+      title: selectedMission.title,
+      sourceRequest: selectedMission.brief.sourceRequest,
+      sourceContext: selectedMission.brief.sourceContext,
+      sourceConstraints: selectedMission.brief.sourceConstraints,
+    };
+    setPlanningBusy(true);
+    setFeedback(null);
+    try {
+      await setPlanningAnalysisState(missionId, "analyzing", "Cody régénère le cadrage sans écraser les versions précédentes");
+      const plan = await requestMissionPlan(input);
+      await storeMissionPlan(missionId, plan, "regenerate");
+      await loadMissions(missionId);
+      setFeedback("Nouvelle version du cadrage enregistrée.");
+    } catch (planningError) {
+      await loadMissions(missionId);
+      setFeedback(planningError instanceof Error ? planningError.message : "La régénération a échoué.");
+    } finally {
+      setPlanningBusy(false);
+    }
+  }
+
+  async function savePlan(plan: MissionPlanDraft, action: "edit" | "draft" = "edit") {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setPlanningBusy(true);
+    setFeedback(null);
+    try {
+      await storeMissionPlan(missionId, plan, action);
+      await loadMissions(missionId);
+      setFeedback(action === "draft" ? "Nouvelle version enregistrée en brouillon." : "Modifications enregistrées dans une nouvelle version.");
+    } catch (planningError) {
+      setFeedback(planningError instanceof Error ? planningError.message : "L’enregistrement du cadrage a échoué.");
+    } finally {
+      setPlanningBusy(false);
+    }
+  }
+
+  async function submitPlanValidation() {
+    if (!selectedMission) return;
+    if (!window.confirm(`Valider explicitement le cadrage de « ${selectedMission.title} » ?`)) return;
+    const missionId = selectedMission.id;
+    setPlanningBusy(true);
+    setFeedback(null);
+    try {
+      await validateMissionPlan(missionId);
+      await loadMissions(missionId);
+      setFeedback("Cadrage validé. La mission peut désormais entrer en exécution.");
+    } catch (planningError) {
+      setFeedback(planningError instanceof Error ? planningError.message : "La validation du cadrage a échoué.");
+    } finally {
+      setPlanningBusy(false);
+    }
+  }
+
   return (
     <main className="forge-page forge-cody-page">
       <Link className="forge-back-link" href="/agent/forge"><ArrowLeft size={16} /> Retour à La Forge</Link>
@@ -161,6 +259,8 @@ export default function CodyWorkspace() {
         </div>
         <Sparkles className="forge-cody-hero__sparkle" aria-hidden />
       </header>
+
+      <NewMissionForm busy={planningBusy} onSubmit={createAndAnalyzeMission} />
 
       <nav className="forge-filters" aria-label="Filtrer les missions">
         {missionFilters.map((item) => (
@@ -208,6 +308,11 @@ export default function CodyWorkspace() {
           onValidate={submitValidation}
           onGenerateReport={generateReport}
           reportGenerating={reportGenerating}
+          planningBusy={planningBusy}
+          onRegeneratePlan={regeneratePlan}
+          onSavePlan={(plan) => savePlan(plan)}
+          onValidatePlan={submitPlanValidation}
+          onDraftPlan={(plan) => savePlan(plan, "draft")}
         />
       </div>
       )}

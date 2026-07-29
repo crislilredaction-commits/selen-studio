@@ -1,10 +1,11 @@
 import { ExternalLink, GitBranch, ShieldCheck } from "lucide-react";
-import type { Mission, ValidationItem } from "@/lib/forge/types";
+import type { Mission, MissionPlanDraft, ValidationItem } from "@/lib/forge/types";
 import { MissionStatusBadge } from "./Badges";
 import ActivityJournal from "./ActivityJournal";
 import ValidationChecklist from "./ValidationChecklist";
 import CorrectionComposer from "./CorrectionComposer";
 import MissionReportPanel from "./MissionReportPanel";
+import MissionPlanningPanel from "./MissionPlanningPanel";
 
 export default function MissionDetail({
   mission,
@@ -13,6 +14,11 @@ export default function MissionDetail({
   onValidate,
   onGenerateReport,
   reportGenerating,
+  planningBusy,
+  onRegeneratePlan,
+  onSavePlan,
+  onValidatePlan,
+  onDraftPlan,
 }: {
   mission: Mission;
   onChecklistChange: (id: string, patch: Partial<ValidationItem>) => void;
@@ -20,7 +26,20 @@ export default function MissionDetail({
   onValidate: () => void;
   onGenerateReport: () => void;
   reportGenerating: boolean;
+  planningBusy: boolean;
+  onRegeneratePlan: () => Promise<void>;
+  onSavePlan: (plan: MissionPlanDraft) => Promise<void>;
+  onValidatePlan: () => Promise<void>;
+  onDraftPlan: (plan: MissionPlanDraft) => Promise<void>;
 }) {
+  const planningOnly = mission.planningRequired && [
+    "draft",
+    "analyzing",
+    "needs_clarification",
+    "plan_ready",
+    "plan_validated",
+  ].includes(mission.status);
+
   return (
     <article className="forge-detail">
       <header className="forge-detail__header">
@@ -56,6 +75,20 @@ export default function MissionDetail({
         <ActivityJournal entries={mission.activities} />
       </section>
 
+      {mission.planningRequired && (
+        <MissionPlanningPanel
+          key={mission.currentPlan?.id ?? mission.id}
+          mission={mission}
+          busy={planningBusy}
+          onRegenerate={onRegeneratePlan}
+          onSave={onSavePlan}
+          onValidate={onValidatePlan}
+          onDraft={onDraftPlan}
+        />
+      )}
+
+      {!planningOnly && (
+        <>
       <section className="forge-detail__section">
         <h3>Checklist de vérification</h3>
         <ValidationChecklist
@@ -102,6 +135,8 @@ export default function MissionDetail({
           {mission.status === "validated" ? "Mission validée" : "Valider la mission"}
         </button>
       </footer>
+        </>
+      )}
     </article>
   );
 }

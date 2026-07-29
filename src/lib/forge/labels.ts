@@ -14,6 +14,10 @@ export const agentStateLabels: Record<AgentState, string> = {
 
 export const missionStatusLabels: Record<MissionStatus, string> = {
   draft: "À préparer",
+  analyzing: "Analyse en cours",
+  needs_clarification: "Précisions requises",
+  plan_ready: "Cadrage prêt",
+  plan_validated: "Cadrage validé",
   ready: "Prête",
   in_progress: "En cours",
   deployed: "Déployée",
@@ -45,10 +49,20 @@ export const activityTypeLabels: Record<ActivityType, string> = {
   report_generated: "Rapport généré",
   report_updated: "Rapport régénéré",
   report_failed: "Échec du rapport",
+  plan_generated: "Cadrage généré",
+  plan_updated: "Cadrage mis à jour",
+  plan_validated: "Cadrage validé",
+  plan_reopened: "Cadrage rouvert",
+  plan_failed: "Échec du cadrage",
 };
 
 export const missionFilters = [
   { value: "all", label: "Toutes" },
+  { value: "draft", label: "Brouillons" },
+  { value: "analyzing", label: "Analyse" },
+  { value: "needs_clarification", label: "À préciser" },
+  { value: "plan_ready", label: "Plans prêts" },
+  { value: "plan_validated", label: "Plans validés" },
   { value: "in_progress", label: "En cours" },
   { value: "to_review", label: "À vérifier" },
   { value: "changes_requested", label: "À corriger" },
