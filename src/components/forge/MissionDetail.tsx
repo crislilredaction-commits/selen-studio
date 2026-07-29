@@ -4,17 +4,22 @@ import { MissionStatusBadge } from "./Badges";
 import ActivityJournal from "./ActivityJournal";
 import ValidationChecklist from "./ValidationChecklist";
 import CorrectionComposer from "./CorrectionComposer";
+import MissionReportPanel from "./MissionReportPanel";
 
 export default function MissionDetail({
   mission,
   onChecklistChange,
   onAddCorrection,
   onValidate,
+  onGenerateReport,
+  reportGenerating,
 }: {
   mission: Mission;
   onChecklistChange: (id: string, patch: Partial<ValidationItem>) => void;
   onAddCorrection: (content: string) => void;
   onValidate: () => void;
+  onGenerateReport: () => void;
+  reportGenerating: boolean;
 }) {
   return (
     <article className="forge-detail">
@@ -59,6 +64,13 @@ export default function MissionDetail({
           onChange={onChecklistChange}
         />
       </section>
+
+      <MissionReportPanel
+        mission={mission}
+        report={mission.report}
+        generating={reportGenerating}
+        onGenerate={onGenerateReport}
+      />
 
       <section className="forge-detail__section">
         <h3>Notes et corrections</h3>

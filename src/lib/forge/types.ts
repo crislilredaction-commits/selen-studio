@@ -23,7 +23,65 @@ export type ActivityType =
   | "deployment"
   | "blocked"
   | "completed"
-  | "user_validation";
+  | "user_validation"
+  | "report_generated"
+  | "report_updated"
+  | "report_failed";
+
+export type MissionReportStatus =
+  | "pending"
+  | "generating"
+  | "ready"
+  | "failed"
+  | "outdated";
+
+export type ReportCheckStatus =
+  | "pending"
+  | "passed"
+  | "failed"
+  | "warnings"
+  | "not_run";
+
+export type ReportRisk = {
+  level: "low" | "medium" | "high" | "critical";
+  description: string;
+  impact: string;
+  recommendation: string;
+};
+
+export type ReportManualTestItem = {
+  label: string;
+  priority: "low" | "normal" | "high" | "critical";
+  state: "pending" | "passed" | "failed" | "not_applicable";
+  result: string;
+  note: string;
+};
+
+export type MissionReport = {
+  id: string;
+  missionId: string;
+  status: MissionReportStatus;
+  summary: string;
+  markdownContent: string;
+  filesCreated: number;
+  filesModified: number;
+  filesDeleted: number;
+  lintStatus?: ReportCheckStatus;
+  buildStatus?: ReportCheckStatus;
+  testsStatus?: ReportCheckStatus;
+  gitRepository?: string;
+  gitBranch?: string;
+  commitSha?: string;
+  commitMessage?: string;
+  previewUrl?: string;
+  risks: ReportRisk[];
+  limitations: string[];
+  manualTestItems: ReportManualTestItem[];
+  nextRecommendation?: string;
+  generatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type CheckResult = "compliant" | "issue" | "not_applicable" | null;
 
@@ -70,5 +128,6 @@ export type Mission = {
   activities: ActivityEntry[];
   checklist: ValidationItem[];
   corrections: Correction[];
+  report?: MissionReport;
   lastVerifiedAt?: string;
 };

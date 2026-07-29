@@ -3,9 +3,12 @@ import {
   CheckCircle2,
   CircleDot,
   Code2,
+  FileWarning,
   Hammer,
+  RefreshCw,
   Rocket,
   Search,
+  ScrollText,
   TestTube2,
 } from "lucide-react";
 import { activityTypeLabels } from "@/lib/forge/labels";
@@ -24,6 +27,9 @@ const icons: Record<ActivityType, React.ReactNode> = {
   blocked: <AlertTriangle size={15} />,
   completed: <CheckCircle2 size={15} />,
   user_validation: <CheckCircle2 size={15} />,
+  report_generated: <ScrollText size={15} />,
+  report_updated: <RefreshCw size={15} />,
+  report_failed: <FileWarning size={15} />,
 };
 
 export default function ActivityJournal({ entries }: { entries: ActivityEntry[] }) {

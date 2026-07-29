@@ -42,6 +42,9 @@ export const activityTypeLabels: Record<ActivityType, string> = {
   blocked: "Blocage",
   completed: "Mission terminée",
   user_validation: "Validation utilisateur",
+  report_generated: "Rapport généré",
+  report_updated: "Rapport régénéré",
+  report_failed: "Échec du rapport",
 };
 
 export const missionFilters = [

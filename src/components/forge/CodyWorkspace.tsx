@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowLeft, Hammer, RefreshCw, Sparkles } from "lucide-re
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addCorrection,
+  generateDemoMissionReport,
   getMissionDetails,
   listMissions,
   updateValidationItem,
@@ -25,6 +26,7 @@ export default function CodyWorkspace() {
   const [filter, setFilter] = useState<Filter>("all");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [reportGenerating, setReportGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -127,6 +129,23 @@ export default function CodyWorkspace() {
     }
   }
 
+  async function generateReport() {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setReportGenerating(true);
+    setFeedback(null);
+    try {
+      await generateDemoMissionReport(selectedMission);
+      await loadMissions(missionId);
+      setFeedback(selectedMission.report ? "Rapport régénéré et journal mis à jour." : "Rapport généré et journal mis à jour.");
+    } catch {
+      await loadMissions(missionId);
+      setFeedback("La génération du rapport a échoué.");
+    } finally {
+      setReportGenerating(false);
+    }
+  }
+
   return (
     <main className="forge-page forge-cody-page">
       <Link className="forge-back-link" href="/agent/forge"><ArrowLeft size={16} /> Retour à La Forge</Link>
@@ -187,6 +206,8 @@ export default function CodyWorkspace() {
           onChecklistChange={changeChecklist}
           onAddCorrection={submitCorrection}
           onValidate={submitValidation}
+          onGenerateReport={generateReport}
+          reportGenerating={reportGenerating}
         />
       </div>
       )}
