@@ -215,7 +215,12 @@ nouvelle dépendance.
 
 ## Preview et validation visuelle
 
-URL Preview : à compléter après le push.
+Preview automatique Vercel du commit d’implémentation, statut `READY` :
+
+`https://selen-studio-ctnpdsl7n-crislilredaction-4256s-projects.vercel.app`
+
+La route `/agent/forge/cody` répond en HTTP 200 et est correctement servie par
+le chemin `/login` en l’absence de session.
 
 La route Cody sans session sera vérifiée sur la Preview. Aucun test visuel
 authentifié ne sera déclaré si la session Chrome existante ne peut pas être
@@ -242,8 +247,11 @@ Checklist manuelle si nécessaire :
 
 ## Livraison Git
 
-Commit d’implémentation : à compléter après création.
+Commit d’implémentation :
+`3b14cfd8052bb4227e2861e816d5e2b693fee06a` —
+`Ajoute la gestion bornée des incidents Cody`.
 
-Commit de documentation Preview : à compléter après création.
+Le commit documentaire qui inscrit la Preview dans ce rapport est indiqué dans
+le compte rendu final Git.
 
 Aucun merge vers `main` et aucun déploiement manuel en production.
