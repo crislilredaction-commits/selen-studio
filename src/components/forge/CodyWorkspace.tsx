@@ -31,7 +31,7 @@ import {
   type NewPlanningMissionInput,
 } from "@/lib/forge/data-access";
 import { missionFilters } from "@/lib/forge/labels";
-import type { ForgeAccessLevel, Mission, MissionCheckpoint, MissionCheckpointStatus, MissionIncident, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
+import type { ControlledEditInstruction, ForgeAccessLevel, Mission, MissionCheckpoint, MissionCheckpointStatus, MissionIncident, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
 import { AgentStatusBadge } from "./Badges";
 import MissionCard from "./MissionCard";
 import MissionDetail from "./MissionDetail";
@@ -276,13 +276,13 @@ export default function CodyWorkspace() {
     }
   }
 
-  async function requestExecution(targetBranch: string) {
+  async function requestExecution(targetBranch: string, instruction: ControlledEditInstruction) {
     if (!selectedMission) return;
     const missionId = selectedMission.id;
     setSaving(true);
     setFeedback(null);
     try {
-      await requestMissionExecution(missionId, targetBranch);
+      await requestMissionExecution(missionId, targetBranch, instruction);
       await loadMissions(missionId);
       setFeedback("Exécution mise en file. Cody attend maintenant son worker.");
     } catch (executionError) {

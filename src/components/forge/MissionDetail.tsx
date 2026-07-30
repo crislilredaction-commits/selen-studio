@@ -1,6 +1,6 @@
 import { ExternalLink, GitBranch, Pause, Play, ShieldCheck } from "lucide-react";
 import { priorityLabels } from "@/lib/forge/labels";
-import type { ForgeAccessLevel, Mission, MissionCheckpoint, MissionCheckpointStatus, MissionIncident, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
+import type { ControlledEditInstruction, ForgeAccessLevel, Mission, MissionCheckpoint, MissionCheckpointStatus, MissionIncident, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
 import { MissionStatusBadge } from "./Badges";
 import ActivityJournal from "./ActivityJournal";
 import ValidationChecklist from "./ValidationChecklist";
@@ -55,7 +55,7 @@ export default function MissionDetail({
   onResume: () => Promise<void>;
   missionActionBusy: boolean;
   onCheckpointUpdate: (checkpoint: MissionCheckpoint, status: MissionCheckpointStatus, message?: string) => Promise<void>;
-  onExecutionRequest: (targetBranch: string) => Promise<void>;
+  onExecutionRequest: (targetBranch: string, instruction: ControlledEditInstruction) => Promise<void>;
   onIncidentResolve: (incident: MissionIncident, status: "resolved" | "ignored_with_justification", message: string) => Promise<void>;
   onBlockedResume: () => Promise<void>;
   onHumanInstruction: (content: string, sensitivity: "minor" | "sensitive") => Promise<void>;

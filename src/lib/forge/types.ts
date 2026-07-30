@@ -348,6 +348,14 @@ export type ForgeExecutionRun = {
   gitCommitSha?: string;
 };
 
+export type ControlledEditInstruction = {
+  target_path: string;
+  operation: "create" | "replace";
+  expected_content: string;
+  allowed_command: "git_status_short";
+  commit_message: string;
+};
+
 export type HumanInstruction = {
   id: string;
   missionId: string;

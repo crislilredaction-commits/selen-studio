@@ -2,7 +2,14 @@
 
 import { GitBranch, LoaderCircle, Play, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { Mission } from "@/lib/forge/types";
+import type { ControlledEditInstruction, Mission } from "@/lib/forge/types";
+
+const firstControlledContent = `# Premier test d’édition contrôlée de Cody
+
+Ce fichier a été créé automatiquement par le moteur d’exécution Cody.
+
+Aucun fichier métier n’a été modifié.
+`;
 
 export default function MissionExecutionPanel({
   mission,
@@ -11,10 +18,17 @@ export default function MissionExecutionPanel({
 }: {
   mission: Mission;
   busy: boolean;
-  onRequest: (targetBranch: string) => Promise<void>;
+  onRequest: (targetBranch: string, instruction: ControlledEditInstruction) => Promise<void>;
 }) {
   const [configured, setConfigured] = useState<boolean | null>(null);
-  const [branch, setBranch] = useState(`test/cody-${mission.id.slice(0, 8)}`);
+  const [branch, setBranch] = useState(`test/cody-edit-${mission.id.slice(0, 8)}`);
+  const [targetPath, setTargetPath] = useState(
+    "docs/forge-cody-sandbox/first-controlled-edit.md",
+  );
+  const [content, setContent] = useState(firstControlledContent);
+  const [commitMessage, setCommitMessage] = useState(
+    "docs(forge): add first controlled Cody edit",
+  );
   const latest = mission.executionRuns[0];
   const executable = useMemo(() => Boolean(
     mission.currentPlan?.isCurrent
@@ -61,9 +75,22 @@ export default function MissionExecutionPanel({
         <div className="forge-checkpoint__editor">
           <input value={branch} onChange={(event) => setBranch(event.target.value.toLowerCase())}
             aria-label="Branche cible" disabled={busy || !configured} />
+          <input value={targetPath} onChange={(event) => setTargetPath(event.target.value)}
+            aria-label="Fichier sandbox cible" disabled={busy || !configured} />
+          <textarea value={content} onChange={(event) => setContent(event.target.value)}
+            aria-label="Contenu attendu" rows={7} disabled={busy || !configured} />
+          <input value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)}
+            aria-label="Message du commit" disabled={busy || !configured} />
+          <small>Commande autorisée : <code>git_status_short</code>. Écriture limitée à <code>docs/forge-cody-sandbox/</code>.</small>
           <button className="forge-button forge-button--primary" type="button"
             disabled={busy || !configured || !executable}
-            onClick={() => void onRequest(branch)}>
+            onClick={() => void onRequest(branch, {
+              target_path: targetPath,
+              operation: "create",
+              expected_content: content,
+              allowed_command: "git_status_short",
+              commit_message: commitMessage,
+            })}>
             {busy ? <LoaderCircle className="forge-spin" size={15} /> : <Play size={15} />}
             {latest?.status === "queued" ? "Démarrer le worker" : "Lancer l’exécution"}
           </button>

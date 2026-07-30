@@ -4,6 +4,7 @@ import type {
   ActivityType,
   CheckResult,
   Correction,
+  ControlledEditInstruction,
   ForgeAccessLevel,
   ForgeAlert,
   ForgeExecutionRun,
@@ -624,11 +625,12 @@ export async function recordForgeAlertContextOpen(alertId: string): Promise<void
 export async function requestMissionExecution(
   missionId: string,
   targetBranch: string,
+  instruction: ControlledEditInstruction,
 ): Promise<string> {
   const response = await fetch("/agent/api/forge/executions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ missionId, targetBranch }),
+    body: JSON.stringify({ missionId, targetBranch, instruction }),
   });
   const payload = await response.json();
   if (!response.ok) {
