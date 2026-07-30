@@ -15,6 +15,7 @@ import {
   listMissions,
   pauseMission,
   requestMissionPlan,
+  requestMissionExecution,
   rejectCurrentMissionPlan,
   resolveMissionIncident,
   resumeBlockedMission,
@@ -270,6 +271,24 @@ export default function CodyWorkspace() {
       setFeedback(status === "failed" ? "Échec enregistré dans les checkpoints et le journal." : "Checkpoint enregistré.");
     } catch (checkpointError) {
       setFeedback(checkpointError instanceof Error ? checkpointError.message : "Le checkpoint n’a pas pu être mis à jour.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function requestExecution(targetBranch: string) {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await requestMissionExecution(missionId, targetBranch);
+      await loadMissions(missionId);
+      setFeedback("Exécution mise en file. Cody attend maintenant son worker.");
+    } catch (executionError) {
+      setFeedback(executionError instanceof Error
+        ? executionError.message
+        : "L’exécution n’a pas pu être demandée.");
     } finally {
       setSaving(false);
     }
@@ -579,6 +598,7 @@ export default function CodyWorkspace() {
           onResume={resumeSelectedMission}
           missionActionBusy={saving}
           onCheckpointUpdate={changeCheckpoint}
+          onExecutionRequest={requestExecution}
           onIncidentResolve={resolveIncident}
           onBlockedResume={resumeBlockedSelectedMission}
           onHumanInstruction={submitHumanInstruction}

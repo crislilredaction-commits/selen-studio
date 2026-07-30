@@ -10,6 +10,7 @@ import MissionPlanningPanel from "./MissionPlanningPanel";
 import MissionCheckpointPanel from "./MissionCheckpointPanel";
 import MissionIncidentPanel from "./MissionIncidentPanel";
 import MissionHumanControlPanel from "./MissionHumanControlPanel";
+import MissionExecutionPanel from "./MissionExecutionPanel";
 
 export default function MissionDetail({
   mission,
@@ -30,6 +31,7 @@ export default function MissionDetail({
   onResume,
   missionActionBusy,
   onCheckpointUpdate,
+  onExecutionRequest,
   onIncidentResolve,
   onBlockedResume,
   onHumanInstruction,
@@ -53,6 +55,7 @@ export default function MissionDetail({
   onResume: () => Promise<void>;
   missionActionBusy: boolean;
   onCheckpointUpdate: (checkpoint: MissionCheckpoint, status: MissionCheckpointStatus, message?: string) => Promise<void>;
+  onExecutionRequest: (targetBranch: string) => Promise<void>;
   onIncidentResolve: (incident: MissionIncident, status: "resolved" | "ignored_with_justification", message: string) => Promise<void>;
   onBlockedResume: () => Promise<void>;
   onHumanInstruction: (content: string, sensitivity: "minor" | "sensitive") => Promise<void>;
@@ -141,6 +144,12 @@ export default function MissionDetail({
         checkpoints={mission.checkpoints}
         busy={readOnly || missionActionBusy}
         onUpdate={onCheckpointUpdate}
+      />
+
+      <MissionExecutionPanel
+        mission={mission}
+        busy={readOnly || missionActionBusy}
+        onRequest={onExecutionRequest}
       />
 
       <MissionIncidentPanel

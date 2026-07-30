@@ -6,6 +6,7 @@ import type {
   Correction,
   ForgeAccessLevel,
   ForgeAlert,
+  ForgeExecutionRun,
   HumanInstruction,
   Mission,
   MissionBrief,
@@ -213,6 +214,22 @@ type ForgeMissionRow = {
   forge_mission_incidents?: ForgeIncidentRow[];
   forge_human_instructions?: ForgeInstructionRow[];
   forge_human_decisions?: ForgeDecisionRow[];
+  forge_execution_runs?: ForgeExecutionRunRow[];
+};
+
+type ForgeExecutionRunRow = {
+  id: string;
+  status: ForgeExecutionRun["status"];
+  requested_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  attempt_count: number;
+  last_error: string | null;
+  repository: string;
+  base_branch: string;
+  target_branch: string;
+  git_commit_sha: string | null;
 };
 
 type ForgeInstructionRow = {
@@ -508,6 +525,22 @@ function mapMission(row: ForgeMissionRow): Mission {
         decidedBy: decision.decided_by,
         decidedAt: decision.decided_at,
       })),
+    executionRuns: [...(row.forge_execution_runs ?? [])]
+      .sort((left, right) => right.requested_at.localeCompare(left.requested_at))
+      .map((run) => ({
+        id: run.id,
+        status: run.status,
+        requestedAt: run.requested_at,
+        startedAt: run.started_at ?? undefined,
+        completedAt: run.completed_at ?? undefined,
+        failedAt: run.failed_at ?? undefined,
+        attemptCount: run.attempt_count,
+        lastError: run.last_error ?? undefined,
+        repository: run.repository,
+        baseBranch: run.base_branch,
+        targetBranch: run.target_branch,
+        gitCommitSha: run.git_commit_sha ?? undefined,
+      })),
     lastVerifiedAt,
   };
 }
@@ -529,7 +562,8 @@ const missionSelection = `
     forge_mission_incident_attempts (*)
   ),
   forge_human_instructions (*),
-  forge_human_decisions (*)
+  forge_human_decisions (*),
+  forge_execution_runs (*)
 `;
 
 export async function getForgeAccessLevel(): Promise<ForgeAccessLevel> {
@@ -585,6 +619,22 @@ export async function recordForgeAlertContextOpen(alertId: string): Promise<void
   const supabase = createClient();
   const { error } = await supabase.rpc("forge_record_alert_context_open", { p_alert_id: alertId });
   if (error) throw new Error(error.message);
+}
+
+export async function requestMissionExecution(
+  missionId: string,
+  targetBranch: string,
+): Promise<string> {
+  const response = await fetch("/agent/api/forge/executions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ missionId, targetBranch }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error ?? "L’exécution n’a pas pu être demandée.");
+  }
+  return payload.executionRunId;
 }
 
 export async function listMissions(agentKey = "cody"): Promise<Mission[]> {

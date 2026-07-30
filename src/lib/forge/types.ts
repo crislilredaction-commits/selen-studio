@@ -325,7 +325,27 @@ export type Mission = {
   incidents: MissionIncident[];
   instructions: HumanInstruction[];
   decisions: HumanDecision[];
+  executionRuns: ForgeExecutionRun[];
   lastVerifiedAt?: string;
+};
+
+export type ForgeExecutionRunStatus =
+  | "queued" | "running" | "waiting_for_human"
+  | "failed" | "completed" | "cancelled";
+
+export type ForgeExecutionRun = {
+  id: string;
+  status: ForgeExecutionRunStatus;
+  requestedAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  failedAt?: string;
+  attemptCount: number;
+  lastError?: string;
+  repository: string;
+  baseBranch: string;
+  targetBranch: string;
+  gitCommitSha?: string;
 };
 
 export type HumanInstruction = {

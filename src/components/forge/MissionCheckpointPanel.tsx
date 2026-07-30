@@ -61,6 +61,7 @@ export default function MissionCheckpointPanel({
         {checkpoints.map((checkpoint) => {
           const message = messages[checkpoint.id] ?? "";
           const actionable = checkpoint.id === nextCheckpoint?.id;
+          const manuallyActionable = actionable && checkpoint.position < 3;
           return (
             <li key={checkpoint.id} className={`forge-checkpoint forge-checkpoint--${checkpoint.status}`}>
               <span className="forge-checkpoint__position">{checkpoint.position}</span>
@@ -78,7 +79,12 @@ export default function MissionCheckpointPanel({
                     {checkpoint.status === "failed" && <AlertTriangle size={14} />} {checkpoint.message}
                   </p>
                 )}
-                {actionable && (
+                {actionable && checkpoint.position >= 3 && (
+                  <p className="forge-muted">
+                    Ce checkpoint technique est piloté par le worker Cody et ne peut pas être avancé manuellement.
+                  </p>
+                )}
+                {manuallyActionable && (
                   <div className="forge-checkpoint__editor">
                     <input
                       value={message}
