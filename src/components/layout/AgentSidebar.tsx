@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { BriefcaseBusiness, CalendarDays, FileText, Hammer, Star } from "lucide-react";
+import { Bell, BriefcaseBusiness, CalendarDays, FileText, Hammer, Star } from "lucide-react";
 import AgentSidebarMessaging from "@/components/layout/AgentSidebarMessaging";
 import { createClient } from "@/lib/supabase/client";
 import { isOwnerLil } from "@/lib/ownerLil";
@@ -86,6 +86,11 @@ const links = [
     href: "/agent/forge",
     label: "La Forge",
     icon: <Hammer size={16} strokeWidth={1.5} />,
+  },
+  {
+    href: "/agent/forge/alerts",
+    label: "Alertes de La Forge",
+    icon: <Bell size={16} strokeWidth={1.5} />,
   },
   {
     href: "/agent/rendez-vous",
@@ -175,6 +180,7 @@ export default function AgentSidebar() {
   const supabase = useMemo(() => createClient(), []);
   const [role, setRole] = useState<"agent" | "admin">("agent");
   const [email, setEmail] = useState<string | null>(null);
+  const [forgeAlertCount, setForgeAlertCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +214,12 @@ export default function AgentSidebar() {
       if (!cancelled && profile?.role === "admin") {
         setRole("admin");
       }
+
+      const { count } = await supabase
+        .from("forge_alerts")
+        .select("id", { count: "exact", head: true })
+        .or("status.eq.action_required,and(read_at.is.null,status.not.in.(resolved,archived))");
+      if (!cancelled) setForgeAlertCount(count ?? 0);
     }
 
     void loadRole();
@@ -222,6 +234,7 @@ export default function AgentSidebar() {
     "/agent/dossiers",
     "/agent/daily",
     "/agent/forge",
+    "/agent/forge/alerts",
     "/agent/rendez-vous",
     "/agent/clients",
     "/agent/profil",
@@ -336,7 +349,9 @@ export default function AgentSidebar() {
           const isActive =
             link.href === "/agent"
               ? pathname === "/agent"
-              : pathname.startsWith(link.href);
+              : link.href === "/agent/forge"
+                ? pathname === "/agent/forge" || pathname.startsWith("/agent/forge/cody")
+                : pathname.startsWith(link.href);
 
           return (
             <Link
@@ -362,7 +377,25 @@ export default function AgentSidebar() {
               <span style={{ opacity: isActive ? 1 : 0.7, flexShrink: 0 }}>
                 {link.icon}
               </span>
-              {link.label}
+              <span style={{ flex: 1 }}>{link.label}</span>
+              {link.href === "/agent/forge/alerts" && forgeAlertCount > 0 ? (
+                <span
+                  aria-label={`${forgeAlertCount} alertes de La Forge à voir`}
+                  style={{
+                    display: "grid",
+                    minWidth: 22,
+                    height: 22,
+                    placeItems: "center",
+                    borderRadius: 999,
+                    background: "var(--selen-gold)",
+                    color: "#21170f",
+                    fontSize: 10,
+                    fontWeight: 800,
+                  }}
+                >
+                  {forgeAlertCount > 99 ? "99+" : forgeAlertCount}
+                </span>
+              ) : null}
             </Link>
           );
         })}

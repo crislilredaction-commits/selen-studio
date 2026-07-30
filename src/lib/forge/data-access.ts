@@ -5,6 +5,7 @@ import type {
   CheckResult,
   Correction,
   ForgeAccessLevel,
+  ForgeAlert,
   HumanInstruction,
   Mission,
   MissionBrief,
@@ -530,6 +531,54 @@ export async function getForgeAccessLevel(): Promise<ForgeAccessLevel> {
   const { data, error } = await supabase.rpc("forge_current_access_level");
   if (error) throw new Error(error.message);
   return data === "admin" || data === "viewer" ? data : "none";
+}
+
+export async function listForgeAlerts(): Promise<ForgeAlert[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("forge_alerts")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    type: row.alert_type,
+    level: row.level,
+    title: row.title,
+    message: row.message,
+    companionKey: row.companion_key,
+    missionId: row.mission_id ?? undefined,
+    incidentId: row.incident_id ?? undefined,
+    checkpointId: row.checkpoint_id ?? undefined,
+    planId: row.plan_id ?? undefined,
+    actionTarget: row.action_target,
+    actionLabel: row.action_label,
+    status: row.status,
+    technicalDetails: row.technical_details ?? {},
+    createdAt: row.created_at,
+    readAt: row.read_at ?? undefined,
+    resolvedAt: row.resolved_at ?? undefined,
+    archivedAt: row.archived_at ?? undefined,
+  })) as ForgeAlert[];
+}
+
+export async function markForgeAlertsRead(alertIds: string[]): Promise<void> {
+  if (alertIds.length === 0) return;
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_mark_alerts_read", { p_alert_ids: alertIds });
+  if (error) throw new Error(error.message);
+}
+
+export async function archiveForgeAlert(alertId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_archive_alert", { p_alert_id: alertId });
+  if (error) throw new Error(error.message);
+}
+
+export async function recordForgeAlertContextOpen(alertId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_record_alert_context_open", { p_alert_id: alertId });
+  if (error) throw new Error(error.message);
 }
 
 export async function listMissions(agentKey = "cody"): Promise<Mission[]> {

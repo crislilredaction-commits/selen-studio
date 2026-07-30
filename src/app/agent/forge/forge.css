@@ -407,3 +407,47 @@
   .forge-mission-card__facts div { align-items: flex-start; flex-direction: column; gap: 2px; }
   .forge-mission-card__facts dd { text-align: left; }
 }
+
+.forge-alert-page { max-width: 1180px; }
+.forge-alert-hero { grid-template-columns: auto minmax(0,1fr) auto; }
+.forge-alert-count { display: grid; min-width: 82px; min-height: 82px; place-content: center; border: 1px solid var(--selen-border2); border-radius: 50%; color: var(--selen-gold); font-size: 28px; text-align: center; }
+.forge-alert-count span { display: block; color: var(--selen-text3); font-size: 10px; font-weight: 600; }
+.forge-alert-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 22px 0; padding: 14px; border: 1px solid var(--selen-border); border-radius: 15px; background: var(--selen-card); }
+.forge-alert-filters { display: flex; flex: 1 1 480px; flex-wrap: wrap; gap: 7px; }
+.forge-alert-filters button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--selen-border); border-radius: 999px; background: transparent; color: var(--selen-text2); cursor: pointer; }
+.forge-alert-filters button.is-active { border-color: var(--selen-gold); background: rgba(201,148,58,.12); color: var(--selen-amber); }
+.forge-alert-toolbar label { display: flex; align-items: center; gap: 8px; color: var(--selen-text2); font-size: 11px; }
+.forge-alert-toolbar select { min-height: 40px; padding: 7px 10px; border: 1px solid var(--selen-border); border-radius: 9px; background: var(--selen-bg3); color: var(--selen-text); }
+.forge-alert-toggle input { width: 18px; height: 18px; accent-color: var(--selen-gold); }
+.forge-alert-list { display: grid; gap: 13px; }
+.forge-alert-card { padding: 18px; border: 1px solid var(--selen-border); border-left: 4px solid var(--selen-border2); border-radius: 15px; background: var(--selen-card); }
+.forge-alert-card.is-unread { box-shadow: 0 9px 30px rgba(64,43,22,.12); }
+.forge-alert-card--critical { border-left-color: #b63a3a; }
+.forge-alert-card--important { border-left-color: #d77e32; }
+.forge-alert-card--attention { border-left-color: #d5aa42; }
+.forge-alert-card--information { border-left-color: #4a8a5a; }
+.forge-alert-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.forge-alert-card__top > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.forge-alert-card__top span { padding: 4px 7px; border-radius: 999px; background: var(--selen-bg3); color: var(--selen-text2); font-size: 9px; font-weight: 800; }
+.forge-alert-card__top .forge-alert-companion { color: var(--selen-gold); }
+.forge-alert-card__top .forge-alert-action { background: rgba(182,58,58,.1); color: #a23838; }
+.forge-alert-card__top .forge-alert-unread { color: var(--selen-amber); }
+.forge-alert-card time { color: var(--selen-text3); font-size: 10px; }
+.forge-alert-card h2 { margin: 13px 0 6px; color: var(--selen-text); font: 600 18px/1.25 var(--font-display); }
+.forge-alert-card > p { max-width: 780px; color: var(--selen-text2); font-size: 13px; line-height: 1.6; }
+.forge-alert-card details { margin-top: 12px; color: var(--selen-text3); font-size: 10px; }
+.forge-alert-card details summary { cursor: pointer; }
+.forge-alert-card pre { overflow: auto; max-width: 100%; padding: 10px; border-radius: 8px; background: var(--selen-bg3); white-space: pre-wrap; overflow-wrap: anywhere; }
+.forge-alert-card__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+
+@media (max-width: 600px) {
+  .forge-alert-hero { display: grid; grid-template-columns: auto 1fr; }
+  .forge-alert-count { grid-column: 1 / -1; width: 100%; min-height: 54px; border-radius: 12px; }
+  .forge-alert-toolbar, .forge-alert-card__top { align-items: stretch; flex-direction: column; }
+  .forge-alert-filters { flex: auto; }
+  .forge-alert-filters button { flex: 1 1 calc(50% - 7px); }
+  .forge-alert-toolbar label, .forge-alert-toolbar select, .forge-alert-toolbar .forge-button { width: 100%; }
+  .forge-alert-toolbar label { justify-content: space-between; }
+  .forge-alert-card { padding: 15px; }
+  .forge-alert-card__actions .forge-button { width: 100%; min-height: 46px; justify-content: center; }
+}

@@ -20,6 +20,29 @@ export type MissionStatus =
 
 export type ForgeAccessLevel = "none" | "viewer" | "admin";
 
+export type ForgeAlertStatus = "unread" | "read" | "action_required" | "resolved" | "archived";
+export type ForgeAlertLevel = "information" | "attention" | "important" | "critical";
+export type ForgeAlert = {
+  id: string;
+  type: string;
+  level: ForgeAlertLevel;
+  title: string;
+  message: string;
+  companionKey: string;
+  missionId?: string;
+  incidentId?: string;
+  checkpointId?: string;
+  planId?: string;
+  actionTarget: string;
+  actionLabel: string;
+  status: ForgeAlertStatus;
+  technicalDetails: Record<string, unknown>;
+  createdAt: string;
+  readAt?: string;
+  resolvedAt?: string;
+  archivedAt?: string;
+};
+
 export type MissionPriority = "low" | "normal" | "high" | "urgent";
 
 export type MissionCheckpointKey =

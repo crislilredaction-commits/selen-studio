@@ -82,7 +82,8 @@ export default function CodyWorkspace() {
   }, []);
 
   useEffect(() => {
-    void loadMissions();
+    const requestedMission = new URLSearchParams(window.location.search).get("mission") ?? undefined;
+    void loadMissions(requestedMission);
   }, [loadMissions]);
 
   const visibleMissions = useMemo(() => (
