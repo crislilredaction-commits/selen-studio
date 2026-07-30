@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { CONTROLLED_EDIT_DEFAULT_COMMIT_MESSAGE } from "../src/lib/forge/types";
 import { validateControlledInstruction } from "../src/lib/server/forgeExecutionWorker";
 
 const validInstruction = {
@@ -8,7 +9,7 @@ const validInstruction = {
   operation: "create",
   expected_content: "# Test\n\nContenu contrôlé.\n",
   allowed_command: "git_status_short",
-  commit_message: "docs(forge): add controlled test file",
+  commit_message: CONTROLLED_EDIT_DEFAULT_COMMIT_MESSAGE,
 } as const;
 
 test("l’instruction contrôlée nominale est acceptée", () => {

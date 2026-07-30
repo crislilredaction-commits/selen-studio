@@ -356,6 +356,9 @@ export type ControlledEditInstruction = {
   commit_message: string;
 };
 
+export const CONTROLLED_EDIT_DEFAULT_COMMIT_MESSAGE =
+  "docs(forge): add first controlled cody edit";
+
 export type HumanInstruction = {
   id: string;
   missionId: string;

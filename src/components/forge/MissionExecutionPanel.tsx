@@ -2,7 +2,11 @@
 
 import { GitBranch, LoaderCircle, Play, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { ControlledEditInstruction, Mission } from "@/lib/forge/types";
+import {
+  CONTROLLED_EDIT_DEFAULT_COMMIT_MESSAGE,
+  type ControlledEditInstruction,
+  type Mission,
+} from "@/lib/forge/types";
 
 const firstControlledContent = `# Premier test d’édition contrôlée de Cody
 
@@ -27,7 +31,7 @@ export default function MissionExecutionPanel({
   );
   const [content, setContent] = useState(firstControlledContent);
   const [commitMessage, setCommitMessage] = useState(
-    "docs(forge): add first controlled Cody edit",
+    CONTROLLED_EDIT_DEFAULT_COMMIT_MESSAGE,
   );
   const latest = mission.executionRuns[0];
   const executable = useMemo(() => Boolean(
