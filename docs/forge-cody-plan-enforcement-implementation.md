@@ -1,7 +1,9 @@
 # Forge Cody — respect du plan validé
 
-Date d’exécution : 30 juillet 2026  
-Branche : `feature/forge-cody-plan-enforcement`  
+Date d’exécution : 30 juillet 2026
+
+Branche : `feature/forge-cody-plan-enforcement`
+
 Projet Supabase : `pjbilmywwkpghhayftph`
 
 ## Périmètre réalisé
@@ -173,7 +175,16 @@ mots de passe compromis désactivée) ; elles n’ont pas été modifiées.
 
 ## Preview Vercel et tests visuels
 
-URL : à compléter après le push.
+URL du déploiement :
+`https://selen-studio-cnfd5kbay-crislilredaction-4256s-projects.vercel.app`
+
+Alias de branche :
+`https://selen-studio-git-feature-e6ebb1-crislilredaction-4256s-projects.vercel.app`
+
+Le déploiement Git `dpl_4E9FzW3Y8GUCbQGwrWBjNyNY6VM3` a atteint
+`READY`. Sans session Studio, une requête sur `/agent/forge/cody` répond `200`
+sur la page de connexion (`x-matched-path: /login`) : la route existe et
+l’accès authentifié n’est pas exposé.
 
 La session Chrome authentifiée précédemment ne peut pas être pilotée avec
 garantie sans recréer un profil temporaire. Conformément à la contrainte
@@ -191,7 +202,8 @@ Checklist manuelle :
    précédent ;
 7. actualiser la page à chaque étape pour confirmer la persistance.
 
-Le test sans session sera réalisé sur l’URL Preview après sa création.
+Le test sans session est conforme ; les contrôles authentifiés restent dans la
+checklist manuelle ci-dessus.
 
 ## Risques et limites
 
@@ -209,4 +221,6 @@ Le test sans session sera réalisé sur l’URL Preview après sa création.
 
 ## Commits
 
-À compléter après création des commits finaux.
+- `b2a323e6fef55dc9d61a8bc87e59749f72e78591` —
+  `Renforce le respect du plan valide de Cody`
+- commit documentaire final : voir l’historique de la branche
