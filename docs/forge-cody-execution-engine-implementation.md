@@ -236,3 +236,156 @@ La branche Git de test est volontairement conservée pour validation manuelle.
 
 Aucun merge vers `main`, aucun déploiement manuel en production et aucune
 activation ou émission Telegram n'ont été effectués.
+
+## Première édition de fichier contrôlée
+
+Cette extension limite strictement l'écriture à
+`docs/forge-cody-sandbox/`. Elle ne permet aucune commande shell libre et
+n'autorise que l'opération structurée `create` ou `replace`, la commande
+`git_status_short` et un message de commit conforme au format contrôlé.
+
+Les étapes persistées et ordonnées sont :
+
+1. `repository_cloned`
+2. `branch_created`
+3. `workspace_inspected`
+4. `files_modified`
+5. `diff_validated`
+6. `command_executed`
+7. `commit_created`
+8. `commit_pushed`
+9. `completed`
+
+Chaque étape exige une preuve immuable avant de pouvoir avancer. Le worker
+normalise le chemin, refuse les chemins absolus, traversées, encodages,
+antislashs et liens symboliques, vérifie l'état Git initial, le fichier unique
+modifié, le diff, les secrets probables, le parent du commit, l'absence de
+divergence distante et le SHA distant après push.
+
+### Fichiers et migrations
+
+Fichiers applicatifs principaux :
+
+- `src/lib/server/forgeExecutionWorker.ts`
+- `src/app/agent/api/forge/executions/route.ts`
+- `src/components/forge/MissionExecutionPanel.tsx`
+- `src/components/forge/CodyWorkspace.tsx`
+- `src/components/forge/MissionDetail.tsx`
+- `src/lib/forge/data-access.ts`
+- `src/lib/forge/types.ts`
+- `tests/forgeControlledEditExecution.test.ts`
+
+Migrations appliquées :
+
+- `20260730204145_extend_forge_controlled_edit_execution.sql`
+- `20260730210452_fix_forge_execution_step_grants.sql`
+
+La seconde migration corrige uniquement les grants de la nouvelle table et de
+sa séquence : `authenticated` conserve `SELECT`, `service_role` conserve
+`SELECT`, `INSERT`, `UPDATE`, `DELETE`, et `anon` ne possède aucun privilège.
+La RLS reste activée. Le dry-run final était vide, sans migration, seed ou
+modification de rôle supplémentaire.
+
+### Sauvegardes natives renouvelées
+
+Les quatre archives au format PostgreSQL custom ont été créées avant les
+migrations dans
+`supabase/.temp/backups/20260730-cody-controlled-edit-valid`, dossier ignoré par
+Git. Chaque archive est non vide et reconnue par `pg_restore --list`.
+
+| Archive | Début UTC+2 | Fin UTC+2 | Taille | Entrées | SHA-256 |
+|---|---|---|---:|---:|---|
+| Schéma public | 20:50:39 | 20:51:05 | 641 694 | 1 040 | `48BB8342020EEC4824DC6292192FF2913C6A554FCC8E25C1B7FA69FA376AB866` |
+| Données publiques | 20:51:06 | 21:01:31 | 754 815 443 | 107 | `DAA33DAAA3EC8C6494F3CD54112C0CF40AC1ABF4CBDBB19A1F5A264F73F83997` |
+| Schéma historique migrations | 21:01:43 | 21:01:59 | 2 231 | 3 | `741B4FB5EBDF17CE83DB7C4C959EE7C5C80B8B8B076FC24E2D0064E217583455` |
+| Données historique migrations | 21:01:59 | 21:02:11 | 41 507 | 1 | `E9F2A9DED2A44EFF7D414283BF2874B85F3C016871D1C97180F70D3BF95B096A` |
+
+### Validations
+
+- tests ciblés moteur, accès administrateur et édition contrôlée : 16/16 ;
+- test PostgreSQL transactionnel avec `ROLLBACK` : réussi ;
+- traversée de chemin refusée ;
+- preuve identique rejouée de façon idempotente ;
+- preuve modifiée refusée car immuable ;
+- étape hors ordre refusée ;
+- aucune mission, aucun run ni donnée de test transactionnelle persistés ;
+- lint : 0 erreur, 18 avertissements préexistants ;
+- TypeScript : réussi ;
+- build Next.js : réussi, 91 routes ;
+- contrôles RLS et grants : conformes ;
+- cron Telegram actif : 0.
+
+### Test Git réel
+
+Mission indépendante de Sélion :
+
+- mission : `038aebe8-1d12-4cd7-905b-0bc33de3ee1a` ;
+- plan courant validé :
+  `510b5114-8aa0-4225-af2c-441b8aeee8b7` ;
+- run : `0f9680b4-8067-4069-955c-18e3f1c16fd3` ;
+- worker :
+  `admin-25be8aaf-a650-418c-88c3-6e1a55a87939` ;
+- tentative : 1 ;
+- début : 30 juillet 2026 à 20:56:08 UTC ;
+- fin : 30 juillet 2026 à 20:56:15 UTC ;
+- état final : `completed`, sans erreur.
+
+Preuves Git :
+
+- dépôt : `crislilredaction-commits/selen-studio` ;
+- base : `main` ;
+- SHA de base : `11c58a4ccf8d54ddedb67073fce0fed177326ef3` ;
+- branche créée :
+  `test/cody-edit-038aebe8` ;
+- commit créé et poussé :
+  `9fb31bb4945306ab7ae03e0e78c70491a5089f54` ;
+- parent du commit : SHA de base ci-dessus ;
+- auteur : `Cody <cody@selen-editions.fr>` ;
+- message :
+  `docs(forge): add first controlled cody edit` ;
+- SHA distant après push : identique au SHA du commit ;
+- `main` est restée au SHA de base.
+
+Le diff vérifié contient un unique ajout :
+
+`docs/forge-cody-sandbox/first-controlled-edit.md`
+
+Les hashes SHA-256 du contenu attendu et du contenu écrit sont identiques :
+
+`220333df05b93391b53a116ebf1c7b211b8603d6b573ac9862cfe68c66318046`
+
+La commande allowlistée `git_status_short` a retourné le fichier attendu avec
+le code de sortie `0`. Le contrôle indépendant par `git ls-remote`, `git diff`
+et `git show` confirme le SHA distant, l'unique fichier ajouté et le contenu
+exact demandé.
+
+Les checkpoints `branch_created`, `development_started`, `tests_executed` et
+`commits_pushed` ont été complétés uniquement après leurs preuves respectives.
+`migrations_prepared` a été marqué `skipped` avec la justification explicite
+qu'aucune migration n'était nécessaire pour l'édition documentaire.
+`preview_created` et `final_report_produced` sont restés `pending` : le worker
+ne les a pas avancés artificiellement.
+
+### Anomalie rencontrée et correction
+
+La première soumission a été refusée en HTTP 400 avant création d'un run.
+L'interface proposait `Cody` avec une majuscule dans le message de commit alors
+que l'allowlist serveur et PostgreSQL exige une valeur en minuscules. Le commit
+`7bbb5383a86ff85bb135a953d343bc62c06a8dee` centralise une valeur par défaut
+conforme et la couvre par le test de validation nominal. L'allowlist n'a pas été
+élargie et aucune correction distante n'a été nécessaire.
+
+### Preview et limites
+
+Preview validée pour le test :
+
+`https://selen-studio-git-feature-a0e500-crislilredaction-4256s-projects.vercel.app/agent/forge/cody`
+
+Le moteur reste volontairement limité à un fichier Markdown sous le dossier
+sandbox et à une commande virtuelle strictement allowlistée. Il ne sait pas
+encore modifier le code métier, lancer les scripts du dépôt, créer une Preview
+pour sa branche de travail ni produire seul le rapport final.
+
+La branche de test reste présente sur GitHub pour validation manuelle. Aucun
+merge vers `main`, aucun déploiement manuel en Production, aucune activation du
+cron Telegram et aucun message Telegram réel n'ont été effectués.
