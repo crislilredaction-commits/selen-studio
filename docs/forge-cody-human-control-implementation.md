@@ -1,7 +1,9 @@
 # Forge Cody — pilotage humain
 
-Date : 30 juillet 2026  
-Branche : `feature/forge-cody-human-control`  
+Date : 30 juillet 2026
+
+Branche : `feature/forge-cody-human-control`
+
 Projet Supabase : Selen Studio (`pjbilmywwkpghhayftph`)
 
 ## Résultat
@@ -207,9 +209,18 @@ Checklist manuelle à effectuer sur la Preview, avec la même fenêtre Chrome :
 
 ## Livraison
 
-Commit d’implémentation : à renseigner après commit.  
-Commit de rapport final : à renseigner après publication de la Preview.  
-Preview Vercel : à renseigner après le push.
+Commit d’implémentation : `f01e4d7215bd6eed1008a075e2d4f044c7c192dd`
+
+Preview Vercel :
+`https://selen-studio-git-feature-de9699-crislilredaction-4256s-projects.vercel.app/agent/forge/cody`
+
+Le déploiement automatique du commit d’implémentation a atteint l’état
+`READY`. La route protégée répond en HTTP 200 puis sert `/login` en l’absence
+de session Studio (`x-matched-path: /login`). Aucun test authentifié n’est
+revendiqué.
+
+Le hash du commit documentaire final est communiqué après sa création, car un
+commit ne peut pas contenir son propre hash.
 
 Aucun merge vers `main` et aucun déploiement manuel en production n’ont été
 effectués.
