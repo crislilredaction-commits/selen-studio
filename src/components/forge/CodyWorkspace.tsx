@@ -12,6 +12,7 @@ import {
   listMissions,
   pauseMission,
   requestMissionPlan,
+  rejectCurrentMissionPlan,
   resolveMissionIncident,
   resumeBlockedMission,
   resumeMission,
@@ -382,11 +383,29 @@ export default function CodyWorkspace() {
     setPlanningBusy(true);
     setFeedback(null);
     try {
-      await validateMissionPlan(missionId);
+      await validateMissionPlan(missionId, selectedMission.currentPlan!.id);
       await loadMissions(missionId);
       setFeedback("Cadrage validé. La mission peut désormais entrer en exécution.");
     } catch (planningError) {
       setFeedback(planningError instanceof Error ? planningError.message : "La validation du cadrage a échoué.");
+    } finally {
+      setPlanningBusy(false);
+    }
+  }
+
+  async function rejectPlan() {
+    if (!selectedMission?.currentPlan) return;
+    const reason = window.prompt("Justifiez le refus de cette version et le retour au plan précédent.");
+    if (!reason?.trim()) return;
+    const missionId = selectedMission.id;
+    setPlanningBusy(true);
+    setFeedback(null);
+    try {
+      await rejectCurrentMissionPlan(missionId, selectedMission.currentPlan.id, reason);
+      await loadMissions(missionId);
+      setFeedback("Version refusée. Le plan validé précédent est restauré explicitement.");
+    } catch (planningError) {
+      setFeedback(planningError instanceof Error ? planningError.message : "Le refus du plan a échoué.");
     } finally {
       setPlanningBusy(false);
     }
@@ -469,6 +488,7 @@ export default function CodyWorkspace() {
           onRegeneratePlan={regeneratePlan}
           onSavePlan={(plan) => savePlan(plan)}
           onValidatePlan={submitPlanValidation}
+          onRejectPlan={rejectPlan}
           onDraftPlan={(plan) => savePlan(plan, "draft")}
           onPriorityChange={changePriority}
           onPause={pauseSelectedMission}

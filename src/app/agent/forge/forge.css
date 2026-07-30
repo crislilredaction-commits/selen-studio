@@ -300,6 +300,9 @@
 .forge-planning-history { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .forge-planning-history span { padding: 6px 9px; border-radius: 999px; background: var(--selen-bg3); color: var(--selen-text2); font-size: 11px; }
 .forge-planning-warning { display: flex; align-items: center; gap: 8px; color: #a23838; }
+.forge-planning-change { padding: 14px; border: 1px solid rgba(187,58,58,.3); border-radius: 12px; background: rgba(187,58,58,.08); }
+.forge-planning-change h4 { color: #ef9d92; }
+.forge-planning-change p { margin-top: 6px; color: var(--selen-text2-oncard); font-size: 11px; }
 
 @keyframes forge-spin {
   to { transform: rotate(360deg); }

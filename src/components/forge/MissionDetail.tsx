@@ -21,6 +21,7 @@ export default function MissionDetail({
   onRegeneratePlan,
   onSavePlan,
   onValidatePlan,
+  onRejectPlan,
   onDraftPlan,
   onPriorityChange,
   onPause,
@@ -40,6 +41,7 @@ export default function MissionDetail({
   onRegeneratePlan: () => Promise<void>;
   onSavePlan: (plan: MissionPlanDraft) => Promise<void>;
   onValidatePlan: () => Promise<void>;
+  onRejectPlan: () => Promise<void>;
   onDraftPlan: (plan: MissionPlanDraft) => Promise<void>;
   onPriorityChange: (priority: MissionPriority) => Promise<void>;
   onPause: () => Promise<void>;
@@ -146,6 +148,7 @@ export default function MissionDetail({
           onRegenerate={onRegeneratePlan}
           onSave={onSavePlan}
           onValidate={onValidatePlan}
+          onReject={onRejectPlan}
           onDraft={onDraftPlan}
         />
       )}

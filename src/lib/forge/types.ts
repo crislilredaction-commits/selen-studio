@@ -117,6 +117,7 @@ export type MissionPlanStatus =
   | "needs_clarification"
   | "plan_ready"
   | "validated"
+  | "rejected"
   | "superseded"
   | "failed";
 
@@ -172,6 +173,11 @@ export type MissionPlan = MissionPlanDraft & {
   createdAt: string;
   updatedAt: string;
   validatedAt?: string;
+  previousPlanId?: string;
+  changeJustification?: string;
+  differenceSummary?: string;
+  revalidationReason?: string;
+  rejectedAt?: string;
 };
 
 export type MissionReportStatus =

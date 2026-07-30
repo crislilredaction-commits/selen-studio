@@ -54,6 +54,7 @@ export default function MissionPlanningPanel({
   onRegenerate,
   onSave,
   onValidate,
+  onReject,
   onDraft,
 }: {
   mission: Mission;
@@ -61,6 +62,7 @@ export default function MissionPlanningPanel({
   onRegenerate: () => Promise<void>;
   onSave: (plan: MissionPlanDraft) => Promise<void>;
   onValidate: () => Promise<void>;
+  onReject: () => Promise<void>;
   onDraft: (plan: MissionPlanDraft) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<MissionPlanDraft | null>(() => draftFromMission(mission));
@@ -225,6 +227,16 @@ export default function MissionPlanningPanel({
         ))}
       </div>
 
+      {current.previousPlanId ? (
+        <div className="forge-planning-change">
+          <h4>Nouvelle validation obligatoire</h4>
+          <p><strong>Justification :</strong> {current.changeJustification}</p>
+          <p><strong>Différences :</strong> {current.differenceSummary}</p>
+          <p><strong>Raison :</strong> {current.revalidationReason}</p>
+          <p>Les checkpoints « plan validé » et suivants doivent être rejoués ou revérifiés.</p>
+        </div>
+      ) : null}
+
       <div className="forge-planning-actions">
         <button className="forge-button forge-button--secondary" onClick={() => void save()} disabled={busy}>
           <Save size={16} /> Enregistrer les modifications
@@ -235,6 +247,11 @@ export default function MissionPlanningPanel({
         <button className="forge-button forge-button--primary" onClick={() => void onValidate()} disabled={busy || draft.blockingQuestions.length > 0 || current.status === "validated"}>
           <CheckCircle2 size={16} /> Valider le cadrage
         </button>
+        {current.previousPlanId && current.status !== "validated" ? (
+          <button className="forge-button forge-button--secondary" onClick={() => void onReject()} disabled={busy}>
+            <Undo2 size={16} /> Refuser et restaurer le plan précédent
+          </button>
+        ) : null}
         <button className="forge-button forge-button--secondary" onClick={() => void reopen()} disabled={busy}>
           <Undo2 size={16} /> Revenir au brouillon
         </button>

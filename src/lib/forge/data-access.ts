@@ -116,6 +116,11 @@ type ForgePlanRow = {
   created_at: string;
   updated_at: string;
   validated_at: string | null;
+  previous_plan_id: string | null;
+  change_justification: string | null;
+  difference_summary: string | null;
+  revalidation_reason: string | null;
+  rejected_at: string | null;
 };
 
 type ForgeCheckpointHistoryRow = {
@@ -350,6 +355,11 @@ function mapPlan(row: ForgePlanRow): MissionPlan {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     validatedAt: row.validated_at ?? undefined,
+    previousPlanId: row.previous_plan_id ?? undefined,
+    changeJustification: row.change_justification ?? undefined,
+    differenceSummary: row.difference_summary ?? undefined,
+    revalidationReason: row.revalidation_reason ?? undefined,
+    rejectedAt: row.rejected_at ?? undefined,
   };
 }
 
@@ -646,10 +656,25 @@ export async function storeMissionPlan(
   if (error) throw new Error(error.message);
 }
 
-export async function validateMissionPlan(missionId: string): Promise<void> {
+export async function validateMissionPlan(missionId: string, planId: string): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.rpc("forge_validate_mission_plan", {
     p_mission_id: missionId,
+    p_plan_id: planId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function rejectCurrentMissionPlan(
+  missionId: string,
+  planId: string,
+  reason: string,
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_reject_current_plan", {
+    p_mission_id: missionId,
+    p_plan_id: planId,
+    p_reason: reason,
   });
   if (error) throw new Error(error.message);
 }
