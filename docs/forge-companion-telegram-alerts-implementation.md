@@ -14,7 +14,7 @@ Le relais comporte :
 - une activation métier administrable depuis le centre d’alertes ;
 - une autorisation supplémentaire par environnement ;
 - une file avec trois tentatives maximum et délai progressif ;
-- un worker protégé par `CRON_SECRET` ;
+- un worker protégé par `CRON_SECRET`, prêt pour un ordonnanceur compatible ;
 - des messages adressés directement à Lil, avec lien vers le Studio ;
 - un test manuel exigeant une confirmation explicite et marqué `[TEST]`.
 
@@ -105,6 +105,11 @@ valeur n’a été lue ou affichée. Le panneau Studio expose seulement des bool
 ## Limites et contrôles visuels
 
 - Les crons Vercel s’exécutent en production, pas sur une Preview standard.
+- La première Preview automatique a échoué parce que le plan Vercel Hobby
+  refuse le cron toutes les cinq minutes. La configuration incompatible a été
+  retirée afin de ne pas remplacer silencieusement une alerte rapide par un
+  traitement quotidien. Le déclenchement automatique fréquent reste bloqué
+  jusqu’au choix d’un plan Vercel Pro ou d’un ordonnanceur externe approuvé.
 - Aucun message réel ne sera testé sans nouvelle autorisation explicite.
 - Le contrôle visuel restant consiste à vérifier sur la Preview :
   l’affichage du panneau administrateur, son état d’environnement, le bouton
@@ -119,4 +124,3 @@ En urgence, définir `FORGE_TELEGRAM_ENABLED=false` ou désactiver le canal dans
 Studio suffit à arrêter les envois sans toucher aux alertes. Un retour SQL doit
 être préparé séparément et revu avant exécution ; aucune suppression automatique
 des tables ou de leur historique n’est incluse.
-

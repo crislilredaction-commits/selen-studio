@@ -1,8 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/agent/api/jobs/forge-telegram-alerts",
-      "schedule": "*/5 * * * *"
-    }
-  ]
-}
+{}
