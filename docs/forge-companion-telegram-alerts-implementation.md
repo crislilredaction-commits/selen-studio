@@ -104,6 +104,9 @@ valeur n’a été lue ou affichée. Le panneau Studio expose seulement des bool
 
 ## Limites et contrôles visuels
 
+- Preview automatique :
+  `https://selen-studio-git-feature-74b1d6-crislilredaction-4256s-projects.vercel.app/agent/forge/alerts`.
+  Le déploiement du correctif Vercel a atteint l’état `READY`.
 - Les crons Vercel s’exécutent en production, pas sur une Preview standard.
 - La première Preview automatique a échoué parce que le plan Vercel Hobby
   refuse le cron toutes les cinq minutes. La configuration incompatible a été
@@ -115,6 +118,9 @@ valeur n’a été lue ou affichée. Le panneau Studio expose seulement des bool
   l’affichage du panneau administrateur, son état d’environnement, le bouton
   pause/activation, le dialogue de confirmation du test sans le confirmer, et
   les vues mobile et desktop.
+- La Preview est protégée par l’authentification Vercel. Aucun nouveau profil
+  Chrome temporaire n’a été ouvert ; les contrôles visuels authentifiés restent
+  donc explicitement manuels.
 - Une configuration absente ou un environnement non autorisé bloque l’envoi de
   façon sûre et conserve les alertes dans le Studio.
 
