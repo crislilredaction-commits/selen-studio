@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
+import { executeNextForgeRun } from "@/lib/server/forgeExecutionWorker";
 import { requireStudioAdmin } from "@/lib/server/studioAuth";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 const branchPattern = /^(audit|feature|test)\/[a-z0-9][a-z0-9._/-]{2,119}$/;
 
@@ -44,5 +49,6 @@ export async function POST(request: Request) {
       { status: conflict ? 409 : 500 },
     );
   }
-  return NextResponse.json({ executionRunId: data }, { status: 201 });
+  const worker = await executeNextForgeRun(`admin-${randomUUID()}`);
+  return NextResponse.json({ executionRunId: data, worker }, { status: 201 });
 }

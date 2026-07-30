@@ -48,5 +48,7 @@ test("les routes d'exécution restent admin-only et service-role serveur", async
   const route = await read("src/app/agent/api/forge/executions/route.ts");
   assert.match(route, /requireStudioAdmin/);
   assert.match(route, /createSupabaseAdminClient/);
+  assert.match(route, /executeNextForgeRun/);
+  assert.match(route, /maxDuration = 300/);
   assert.doesNotMatch(route, /NEXT_PUBLIC.*SERVICE/);
 });

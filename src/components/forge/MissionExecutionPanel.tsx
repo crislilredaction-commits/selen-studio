@@ -26,7 +26,7 @@ export default function MissionExecutionPanel({
       incident.category === "critical_error"
       && !["resolved", "ignored_with_justification"].includes(incident.resolutionStatus)
     )
-    && !latest,
+    && (!latest || latest.status === "queued"),
   ), [latest, mission]);
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function MissionExecutionPanel({
           {latest.lastError && <p className="is-error"><ShieldAlert size={14} /> {latest.lastError}</p>}
         </div>
       )}
-      {!latest && (
+      {(!latest || latest.status === "queued") && (
         <div className="forge-checkpoint__editor">
           <input value={branch} onChange={(event) => setBranch(event.target.value.toLowerCase())}
             aria-label="Branche cible" disabled={busy || !configured} />
@@ -65,7 +65,7 @@ export default function MissionExecutionPanel({
             disabled={busy || !configured || !executable}
             onClick={() => void onRequest(branch)}>
             {busy ? <LoaderCircle className="forge-spin" size={15} /> : <Play size={15} />}
-            Lancer l’exécution
+            {latest?.status === "queued" ? "Démarrer le worker" : "Lancer l’exécution"}
           </button>
           {!executable && <small>Le plan courant doit être validé et sans blocage.</small>}
         </div>
