@@ -159,45 +159,80 @@ middleware. `npm install` a signalé 16 vulnérabilités dans l'arbre de
 dépendances (1 faible, 4 modérées, 11 élevées) ; aucun `npm audit fix`
 potentiellement perturbateur n'a été exécuté.
 
-## Test d'exécution réel et limite actuelle
+## Premier test d'exécution Git réel
 
-Le test réel de création et de push d'une branche n'a pas été exécuté. Aucun
-`FORGE_GITHUB_TOKEN` dédié ni `FORGE_EXECUTION_WORKER_SECRET` n'est disponible
-dans l'environnement connu. Réutiliser un identifiant GitHub local aurait
-contourné l'exigence de moindre privilège.
+Les variables `FORGE_GITHUB_TOKEN` et `FORGE_EXECUTION_WORKER_SECRET` ont été
+configurées uniquement dans Vercel Preview. Seule leur présence a été testée ;
+aucune valeur n'a été affichée, téléchargée, journalisée ou enregistrée.
 
-En conséquence :
+La première tentative a révélé que la route administratrice mettait uniquement
+le run en file, sans ordonnanceur chargé d'appeler le worker. Le correctif
+minimal `ddc7b44` fait désormais déclencher une tentative du worker côté serveur
+par la route administratrice. Le secret et le jeton restent hors du client. La
+route technique protégée par secret est conservée pour une orchestration future.
 
-- aucune mission distante de test n'a été créée ;
-- aucune branche de test n'a été poussée par le worker ;
-- aucun SHA réel ne peut être fourni ;
-- l'interface indique honnêtement « Moteur d'exécution non connecté » ;
-- les tests visuels authentifiés du lancement réel restent à faire.
+Mission technique :
 
-## Procédure de validation restante
+- identifiant : `cbf2159e-c6ad-4adb-8679-6f8186d03f31` ;
+- titre : `TEST TECHNIQUE — création réelle de branche Cody 2026-07-30` ;
+- indépendante de la mission Sélion ;
+- plan courant `ff932cf7-5cdb-4532-80d6-a9386c45cc43`, réellement validé,
+  sans question bloquante.
 
-1. Ajouter les deux variables uniquement à l'environnement Vercel Preview, sans
-   communiquer leur valeur dans un ticket, un rapport ou le dépôt.
-2. Attendre la nouvelle Preview automatique.
-3. Créer une mission technique clairement identifiée, générer et valider son
-   plan courant.
-4. Demander une exécution avec une branche de test dédiée.
-5. Appeler une seule fois la route worker protégée.
-6. Vérifier la branche distante et comparer son HEAD au SHA enregistré.
-7. Vérifier le journal, l'historique d'exécution et le checkpoint
-   `branch_created`.
-8. Supprimer ensuite la branche de test seulement après consignation des
-   preuves.
+Preuves du run :
+
+- identifiant : `802540f5-efa0-4079-a301-c7d597fe84d0` ;
+- tentative : 1 ;
+- historique persistant : `queued` à 18:09:58 UTC, `running` à 18:31:49 UTC,
+  `completed` à 18:31:51 UTC ;
+- dépôt : `crislilredaction-commits/selen-studio` ;
+- base : `main` ;
+- branche : `test/cody-execution-branch-creation` ;
+- remote enregistré :
+  `https://github.com/crislilredaction-commits/selen-studio.git` ;
+- SHA enregistré :
+  `11c58a4ccf8d54ddedb67073fce0fed177326ef3` ;
+- métadonnée `branch_verified: true` ;
+- aucune erreur enregistrée.
+
+La vérification indépendante `git ls-remote` renvoie le même SHA pour
+`refs/heads/main` et
+`refs/heads/test/cody-execution-branch-creation`. La branche est donc bien
+présente sur GitHub et ne contient aucune modification de fichier par rapport à
+la base clonée.
+
+Le checkpoint `branch_created` a été terminé à 18:31:51 UTC, après
+l'enregistrement de la preuve Git. Les checkpoints `development_started`,
+`migrations_prepared`, `tests_executed`, `commits_pushed`, `preview_created` et
+`final_report_produced` sont tous restés `pending`.
+
+Tests complémentaires :
+
+- une demande avant validation du plan a été refusée avec zéro run créé ;
+- une deuxième demande pendant l'état `queued` a renvoyé le même identifiant de
+  run, confirmant l'idempotence ;
+- les tests ciblés moteur et accès administratrice ont réussi : 10/10 ;
+- les contrôles de source confirment le refus des comptes agent par
+  `requireStudioAdmin` ; aucun identifiant de compte agent n'a été manipulé pour
+  fabriquer une session distante ;
+- lint : 0 erreur, 18 avertissements préexistants ;
+- TypeScript : réussi ;
+- build complet : réussi, 91 routes.
+
+La branche Git de test est volontairement conservée pour validation manuelle.
 
 ## Risques et limites restants
 
-- Il n'existe pas encore d'ordonnanceur actif pour appeler le worker.
+- Il n'existe pas encore d'ordonnanceur actif ; le lancement administratrice
+  déclenche directement une tentative du worker.
 - Le moteur s'arrête après la création prouvée de la branche.
 - Les reprises après échec nécessitent une décision explicite et une branche
   cible disponible.
 - Le secret du worker et le jeton GitHub doivent être renouvelés et gérés hors
   du dépôt.
-- La validation visuelle et Git réelle dépend de cette configuration Preview.
+- Le refus d'un compte agent est couvert par les tests ciblés et le garde-fou
+  partagé, mais n'a pas été rejoué avec une nouvelle session agent distante afin
+  de ne pas créer ou extraire d'identifiant de session.
 
 Aucun merge vers `main`, aucun déploiement manuel en production et aucune
 activation ou émission Telegram n'ont été effectués.
