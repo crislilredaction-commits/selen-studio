@@ -9,7 +9,7 @@ const missionSelection = `
   forge_corrections (*),
   forge_mission_reports (*),
   forge_mission_briefs (*),
-  forge_mission_plans (*),
+  forge_mission_plans!forge_mission_plans_mission_id_fkey (*),
   forge_mission_checkpoints (
     *,
     forge_mission_checkpoint_history (*)

@@ -289,6 +289,38 @@ Validations du correctif :
 - aucun secret ajouté à Git ;
 - cron Telegram toujours désactivé et aucun message réel envoyé.
 
+## Correctif de relation PostgREST des plans
+
+L'introspection du schéma distant confirme deux clés étrangères entre les
+missions et leurs plans :
+
+- `forge_mission_plans_mission_id_fkey` :
+  `forge_mission_plans.mission_id -> forge_missions.id`, avec suppression en
+  cascade ; cette relation porte l'historique ordonné des plans d'une mission ;
+- `forge_missions_execution_plan_id_fkey` :
+  `forge_missions.execution_plan_id -> forge_mission_plans.id`, avec
+  suppression restreinte ; cette relation désigne le plan d'exécution retenu.
+
+L'embed PostgREST `forge_mission_plans (*)` était donc ambigu : PostgREST ne
+pouvait pas choisir entre ces deux chemins. La liste Cody et l'API Archives
+utilisent désormais explicitement :
+
+`forge_mission_plans!forge_mission_plans_mission_id_fkey (*)`.
+
+La transformation applicative conserve un tableau vide lorsque la mission ne
+possède encore aucun plan et laisse alors `currentPlan` indéfini. Aucune
+contrainte, migration, politique RLS ou protection admin-only n'a été modifiée.
+
+Validations :
+
+- tests ciblés : 12/12, dont relation explicite, mission sans plan et refus
+  admin-only ;
+- lint : 0 erreur, 18 avertissements préexistants hors Forge ;
+- TypeScript : réussi ;
+- build complet : réussi, 89 routes générées ;
+- avertissements `pdfjs/canvas` et convention `middleware` préexistants ;
+- contrôle visuel authentifié à effectuer dans la session Chrome existante.
+
 ## Retour arrière
 
 Ne pas utiliser `db reset` ni modifier l'historique. Avant tout retour arrière,

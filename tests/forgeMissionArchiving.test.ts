@@ -49,3 +49,22 @@ test("la vue Archives expose recherche, filtres, rapport et restauration", async
   assert.match(source, /Ouvrir le rapport/);
   assert.match(source, /Restaurer/);
 });
+
+test("les missions chargent explicitement leur historique de plans", async () => {
+  const dataAccess = await read("src/lib/forge/data-access.ts");
+  const archives = await read("src/app/agent/api/forge/archives/route.ts");
+  const explicitPlanEmbed =
+    /forge_mission_plans!forge_mission_plans_mission_id_fkey \(\*\)/;
+
+  assert.match(dataAccess, explicitPlanEmbed);
+  assert.match(archives, explicitPlanEmbed);
+  assert.doesNotMatch(dataAccess, /\n\s*forge_mission_plans \(\*\),/);
+  assert.doesNotMatch(archives, /\n\s*forge_mission_plans \(\*\),/);
+});
+
+test("une mission sans plan est chargée avec un historique vide", async () => {
+  const source = await read("src/lib/forge/data-access.ts");
+
+  assert.match(source, /row\.forge_mission_plans \?\? \[\]/);
+  assert.match(source, /currentPlan: planHistory\.find\(\(plan\) => plan\.isCurrent\)/);
+});
