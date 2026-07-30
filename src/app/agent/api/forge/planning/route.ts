@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { requireStudioAgent } from "@/lib/server/studioAuth";
+import { requireStudioAdmin } from "@/lib/server/studioAuth";
 
 let openaiClient: OpenAI | null = null;
 
@@ -18,7 +18,7 @@ function cleanOptional(value: unknown, maxLength: number) {
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireStudioAgent();
+    const auth = await requireStudioAdmin();
     if (!auth.ok) return auth.response;
 
     if (!process.env.OPENAI_API_KEY) {

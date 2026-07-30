@@ -85,11 +85,13 @@ const links = [
   {
     href: "/agent/forge",
     label: "La Forge",
+    adminOnly: true,
     icon: <Hammer size={16} strokeWidth={1.5} />,
   },
   {
     href: "/agent/forge/alerts",
     label: "Alertes de La Forge",
+    adminOnly: true,
     icon: <Bell size={16} strokeWidth={1.5} />,
   },
   {
@@ -199,27 +201,28 @@ export default function AgentSidebar() {
         .eq("is_active", true)
         .maybeSingle();
 
-      if (!cancelled && adminUser?.role === "admin") {
-        setRole("admin");
-        return;
+      let resolvedRole: "agent" | "admin" =
+        adminUser?.role === "admin" ? "admin" : "agent";
+
+      if (resolvedRole !== "admin") {
+        const { data: profile } = await supabase
+          .from("agent_profiles")
+          .select("role, is_active")
+          .eq("email", email)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (profile?.role === "admin") resolvedRole = "admin";
       }
 
-      const { data: profile } = await supabase
-        .from("agent_profiles")
-        .select("role, is_active")
-        .eq("email", email)
-        .eq("is_active", true)
-        .maybeSingle();
-
-      if (!cancelled && profile?.role === "admin") {
-        setRole("admin");
+      if (!cancelled) setRole(resolvedRole);
+      if (resolvedRole === "admin") {
+        const { count } = await supabase
+          .from("forge_alerts")
+          .select("id", { count: "exact", head: true })
+          .or("status.eq.action_required,and(read_at.is.null,status.not.in.(resolved,archived))");
+        if (!cancelled) setForgeAlertCount(count ?? 0);
       }
-
-      const { count } = await supabase
-        .from("forge_alerts")
-        .select("id", { count: "exact", head: true })
-        .or("status.eq.action_required,and(read_at.is.null,status.not.in.(resolved,archived))");
-      if (!cancelled) setForgeAlertCount(count ?? 0);
     }
 
     void loadRole();
