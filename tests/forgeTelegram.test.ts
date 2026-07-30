@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  processForgeTelegramQueue,
-  sendForgeTelegramTest,
-} from "../src/lib/server/forgeTelegram.ts";
+// L’extension explicite est nécessaire au chargeur Node natif utilisé par ce test.
+// @ts-expect-error TypeScript la refuse hors mode allowImportingTsExtensions.
+import { processForgeTelegramQueue, sendForgeTelegramTest } from "../src/lib/server/forgeTelegram.ts";
 
 function withTelegramEnvironment() {
   const previous = { ...process.env };
