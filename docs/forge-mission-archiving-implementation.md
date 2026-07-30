@@ -321,6 +321,77 @@ Validations :
 - avertissements `pdfjs/canvas` et convention `middleware` préexistants ;
 - contrôle visuel authentifié à effectuer dans la session Chrome existante.
 
+## Raccordement des attentes humaines au centre d’alertes
+
+### Cause
+
+Les triggers distants étaient présents, mais leur logique ne matérialisait une
+alerte de plan que pour `plan_ready`. Un plan et une mission en
+`needs_clarification` étaient donc volontairement ignorés par les conditions
+existantes. La mission réelle `36bd04e7-a91e-429e-9a7f-317cf15a6620`
+présentait quatre questions bloquantes et aucune alerte active.
+
+### Sauvegardes
+
+Quatre nouvelles archives natives ont été créées avant le dry-run dans le
+répertoire temporaire ignoré
+`supabase/.temp/backups/20260730-cody-human-alerts-valid` :
+
+| Archive | Taille | Entrées | SHA-256 | `pg_restore --list` |
+| --- | ---: | ---: | --- | --- |
+| `public-schema.dump` | 620306 | 1017 | `103D9A9423BF1AF7BC340E71EED2513CB5390ABB3B11EBCAF87E69BA2EAA3A13` | réussi |
+| `public-data.dump` | 754808585 | 104 | `0AF17128DD561A50CACA8E5AC8F14607803948B3DBBB7552C9B9A28EDF523488` | réussi |
+| `migration-history-schema.dump` | 2231 | 3 | `0F8613655BC6C56BAEDB660A001CEF65C457F2839F487DA2D283D33593FFAF4A` | réussi |
+| `migration-history-data.dump` | 37541 | 1 | `37DCABAA8B313C7487A965CC735AD894E7A8AB00B4306FD23188B21AD930C706` | réussi |
+
+### Migration
+
+`20260730174200_connect_cody_human_actions_to_alerts.sql` :
+
+- crée une alerte `human_decision_required` lorsque la mission ou son plan
+  courant passe en `needs_clarification` ;
+- utilise la clé stable `mission-clarification:<mission_id>` et l’index unique
+  existant pour empêcher les doublons ;
+- relie l’alerte à la mission et au plan courant, avec un lien direct vers
+  `/agent/forge/cody?mission=<id>` ;
+- résout l’alerte lorsque la version courante ne demande plus de précision ;
+- conserve l’alerte `plan_validation_required` pour un plan `plan_ready` ;
+- couvre tout incident dont `resolution_status = 'blocked'`, pas uniquement
+  les catégories critiques ;
+- rend la décision de reprise explicitement actionnable et résout cette alerte
+  lorsque la mission repart ;
+- rattrape de manière idempotente les missions Cody déjà en
+  `needs_clarification`.
+
+La migration ne modifie aucune table, politique RLS ou donnée métier. Les trois
+fonctions restent `security invoker` et leur exécution est révoquée à
+`PUBLIC`, `anon` et `authenticated`.
+
+Dry-run avant application : une migration, aucun seed, aucun rôle. Après
+application, `migration list` est aligné et le dry-run est vide.
+
+### Vérifications
+
+- l’alerte réelle attendue a été créée avec `companion_key = 'cody'`,
+  `status = 'action_required'`, la bonne mission, le bon plan et le lien
+  direct ;
+- RLS active sur alertes, missions, plans et incidents ;
+- aucun privilège `anon` sur `forge_alerts` ;
+- compte agent : niveau Forge `none` et zéro alerte lisible ;
+- compte anon : lecture refusée ;
+- cron Telegram actif : zéro ; aucun message Telegram envoyé ;
+- tests PostgreSQL transactionnels : création, déduplication, résolution après
+  nouvelle version, validation requise, incident bloquant et décision de
+  reprise réussis ;
+- deux premiers essais transactionnels ont été annulés par les garde-fous de
+  checkpoints puis d’immutabilité ; le scénario final reproduit le parcours
+  réel et passe ;
+- données de test persistantes après `ROLLBACK` : zéro ;
+- tests Node ciblés : 16/16 ;
+- lint : 0 erreur, 18 avertissements préexistants ;
+- TypeScript : réussi ;
+- build complet : réussi, 89 routes.
+
 ## Retour arrière
 
 Ne pas utiliser `db reset` ni modifier l'historique. Avant tout retour arrière,
