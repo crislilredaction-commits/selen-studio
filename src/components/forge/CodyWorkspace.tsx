@@ -56,12 +56,14 @@ export default function CodyWorkspace() {
   const [reportGenerating, setReportGenerating] = useState(false);
   const [planningBusy, setPlanningBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [accessLevel, setAccessLevel] = useState<ForgeAccessLevel>("none");
 
   const loadMissions = useCallback(async (preferredId?: string) => {
     setLoading(true);
     setError(null);
+    setErrorDetail(null);
     try {
       const [nextMissions, nextAccessLevel] = await Promise.all([
         listMissions(),
@@ -75,8 +77,9 @@ export default function CodyWorkspace() {
           ? candidate
           : nextMissions[0]?.id ?? null;
       });
-    } catch {
-      setError("Les missions de Cody ne peuvent pas être chargées. Vérifiez que la migration Forge est appliquée.");
+    } catch (loadError) {
+      setError("Les missions de Cody ne peuvent pas être chargées. La configuration de la Preview ou vos droits d’accès doivent être vérifiés.");
+      setErrorDetail(loadError instanceof Error ? loadError.message : "Erreur de chargement inconnue.");
     } finally {
       setLoading(false);
     }
@@ -527,7 +530,16 @@ export default function CodyWorkspace() {
 
       {!loading && error && (
         <div className="forge-state forge-state--error" role="alert">
-          <AlertTriangle /> <span>{error}</span>
+          <AlertTriangle />
+          <span>
+            {error}
+            {errorDetail ? (
+              <details>
+                <summary>Détail technique</summary>
+                <code>{errorDetail}</code>
+              </details>
+            ) : null}
+          </span>
           <button className="forge-button forge-button--secondary" onClick={() => void loadMissions()}>Réessayer</button>
         </div>
       )}

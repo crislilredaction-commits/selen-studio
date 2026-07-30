@@ -250,6 +250,45 @@ Checklist manuelle sur la Preview :
   plus ;
 - les contrôles visuels multi-rôles restent manuels.
 
+## Correctif de configuration Preview
+
+Après la première livraison, la Preview affichait deux blocages distincts :
+
+- les appels `POST /agent/api/forge/planning` retournaient réellement `503` ;
+- les lectures Supabase directes du navigateur échouaient et étaient masquées
+  par un message générique accusant à tort la migration.
+
+Les logs Vercel du déploiement `78a57e0` confirment deux réponses `503` de la
+route de planification. Dans son code, cette réponse n'est émise qu'en
+l'absence de `OPENAI_API_KEY`.
+
+La configuration locale valide contenait bien :
+
+- `NEXT_PUBLIC_SUPABASE_URL`, ciblant le projet Selen Studio attendu ;
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` ;
+- `SUPABASE_SERVICE_ROLE_KEY` ;
+- `OPENAI_API_KEY`.
+
+Ces quatre variables ont été copiées sans afficher leur valeur vers la seule
+portée Vercel `Preview`, avec stockage sensible. Aucun environnement
+Production n'a été modifié.
+
+La nouvelle construction Preview est nécessaire parce que les variables
+`NEXT_PUBLIC_*` sont intégrées au bundle lors du build. Le client Supabase
+valide désormais explicitement leur présence. La page Cody conserve un message
+principal compréhensible et affiche l'erreur réelle dans une zone « Détail
+technique », au lieu de conclure automatiquement que la migration manque.
+
+Validations du correctif :
+
+- tests ciblés : 10/10 ;
+- lint : 0 erreur, 18 avertissements préexistants ;
+- TypeScript : réussi ;
+- build complet : réussi ;
+- protections admin-only et RLS inchangées ;
+- aucun secret ajouté à Git ;
+- cron Telegram toujours désactivé et aucun message réel envoyé.
+
 ## Retour arrière
 
 Ne pas utiliser `db reset` ni modifier l'historique. Avant tout retour arrière,

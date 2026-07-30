@@ -10,6 +10,14 @@ test("la liste active exclut les missions archivées", async () => {
   assert.match(source, /fetch\("\/agent\/api\/forge\/archives"/);
 });
 
+test("une configuration Supabase Preview absente produit un diagnostic explicite", async () => {
+  const client = await read("src/lib/supabase/client.ts");
+  const workspace = await read("src/components/forge/CodyWorkspace.tsx");
+  assert.match(client, /La configuration Supabase publique est absente de ce déploiement/);
+  assert.match(workspace, /Détail technique/);
+  assert.match(workspace, /loadError instanceof Error \? loadError\.message/);
+});
+
 test("l’API Archives exige un administrateur et valide les entrées", async () => {
   const source = await read("src/app/agent/api/forge/archives/route.ts");
   assert.match(source, /await requireStudioAdmin\(\)/g);
