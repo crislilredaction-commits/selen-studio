@@ -11,6 +11,7 @@ import {
   recordForgeAlertContextOpen,
 } from "@/lib/forge/data-access";
 import type { ForgeAccessLevel, ForgeAlert, ForgeAlertLevel } from "@/lib/forge/types";
+import ForgeTelegramSettings from "@/components/forge/ForgeTelegramSettings";
 
 type Filter = "all" | "action" | "unread" | "critical" | "resolved";
 const levelLabels: Record<ForgeAlertLevel, string> = {
@@ -107,6 +108,8 @@ export default function ForgeAlertCenter() {
           {attentionCount}<span>à voir</span>
         </strong>
       </header>
+
+      {access === "admin" ? <ForgeTelegramSettings /> : null}
 
       <section className="forge-alert-toolbar" aria-label="Filtres des alertes">
         <div className="forge-alert-filters">
