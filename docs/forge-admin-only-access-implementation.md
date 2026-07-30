@@ -169,8 +169,11 @@ l'historique ni utiliser `db reset`.
 
 ## Livraison
 
+- commit d'implémentation : `f78537314fed2de610f090c85f873024a28021cd` ;
 - commit final : hash communiqué dans le retour de livraison (un commit ne
   peut pas contenir sa propre empreinte) ;
-- Preview Vercel : à renseigner après le push Git ;
+- Preview Vercel de branche :
+  `https://selen-studio-git-feature-1e4592-crislilredaction-4256s-projects.vercel.app` ;
+- premier déploiement du commit d'implémentation : `READY` ;
 - aucun merge vers `main` ;
 - aucun déploiement manuel en production.
