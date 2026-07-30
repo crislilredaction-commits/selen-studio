@@ -184,6 +184,7 @@ type ForgeIncidentRow = {
 
 type ForgeMissionRow = {
   id: string;
+  agent_key: string;
   title: string;
   project_key: string | null;
   description: string | null;
@@ -200,6 +201,8 @@ type ForgeMissionRow = {
   planning_validated_at: string | null;
   paused_at: string | null;
   resumed_at: string | null;
+  archived_at: string | null;
+  archived_by: string | null;
   forge_activity_logs?: ForgeActivityRow[];
   forge_validation_items?: ForgeValidationRow[];
   forge_corrections?: ForgeCorrectionRow[];
@@ -441,6 +444,7 @@ function mapMission(row: ForgeMissionRow): Mission {
 
   return {
     id: row.id,
+    agentKey: row.agent_key,
     title: row.title,
     project: row.project_key ?? "Selen Studio",
     description: row.description ?? "",
@@ -465,6 +469,8 @@ function mapMission(row: ForgeMissionRow): Mission {
     planningValidatedAt: row.planning_validated_at ?? undefined,
     pausedAt: row.paused_at ?? undefined,
     resumedAt: row.resumed_at ?? undefined,
+    archivedAt: row.archived_at ?? undefined,
+    archivedBy: row.archived_by ?? undefined,
     brief: briefRow ? mapBrief(briefRow) : undefined,
     currentPlan: planHistory.find((plan) => plan.isCurrent),
     planHistory,
@@ -587,6 +593,7 @@ export async function listMissions(agentKey = "cody"): Promise<Mission[]> {
     .from("forge_missions")
     .select(missionSelection)
     .eq("agent_key", agentKey)
+    .is("archived_at", null)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -658,6 +665,34 @@ export async function addActivityLog(
     metadata,
   });
   if (error) throw new Error(error.message);
+}
+
+export async function listArchivedMissions(): Promise<Mission[]> {
+  const response = await fetch("/agent/api/forge/archives", {
+    method: "GET",
+    cache: "no-store",
+  });
+  const payload = await response.json();
+  if (!response.ok || !Array.isArray(payload?.missions)) {
+    throw new Error(payload?.error ?? "Les archives de La Forge sont indisponibles.");
+  }
+  return (payload.missions as ForgeMissionRow[]).map(mapMission);
+}
+
+export async function setMissionArchived(
+  missionId: string,
+  archived: boolean,
+  reason: string,
+): Promise<void> {
+  const response = await fetch("/agent/api/forge/archives", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ missionId, action: archived ? "archive" : "restore", reason }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "L’archivage de la mission a échoué.");
+  }
 }
 
 export type NewPlanningMissionInput = {

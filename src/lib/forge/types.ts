@@ -295,6 +295,7 @@ export type Correction = {
 
 export type Mission = {
   id: string;
+  agentKey: string;
   title: string;
   project: string;
   description: string;
@@ -315,6 +316,8 @@ export type Mission = {
   planningValidatedAt?: string;
   pausedAt?: string;
   resumedAt?: string;
+  archivedAt?: string;
+  archivedBy?: string;
   brief?: MissionBrief;
   currentPlan?: MissionPlan;
   planHistory: MissionPlan[];

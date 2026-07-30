@@ -20,6 +20,7 @@ import {
   resumeBlockedMission,
   resumeMission,
   setPlanningAnalysisState,
+  setMissionArchived,
   storeMissionPlan,
   updateMissionPriority,
   updateMissionCheckpoint,
@@ -455,9 +456,15 @@ export default function CodyWorkspace() {
     setSaving(true);
     setFeedback(null);
     try {
-      await controlMission(missionId, action, reason, consequences);
+      if (action === "archive") {
+        await setMissionArchived(missionId, true, reason);
+      } else {
+        await controlMission(missionId, action, reason, consequences);
+      }
       await loadMissions(missionId);
-      setFeedback("Décision humaine enregistrée et journalisée.");
+      setFeedback(action === "archive"
+        ? "Mission archivée. Son rapport et son historique restent disponibles dans les Archives."
+        : "Décision humaine enregistrée et journalisée.");
     } catch (controlError) {
       setFeedback(controlError instanceof Error ? controlError.message : "La décision a été refusée.");
     } finally {
@@ -480,6 +487,12 @@ export default function CodyWorkspace() {
         </div>
         <Sparkles className="forge-cody-hero__sparkle" aria-hidden />
       </header>
+
+      <nav className="forge-archive-nav" aria-label="Archives des missions">
+        <Link className="forge-button forge-button--secondary" href="/agent/forge/cody/archives">
+          Consulter les Archives
+        </Link>
+      </nav>
 
       <NewMissionForm busy={planningBusy} onSubmit={createAndAnalyzeMission} />
 
