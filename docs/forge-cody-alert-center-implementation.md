@@ -229,8 +229,17 @@ missions, durcissement NDA restant et test réel d’autonomie avant production.
 
 ## Livraison
 
-Commit d’implémentation : à renseigner après commit.
+Commit d’implémentation :
+`40aeee5388e8a6d22226f836438535cadf1301f0`.
 
-Preview Vercel : à renseigner après le push.
+Preview Vercel :
+`https://selen-studio-git-feature-26fe15-crislilredaction-4256s-projects.vercel.app/agent/forge/alerts`.
+
+Le déploiement automatique du commit d’implémentation a atteint l’état
+`READY`. Sans session, la Preview répond par une redirection HTTP 302 vers
+l’authentification Vercel. Aucun test authentifié n’est revendiqué.
+
+Le hash du commit documentaire final est communiqué après sa création, car un
+commit ne peut pas contenir son propre hash.
 
 Aucun merge vers `main` et aucun déploiement manuel en production.
