@@ -266,7 +266,12 @@ doit être une migration corrective explicite qui :
 
 ## Livraison
 
-- commit d'implémentation : à renseigner après commit ;
-- Preview Vercel : à renseigner après le push ;
+- commit d'implémentation :
+  `df4a4ee6dcc5fda93d11cf983db179a7f9552db1` ;
+- commit documentaire final : communiqué dans le retour de livraison, car un
+  commit ne peut pas contenir sa propre empreinte ;
+- Preview Vercel de branche :
+  `https://selen-studio-git-feature-9b531f-crislilredaction-4256s-projects.vercel.app` ;
+- déploiement du commit d'implémentation : `READY` ;
 - aucun merge vers `main` ;
 - aucun déploiement manuel en Production.
