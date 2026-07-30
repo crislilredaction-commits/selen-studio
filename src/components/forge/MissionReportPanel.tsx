@@ -66,11 +66,13 @@ export default function MissionReportPanel({
   report,
   generating,
   onGenerate,
+  readOnly = false,
 }: {
   mission: Mission;
   report?: MissionReport;
   generating: boolean;
   onGenerate: () => void;
+  readOnly?: boolean;
 }) {
   const [showFull, setShowFull] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
@@ -174,7 +176,7 @@ export default function MissionReportPanel({
       )}
 
       <div className="forge-report-actions">
-        <button className="forge-button forge-button--primary" type="button" onClick={onGenerate} disabled={generating}>
+        <button className="forge-button forge-button--primary" type="button" onClick={onGenerate} disabled={readOnly || generating}>
           {generating ? <RefreshCw className="forge-spin" size={15} /> : <FileText size={15} />}
           {report ? "Régénérer le rapport" : "Générer le rapport de démonstration"}
         </button>

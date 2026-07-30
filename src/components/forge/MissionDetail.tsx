@@ -1,6 +1,6 @@
 import { ExternalLink, GitBranch, Pause, Play, ShieldCheck } from "lucide-react";
 import { priorityLabels } from "@/lib/forge/labels";
-import type { Mission, MissionCheckpoint, MissionCheckpointStatus, MissionIncident, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
+import type { ForgeAccessLevel, Mission, MissionCheckpoint, MissionCheckpointStatus, MissionIncident, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
 import { MissionStatusBadge } from "./Badges";
 import ActivityJournal from "./ActivityJournal";
 import ValidationChecklist from "./ValidationChecklist";
@@ -9,9 +9,11 @@ import MissionReportPanel from "./MissionReportPanel";
 import MissionPlanningPanel from "./MissionPlanningPanel";
 import MissionCheckpointPanel from "./MissionCheckpointPanel";
 import MissionIncidentPanel from "./MissionIncidentPanel";
+import MissionHumanControlPanel from "./MissionHumanControlPanel";
 
 export default function MissionDetail({
   mission,
+  accessLevel,
   onChecklistChange,
   onAddCorrection,
   onValidate,
@@ -30,8 +32,11 @@ export default function MissionDetail({
   onCheckpointUpdate,
   onIncidentResolve,
   onBlockedResume,
+  onHumanInstruction,
+  onMissionControl,
 }: {
   mission: Mission;
+  accessLevel: ForgeAccessLevel;
   onChecklistChange: (id: string, patch: Partial<ValidationItem>) => void;
   onAddCorrection: (content: string) => void;
   onValidate: () => void;
@@ -50,7 +55,14 @@ export default function MissionDetail({
   onCheckpointUpdate: (checkpoint: MissionCheckpoint, status: MissionCheckpointStatus, message?: string) => Promise<void>;
   onIncidentResolve: (incident: MissionIncident, status: "resolved" | "ignored_with_justification", message: string) => Promise<void>;
   onBlockedResume: () => Promise<void>;
+  onHumanInstruction: (content: string, sensitivity: "minor" | "sensitive") => Promise<void>;
+  onMissionControl: (
+    action: "maintain_block" | "abandon" | "archive",
+    reason: string,
+    consequences: string,
+  ) => Promise<void>;
 }) {
+  const readOnly = accessLevel !== "admin";
   const planningOnly = mission.planningRequired && [
     "draft",
     "analyzing",
@@ -80,7 +92,7 @@ export default function MissionDetail({
           <select
             id={`forge-priority-${mission.id}`}
             value={mission.priority}
-            disabled={mission.status === "validated" || missionActionBusy}
+            disabled={readOnly || mission.status === "validated" || missionActionBusy}
             onChange={(event) => void onPriorityChange(event.target.value as MissionPriority)}
           >
             {(Object.entries(priorityLabels) as [MissionPriority, string][]).map(([value, label]) => (
@@ -94,12 +106,12 @@ export default function MissionDetail({
           {mission.resumedAt && <span>Reprise : {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(mission.resumedAt))}</span>}
         </div>
         {mission.status === "in_progress" && (
-          <button className="forge-button forge-button--secondary" type="button" disabled={missionActionBusy} onClick={onPause}>
+          <button className="forge-button forge-button--secondary" type="button" disabled={readOnly || missionActionBusy} onClick={onPause}>
             <Pause size={16} /> Mettre en pause
           </button>
         )}
         {mission.status === "paused" && (
-          <button className="forge-button forge-button--primary" type="button" disabled={missionActionBusy} onClick={onResume}>
+          <button className="forge-button forge-button--primary" type="button" disabled={readOnly || missionActionBusy} onClick={onResume}>
             <Play size={16} /> Reprendre
           </button>
         )}
@@ -127,14 +139,14 @@ export default function MissionDetail({
 
       <MissionCheckpointPanel
         checkpoints={mission.checkpoints}
-        busy={missionActionBusy}
+        busy={readOnly || missionActionBusy}
         onUpdate={onCheckpointUpdate}
       />
 
       <MissionIncidentPanel
         incidents={mission.incidents}
         checkpoints={mission.checkpoints}
-        busy={missionActionBusy}
+        busy={readOnly || missionActionBusy}
         onResolve={onIncidentResolve}
         onResume={onBlockedResume}
         missionBlocked={mission.status === "blocked"}
@@ -144,7 +156,7 @@ export default function MissionDetail({
         <MissionPlanningPanel
           key={mission.currentPlan?.id ?? mission.id}
           mission={mission}
-          busy={planningBusy}
+          busy={readOnly || planningBusy}
           onRegenerate={onRegeneratePlan}
           onSave={onSavePlan}
           onValidate={onValidatePlan}
@@ -152,6 +164,14 @@ export default function MissionDetail({
           onDraft={onDraftPlan}
         />
       )}
+
+      <MissionHumanControlPanel
+        mission={mission}
+        accessLevel={accessLevel}
+        busy={missionActionBusy}
+        onInstruction={onHumanInstruction}
+        onControl={onMissionControl}
+      />
 
       {!planningOnly && (
         <>
@@ -161,6 +181,7 @@ export default function MissionDetail({
           items={mission.checklist}
           lastVerifiedAt={mission.lastVerifiedAt}
           onChange={onChecklistChange}
+          disabled={readOnly}
         />
       </section>
 
@@ -169,6 +190,7 @@ export default function MissionDetail({
         report={mission.report}
         generating={reportGenerating}
         onGenerate={onGenerateReport}
+        readOnly={readOnly}
       />
 
       <section className="forge-detail__section">
@@ -187,7 +209,7 @@ export default function MissionDetail({
         ) : (
           <p className="forge-muted">Aucune correction demandée pour le moment.</p>
         )}
-        <CorrectionComposer onAdd={onAddCorrection} />
+        <CorrectionComposer onAdd={onAddCorrection} disabled={readOnly} />
       </section>
 
       <footer className="forge-detail__actions">
@@ -196,7 +218,7 @@ export default function MissionDetail({
           className="forge-button forge-button--primary"
           type="button"
           onClick={onValidate}
-          disabled={mission.status === "validated" || mission.status === "paused"}
+          disabled={readOnly || mission.status === "validated" || mission.status === "paused"}
         >
           {mission.status === "validated" ? "Mission validée" : mission.status === "paused" ? "Reprendre avant validation" : "Valider la mission"}
         </button>

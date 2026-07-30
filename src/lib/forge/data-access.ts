@@ -4,6 +4,8 @@ import type {
   ActivityType,
   CheckResult,
   Correction,
+  ForgeAccessLevel,
+  HumanInstruction,
   Mission,
   MissionBrief,
   MissionCheckpoint,
@@ -205,6 +207,34 @@ type ForgeMissionRow = {
   forge_mission_plans?: ForgePlanRow[];
   forge_mission_checkpoints?: ForgeCheckpointRow[];
   forge_mission_incidents?: ForgeIncidentRow[];
+  forge_human_instructions?: ForgeInstructionRow[];
+  forge_human_decisions?: ForgeDecisionRow[];
+};
+
+type ForgeInstructionRow = {
+  id: string;
+  mission_id: string;
+  incident_id: string | null;
+  plan_id: string | null;
+  content: string;
+  sensitivity: HumanInstruction["sensitivity"];
+  status: HumanInstruction["status"];
+  created_by: string;
+  created_at: string;
+};
+
+type ForgeDecisionRow = {
+  id: string;
+  mission_id: string;
+  incident_id: string | null;
+  plan_id: string | null;
+  action: string;
+  reason: string;
+  consequences: string;
+  previous_status: MissionStatus | null;
+  resulting_status: MissionStatus | null;
+  decided_by: string;
+  decided_at: string;
 };
 
 function mapIncident(row: ForgeIncidentRow): MissionIncident {
@@ -443,6 +473,34 @@ function mapMission(row: ForgeMissionRow): Mission {
     incidents: [...(row.forge_mission_incidents ?? [])]
       .sort((left, right) => right.detected_at.localeCompare(left.detected_at))
       .map(mapIncident),
+    instructions: [...(row.forge_human_instructions ?? [])]
+      .sort((left, right) => right.created_at.localeCompare(left.created_at))
+      .map((instruction) => ({
+        id: instruction.id,
+        missionId: instruction.mission_id,
+        incidentId: instruction.incident_id ?? undefined,
+        planId: instruction.plan_id ?? undefined,
+        content: instruction.content,
+        sensitivity: instruction.sensitivity,
+        status: instruction.status,
+        createdBy: instruction.created_by,
+        createdAt: instruction.created_at,
+      })),
+    decisions: [...(row.forge_human_decisions ?? [])]
+      .sort((left, right) => right.decided_at.localeCompare(left.decided_at))
+      .map((decision) => ({
+        id: decision.id,
+        missionId: decision.mission_id,
+        incidentId: decision.incident_id ?? undefined,
+        planId: decision.plan_id ?? undefined,
+        action: decision.action,
+        reason: decision.reason,
+        consequences: decision.consequences,
+        previousStatus: decision.previous_status ?? undefined,
+        resultingStatus: decision.resulting_status ?? undefined,
+        decidedBy: decision.decided_by,
+        decidedAt: decision.decided_at,
+      })),
     lastVerifiedAt,
   };
 }
@@ -462,8 +520,17 @@ const missionSelection = `
   forge_mission_incidents (
     *,
     forge_mission_incident_attempts (*)
-  )
+  ),
+  forge_human_instructions (*),
+  forge_human_decisions (*)
 `;
+
+export async function getForgeAccessLevel(): Promise<ForgeAccessLevel> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("forge_current_access_level");
+  if (error) throw new Error(error.message);
+  return data === "admin" || data === "viewer" ? data : "none";
+}
 
 export async function listMissions(agentKey = "cody"): Promise<Mission[]> {
   const supabase = createClient();
@@ -675,6 +742,38 @@ export async function rejectCurrentMissionPlan(
     p_mission_id: missionId,
     p_plan_id: planId,
     p_reason: reason,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function addHumanInstruction(
+  missionId: string,
+  content: string,
+  sensitivity: "minor" | "sensitive",
+  incidentId?: string,
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_add_human_instruction", {
+    p_mission_id: missionId,
+    p_content: content,
+    p_sensitivity: sensitivity,
+    p_incident_id: incidentId ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function controlMission(
+  missionId: string,
+  action: "abandon" | "archive" | "maintain_block",
+  reason: string,
+  consequences: string,
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("forge_control_mission", {
+    p_mission_id: missionId,
+    p_action: action,
+    p_reason: reason,
+    p_consequences: consequences,
   });
   if (error) throw new Error(error.message);
 }

@@ -28,6 +28,9 @@ export const missionStatusLabels: Record<MissionStatus, string> = {
   changes_requested: "À corriger",
   validated: "Validée",
   blocked: "Bloquée",
+  failed: "Échouée",
+  abandoned: "Abandonnée",
+  archived: "Archivée",
 };
 
 export const priorityLabels: Record<MissionPriority, string> = {
@@ -87,6 +90,8 @@ export const activityTypeLabels: Record<ActivityType, string> = {
   incident_retrying: "Correction en cours",
   incident_resolved: "Incident résolu",
   incident_blocked: "Mission bloquée par un incident",
+  human_instruction: "Consigne humaine",
+  human_decision: "Décision humaine",
 };
 
 export const missionFilters = [
@@ -102,4 +107,7 @@ export const missionFilters = [
   { value: "changes_requested", label: "À corriger" },
   { value: "validated", label: "Validées" },
   { value: "blocked", label: "Bloquées" },
+  { value: "failed", label: "Échouées" },
+  { value: "abandoned", label: "Abandonnées" },
+  { value: "archived", label: "Archivées" },
 ] as const;

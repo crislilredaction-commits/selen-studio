@@ -46,6 +46,8 @@ const icons: Record<ActivityType, React.ReactNode> = {
   incident_retrying: <RefreshCw size={15} />,
   incident_resolved: <CheckCircle2 size={15} />,
   incident_blocked: <FileWarning size={15} />,
+  human_instruction: <ScrollText size={15} />,
+  human_decision: <CheckCircle2 size={15} />,
 };
 
 export default function ActivityJournal({ entries }: { entries: ActivityEntry[] }) {

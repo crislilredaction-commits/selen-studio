@@ -6,8 +6,11 @@ import { AlertTriangle, ArrowLeft, Hammer, RefreshCw, Sparkles } from "lucide-re
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addCorrection,
+  addHumanInstruction,
+  controlMission,
   createPlanningMission,
   generateDemoMissionReport,
+  getForgeAccessLevel,
   getMissionDetails,
   listMissions,
   pauseMission,
@@ -26,7 +29,7 @@ import {
   type NewPlanningMissionInput,
 } from "@/lib/forge/data-access";
 import { missionFilters } from "@/lib/forge/labels";
-import type { Mission, MissionCheckpoint, MissionCheckpointStatus, MissionIncident, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
+import type { ForgeAccessLevel, Mission, MissionCheckpoint, MissionCheckpointStatus, MissionIncident, MissionPlanDraft, MissionPriority, ValidationItem } from "@/lib/forge/types";
 import { AgentStatusBadge } from "./Badges";
 import MissionCard from "./MissionCard";
 import MissionDetail from "./MissionDetail";
@@ -53,12 +56,17 @@ export default function CodyWorkspace() {
   const [planningBusy, setPlanningBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [accessLevel, setAccessLevel] = useState<ForgeAccessLevel>("none");
 
   const loadMissions = useCallback(async (preferredId?: string) => {
     setLoading(true);
     setError(null);
     try {
-      const nextMissions = await listMissions();
+      const [nextMissions, nextAccessLevel] = await Promise.all([
+        listMissions(),
+        getForgeAccessLevel(),
+      ]);
+      setAccessLevel(nextAccessLevel);
       setMissions(nextMissions);
       setSelectedId((current) => {
         const candidate = preferredId ?? current;
@@ -81,6 +89,13 @@ export default function CodyWorkspace() {
     missions
       .filter((mission) => filter === "all" || mission.status === filter)
       .toSorted((left, right) => {
+        const leftNeedsAction = left.status === "blocked"
+          || Boolean(left.currentPlan && left.currentPlan.status !== "validated")
+          || left.incidents.some((incident) => !["resolved", "ignored_with_justification"].includes(incident.resolutionStatus));
+        const rightNeedsAction = right.status === "blocked"
+          || Boolean(right.currentPlan && right.currentPlan.status !== "validated")
+          || right.incidents.some((incident) => !["resolved", "ignored_with_justification"].includes(incident.resolutionStatus));
+        if (leftNeedsAction !== rightNeedsAction) return leftNeedsAction ? -1 : 1;
         if (sortOrder === "newest") return right.createdAt.localeCompare(left.createdAt);
         return priorityRank[left.priority] - priorityRank[right.priority]
           || left.createdAt.localeCompare(right.createdAt)
@@ -411,6 +426,44 @@ export default function CodyWorkspace() {
     }
   }
 
+  async function submitHumanInstruction(content: string, sensitivity: "minor" | "sensitive") {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await addHumanInstruction(missionId, content, sensitivity);
+      await loadMissions(missionId);
+      setFeedback(sensitivity === "sensitive"
+        ? "Consigne enregistrée. Cody est bloqué jusqu’à validation du nouveau plan."
+        : "Consigne enregistrée et ajoutée au journal.");
+    } catch (instructionError) {
+      setFeedback(instructionError instanceof Error ? instructionError.message : "La consigne a été refusée.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitMissionControl(
+    action: "maintain_block" | "abandon" | "archive",
+    reason: string,
+    consequences: string,
+  ) {
+    if (!selectedMission) return;
+    const missionId = selectedMission.id;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await controlMission(missionId, action, reason, consequences);
+      await loadMissions(missionId);
+      setFeedback("Décision humaine enregistrée et journalisée.");
+    } catch (controlError) {
+      setFeedback(controlError instanceof Error ? controlError.message : "La décision a été refusée.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <main className="forge-page forge-cody-page">
       <Link className="forge-back-link" href="/agent/forge"><ArrowLeft size={16} /> Retour à La Forge</Link>
@@ -430,6 +483,10 @@ export default function CodyWorkspace() {
       <NewMissionForm busy={planningBusy} onSubmit={createAndAnalyzeMission} />
 
       <div className="forge-queue-toolbar">
+        <div className="forge-attention-summary" role="status">
+          <strong>{missions.filter((mission) => mission.status === "blocked" || (mission.currentPlan && mission.currentPlan.status !== "validated")).length}</strong>
+          <span>mission(s) nécessitent une décision humaine</span>
+        </div>
         <nav className="forge-filters" aria-label="Filtrer les missions">
           {missionFilters.map((item) => (
             <button key={item.value} className={filter === item.value ? "is-active" : ""} onClick={() => selectFilter(item.value)}>
@@ -479,6 +536,7 @@ export default function CodyWorkspace() {
         </aside>
         <MissionDetail
           mission={selectedMission}
+          accessLevel={accessLevel}
           onChecklistChange={changeChecklist}
           onAddCorrection={submitCorrection}
           onValidate={submitValidation}
@@ -497,6 +555,8 @@ export default function CodyWorkspace() {
           onCheckpointUpdate={changeCheckpoint}
           onIncidentResolve={resolveIncident}
           onBlockedResume={resumeBlockedSelectedMission}
+          onHumanInstruction={submitHumanInstruction}
+          onMissionControl={submitMissionControl}
         />
       </div>
       )}

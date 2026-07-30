@@ -6,9 +6,11 @@ import type { CheckResult, ValidationItem } from "@/lib/forge/types";
 function ValidationNote({
   item,
   onChange,
+  disabled = false,
 }: {
   item: ValidationItem;
   onChange: (id: string, patch: Partial<ValidationItem>) => void;
+  disabled?: boolean;
 }) {
   const [value, setValue] = useState(item.note ?? "");
 
@@ -16,6 +18,7 @@ function ValidationNote({
     <input
       type="text"
       value={value}
+      disabled={disabled}
       placeholder="Note facultative"
       aria-label={`Note pour ${item.label}`}
       onChange={(event) => setValue(event.target.value)}
@@ -30,10 +33,12 @@ export default function ValidationChecklist({
   items,
   lastVerifiedAt,
   onChange,
+  disabled = false,
 }: {
   items: ValidationItem[];
   lastVerifiedAt?: string;
   onChange: (id: string, patch: Partial<ValidationItem>) => void;
+  disabled?: boolean;
 }) {
   const verified = items.filter((item) => item.checked).length;
   return (
@@ -52,6 +57,7 @@ export default function ValidationChecklist({
               <input
                 type="checkbox"
                 checked={item.checked}
+                disabled={disabled}
                 onChange={(event) =>
                   onChange(item.id, {
                     checked: event.target.checked,
@@ -64,7 +70,7 @@ export default function ValidationChecklist({
             <select
               aria-label={`Résultat pour ${item.label}`}
               value={item.result ?? ""}
-              disabled={!item.checked}
+              disabled={disabled || !item.checked}
               onChange={(event) => onChange(item.id, { result: (event.target.value || null) as CheckResult })}
             >
               <option value="">Résultat</option>
@@ -76,6 +82,7 @@ export default function ValidationChecklist({
               key={`${item.id}:${item.updatedAt ?? ""}`}
               item={item}
               onChange={onChange}
+              disabled={disabled}
             />
           </div>
         ))}

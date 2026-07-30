@@ -13,7 +13,12 @@ export type MissionStatus =
   | "to_review"
   | "changes_requested"
   | "validated"
-  | "blocked";
+  | "blocked"
+  | "failed"
+  | "abandoned"
+  | "archived";
+
+export type ForgeAccessLevel = "none" | "viewer" | "admin";
 
 export type MissionPriority = "low" | "normal" | "high" | "urgent";
 
@@ -64,7 +69,9 @@ export type ActivityType =
   | "incident_detected"
   | "incident_retrying"
   | "incident_resolved"
-  | "incident_blocked";
+  | "incident_blocked"
+  | "human_instruction"
+  | "human_decision";
 
 export type MissionIncidentCategory =
   | "warning"
@@ -290,7 +297,35 @@ export type Mission = {
   planHistory: MissionPlan[];
   checkpoints: MissionCheckpoint[];
   incidents: MissionIncident[];
+  instructions: HumanInstruction[];
+  decisions: HumanDecision[];
   lastVerifiedAt?: string;
+};
+
+export type HumanInstruction = {
+  id: string;
+  missionId: string;
+  incidentId?: string;
+  planId?: string;
+  content: string;
+  sensitivity: "minor" | "sensitive";
+  status: "recorded" | "acknowledged" | "superseded";
+  createdBy: string;
+  createdAt: string;
+};
+
+export type HumanDecision = {
+  id: string;
+  missionId: string;
+  incidentId?: string;
+  planId?: string;
+  action: string;
+  reason: string;
+  consequences: string;
+  previousStatus?: MissionStatus;
+  resultingStatus?: MissionStatus;
+  decidedBy: string;
+  decidedAt: string;
 };
 
 export type MissionCheckpointHistory = {
