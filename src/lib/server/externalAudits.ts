@@ -1,4 +1,8 @@
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import {
+  GoogleOAuthError,
+  refreshGoogleAccessToken,
+} from "@/lib/server/googleOAuth";
 
 export type ExternalAuditRow = {
   id: string;
@@ -225,14 +229,6 @@ function googleCalendarDateTime(date: string, time: string) {
   return `${date}T${cleanTime}`;
 }
 
-async function readGoogleErrorBody(response: Response) {
-  try {
-    return await response.text();
-  } catch {
-    return "";
-  }
-}
-
 function googleCalendarAuditContext(audit: ExternalAuditRow) {
   return {
     auditId: audit.id,
@@ -294,30 +290,19 @@ async function getGoogleAccessToken() {
     return null;
   }
 
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token",
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await readGoogleErrorBody(response);
+  try {
+    return await refreshGoogleAccessToken({ clientId, clientSecret, refreshToken });
+  } catch (error) {
     console.error(
       "Google Calendar: OAuth token request failed.",
       {
-        status: response.status,
-        body,
+        code: error instanceof GoogleOAuthError ? error.code : "oauth_unavailable",
+        reconnectRequired:
+          error instanceof GoogleOAuthError && error.reconnectRequired,
       },
     );
-    return null;
+    throw error;
   }
-  const payload = (await response.json()) as { access_token?: string };
-  return payload.access_token ?? null;
 }
 
 export function getGoogleCalendarConfigStatus() {
@@ -338,7 +323,19 @@ export function getGoogleCalendarConfigStatus() {
 }
 
 export async function createGoogleCalendarEvent(audit: ExternalAuditRow) {
-  const accessToken = await getGoogleAccessToken();
+  let accessToken: string | null;
+  try {
+    accessToken = await getGoogleAccessToken();
+  } catch (error) {
+    return {
+      created: false,
+      error:
+        error instanceof GoogleOAuthError
+          ? error.message
+          : "Google Calendar est temporairement indisponible.",
+      eventId: null,
+    };
+  }
   const calendarId = process.env.GOOGLE_CALENDAR_ID || "primary";
   const timeZone = process.env.GOOGLE_CALENDAR_TIMEZONE || "Europe/Paris";
 
@@ -408,13 +405,11 @@ export async function createGoogleCalendarEvent(audit: ExternalAuditRow) {
   );
 
   if (!response.ok) {
-    const body = await readGoogleErrorBody(response);
     console.error(
       "Google Calendar: event creation failed.",
       {
         ...googleCalendarAuditContext(audit),
         status: response.status,
-        body,
       },
     );
     return {
@@ -447,7 +442,19 @@ export async function createGoogleCalendarEvent(audit: ExternalAuditRow) {
 }
 
 export async function findGoogleCalendarConflicts(audit: ExternalAuditRow) {
-  const accessToken = await getGoogleAccessToken();
+  let accessToken: string | null;
+  try {
+    accessToken = await getGoogleAccessToken();
+  } catch (error) {
+    return {
+      checked: false,
+      conflicts: [] as { start?: string; end?: string }[],
+      error:
+        error instanceof GoogleOAuthError
+          ? error.message
+          : "Google Calendar est temporairement indisponible.",
+    };
+  }
   const calendarId = process.env.GOOGLE_CALENDAR_ID || "primary";
   const timeZone = process.env.GOOGLE_CALENDAR_TIMEZONE || "Europe/Paris";
 
