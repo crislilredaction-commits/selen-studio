@@ -38,6 +38,22 @@ function isPaid(row: Row) {
   );
 }
 
+function isLiveCommercialPayment(row: Row) {
+  const sessionId = String(row.stripe_session_id ?? "");
+  const metadata =
+    row.metadata && typeof row.metadata === "object"
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const metadataEnvironment = String(
+    metadata.environment ?? metadata.mode ?? "",
+  ).toLowerCase();
+
+  return (
+    isPaid(row) &&
+    (sessionId.startsWith("cs_live_") || metadataEnvironment === "live")
+  );
+}
+
 function isInMonth(value: string, month: string) {
   return value.startsWith(month);
 }
@@ -135,7 +151,9 @@ export default async function GestionLilPage() {
   const now = new Date();
   const month = now.toISOString().slice(0, 7);
   const year = now.getFullYear().toString();
-  const paymentRows = ((payments ?? []) as Row[]).filter(isPaid);
+  const allPaymentRows = (payments ?? []) as Row[];
+  const paymentRows = allPaymentRows.filter(isLiveCommercialPayment);
+  const excludedPaymentCount = allPaymentRows.filter(isPaid).length - paymentRows.length;
   const expenseRows = (expenses ?? []) as Row[];
   const refundRows = (refunds ?? []) as Row[];
   const auditRows = (audits ?? []) as ExternalAuditRow[];
@@ -176,6 +194,8 @@ export default async function GestionLilPage() {
   const refundsProcessed = refundRows
     .filter((row) => String(row.status ?? "") === "processed")
     .reduce((sum, row) => sum + refundAmount(row), 0);
+  const monthNet = monthTotal > 0 ? monthTotal - monthExpenseTotal : 0;
+  const yearNet = yearTotal > 0 ? yearTotal - yearExpenseTotal : 0;
 
   return (
     <main style={s.page}>
@@ -184,7 +204,7 @@ export default async function GestionLilPage() {
           <p style={s.eyebrow}>Admin prive</p>
           <h1 style={s.title}>Gestion Lil</h1>
           <p style={s.subtitle}>
-            Pilotage compact des audits externes, du CA, des charges et du SAV admin.
+            Pilotage compact des audits externes, du CA commercial Selen, des charges et du SAV admin.
           </p>
         </div>
         <div style={s.headerActions}>
@@ -198,8 +218,8 @@ export default async function GestionLilPage() {
       </header>
 
       <section style={s.kpis}>
-        <Kpi label="CA mois" value={amount(monthTotal)} />
-        <Kpi label="Net mois" value={amount(monthTotal - monthExpenseTotal)} />
+        <Kpi label="CA Selen mois" value={amount(monthTotal)} />
+        <Kpi label="Net Selen mois" value={amount(monthNet)} />
         <Kpi label="Audits a venir" value={String(upcomingAudits.length)} />
         <Kpi label="Plans a envoyer" value={String(plansToSend.length)} />
         <Kpi label="Remboursements" value={amount(refundsToProcess)} />
@@ -222,20 +242,27 @@ export default async function GestionLilPage() {
       <section style={s.sections}>
         <SelenCard>
           <div style={s.cardHead}>
-            <SelenCardTitle>CA Selen</SelenCardTitle>
+            <SelenCardTitle>CA commercial Selen</SelenCardTitle>
             <span style={s.meta}>{year}</span>
           </div>
           <div style={s.compactGrid}>
-            <Info label="CA du mois" value={amount(monthTotal)} />
-            <Info label="CA de l&apos;annee" value={amount(yearTotal)} />
+            <Info label="CA Selen du mois" value={amount(monthTotal)} />
+            <Info label="CA Selen de l&apos;annee" value={amount(yearTotal)} />
             <Info label="Paiements mois" value={String(monthPayments.length)} />
             <Info label="Paiements annee" value={String(yearPayments.length)} />
-            <Info label="Net mois" value={amount(monthTotal - monthExpenseTotal)} />
-            <Info label="Net annee" value={amount(yearTotal - yearExpenseTotal)} />
+            <Info label="Net Selen mois" value={amount(monthNet)} />
+            <Info label="Net Selen annee" value={amount(yearNet)} />
           </div>
           {paymentRows.length === 0 ? (
             <p style={s.mutedSmall}>
-              Donnees paiement pretes, a alimenter par webhook Stripe via selen_payments.
+              Aucun paiement commercial Selen live n&apos;est comptabilise.
+              Les paiements Stripe test restent conserves mais exclus de ces indicateurs.
+            </p>
+          ) : null}
+          {excludedPaymentCount > 0 ? (
+            <p style={s.mutedSmall}>
+              {excludedPaymentCount} paiement{excludedPaymentCount > 1 ? "s" : ""} test ou ambigu
+              {excludedPaymentCount > 1 ? "s sont exclus" : " est exclu"} du CA commercial.
             </p>
           ) : null}
         </SelenCard>
