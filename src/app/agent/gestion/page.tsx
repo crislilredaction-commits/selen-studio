@@ -188,6 +188,9 @@ export default async function GestionLilPage() {
           </p>
         </div>
         <div style={s.headerActions}>
+          <Link href="/agent/forge" style={{ textDecoration: "none" }}>
+            <SelenButton type="button" variant="ghost">La Forge</SelenButton>
+          </Link>
           <Link href="/agent/gestion/factures" style={{ textDecoration: "none" }}>
             <SelenButton type="button" variant="ghost">Factures</SelenButton>
           </Link>
@@ -267,6 +270,18 @@ export default async function GestionLilPage() {
             <Info label="A traiter" value={amount(refundsToProcess)} />
             <Info label="Effectues" value={amount(refundsProcessed)} />
           </div>
+        </SelenCard>
+
+        <SelenCard>
+          <div style={s.cardHead}>
+            <SelenCardTitle>La Forge</SelenCardTitle>
+            <Link href="/agent/forge" style={s.link}>
+              Ouvrir
+            </Link>
+          </div>
+          <p style={s.muted}>
+            Acces discret au pilotage des agents IA et aux missions Cody.
+          </p>
         </SelenCard>
 
         <SelenCard>
