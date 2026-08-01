@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { BriefcaseBusiness, CalendarDays, FileText, Hammer, Star } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, FileText, Star } from "lucide-react";
 import AgentSidebarMessaging from "@/components/layout/AgentSidebarMessaging";
 import { createClient } from "@/lib/supabase/client";
 import { isOwnerLil } from "@/lib/ownerLil";
@@ -81,11 +81,6 @@ const links = [
     href: "/agent/daily",
     label: "Selen Daily",
     icon: <FileText size={16} strokeWidth={1.5} />,
-  },
-  {
-    href: "/agent/forge",
-    label: "La Forge",
-    icon: <Hammer size={16} strokeWidth={1.5} />,
   },
   {
     href: "/agent/rendez-vous",
@@ -221,7 +216,6 @@ export default function AgentSidebar() {
     "/agent",
     "/agent/dossiers",
     "/agent/daily",
-    "/agent/forge",
     "/agent/rendez-vous",
     "/agent/clients",
     "/agent/profil",
@@ -339,38 +333,41 @@ export default function AgentSidebar() {
               : pathname.startsWith(link.href);
 
           return (
-            <Link
-              key={link.href}
-              href={link.href}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 12px",
-                borderRadius: "var(--radius-sm)",
-                fontSize: 13,
-                color: isActive ? "var(--selen-gold2)" : "var(--selen-text2)",
-                background: isActive ? "var(--selen-bg3)" : "transparent",
-                border: `1px solid ${
-                  isActive ? "var(--selen-border2)" : "transparent"
-                }`,
-                marginBottom: 4,
-                textDecoration: "none",
-                transition: "all 0.2s ease",
-              }}
-            >
-              <span style={{ opacity: isActive ? 1 : 0.7, flexShrink: 0 }}>
-                {link.icon}
-              </span>
-              {link.label}
-            </Link>
+            <div key={link.href}>
+              <Link
+                href={link.href}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 12px",
+                  borderRadius: "var(--radius-sm)",
+                  fontSize: 13,
+                  color: isActive ? "var(--selen-gold2)" : "var(--selen-text2)",
+                  background: isActive ? "var(--selen-bg3)" : "transparent",
+                  border: `1px solid ${
+                    isActive ? "var(--selen-border2)" : "transparent"
+                  }`,
+                  marginBottom: 4,
+                  textDecoration: "none",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <span style={{ opacity: isActive ? 1 : 0.7, flexShrink: 0 }}>
+                  {link.icon}
+                </span>
+                {link.label}
+              </Link>
+
+              {link.href === "/agent/rendez-vous" ? (
+                <div style={{ margin: "8px 4px 10px" }}>
+                  <AgentSidebarMessaging />
+                </div>
+              ) : null}
+            </div>
           );
         })}
       </nav>
-
-      <div style={{ padding: "0 14px 14px" }}>
-        <AgentSidebarMessaging />
-      </div>
 
       <div
         style={{
