@@ -252,3 +252,287 @@ Avant suppression reelle, Lil doit confirmer:
    - ou conserver temporairement les objets Storage et accepter un reliquat a nettoyer plus tard.
 
 Tant que cette decision Storage n'est pas prise, aucune suppression reelle ne doit etre lancee.
+
+## 13. Complement du 2026-08-03 — Selen Formation
+
+### 13.1 Pourquoi Selen Formation a ete exclue du dry-run initial
+
+Selen Formation a ete exclue du dry-run initial pour une raison de **garde-fou metier**, pas par omission.
+
+Avant le premier dry-run, la decision humaine alors active disait explicitement:
+
+- Selen Formation doit etre entierement exclue de cette suppression pour le moment;
+- ne pas supprimer son compte Auth;
+- ne pas supprimer ses lignes `selen_client_profiles`;
+- ne pas supprimer ses lignes `selen_client_tool_access`;
+- ne supprimer aucune autre donnee qui lui est reliee.
+
+L'exclusion venait donc d'une ambiguite metier levee provisoirement par prudence: les lignes `selen_client_*` n'etaient pas dans le perimetre initialement valide, et le compte Auth portait plus qu'une simple organisation. Le dry-run initial a conserve Selen Formation volontairement pour eviter un elargissement silencieux du perimetre.
+
+Conclusion:
+
+- ambiguite metier: oui, au moment du dry-run initial;
+- dependance reelle bloquante: pas de facture/audit externe/depense, mais des dependances fonctionnelles nombreuses;
+- garde-fou: oui;
+- omission: non.
+
+### 13.2 Inventaire exact de Selen Formation
+
+Organisation:
+
+| Element | Valeur |
+| --- | --- |
+| Organisation | Selen Formation |
+| ID organisation | `0df0dc02-40c3-431c-a19e-ac998e90bf37` |
+| Statut | active |
+| Email masque | `li***@outlook.fr` |
+| Creation | 2026-03-12 18:09 UTC |
+
+Compte Auth:
+
+| Element | Valeur |
+| --- | --- |
+| Auth ID | `b129473c-bcf5-49b8-8bed-bcd07bd478a0` |
+| Email masque | `li***@outlook.fr` |
+| Creation | 2026-05-04 10:23 UTC |
+| Derniere connexion connue | 2026-07-07 21:07 UTC |
+
+Profils et acces:
+
+| Table | ID | Detail | Statut |
+| --- | --- | --- | --- |
+| `selen_client_profiles` | `1d3d90be-df7b-459b-bdb0-5baed07f3d02` | `Client Test`, organisation `Organisme Test` | n/a |
+| `selen_client_tool_access` | `dc42be10-1fe1-441c-9091-0633edf291d9` | `preaudit-qualiopi`, acces `limited` | active |
+| `client_tool_access` | `62a14112-9ed6-4561-8518-ebff7555fe21` | `preaudit_qualiopi` | active |
+
+Dossiers:
+
+| Dossier | ID | Statut |
+| --- | --- | --- |
+| Demande NDA initiale | `13c24e5b-8214-447e-a302-b767943247fe` | waiting_client |
+| Mise en conformite 2026 | `059b4395-e8f8-4942-87cb-c0314d43a192` | in_progress |
+| Selen Review - Audit blanc Qualiopi | `33536efc-7a65-4f1e-a5fc-6ac878a98f0c` | in_progress |
+
+Comptages de dependances:
+
+| Table / dependance | Volume |
+| --- | ---: |
+| `documents` | 5 |
+| `storage.objects` rattaches aux documents | 5 |
+| `messages` | 12 |
+| `notifications` | 14 |
+| `dossier_assignments` | 1 |
+| `dossier_program_versions` | 4 |
+| `program_ai_analyses` | 4 |
+| `nda_variables` | 1 |
+| `audit_blanc_cases` | 1 |
+| `audit_blanc_agent_notes` | 1 |
+| `audit_blanc_documents` | 16 |
+| `audit_blanc_indicator_answers` | 110 |
+| `audit_blanc_indicator_notes` | 16 |
+| `audit_blanc_reports` | 1 |
+| `preaudit_sessions` | 1 |
+| `preaudit_answers` | 83 |
+| `preaudit_profile_answers` | 21 |
+| `preaudit_indicator_notes` | 1 |
+| `preaudit_brand_usage_checks` | 1 |
+| `daily_formations` | 0 |
+| `daily_sessions` | 0 |
+| `daily_document_templates` | 0 |
+| `daily_trainers` | 0 |
+| `daily_subscriptions` | 0 |
+
+Protections verifiees:
+
+| Controle | Resultat |
+| --- | ---: |
+| Factures `lil_invoices` liees a Selen Formation | 0 |
+| Audits externes `external_audits` lies a Selen Formation | 0 |
+| Depenses `selen_expenses` liees a Selen Formation | 0 |
+| Chevauchement organisation Haïm Levi | 0 |
+
+### 13.3 Dry-run PostgreSQL separe Selen Formation
+
+Un dry-run separe a ete execute avec `BEGIN` puis `ROLLBACK`.
+
+Perimetre simule:
+
+- compte Auth Selen Formation;
+- organisation Selen Formation;
+- `selen_client_profiles`;
+- `selen_client_tool_access`;
+- `client_tool_access` legacy `62a14112-9ed6-4561-8518-ebff7555fe21`;
+- dossiers, documents, messages, notifications;
+- dependances dossier/programme/NDA;
+- dependances preaudit et audit blanc liees par cascade ou suppression explicite.
+
+Resultats pendant la transaction:
+
+| Table / cible | Avant | Pendant simulation |
+| --- | ---: | ---: |
+| `auth.users` Selen Formation | 1 | 0 |
+| organisation Selen Formation | 1 | 0 |
+| `selen_client_profiles` | 1 | 0 |
+| `selen_client_tool_access` | 1 | 0 |
+| `client_tool_access` legacy | 1 | 0 |
+| dossiers | 3 | 0 |
+| documents | 5 | 0 |
+| messages | 12 | 0 |
+| notifications | 14 | 0 |
+| preaudit sessions | 1 | 0 |
+
+Dependances comptees avant simulation:
+
+| Table | Avant |
+| --- | ---: |
+| `dossier_assignments` | 1 |
+| `dossier_program_versions` | 4 |
+| `program_ai_analyses` | 4 |
+| `nda_variables` | 1 |
+| `audit_blanc_cases` | 1 |
+
+Protections pendant simulation:
+
+| Protection | Resultat |
+| --- | ---: |
+| Organisation Haïm Levi | 1 |
+| Acces outil Haïm Levi `15a61ca7-445f-4b8d-9052-6ff83bc0b488` | 1 |
+| `lil_invoices` | 8 |
+| `external_audits` | 13 |
+| `selen_expenses` | 1 |
+
+Orphelins pendant simulation:
+
+| Controle | Orphelins |
+| --- | ---: |
+| dossiers sans organisation | 0 |
+| documents sans dossier | 0 |
+| messages sans dossier | 0 |
+| notifications sans dossier | 0 |
+
+Verification apres `ROLLBACK`:
+
+| Cible | Apres rollback |
+| --- | ---: |
+| Auth Selen Formation | 1 |
+| Organisation Selen Formation | 1 |
+| `selen_client_profiles` | 1 |
+| `selen_client_tool_access` | 1 |
+| `client_tool_access` legacy | 1 |
+| dossiers | 3 |
+| documents | 5 |
+| messages | 12 |
+| notifications | 14 |
+
+Conclusion Selen Formation:
+
+- le dry-run relationnel separe est conforme;
+- aucune facture reelle, aucun audit externe reel, aucune depense reelle et aucune donnee Haïm Levi ne sont lies;
+- Selen Formation peut techniquement entrer dans un futur perimetre de suppression, mais cela requiert une validation humaine explicite car le perimetre inclut `selen_client_profiles`, `selen_client_tool_access`, le compte Auth, un preaudit et un audit blanc complet.
+
+## 14. Complement du 2026-08-03 — inventaire Storage exact
+
+Onze objets Storage ont ete identifies dans le perimetre deja simule Atelier Horizon / Didascalil / Barthaux Auto.
+
+Verification d'appartenance:
+
+| Controle | Resultat |
+| --- | ---: |
+| Chemins Storage cibles | 11 |
+| Chemins Barthaux Auto | 11 |
+| Chemins Haïm Levi | 0 |
+| Chemins Selen Formation | 0 |
+
+Inventaire:
+
+| Bucket | Chemin | Taille | Organisation | Dossier | Document lie | Motif |
+| --- | --- | ---: | --- | --- | --- | --- |
+| `documents` | `f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/initial/1782937523840-46f4ceb3-b13a-4d0e-9e16-8917815f86d4-avis-insee-fictif.pdf` | 22 936 | barthauxauto | Prepa NDA - Declaration d'activite | `Avis_INSEE_FICTIF.pdf` (`0fa844ac-275b-40d9-b52d-bc005099cee5`) | document rattache a Barthaux Auto test |
+| `documents` | `f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/final/1782939202661-d9b9e61d-ec5a-4be3-a354-cc9bf8112d74-convention-de-formation-creation-d-entreprise.doc` | 17 717 | barthauxauto | Prepa NDA - Declaration d'activite | `Convention de formation - creation d entreprise.doc` (`bd66e7fe-357a-4454-ade3-7fa9642f72e2`) | document rattache a Barthaux Auto test |
+| `documents` | `generated/f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/convention-formation-creation-d-entreprise-2026-07-01T20-44-34-404Z.doc` | 17 717 | barthauxauto | Prepa NDA - Declaration d'activite | `Convention de formation - creation d entreprise.doc` (`f3b589ca-7a57-4b65-84e5-d52076e523bf`) | document genere rattache a Barthaux Auto test |
+| `documents` | `f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/final/1782939205173-2eda4c92-024f-44a2-b4f9-aae21663db12-cv-laurent-barthaux-fictif.pdf` | 23 075 | barthauxauto | Prepa NDA - Declaration d'activite | `CV_Laurent_Barthaux_FICTIF.pdf` (`f8e85f11-dbca-44e2-847c-11b5d6276fb8`) | document rattache a Barthaux Auto test |
+| `documents` | `f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/initial/1782937521112-ef231765-43db-4568-8ef5-2e886864355a-cv-laurent-barthaux-fictif.pdf` | 23 075 | barthauxauto | Prepa NDA - Declaration d'activite | `CV_Laurent_Barthaux_FICTIF.pdf` (`bc6c4253-6493-46c4-8439-d97b27d76f2e`) | document rattache a Barthaux Auto test |
+| `documents` | `f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/final/1782939204227-464479ca-1aa9-423f-bd66-e1ca1e9512a5-diplome-bac-pro-mecanique-fictif.pdf` | 23 442 | barthauxauto | Prepa NDA - Declaration d'activite | `Diplome_Bac_Pro_Mecanique_FICTIF.pdf` (`ecb286ea-62d0-4622-93c0-8c10382b3fcf`) | document rattache a Barthaux Auto test |
+| `documents` | `f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/final/1782939206160-196b1c36-c0b7-4f08-88b5-05fefd449598-liste-des-formateurs-dreets-2.docx` | 112 765 | barthauxauto | Prepa NDA - Declaration d'activite | `Liste des formateurs DREETS (2).docx` (`37e58038-1cf7-4c35-b343-2737f5eb7394`) | document rattache a Barthaux Auto test |
+| `documents` | `generated/f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/liste-formateurs-dreets-modules-2026-07-01T20-46-30-576Z.docx` | 112 765 | barthauxauto | Prepa NDA - Declaration d'activite | `Liste des formateurs DREETS.docx` (`1a500af1-80a2-4e94-a8ec-9116532525ad`) | document genere rattache a Barthaux Auto test |
+| `documents` | `f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/final/1782939203394-95d81929-0b28-4d7e-8d8d-8c68f851e337-programme-de-formation-creation-d-entreprise.doc` | 10 327 | barthauxauto | Prepa NDA - Declaration d'activite | `Programme de formation - creation d entreprise.doc` (`deb95ad4-66a4-42c2-b6e6-85624f3584db`) | document rattache a Barthaux Auto test |
+| `documents` | `generated/f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/programme-formation-creation-d-entreprise-2026-07-01T20-44-34-404Z.doc` | 10 327 | barthauxauto | Prepa NDA - Declaration d'activite | `Programme de formation - creation d entreprise.doc` (`0fb7f1e0-87d9-4023-b773-495e5d6f1202`) | document genere rattache a Barthaux Auto test |
+| `documents` | `f6c5f386-9513-4a0a-b457-43cd5cf71693/a219f527-9b6b-4115-899c-451afd613c1d/initial/1782937522641-2fa4737d-eaa8-49d2-93ad-6b4342ee96e2-programme-formation-creation-entreprise-fictif.pdf` | 23 241 | barthauxauto | Prepa NDA - Declaration d'activite | `Programme_Formation_Creation_Entreprise_FICTIF.pdf` (`f1a4be37-d0c5-4bb9-bb5e-6b31d4f87862`) | document rattache a Barthaux Auto test |
+
+## 15. Procedure Storage preparee, non executee
+
+La suppression Storage doit utiliser l'API ou le SDK Supabase Storage, jamais un `DELETE` SQL direct sur `storage.objects`.
+
+Procedure proposee pour une mission ulterieure:
+
+1. Charger une cle serveur depuis l'environnement d'execution autorise, sans l'afficher ni l'ecrire dans le rapport.
+2. Creer un client Supabase cote serveur uniquement.
+3. Pour chaque ligne de l'inventaire:
+   - appeler `storage.from(bucket).download(path)`;
+   - ecrire le fichier dans un dossier local date hors Git, par exemple `supabase/.temp/backups/<date>/storage/documents/...`;
+   - verifier taille locale > 0;
+   - calculer SHA-256 local;
+   - comparer la taille locale avec `storage.objects.metadata.size` quand disponible;
+   - consigner bucket, chemin, taille et SHA-256 dans un manifeste local non secret.
+4. Apres sauvegarde complete et validation humaine, appeler `storage.from(bucket).remove([path])` par lots controles.
+5. Verifier apres suppression:
+   - `storage.from(bucket).list()` ou requete metadata API: objet absent;
+   - `storage.objects` ne contient plus la metadata;
+   - les documents SQL correspondants ont ete supprimes dans la meme fenetre de nettoyage;
+   - aucun objet Haïm Levi, Selen Formation ou client reel n'a ete touche.
+6. Conserver le manifeste de sauvegarde dans le rapport final, sans secret.
+
+Controle post-suppression a prevoir:
+
+| Controle | Attendu |
+| --- | --- |
+| objet physique Storage absent | 11/11 |
+| metadata `storage.objects` absente | 11/11 |
+| objets Haïm Levi touches | 0 |
+| objets Selen Formation touches, sauf si une decision separee l'autorise | 0 |
+| objets client reel touches | 0 |
+| objets orphelins du bloc supprime | 0 |
+
+## 16. Liste finale exacte des donnees pouvant etre supprimees
+
+### Autorisees par le dry-run deja conforme
+
+- Atelier Horizon:
+  - organisation `2e9b095a-5cca-47e9-b337-e59647fd0da6`;
+  - dossiers et dependances associees deja simules.
+- Didascalil:
+  - organisation `59e2d76d-556d-4ce8-8810-6172293d1612`;
+  - dossiers et dependances associees deja simules.
+- Barthaux Auto:
+  - organisation `f6c5f386-9513-4a0a-b457-43cd5cf71693`;
+  - Auth `fdbb00c8-148c-4d13-976d-2856d5218813`;
+  - Daily: abonnement, formation, session, 3 modeles, formateur, onboarding;
+  - 2 paiements Stripe test;
+  - documents SQL et 11 objets Storage listes section 14;
+  - dossiers, messages, notifications, variables et dependances programme simules.
+
+### Techniquement simulable mais necessite decision humaine separee
+
+- Selen Formation:
+  - organisation `0df0dc02-40c3-431c-a19e-ac998e90bf37`;
+  - Auth `b129473c-bcf5-49b8-8bed-bcd07bd478a0`;
+  - `selen_client_profiles` `1d3d90be-df7b-459b-bdb0-5baed07f3d02`;
+  - `selen_client_tool_access` `dc42be10-1fe1-441c-9091-0633edf291d9`;
+  - `client_tool_access` `62a14112-9ed6-4561-8518-ebff7555fe21`;
+  - dossiers, documents, 5 objets Storage, messages, notifications, preaudit et audit blanc.
+
+### Toujours protegees
+
+- Haïm Levi et toutes ses dependances;
+- `client_tool_access` `15a61ca7-445f-4b8d-9052-6ff83bc0b488`;
+- 8 `lil_invoices`;
+- 13 `external_audits`;
+- 1 `selen_expenses`.
+
+## 17. Conclusion mise a jour
+
+Le nettoyage relationnel Atelier Horizon + Didascalil + Barthaux Auto reste conforme.
+
+Selen Formation a ete exclue initialement par garde-fou metier, pas par omission. Son dry-run separe est techniquement conforme, mais son inclusion dans une suppression reelle doit etre revalidee explicitement, car elle implique un compte Auth, `selen_client_*`, un acces outil legacy, un preaudit et un audit blanc complet.
+
+Les objets Storage du perimetre deja simule sont maintenant inventories: 11 objets, tous rattaches a Barthaux Auto. Leur suppression doit passer par l'API/SDK Storage avec sauvegarde locale prealable; aucune suppression Storage ne doit etre faite par SQL direct.
