@@ -359,8 +359,8 @@ export default function AgentSidebar() {
                 {link.label}
               </Link>
 
-              {link.href === "/agent/rendez-vous" ? (
-                <div style={{ margin: "8px 4px 10px" }}>
+              {link.href === "/agent" ? (
+                <div style={{ margin: "8px 4px 12px" }}>
                   <AgentSidebarMessaging />
                 </div>
               ) : null}
