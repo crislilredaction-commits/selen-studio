@@ -19,6 +19,16 @@ Un test SQL transactionnel avec `ROLLBACK` a été ajouté pour valider la struc
 
 Aucun `db push`, aucune migration distante et aucune modification de données, Auth ou Storage n’ont été effectués.
 
+Correctif local post-revue du 4 août 2026 :
+
+- plan pgTAP recalculé et étendu à `plan(70)` ;
+- tests RLS transactionnels ajoutés pour staff Selen, manager, trainer, admin assistant, membre d'une autre organisation, membre désactivé, anon et authenticated sans membership ;
+- lecture complète de `daily_audit_logs` limitée au staff Selen en 1A ;
+- insertion de logs audit encadrée par une fonction/trigger qui impose acteur, origine et horodatage côté base ;
+- lecture de la ligne complète `organisations` limitée au staff Selen et aux managers actifs de l'organisation ;
+- immuabilité des documents signés/publiés renforcée ;
+- contrainte logique de version remplacée par un index unique `NULLS NOT DISTINCT`.
+
 ## 2. État Git
 
 État de départ vérifié :
@@ -100,8 +110,9 @@ Crée :
 - `daily_audit_logs` ;
 - `daily_documents` ;
 - triggers d’append-only audit log ;
+- trigger de normalisation/contrôle d'insertion des logs audit ;
 - trigger de verrouillage des documents signés ;
-- index de timeline, objet, acteur, version courante ;
+- index de timeline, objet, acteur, version courante et version logique `NULLS NOT DISTINCT` ;
 - RLS et grants.
 
 ### `20260804173200_daily_lot1a_organisations_access_guards.sql`
@@ -111,7 +122,7 @@ Prépare :
 - révocation de l’accès `anon` direct à `organisations` ;
 - retrait de `TRUNCATE`, `REFERENCES`, `TRIGGER` pour `authenticated` ;
 - activation RLS sur `organisations` ;
-- policies staff Selen et membres actifs ;
+- policies staff Selen et managers actifs ;
 - commentaires de documentation.
 
 Cette migration ne modifie pas `dossiers`, `documents`, `formations` ou `nda_variables`, conformément à la décision Lil.
@@ -183,8 +194,12 @@ Fonctions créées :
 - `can_manage_organisation_users(uuid)`
 - `can_manage_daily_sessions(uuid)`
 - `can_manage_daily_documents(uuid)`
+- `prepare_daily_audit_log_insert()`
+- `daily_append_audit_log(uuid, text, text, text, uuid, text, jsonb, jsonb, jsonb, inet, text, text, text)`
 
 Toutes sont `SECURITY INVOKER`, avec `search_path` explicite.
+
+`daily_is_selen_staff()` reste volontairement `SECURITY INVOKER` dans cette version locale : aucun contournement silencieux des RLS existantes de `agent_profiles` ou `selen_admin_users` n'a ete ajoute. Si les tests transactionnels reels demontrent qu'un utilisateur staff legitime ne peut pas l'utiliser avec les policies existantes, la correction suivante devra etre une fonction `SECURITY DEFINER` strictement securisee, avec `search_path` fixe, revocation `PUBLIC`/`anon`, tests dedies et justification explicite.
 
 ## 11. Durcissement `organisations`
 
@@ -198,6 +213,8 @@ La migration cible :
 - permet aux membres actifs de lire leur organisme uniquement.
 
 Aucune donnée ni FK existante n’est modifiée.
+
+Note post-revue : la lecture complete de `organisations` n'est plus accordee a tous les membres actifs. En 1A, elle est limitee au staff Selen et aux managers actifs de l'organisation. Les roles `trainer` et `admin_assistant` devront passer plus tard par une vue reduite si l'interface client a besoin d'informations non sensibles.
 
 ## 12. Grants
 
@@ -228,6 +245,8 @@ Principes :
 - membres actifs limités à leur organisation ;
 - `daily_audit_logs` append-only ;
 - documents Daily séparés par `organisation_id`.
+
+Note post-revue : le journal complet `daily_audit_logs` est lisible uniquement par le staff Selen. Les managers n'ont plus d'acces direct au journal complet en 1A.
 
 ## 14. Audit logs
 
@@ -263,6 +282,8 @@ Garde-fous :
 - aucune suppression Storage ;
 - aucune migration des documents V0.
 
+Note post-revue documents : l'unicite logique de version utilise maintenant un index unique `NULLS NOT DISTINCT` afin de refuser les doublons meme lorsque `linked_object_type` ou `linked_object_id` vaut `NULL`. Les documents signes ne peuvent plus perdre `signed_at`, quitter `signed`, changer de statut/version/validation ou modifier leurs champs structurants. Les documents publies sont eux aussi proteges contre l'ecrasement ; une correction metier doit passer par une nouvelle version. Le seul changement restant autorise sur une version signee/publiee est l'archivage controle.
+
 ## 16. Compatibilité Daily V0
 
 Aucune table Daily V0 n’est supprimée, renommée ou backfillée.
@@ -293,6 +314,8 @@ Il couvre notamment :
 - index critiques ;
 - policies critiques.
 
+Note post-revue tests : le fichier pgTAP contient maintenant `plan(70)` pour 70 assertions. Les scenarios couvrent staff Selen, manager organisation A, trainer organisation A, admin assistant organisation A, membre organisation B, membre desactive, anon et authenticated sans membership, avec controles de lecture, insertion, modification, separation inter-organisations, append-only audit log, anti-usurpation d'acteur, immutabilite des documents signes/publies, nouvelle version autorisee, unicite de version courante et doublons avec objet lie `NULL` refuses.
+
 ## 18. Résultats des tests
 
 Les tests SQL n’ont pas été exécutés contre le distant, car les migrations ne sont pas appliquées et aucune écriture distante n’est autorisée.
@@ -300,8 +323,15 @@ Les tests SQL n’ont pas été exécutés contre le distant, car les migrations
 Contrôles statiques effectués :
 
 - recherche de commandes interdites dans les migrations/tests ;
-- aucune occurrence de `supabase db dump`, `db push`, `drop table`, `truncate table`, `delete from`, modification `auth.*` ou `storage.objects` dans les fichiers créés ;
+- aucune commande distante ou destructive dans les migrations ; les seules occurrences `insert into auth.users` et `delete from public.daily_audit_logs` se trouvent dans le test pgTAP transactionnel et servent respectivement au setup local et à l'assertion de refus append-only ;
 - `git diff --check` à exécuter avant commit final.
+
+Controles post-revue a effectuer avant commit :
+
+- `git diff --check` ;
+- verification statique que `plan(70)` correspond bien aux 70 assertions pgTAP ;
+- scan anti-secret cible sur les fichiers modifies ;
+- aucune execution distante, aucun `db push`, aucun dry-run Supabase.
 
 ## 19. Dry-run
 
@@ -315,6 +345,7 @@ Raison : la consigne finale interdit explicitement tout `db push`. Même `supaba
 |---|---|
 | `public.organisations` est utilisée par des routes historiques | migration RLS préparée, application à tester en Preview avant production |
 | RLS helpers `SECURITY INVOKER` dépendent des policies existantes `agent_profiles`/`selen_admin_users` | à valider avec tests transactionnels et compte staff réel |
+| `daily_is_selen_staff()` pourrait necessiter une variante `SECURITY DEFINER` si les RLS existantes bloquent un staff legitime | decision reportee ; aucun contournement silencieux ajoute localement |
 | `public-data.dump` data-only signale des FK circulaires | documenté ; privilégier restauration complète ou contraintes désactivées si restauration data-only |
 | Data API Supabase peut nécessiter exposition explicite | à vérifier avant application distante |
 | Tests pgTAP supposent l’extension disponible dans l’environnement de test | à vérifier avant exécution |
@@ -376,4 +407,3 @@ Elles ne sont pas encore prêtes pour application distante sans :
 - tests SQL transactionnels sur une cible contrôlée ;
 - vérification des routes historiques Studio ;
 - contrôle final Data API/RLS/grants.
-

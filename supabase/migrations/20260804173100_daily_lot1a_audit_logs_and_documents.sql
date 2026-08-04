@@ -53,6 +53,43 @@ create index if not exists daily_audit_logs_actor_idx
 create index if not exists daily_audit_logs_action_idx
   on public.daily_audit_logs (action, occurred_at desc);
 
+create or replace function public.prepare_daily_audit_log_insert()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  new.occurred_at = now();
+  new.created_at = now();
+
+  if current_user not in ('postgres', 'service_role') then
+    if not public.daily_is_selen_staff() then
+      raise exception 'only Selen staff or trusted server roles can append Daily audit logs';
+    end if;
+
+    if (select auth.uid()) is null then
+      raise exception 'authenticated actor is required to append Daily audit logs';
+    end if;
+
+    new.actor_user_id = (select auth.uid());
+
+    if new.actor_type not in ('selen_admin', 'selen_operator') then
+      raise exception 'Selen staff audit log actor_type must be selen_admin or selen_operator';
+    end if;
+
+    if new.origin not in ('Studio', 'selen_operator') then
+      raise exception 'Selen staff audit log origin must be Studio or selen_operator';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function public.prepare_daily_audit_log_insert() from public, anon, authenticated;
+grant execute on function public.prepare_daily_audit_log_insert() to service_role;
+
 create or replace function public.prevent_daily_audit_log_mutation()
 returns trigger
 language plpgsql
@@ -74,6 +111,11 @@ $$;
 
 revoke execute on function public.prevent_daily_audit_log_mutation() from public, anon, authenticated;
 
+drop trigger if exists daily_audit_logs_prepare_insert on public.daily_audit_logs;
+create trigger daily_audit_logs_prepare_insert
+before insert on public.daily_audit_logs
+for each row execute function public.prepare_daily_audit_log_insert();
+
 drop trigger if exists daily_audit_logs_prevent_update on public.daily_audit_logs;
 create trigger daily_audit_logs_prevent_update
 before update on public.daily_audit_logs
@@ -83,6 +125,103 @@ drop trigger if exists daily_audit_logs_prevent_delete on public.daily_audit_log
 create trigger daily_audit_logs_prevent_delete
 before delete on public.daily_audit_logs
 for each row execute function public.prevent_daily_audit_log_mutation();
+
+create or replace function public.daily_append_audit_log(
+  p_organisation_id uuid,
+  p_actor_type text,
+  p_actor_role text,
+  p_object_type text,
+  p_object_id uuid,
+  p_action text,
+  p_before_data jsonb default null,
+  p_after_data jsonb default null,
+  p_context jsonb default null,
+  p_ip_address inet default null,
+  p_user_agent text default null,
+  p_origin text default 'Studio',
+  p_reason text default null
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_log_id uuid;
+begin
+  if not public.daily_is_selen_staff() then
+    raise exception 'only Selen staff can append Daily audit logs in Lot 1A';
+  end if;
+
+  if (select auth.uid()) is null then
+    raise exception 'authenticated actor is required';
+  end if;
+
+  if p_actor_type not in ('selen_admin', 'selen_operator') then
+    raise exception 'invalid staff actor_type for Daily audit log';
+  end if;
+
+  if p_origin not in ('Studio', 'selen_operator') then
+    raise exception 'invalid staff origin for Daily audit log';
+  end if;
+
+  if not public.can_access_organisation(p_organisation_id) then
+    raise exception 'actor cannot access organisation';
+  end if;
+
+  insert into public.daily_audit_logs (
+    organisation_id,
+    actor_user_id,
+    actor_type,
+    actor_role,
+    object_type,
+    object_id,
+    action,
+    before_data,
+    after_data,
+    context,
+    ip_address,
+    user_agent,
+    origin,
+    reason
+  )
+  values (
+    p_organisation_id,
+    (select auth.uid()),
+    p_actor_type,
+    p_actor_role,
+    p_object_type,
+    p_object_id,
+    p_action,
+    p_before_data,
+    p_after_data,
+    p_context,
+    p_ip_address,
+    p_user_agent,
+    p_origin,
+    p_reason
+  )
+  returning id into v_log_id;
+
+  return v_log_id;
+end;
+$$;
+
+revoke execute on function public.daily_append_audit_log(
+  uuid,
+  text,
+  text,
+  text,
+  uuid,
+  text,
+  jsonb,
+  jsonb,
+  jsonb,
+  inet,
+  text,
+  text,
+  text
+) from public, anon;
 
 create table if not exists public.daily_documents (
   id uuid primary key default gen_random_uuid(),
@@ -131,17 +270,19 @@ create table if not exists public.daily_documents (
   constraint daily_documents_sha256_check
     check (sha256 is null or sha256 ~ '^[A-Fa-f0-9]{64}$'),
   constraint daily_documents_storage_path_unique
-    unique (storage_path),
-  constraint daily_documents_logical_version_unique
-    unique (
-      organisation_id,
-      document_type,
-      linked_object_type,
-      linked_object_id,
-      logical_name,
-      version
-    )
+    unique (storage_path)
 );
+
+create unique index if not exists daily_documents_logical_version_unique_idx
+  on public.daily_documents (
+    organisation_id,
+    document_type,
+    linked_object_type,
+    linked_object_id,
+    logical_name,
+    version
+  )
+  nulls not distinct;
 
 create unique index if not exists daily_documents_one_current_idx
   on public.daily_documents (
@@ -172,9 +313,19 @@ set search_path = public
 as $$
 begin
   if old.signed_at is not null or old.status = 'signed' then
+    if new.signed_at is distinct from old.signed_at or new.signed_at is null then
+      raise exception 'signed_at cannot be removed or changed on signed Daily documents';
+    end if;
+
+    if new.status is distinct from old.status or new.status <> 'signed' then
+      raise exception 'signed Daily documents must keep status signed; archive with archived_at only';
+    end if;
+
     if (
-      new.storage_path is distinct from old.storage_path
+      new.organisation_id is distinct from old.organisation_id
+      or new.storage_path is distinct from old.storage_path
       or new.bucket is distinct from old.bucket
+      or new.mime_type is distinct from old.mime_type
       or new.sha256 is distinct from old.sha256
       or new.size_bytes is distinct from old.size_bytes
       or new.version is distinct from old.version
@@ -182,8 +333,45 @@ begin
       or new.document_type is distinct from old.document_type
       or new.linked_object_type is distinct from old.linked_object_type
       or new.linked_object_id is distinct from old.linked_object_id
+      or new.created_by is distinct from old.created_by
+      or new.updated_by is distinct from old.updated_by
+      or new.created_at is distinct from old.created_at
+      or new.published_at is distinct from old.published_at
+      or new.is_current is distinct from old.is_current
+      or new.previous_document_id is distinct from old.previous_document_id
+      or new.validated_by is distinct from old.validated_by
+      or new.validated_at is distinct from old.validated_at
+      or new.metadata is distinct from old.metadata
     ) then
-      raise exception 'signed Daily documents are immutable; create a new version instead';
+      raise exception 'signed Daily documents are immutable except archived_at; create a new version instead';
+    end if;
+  elsif old.published_at is not null or old.status = 'published' then
+    if new.status not in ('published', 'archived') then
+      raise exception 'published Daily documents can only remain published or be archived';
+    end if;
+
+    if (
+      new.organisation_id is distinct from old.organisation_id
+      or new.storage_path is distinct from old.storage_path
+      or new.bucket is distinct from old.bucket
+      or new.mime_type is distinct from old.mime_type
+      or new.sha256 is distinct from old.sha256
+      or new.size_bytes is distinct from old.size_bytes
+      or new.version is distinct from old.version
+      or new.logical_name is distinct from old.logical_name
+      or new.document_type is distinct from old.document_type
+      or new.linked_object_type is distinct from old.linked_object_type
+      or new.linked_object_id is distinct from old.linked_object_id
+      or new.created_by is distinct from old.created_by
+      or new.created_at is distinct from old.created_at
+      or new.published_at is distinct from old.published_at
+      or new.previous_document_id is distinct from old.previous_document_id
+      or new.validated_by is distinct from old.validated_by
+      or new.validated_at is distinct from old.validated_at
+      or new.signed_at is distinct from old.signed_at
+      or new.metadata is distinct from old.metadata
+    ) then
+      raise exception 'published Daily documents cannot be overwritten; create a new version instead';
     end if;
   end if;
 
@@ -213,24 +401,12 @@ for select
 to authenticated
 using (public.daily_is_selen_staff());
 
-drop policy if exists "Active managers can read their organisation Daily audit logs" on public.daily_audit_logs;
-create policy "Active managers can read their organisation Daily audit logs"
-on public.daily_audit_logs
-for select
-to authenticated
-using (
-  public.has_organisation_role(organisation_id, 'manager')
-);
-
-drop policy if exists "Authorised users can append Daily audit logs" on public.daily_audit_logs;
-create policy "Authorised users can append Daily audit logs"
+drop policy if exists "Selen staff can append Daily audit logs" on public.daily_audit_logs;
+create policy "Selen staff can append Daily audit logs"
 on public.daily_audit_logs
 for insert
 to authenticated
-with check (
-  public.daily_is_selen_staff()
-  or public.has_active_organisation_membership(organisation_id)
-);
+with check (public.daily_is_selen_staff());
 
 drop policy if exists "Selen staff can manage Daily documents" on public.daily_documents;
 create policy "Selen staff can manage Daily documents"
@@ -270,3 +446,18 @@ grant select, insert, update on table public.daily_documents to authenticated;
 
 grant execute on function public.prevent_daily_audit_log_mutation() to service_role;
 grant execute on function public.prevent_signed_daily_document_mutation() to service_role;
+grant execute on function public.daily_append_audit_log(
+  uuid,
+  text,
+  text,
+  text,
+  uuid,
+  text,
+  jsonb,
+  jsonb,
+  jsonb,
+  inet,
+  text,
+  text,
+  text
+) to authenticated;

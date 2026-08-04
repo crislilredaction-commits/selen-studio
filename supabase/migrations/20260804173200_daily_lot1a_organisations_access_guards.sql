@@ -16,12 +16,12 @@ to authenticated
 using (public.daily_is_selen_staff())
 with check (public.daily_is_selen_staff());
 
-drop policy if exists "Active organisation members can read their organisation" on public.organisations;
-create policy "Active organisation members can read their organisation"
+drop policy if exists "Active managers can read their organisation legal profile" on public.organisations;
+create policy "Active managers can read their organisation legal profile"
 on public.organisations
 for select
 to authenticated
-using (public.has_active_organisation_membership(id));
+using (public.has_organisation_role(id, 'manager'));
 
 comment on table public.organisation_memberships is
   'Selen Daily Lot 1A foundation: links auth.users to canonical public.organisations without duplicating personal profile data.';
@@ -39,4 +39,4 @@ comment on table public.daily_documents is
   'Selen Daily Lot 1A foundation: versioned metadata for Daily documents stored in Supabase Storage.';
 
 comment on table public.organisations is
-  'Canonical organisation table reused by Selen Daily. One row represents one legal entity; no parallel daily_organisations table.';
+  'Canonical organisation table reused by Selen Daily. One row represents one legal entity; no parallel daily_organisations table. In Lot 1A, full row access is limited to Selen staff and active managers; reduced views for trainers/admin assistants may be introduced later.';
