@@ -56,31 +56,64 @@ create index if not exists daily_audit_logs_action_idx
 create or replace function public.prepare_daily_audit_log_insert()
 returns trigger
 language plpgsql
-security invoker
+security definer
 set search_path = public
 as $$
+declare
+  v_actor_user_id uuid;
+  v_actor_email text;
+  v_actor_type text;
+  v_actor_role text;
 begin
   new.occurred_at = now();
   new.created_at = now();
+  v_actor_user_id := (select auth.uid());
+  v_actor_email := lower(coalesce((select auth.jwt() ->> 'email'), ''));
 
-  if current_user not in ('postgres', 'service_role') then
-    if not public.daily_is_selen_staff() then
-      raise exception 'only Selen staff or trusted server roles can append Daily audit logs';
+  if v_actor_user_id is not null then
+    select 'selen_admin', sau.role
+    into v_actor_type, v_actor_role
+    from public.selen_admin_users sau
+    where sau.is_active = true
+      and sau.role = 'admin'
+      and (
+        sau.user_id = v_actor_user_id
+        or (
+          sau.user_id is null
+          and lower(sau.email) = v_actor_email
+        )
+      )
+    order by sau.user_id is distinct from v_actor_user_id, sau.email
+    limit 1;
+
+    if v_actor_type is null then
+      select 'selen_operator', ap.role
+      into v_actor_type, v_actor_role
+      from public.agent_profiles ap
+      where ap.is_active = true
+        and ap.role in ('agent', 'admin')
+        and (
+          ap.user_id = v_actor_user_id
+          or (
+            ap.user_id is null
+            and lower(ap.email) = v_actor_email
+          )
+        )
+      order by ap.user_id is distinct from v_actor_user_id, ap.email
+      limit 1;
     end if;
 
-    if (select auth.uid()) is null then
-      raise exception 'authenticated actor is required to append Daily audit logs';
-    end if;
-
-    new.actor_user_id = (select auth.uid());
-
-    if new.actor_type not in ('selen_admin', 'selen_operator') then
-      raise exception 'Selen staff audit log actor_type must be selen_admin or selen_operator';
+    if v_actor_type is null or v_actor_role is null then
+      raise exception 'active Selen staff profile is required to append Daily audit logs';
     end if;
 
     if new.origin not in ('Studio', 'selen_operator') then
       raise exception 'Selen staff audit log origin must be Studio or selen_operator';
     end if;
+
+    new.actor_user_id = v_actor_user_id;
+    new.actor_type = v_actor_type;
+    new.actor_role = v_actor_role;
   end if;
 
   return new;
@@ -143,29 +176,68 @@ create or replace function public.daily_append_audit_log(
 )
 returns uuid
 language plpgsql
-security invoker
+security definer
 set search_path = public
 as $$
 declare
   v_log_id uuid;
+  v_actor_user_id uuid;
+  v_actor_email text;
+  v_actor_type text;
+  v_actor_role text;
 begin
-  if not public.daily_is_selen_staff() then
-    raise exception 'only Selen staff can append Daily audit logs in Lot 1A';
-  end if;
+  v_actor_user_id := (select auth.uid());
+  v_actor_email := lower(coalesce((select auth.jwt() ->> 'email'), ''));
 
-  if (select auth.uid()) is null then
+  if v_actor_user_id is null then
     raise exception 'authenticated actor is required';
   end if;
 
-  if p_actor_type not in ('selen_admin', 'selen_operator') then
-    raise exception 'invalid staff actor_type for Daily audit log';
+  select 'selen_admin', sau.role
+  into v_actor_type, v_actor_role
+  from public.selen_admin_users sau
+  where sau.is_active = true
+    and sau.role = 'admin'
+    and (
+      sau.user_id = v_actor_user_id
+      or (
+        sau.user_id is null
+        and lower(sau.email) = v_actor_email
+      )
+    )
+  order by sau.user_id is distinct from v_actor_user_id, sau.email
+  limit 1;
+
+  if v_actor_type is null then
+    select 'selen_operator', ap.role
+    into v_actor_type, v_actor_role
+    from public.agent_profiles ap
+    where ap.is_active = true
+      and ap.role in ('agent', 'admin')
+      and (
+        ap.user_id = v_actor_user_id
+        or (
+          ap.user_id is null
+          and lower(ap.email) = v_actor_email
+        )
+      )
+    order by ap.user_id is distinct from v_actor_user_id, ap.email
+    limit 1;
+  end if;
+
+  if v_actor_type is null or v_actor_role is null then
+    raise exception 'active Selen staff profile is required to append Daily audit logs';
   end if;
 
   if p_origin not in ('Studio', 'selen_operator') then
     raise exception 'invalid staff origin for Daily audit log';
   end if;
 
-  if not public.can_access_organisation(p_organisation_id) then
+  if not exists (
+    select 1
+    from public.organisations o
+    where o.id = p_organisation_id
+  ) then
     raise exception 'actor cannot access organisation';
   end if;
 
@@ -187,9 +259,9 @@ begin
   )
   values (
     p_organisation_id,
-    (select auth.uid()),
-    p_actor_type,
-    p_actor_role,
+    v_actor_user_id,
+    v_actor_type,
+    v_actor_role,
     p_object_type,
     p_object_id,
     p_action,
@@ -402,11 +474,6 @@ to authenticated
 using (public.daily_is_selen_staff());
 
 drop policy if exists "Selen staff can append Daily audit logs" on public.daily_audit_logs;
-create policy "Selen staff can append Daily audit logs"
-on public.daily_audit_logs
-for insert
-to authenticated
-with check (public.daily_is_selen_staff());
 
 drop policy if exists "Selen staff can manage Daily documents" on public.daily_documents;
 create policy "Selen staff can manage Daily documents"
@@ -441,7 +508,7 @@ with check (public.can_manage_daily_documents(organisation_id));
 revoke all on table public.daily_audit_logs from public, anon, authenticated;
 revoke all on table public.daily_documents from public, anon, authenticated;
 
-grant select, insert on table public.daily_audit_logs to authenticated;
+grant select on table public.daily_audit_logs to authenticated;
 grant select, insert, update on table public.daily_documents to authenticated;
 
 grant execute on function public.prevent_daily_audit_log_mutation() to service_role;

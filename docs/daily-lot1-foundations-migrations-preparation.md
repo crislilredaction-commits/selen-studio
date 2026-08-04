@@ -21,10 +21,10 @@ Aucun `db push`, aucune migration distante et aucune modification de données, A
 
 Correctif local post-revue du 4 août 2026 :
 
-- plan pgTAP recalculé et étendu à `plan(70)` ;
+- plan pgTAP recalculé et étendu à `plan(76)` ;
 - tests RLS transactionnels ajoutés pour staff Selen, manager, trainer, admin assistant, membre d'une autre organisation, membre désactivé, anon et authenticated sans membership ;
 - lecture complète de `daily_audit_logs` limitée au staff Selen en 1A ;
-- insertion de logs audit encadrée par une fonction/trigger qui impose acteur, origine et horodatage côté base ;
+- insertion de logs audit encadrée par une fonction/trigger qui impose acteur, rôle réel, origine et horodatage côté base ;
 - lecture de la ligne complète `organisations` limitée au staff Selen et aux managers actifs de l'organisation ;
 - immuabilité des documents signés/publiés renforcée ;
 - contrainte logique de version remplacée par un index unique `NULLS NOT DISTINCT`.
@@ -197,9 +197,11 @@ Fonctions créées :
 - `prepare_daily_audit_log_insert()`
 - `daily_append_audit_log(uuid, text, text, text, uuid, text, jsonb, jsonb, jsonb, inet, text, text, text)`
 
-Toutes sont `SECURITY INVOKER`, avec `search_path` explicite.
+Les fonctions d'autorisation restent `SECURITY INVOKER`, avec `search_path` explicite.
 
-`daily_is_selen_staff()` reste volontairement `SECURITY INVOKER` dans cette version locale : aucun contournement silencieux des RLS existantes de `agent_profiles` ou `selen_admin_users` n'a ete ajoute. Si les tests transactionnels reels demontrent qu'un utilisateur staff legitime ne peut pas l'utiliser avec les policies existantes, la correction suivante devra etre une fonction `SECURITY DEFINER` strictement securisee, avec `search_path` fixe, revocation `PUBLIC`/`anon`, tests dedies et justification explicite.
+`prepare_daily_audit_log_insert()` et `daily_append_audit_log(...)` sont `SECURITY DEFINER` avec `search_path` fixe. Ce choix est limite a la porte d'ecriture du journal : `authenticated` n'a plus d'`INSERT` direct sur `daily_audit_logs`, donc la fonction controlee doit pouvoir lire les tables staff reelles et inserer le log sans exposer la table en ecriture libre.
+
+`daily_is_selen_staff()` reste volontairement `SECURITY INVOKER` dans cette version locale : aucun contournement silencieux des RLS existantes de `agent_profiles` ou `selen_admin_users` n'a ete ajoute pour les helpers de lecture. La fonction d'ecriture du journal derive elle-meme l'acteur depuis `selen_admin_users` puis `agent_profiles`, ignore les champs acteur fournis par le caller, refuse tout profil absent/inactif et reste inaccessible a `PUBLIC`/`anon`.
 
 ## 11. Durcissement `organisations`
 
@@ -222,6 +224,7 @@ Pour les nouvelles tables :
 
 - `anon` : aucun grant ;
 - `authenticated` : uniquement les privilèges nécessaires derrière RLS ;
+- `daily_audit_logs` : `SELECT` seulement pour `authenticated`; aucune insertion directe, ecriture uniquement via `daily_append_audit_log(...)` ;
 - aucun `TRUNCATE`, `REFERENCES` ou `TRIGGER` pour `authenticated` ;
 - fonctions helpers : `EXECUTE` retiré à `PUBLIC`/`anon`, accordé à `authenticated` quand nécessaire ;
 - fonctions de trigger : non exposées à `anon`/`authenticated`.
@@ -242,8 +245,9 @@ RLS activée sur :
 Principes :
 
 - staff Selen reconnu via les tables existantes `agent_profiles` et `selen_admin_users` ;
-- membres actifs limités à leur organisation ;
-- `daily_audit_logs` append-only ;
+- membres actifs limités à leur organisation uniquement sur les tables Daily prévues ;
+- ligne complète `organisations` réservée au staff Selen et aux managers actifs ;
+- `daily_audit_logs` append-only, journal complet réservé au staff Selen ;
 - documents Daily séparés par `organisation_id`.
 
 Note post-revue : le journal complet `daily_audit_logs` est lisible uniquement par le staff Selen. Les managers n'ont plus d'acces direct au journal complet en 1A.
@@ -266,6 +270,11 @@ Garde-fous :
 
 - pas de token brut dans `before_data`, `after_data` ou `context` ;
 - update/delete client interdits par grants, RLS et trigger ;
+- aucun `INSERT` direct pour `authenticated` ;
+- `daily_append_audit_log(...)` est l'unique porte d'ecriture applicative ;
+- `actor_user_id` est toujours `auth.uid()` ;
+- `actor_type` et `actor_role` sont derives des tables staff reelles : `selen_admin_users` actif role `admin` donne `selen_admin`, sinon `agent_profiles` actif donne `selen_operator` avec son role reel ;
+- les valeurs `p_actor_type` et `p_actor_role` fournies par le caller sont ignorees ;
 - index par organisation, objet, acteur et action.
 
 ## 15. Documents versionnés
@@ -314,7 +323,7 @@ Il couvre notamment :
 - index critiques ;
 - policies critiques.
 
-Note post-revue tests : le fichier pgTAP contient maintenant `plan(70)` pour 70 assertions. Les scenarios couvrent staff Selen, manager organisation A, trainer organisation A, admin assistant organisation A, membre organisation B, membre desactive, anon et authenticated sans membership, avec controles de lecture, insertion, modification, separation inter-organisations, append-only audit log, anti-usurpation d'acteur, immutabilite des documents signes/publies, nouvelle version autorisee, unicite de version courante et doublons avec objet lie `NULL` refuses.
+Note post-revue tests : le fichier pgTAP contient maintenant `plan(76)` pour 76 assertions. Les scenarios couvrent staff Selen, operateur Selen, manager organisation A, trainer organisation A, admin assistant organisation A, membre organisation B, membre desactive, anon et authenticated sans membership, avec controles de lecture, insertion, modification, separation inter-organisations, append-only audit log, absence d'INSERT direct, refus non-staff via fonction `SECURITY DEFINER`, anti-usurpation d'acteur, immutabilite des documents signes/publies, nouvelle version autorisee, unicite de version courante et doublons avec objet lie `NULL` refuses.
 
 ## 18. Résultats des tests
 
@@ -329,7 +338,7 @@ Contrôles statiques effectués :
 Controles post-revue a effectuer avant commit :
 
 - `git diff --check` ;
-- verification statique que `plan(70)` correspond bien aux 70 assertions pgTAP ;
+- verification statique que `plan(76)` correspond bien aux 76 assertions pgTAP ;
 - scan anti-secret cible sur les fichiers modifies ;
 - aucune execution distante, aucun `db push`, aucun dry-run Supabase.
 
@@ -345,7 +354,7 @@ Raison : la consigne finale interdit explicitement tout `db push`. Même `supaba
 |---|---|
 | `public.organisations` est utilisée par des routes historiques | migration RLS préparée, application à tester en Preview avant production |
 | RLS helpers `SECURITY INVOKER` dépendent des policies existantes `agent_profiles`/`selen_admin_users` | à valider avec tests transactionnels et compte staff réel |
-| `daily_is_selen_staff()` pourrait necessiter une variante `SECURITY DEFINER` si les RLS existantes bloquent un staff legitime | decision reportee ; aucun contournement silencieux ajoute localement |
+| Fonctions `SECURITY DEFINER` de journal en schema `public` | limitees a l'ecriture du journal, `search_path` fixe, `EXECUTE` revoque a `PUBLIC`/`anon`, tests anti-usurpation et non-staff requis |
 | `public-data.dump` data-only signale des FK circulaires | documenté ; privilégier restauration complète ou contraintes désactivées si restauration data-only |
 | Data API Supabase peut nécessiter exposition explicite | à vérifier avant application distante |
 | Tests pgTAP supposent l’extension disponible dans l’environnement de test | à vérifier avant exécution |
@@ -353,7 +362,7 @@ Raison : la consigne finale interdit explicitement tout `db push`. Même `supaba
 ## 21. Différences avec le rapport de conception
 
 - `pg_dumpall --globals-only` remplacé par introspection sûre des rôles/grants pour éviter tout secret.
-- Les fonctions d’autorisation sont toutes `SECURITY INVOKER`; aucune fonction `SECURITY DEFINER` n’a été introduite.
+- Les fonctions d’autorisation restent `SECURITY INVOKER`; seules les fonctions strictement nécessaires à l'écriture contrôlée du journal utilisent `SECURITY DEFINER`.
 - L’attribution stricte opérateur Selen ↔ organisation reste hors périmètre.
 
 ## 22. Décisions techniques prises
@@ -368,7 +377,7 @@ Raison : la consigne finale interdit explicitement tout `db push`. Même `supaba
 ## 23. Décisions encore nécessaires
 
 - Valider si les managers pourront administrer les memberships directement en UI ou seulement via routes serveur contrôlées.
-- Valider si l’audit log doit être lisible par tous les managers ou seulement sur demande/export.
+- Prévoir plus tard, hors 1A, un éventuel export ou une vue simplifiée du journal pour les clients/managers. Le journal complet est déjà décidé staff-only.
 - Valider la disponibilité de pgTAP dans l’environnement de test cible.
 - Auditer Vitrine avant migration des tokens publics.
 

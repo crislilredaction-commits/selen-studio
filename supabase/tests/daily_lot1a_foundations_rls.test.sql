@@ -6,7 +6,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(70);
+select plan(76);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values
@@ -16,10 +16,16 @@ values
   ('00000000-0000-4000-8000-000000001004', 'authenticated', 'authenticated', 'daily-assistant-a@example.invalid', 'test', now(), now(), now()),
   ('00000000-0000-4000-8000-000000001005', 'authenticated', 'authenticated', 'daily-manager-b@example.invalid', 'test', now(), now(), now()),
   ('00000000-0000-4000-8000-000000001006', 'authenticated', 'authenticated', 'daily-disabled-a@example.invalid', 'test', now(), now(), now()),
-  ('00000000-0000-4000-8000-000000001007', 'authenticated', 'authenticated', 'daily-no-membership@example.invalid', 'test', now(), now(), now());
+  ('00000000-0000-4000-8000-000000001007', 'authenticated', 'authenticated', 'daily-no-membership@example.invalid', 'test', now(), now(), now()),
+  ('00000000-0000-4000-8000-000000001008', 'authenticated', 'authenticated', 'daily-operator@example.invalid', 'test', now(), now(), now());
+
+insert into public.selen_admin_users (user_id, email, role, is_active)
+values ('00000000-0000-4000-8000-000000001001', 'daily-staff@example.invalid', 'admin', true);
 
 insert into public.agent_profiles (user_id, email, role, is_active)
-values ('00000000-0000-4000-8000-000000001001', 'daily-staff@example.invalid', 'admin', true);
+values
+  ('00000000-0000-4000-8000-000000001001', 'daily-staff@example.invalid', 'admin', true),
+  ('00000000-0000-4000-8000-000000001008', 'daily-operator@example.invalid', 'agent', true);
 
 insert into public.organisations (id, name)
 values
@@ -128,6 +134,7 @@ select is_empty(
 
 select isnt_empty($$select 1 from pg_policy where polrelid = 'public.organisations'::regclass and polname = 'Active managers can read their organisation legal profile'$$, 'organisations manager-only read policy exists');
 select is_empty($$select 1 from pg_policy where polrelid = 'public.daily_audit_logs'::regclass and polname ilike '%manager%'$$, 'no manager policy exposes full audit logs');
+select is_empty($$select 1 from information_schema.role_table_grants where table_schema = 'public' and table_name = 'daily_audit_logs' and grantee = 'authenticated' and privilege_type = 'INSERT'$$, 'authenticated has no direct INSERT grant on daily_audit_logs');
 select isnt_empty($$select 1 from pg_indexes where schemaname = 'public' and indexname = 'daily_documents_logical_version_unique_idx'$$, 'daily_documents has NULLS NOT DISTINCT logical version index');
 select is_empty($$select 1 from pg_constraint where conname = 'daily_documents_logical_version_unique'$$, 'old nullable unique constraint is not present');
 
@@ -139,9 +146,10 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 select is((select count(*)::int from public.organisations where id in ('00000000-0000-4000-8000-000000001a01', '00000000-0000-4000-8000-000000001b01')), 2, 'staff reads organisations A and B');
 select lives_ok($$insert into public.organisations (id, name) values ('00000000-0000-4000-8000-000000001c01', 'Daily Lot 1A Staff Insert')$$, 'staff can insert organisation');
 select lives_ok($$update public.organisations set client_notifications_paused = true where id = '00000000-0000-4000-8000-000000001c01'$$, 'staff can update organisation');
-select lives_ok($$select public.daily_append_audit_log('00000000-0000-4000-8000-000000001a01', 'selen_admin', 'admin', 'organisation', '00000000-0000-4000-8000-000000001a01', 'checked')$$, 'staff can append audit log through controlled function');
-select lives_ok($$insert into public.daily_audit_logs (organisation_id, actor_user_id, actor_type, object_type, action, origin) values ('00000000-0000-4000-8000-000000001a01', '00000000-0000-4000-8000-000000001007', 'selen_admin', 'organisation', 'spoof_attempt', 'Studio')$$, 'staff direct audit insert is normalised by trigger');
-select is((select count(*)::int from public.daily_audit_logs where action = 'spoof_attempt' and actor_user_id = '00000000-0000-4000-8000-000000001001'), 1, 'audit trigger prevents actor_user_id spoofing');
+select lives_ok($$select public.daily_append_audit_log('00000000-0000-4000-8000-000000001a01', 'selen_operator', 'fake_role', 'organisation', '00000000-0000-4000-8000-000000001a01', 'checked')$$, 'staff can append audit log through controlled function even when caller sends ignored actor fields');
+select is((select actor_type from public.daily_audit_logs where action = 'checked' order by created_at desc limit 1), 'selen_admin', 'admin actor_type is derived from active selen_admin_users');
+select is((select actor_role from public.daily_audit_logs where action = 'checked' order by created_at desc limit 1), 'admin', 'caller actor_role cannot replace the real admin role');
+select is((select actor_user_id from public.daily_audit_logs where action = 'checked' order by created_at desc limit 1), '00000000-0000-4000-8000-000000001001'::uuid, 'audit function always stores auth.uid() as actor_user_id');
 select isnt_empty($$select 1 from public.daily_audit_logs where organisation_id = '00000000-0000-4000-8000-000000001a01'$$, 'staff can read full audit logs');
 select lives_ok($$insert into public.daily_documents (organisation_id, document_type, version, status, logical_name, bucket, storage_path, sha256) values ('00000000-0000-4000-8000-000000001a01', 'programme', 2, 'draft', 'Programme staff', 'documents', 'daily/a/programme-staff-v2.pdf', repeat('e', 64))$$, 'staff can insert Daily document');
 select lives_ok($$update public.daily_documents set metadata = '{"reviewed":true}'::jsonb where storage_path = 'daily/a/programme-staff-v2.pdf'$$, 'staff can update draft Daily document');
@@ -159,6 +167,7 @@ select lives_ok($$insert into public.daily_documents (organisation_id, document_
 select throws_ok($$insert into public.daily_documents (organisation_id, document_type, version, status, logical_name, bucket, storage_path, sha256) values ('00000000-0000-4000-8000-000000001b01', 'programme', 2, 'draft', 'Programme forbidden', 'documents', 'daily/b/forbidden.pdf', repeat('1', 64))$$, null, 'manager A cannot insert Daily document for organisation B');
 select is((select count(*)::int from public.daily_audit_logs), 0, 'manager A cannot read full audit logs');
 select throws_ok($$insert into public.daily_audit_logs (organisation_id, actor_type, object_type, action, origin) values ('00000000-0000-4000-8000-000000001a01', 'organisation_user', 'test', 'created', 'Studio')$$, null, 'manager A cannot directly insert audit logs');
+select throws_ok($$select public.daily_append_audit_log('00000000-0000-4000-8000-000000001a01', 'selen_admin', 'admin', 'organisation', '00000000-0000-4000-8000-000000001a01', 'manager_forbidden')$$, null, 'manager A cannot write audit logs through SECURITY DEFINER function');
 
 reset role;
 set local role authenticated;
@@ -206,8 +215,8 @@ select set_config('request.jwt.claim.sub', '', true);
 select set_config('request.jwt.claim.email', '', true);
 select set_config('request.jwt.claims', '{}', true);
 
-select is((select count(*)::int from public.organisations), 0, 'anon reads no organisations');
-select is((select count(*)::int from public.daily_documents), 0, 'anon reads no Daily documents');
+select throws_ok($$select count(*) from public.organisations$$, '42501', 'anon has permission denied on organisations');
+select throws_ok($$select count(*) from public.daily_documents$$, '42501', 'anon has permission denied on Daily documents');
 select throws_ok($$insert into public.organisations (id, name) values ('00000000-0000-4000-8000-000000001d01', 'Anon forbidden')$$, null, 'anon cannot insert organisation');
 select throws_ok($$select public.daily_append_audit_log('00000000-0000-4000-8000-000000001a01', 'selen_admin', 'admin', 'test', null, 'forbidden')$$, null, 'anon cannot execute controlled audit append');
 
@@ -246,7 +255,17 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 
 select throws_ok($$update public.daily_audit_logs set action = 'changed'$$, null, 'audit logs are append-only: update refused');
 select throws_ok($$delete from public.daily_audit_logs$$, null, 'audit logs are append-only: delete refused');
-select throws_ok($$insert into public.daily_audit_logs (organisation_id, actor_type, object_type, action, origin) values ('00000000-0000-4000-8000-000000001a01', 'organisation_user', 'test', 'spoof_actor_type', 'Studio')$$, null, 'staff cannot spoof non-staff actor_type in audit log');
+
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000001008', true);
+select set_config('request.jwt.claim.email', 'daily-operator@example.invalid', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001008","email":"daily-operator@example.invalid"}', true);
+
+select lives_ok($$select public.daily_append_audit_log('00000000-0000-4000-8000-000000001a01', 'selen_admin', 'admin', 'organisation', '00000000-0000-4000-8000-000000001a01', 'operator_spoof_attempt')$$, 'operator can append audit log but cannot choose admin identity');
+select is((select actor_type from public.daily_audit_logs where action = 'operator_spoof_attempt' order by created_at desc limit 1), 'selen_operator', 'operator cannot declare themself selen_admin');
+select is((select actor_role from public.daily_audit_logs where action = 'operator_spoof_attempt' order by created_at desc limit 1), 'agent', 'operator actor_role is derived from agent_profiles role');
+select is((select actor_user_id from public.daily_audit_logs where action = 'operator_spoof_attempt' order by created_at desc limit 1), '00000000-0000-4000-8000-000000001008'::uuid, 'operator audit log actor_user_id is auth.uid()');
 
 select * from finish();
 
