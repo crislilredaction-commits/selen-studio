@@ -6,7 +6,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(76);
+select plan(77);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values
@@ -96,6 +96,22 @@ values (
   'Studio'
 );
 
+create or replace function pg_temp.daily_lot1a_attempt_trainer_metadata_update()
+returns integer
+language plpgsql
+as $$
+declare
+  affected_rows integer;
+begin
+  update public.daily_documents
+  set metadata = '{"trainer":true}'::jsonb
+  where id = '00000000-0000-4000-8000-000000003001';
+
+  get diagnostics affected_rows = row_count;
+  return affected_rows;
+end;
+$$;
+
 select has_table('public', 'organisation_memberships', 'organisation_memberships exists');
 select has_table('public', 'organisation_membership_roles', 'organisation_membership_roles exists');
 select has_table('public', 'organisation_membership_permission_blocks', 'organisation_membership_permission_blocks exists');
@@ -178,7 +194,12 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 select is((select count(*)::int from public.organisations), 0, 'trainer A cannot read full organisation legal profile');
 select isnt_empty($$select 1 from public.daily_documents where organisation_id = '00000000-0000-4000-8000-000000001a01'$$, 'trainer A can read organisation A Daily documents');
 select throws_ok($$insert into public.daily_documents (organisation_id, document_type, version, status, logical_name, bucket, storage_path, sha256) values ('00000000-0000-4000-8000-000000001a01', 'support', 1, 'draft', 'Trainer upload', 'documents', 'daily/a/trainer-upload.pdf', repeat('2', 64))$$, null, 'trainer A cannot insert Daily document metadata without document block');
-select throws_ok($$update public.daily_documents set metadata = '{"trainer":true}'::jsonb where id = '00000000-0000-4000-8000-000000003001'$$, null, 'trainer A cannot update Daily document metadata without document block');
+select is(
+  pg_temp.daily_lot1a_attempt_trainer_metadata_update(),
+  0,
+  'trainer A update affects zero Daily document rows without document block'
+);
+select is((select metadata from public.daily_documents where id = '00000000-0000-4000-8000-000000003001'), '{}'::jsonb, 'trainer A cannot change Daily document metadata without document block');
 
 reset role;
 set local role authenticated;
@@ -215,8 +236,8 @@ select set_config('request.jwt.claim.sub', '', true);
 select set_config('request.jwt.claim.email', '', true);
 select set_config('request.jwt.claims', '{}', true);
 
-select throws_ok($$select count(*) from public.organisations$$, '42501', 'anon has permission denied on organisations');
-select throws_ok($$select count(*) from public.daily_documents$$, '42501', 'anon has permission denied on Daily documents');
+select throws_ok($$select count(*) from public.organisations$$, '42501', null, 'anon has permission denied on organisations');
+select throws_ok($$select count(*) from public.daily_documents$$, '42501', null, 'anon has permission denied on Daily documents');
 select throws_ok($$insert into public.organisations (id, name) values ('00000000-0000-4000-8000-000000001d01', 'Anon forbidden')$$, null, 'anon cannot insert organisation');
 select throws_ok($$select public.daily_append_audit_log('00000000-0000-4000-8000-000000001a01', 'selen_admin', 'admin', 'test', null, 'forbidden')$$, null, 'anon cannot execute controlled audit append');
 
