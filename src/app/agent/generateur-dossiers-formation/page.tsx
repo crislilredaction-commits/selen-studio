@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isOwnerLil } from "@/lib/ownerLil";
-import DossierGeneratorClient from "./DossierGeneratorClient";
+import DossierGeneratorClientV2 from "./DossierGeneratorClientV2";
 
 export default async function GenerateurDossiersFormationPage() {
   const supabase = await createClient();
@@ -13,5 +13,5 @@ export default async function GenerateurDossiersFormationPage() {
     redirect("/agent");
   }
 
-  return <DossierGeneratorClient />;
+  return <DossierGeneratorClientV2 />;
 }
