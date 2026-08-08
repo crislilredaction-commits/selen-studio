@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { BriefcaseBusiness, CalendarDays, FileText, Star } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  CalendarDays,
+  ChevronDown,
+  FileText,
+  Star,
+  UserRoundCog,
+  UsersRound,
+} from "lucide-react";
 import AgentSidebarMessaging from "@/components/layout/AgentSidebarMessaging";
 import { createClient } from "@/lib/supabase/client";
 import { isOwnerLil } from "@/lib/ownerLil";
@@ -50,30 +58,9 @@ const links = [
           stroke="currentColor"
           strokeWidth="1.2"
         />
-        <line
-          x1="5"
-          y1="5"
-          x2="9"
-          y2="5"
-          stroke="currentColor"
-          strokeWidth="1"
-        />
-        <line
-          x1="5"
-          y1="7.5"
-          x2="10"
-          y2="7.5"
-          stroke="currentColor"
-          strokeWidth="1"
-        />
-        <line
-          x1="5"
-          y1="10"
-          x2="8"
-          y2="10"
-          stroke="currentColor"
-          strokeWidth="1"
-        />
+        <line x1="5" y1="5" x2="9" y2="5" stroke="currentColor" strokeWidth="1" />
+        <line x1="5" y1="7.5" x2="10" y2="7.5" stroke="currentColor" strokeWidth="1" />
+        <line x1="5" y1="10" x2="8" y2="10" stroke="currentColor" strokeWidth="1" />
       </svg>
     ),
   },
@@ -94,39 +81,6 @@ const links = [
     icon: <CalendarDays size={16} strokeWidth={1.5} />,
   },
   {
-    href: "/agent/satisfaction",
-    label: "Satisfaction",
-    adminOnly: true,
-    icon: <Star size={16} strokeWidth={1.5} />,
-  },
-  {
-    href: "/agent/clients",
-    label: "Clients",
-    icon: (
-      <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
-        <circle cx="7" cy="6" r="3.5" stroke="currentColor" strokeWidth="1.2" />
-        <path
-          d="M1.5 13.5c0-2.5 2.5-4.5 5.5-4.5s5.5 2 5.5 4.5"
-          stroke="currentColor"
-          strokeWidth="1.2"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
-  },
-  {
-    href: "/agent/articles",
-    label: "Articles",
-    adminOnly: true,
-    icon: <FileText size={16} strokeWidth={1.5} />,
-  },
-  {
-    href: "/agent/gestion",
-    label: "Gestion Lil",
-    ownerOnly: true,
-    icon: <BriefcaseBusiness size={16} strokeWidth={1.5} />,
-  },
-  {
     href: "/agent/profil",
     label: "Mon profil",
     icon: (
@@ -142,33 +96,35 @@ const links = [
     ),
   },
   {
-    href: "/agent/admin/agents",
+    href: "/agent/satisfaction",
+    label: "Satisfaction",
     adminOnly: true,
-    label: "Accès agents",
-    icon: (
-      <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
-        <circle cx="6" cy="5.5" r="3" stroke="currentColor" strokeWidth="1.2" />
-        <path
-          d="M1.5 14c0-2.4 2-4.2 4.5-4.2s4.5 1.8 4.5 4.2"
-          stroke="currentColor"
-          strokeWidth="1.2"
-          strokeLinecap="round"
-        />
-        <path
-          d="M11.5 3.5v4"
-          stroke="currentColor"
-          strokeWidth="1.2"
-          strokeLinecap="round"
-        />
-        <path
-          d="M9.5 5.5h4"
-          stroke="currentColor"
-          strokeWidth="1.2"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
+    icon: <Star size={16} strokeWidth={1.5} />,
   },
+  {
+    href: "/agent/articles",
+    label: "Articles",
+    adminOnly: true,
+    icon: <FileText size={16} strokeWidth={1.5} />,
+  },
+  {
+    href: "/agent/gestion",
+    label: "Gestion Lil",
+    ownerOnly: true,
+    icon: <BriefcaseBusiness size={16} strokeWidth={1.5} />,
+  },
+];
+
+const navigationOrder = [
+  "/agent",
+  "/agent/dossiers",
+  "/agent/generateur-dossiers-formation",
+  "/agent/daily",
+  "/agent/rendez-vous",
+  "/agent/profil",
+  "/agent/satisfaction",
+  "/agent/articles",
+  "/agent/gestion",
 ];
 
 export default function AgentSidebar() {
@@ -176,6 +132,9 @@ export default function AgentSidebar() {
   const supabase = useMemo(() => createClient(), []);
   const [role, setRole] = useState<"agent" | "admin">("agent");
   const [email, setEmail] = useState<string | null>(null);
+  const userSectionActive =
+    pathname.startsWith("/agent/clients") || pathname.startsWith("/agent/admin/agents");
+  const [usersOpen, setUsersOpen] = useState(userSectionActive);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,19 +177,10 @@ export default function AgentSidebar() {
     };
   }, [supabase]);
 
-  const navigationOrder = [
-    "/agent",
-    "/agent/dossiers",
-    "/agent/generateur-dossiers-formation",
-    "/agent/daily",
-    "/agent/rendez-vous",
-    "/agent/clients",
-    "/agent/profil",
-    "/agent/admin/agents",
-    "/agent/satisfaction",
-    "/agent/articles",
-    "/agent/gestion",
-  ];
+  useEffect(() => {
+    if (userSectionActive) setUsersOpen(true);
+  }, [userSectionActive]);
+
   const visibleLinks = links
     .filter((link) => {
       if ("ownerOnly" in link && link.ownerOnly) return isOwnerLil(email);
@@ -240,6 +190,101 @@ export default function AgentSidebar() {
       (a, b) =>
         navigationOrder.indexOf(a.href) - navigationOrder.indexOf(b.href),
     );
+
+  const userLinks = [
+    {
+      href: "/agent/clients",
+      label: "Clients",
+      icon: <UsersRound size={15} strokeWidth={1.5} />,
+      visible: true,
+    },
+    {
+      href: "/agent/admin/agents",
+      label: "Accès agents",
+      icon: <UserRoundCog size={15} strokeWidth={1.5} />,
+      visible: role === "admin",
+    },
+  ].filter((link) => link.visible);
+
+  const renderUserGroup = () => (
+    <div key="users-group" style={{ marginBottom: 4 }}>
+      <button
+        type="button"
+        onClick={() => setUsersOpen((open) => !open)}
+        aria-expanded={usersOpen}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "10px 12px",
+          borderRadius: "var(--radius-sm)",
+          fontSize: 13,
+          color: userSectionActive ? "var(--selen-gold2)" : "var(--selen-text2)",
+          background: userSectionActive ? "var(--selen-bg3)" : "transparent",
+          border: `1px solid ${
+            userSectionActive ? "var(--selen-border2)" : "transparent"
+          }`,
+          textAlign: "left",
+          cursor: "pointer",
+          transition: "all 0.2s ease",
+        }}
+      >
+        <UsersRound
+          size={16}
+          strokeWidth={1.5}
+          style={{ opacity: userSectionActive ? 1 : 0.7, flexShrink: 0 }}
+        />
+        <span style={{ flex: 1 }}>Utilisateurs</span>
+        <ChevronDown
+          size={14}
+          strokeWidth={1.5}
+          style={{
+            opacity: 0.65,
+            transform: usersOpen ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.2s ease",
+          }}
+        />
+      </button>
+
+      {usersOpen ? (
+        <div
+          style={{
+            margin: "4px 0 8px 20px",
+            paddingLeft: 10,
+            borderLeft: "1px solid var(--selen-border)",
+          }}
+        >
+          {userLinks.map((link) => {
+            const isActive = pathname.startsWith(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 9,
+                  padding: "8px 10px",
+                  borderRadius: "var(--radius-sm)",
+                  fontSize: 12,
+                  color: isActive ? "var(--selen-gold2)" : "var(--selen-text3)",
+                  background: isActive ? "rgba(247, 239, 224, 0.06)" : "transparent",
+                  textDecoration: "none",
+                  marginBottom: 2,
+                }}
+              >
+                <span style={{ opacity: isActive ? 1 : 0.72, flexShrink: 0 }}>
+                  {link.icon}
+                </span>
+                {link.label}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
     <aside
@@ -371,6 +416,8 @@ export default function AgentSidebar() {
                   <AgentSidebarMessaging />
                 </div>
               ) : null}
+
+              {link.href === "/agent/rendez-vous" ? renderUserGroup() : null}
             </div>
           );
         })}
