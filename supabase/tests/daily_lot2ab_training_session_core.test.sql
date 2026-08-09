@@ -14,9 +14,9 @@ insert into public.organisation_memberships(id,organisation_id,user_id,status,pr
 ('18000000-0000-4000-8400-000000000011','18000000-0000-4000-8400-000000000010','18000000-0000-4000-8400-000000000001','active','manager',now()),
 ('18000000-0000-4000-8400-000000000021','18000000-0000-4000-8400-000000000020','18000000-0000-4000-8400-000000000002','active','manager',now());
 
-insert into public.organisation_membership_roles(membership_id,organisation_id,role) values
-('18000000-0000-4000-8400-000000000011','18000000-0000-4000-8400-000000000010','manager'),
-('18000000-0000-4000-8400-000000000021','18000000-0000-4000-8400-000000000020','manager');
+insert into public.organisation_membership_roles(membership_id,role) values
+('18000000-0000-4000-8400-000000000011','manager'),
+('18000000-0000-4000-8400-000000000021','manager');
 
 insert into public.daily_trainer_profiles(id,organisation_id,professional_email,display_name,status,engagement_type) values
 ('18000000-0000-4000-8400-000000000031','18000000-0000-4000-8400-000000000010','trainer-a@example.invalid','Trainer A','draft','external'),
