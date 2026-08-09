@@ -105,9 +105,9 @@ begin
       from public.daily_trainer_profiles t
       where t.id::text = trainer_id_text
         and t.organisation_id = new.organisation_id
-        and t.status <> 'revoked'
+        and t.status not in ('rejected', 'archived')
     ) then
-      raise exception 'session trainer must belong to the organisation';
+      raise exception 'session trainer must belong to the organisation and be active';
     end if;
   end loop;
 
