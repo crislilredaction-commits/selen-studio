@@ -4,7 +4,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(27);
+select plan(30);
 
 select has_table('public','daily_organisation_assignments','organisation assignment table exists');
 select has_table('public','daily_organisation_checklist_items','organisation checklist table exists');
