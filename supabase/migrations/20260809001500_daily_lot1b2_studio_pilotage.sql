@@ -1,5 +1,6 @@
 -- Selen Daily Lot 1B.2 - Studio pilotage foundations.
 -- Internal organisation assignment/checklist + trainer certification expiry tracking.
+-- Existing organisations are deliberately not backfilled by this migration.
 
 create table if not exists public.daily_organisation_assignments (
   organisation_id uuid primary key references public.organisations(id) on delete cascade,
@@ -285,6 +286,3 @@ with check (
       and dtp.user_id = (select auth.uid())
   )
 );
-
--- Seed the internal checklist for organisations that already exist.
-select public.daily_seed_organisation_checklist(id) from public.organisations;
