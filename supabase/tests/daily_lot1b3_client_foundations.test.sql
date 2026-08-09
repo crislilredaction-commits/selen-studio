@@ -4,7 +4,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(14);
+select plan(15);
 
 insert into auth.users(id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at) values
 ('16000000-0000-4000-8400-000000000001','authenticated','authenticated','daily-1b3-manager@example.invalid','x',now(),now(),now()),
