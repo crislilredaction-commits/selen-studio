@@ -82,7 +82,7 @@ with check (
   and user_id = (select auth.uid())
   and exists (
     select 1 from public.daily_formations f
-    where f.id = formation_id and f.organisation_id = organisation_id
+    where f.id = formation_id and f.organisation_id = daily_sessions.organisation_id
   )
 );
 
@@ -93,7 +93,7 @@ with check (
   public.can_manage_daily_sessions(organisation_id)
   and exists (
     select 1 from public.daily_formations f
-    where f.id = formation_id and f.organisation_id = organisation_id
+    where f.id = formation_id and f.organisation_id = daily_sessions.organisation_id
   )
 );
 
