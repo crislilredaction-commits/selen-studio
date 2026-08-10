@@ -32,8 +32,13 @@ select set_config('request.jwt.claims','{"sub":"20000000-0000-4000-8400-00000000
 select is((select count(*)::int from public.daily_learners),2,'manager sees only learners from own organisation');
 select is((select count(*)::int from public.daily_session_enrolments),1,'manager sees only enrolments from own organisation');
 select is((select count(*)::int from public.daily_enrolment_support_needs),1,'manager sees support needs for own organisation');
-select lives_ok($$update public.daily_session_enrolments set positioning_status='submitted',prerequisites_status='to_clarify' where id='20000000-0000-4000-8400-000000000060'$$,'manager can progress positioning and prerequisites');
-select is((select positioning_status from public.daily_session_enrolments where id='20000000-0000-4000-8400-000000000060'),'submitted','positioning status persisted');
-select is((select prerequisites_status from public.daily_session_enrolments where id='20000000-0000-4000-8400-000000000060'),'to_clarify','prerequisites status persisted');
+select throws_ok($$update public.daily_session_enrolments set positioning_status='submitted' where id='20000000-0000-4000-8400-000000000060'$$,'42501',null,'direct authenticated enrolment writes are blocked');
+reset role;
+update public.daily_session_enrolments set positioning_status='submitted',prerequisites_status='to_clarify' where id='20000000-0000-4000-8400-000000000060';
+set local role authenticated;
+select set_config('request.jwt.claim.sub','20000000-0000-4000-8400-000000000001',true);
+select set_config('request.jwt.claims','{"sub":"20000000-0000-4000-8400-000000000001","email":"lot2d-manager@example.invalid","role":"authenticated"}',true);
+select is((select positioning_status from public.daily_session_enrolments where id='20000000-0000-4000-8400-000000000060'),'submitted','positioning status persisted through controlled server path');
+select is((select prerequisites_status from public.daily_session_enrolments where id='20000000-0000-4000-8400-000000000060'),'to_clarify','prerequisites status persisted through controlled server path');
 select * from finish();
 rollback;
