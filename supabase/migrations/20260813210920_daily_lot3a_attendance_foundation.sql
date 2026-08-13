@@ -1,1 +1,3 @@
--- Selen Daily Lot 3A attendance foundation.
+-- CHECKPOINT ONLY - DO NOT MERGE THIS PLACEHOLDER.
+-- Production migration daily_lot3a_attendance_foundation was applied additively on 2026-08-13.
+-- Replace this placeholder with the exact applied migration body before Lot 3A merge.
