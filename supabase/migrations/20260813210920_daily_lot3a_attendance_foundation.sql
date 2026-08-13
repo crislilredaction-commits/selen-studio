@@ -1,0 +1,1 @@
+-- Selen Daily Lot 3A attendance foundation.
