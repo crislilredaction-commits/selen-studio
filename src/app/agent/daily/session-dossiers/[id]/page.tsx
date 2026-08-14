@@ -11,8 +11,6 @@ const attendanceLabels: Record<string,string> = { pending:"À émarger", present
 const followupTypeLabels: Record<string,string> = { incident:"Incident / difficulté", adaptation:"Adaptation" };
 const followupLevelLabels: Record<string,string> = { info:"Information", attention:"À suivre", critical:"Critique" };
 const assessmentLabels: Record<string,string> = { pending:"À évaluer", achieved:"Acquis", partially_achieved:"Partiellement acquis", not_achieved:"Non acquis", not_applicable:"Non applicable" };
-const dossierStatusLabels: Record<string,string> = { active:"Actif", completed:"Clôturé", archived:"Archivé" };
-const closureKey = "selen_closure_review";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -22,10 +20,6 @@ async function updateItem(formData: FormData) {
   const sessionId=String(formData.get("session_id")??""); const itemId=String(formData.get("item_id")??""); const status=String(formData.get("status")??""); const note=String(formData.get("note")??"").trim();
   if (!sessionId || !itemId || !Object.keys(statusLabels).includes(status)) throw new Error("Mise à jour invalide.");
   const admin=createSupabaseAdminClient();
-  const { data:item, error:itemError }=await admin.from("daily_session_checklist_items").select("item_key").eq("id",itemId).eq("session_id",sessionId).maybeSingle();
-  if (itemError) throw new Error(itemError.message);
-  if (!item) throw new Error("Point de contrôle introuvable.");
-  if (item.item_key===closureKey) throw new Error("La revue de clôture se valide uniquement via l'action de clôture du dossier.");
   const { error }=await admin.from("daily_session_checklist_items").update({status,note:note||null}).eq("id",itemId).eq("session_id",sessionId);
   if (error) throw new Error(error.message); revalidatePath(`/agent/daily/session-dossiers/${sessionId}`); revalidatePath("/agent/daily");
 }
@@ -37,54 +31,6 @@ async function assignAgent(formData: FormData) {
   if (!sessionId) throw new Error("Session invalide."); const admin=createSupabaseAdminClient();
   const { error }=await admin.from("daily_session_dossiers").update({assigned_agent_profile_id:agent||null}).eq("session_id",sessionId);
   if (error) throw new Error(error.message); revalidatePath(`/agent/daily/session-dossiers/${sessionId}`); revalidatePath("/agent/daily");
-}
-
-async function closeDossier(formData: FormData) {
-  "use server";
-  const auth=await requireSupportAgent(); if (!auth.ok) throw new Error(auth.error);
-  const sessionId=String(formData.get("session_id")??""); const note=String(formData.get("closure_note")??"").trim();
-  if (!sessionId) throw new Error("Session invalide.");
-  const admin=createSupabaseAdminClient();
-  const [{data:dossier,error:dossierError},{data:items,error:itemsError}]=await Promise.all([
-    admin.from("daily_session_dossiers").select("status").eq("session_id",sessionId).maybeSingle(),
-    admin.from("daily_session_checklist_items").select("id,item_key,status").eq("session_id",sessionId),
-  ]);
-  if (dossierError) throw new Error(dossierError.message);
-  if (itemsError) throw new Error(itemsError.message);
-  if (!dossier) throw new Error("Dossier introuvable.");
-  if (dossier.status!=="active") throw new Error("Seul un dossier actif peut être clôturé.");
-  const closureItem=(items??[]).find((item)=>item.item_key===closureKey);
-  if (!closureItem) throw new Error("Point de revue de clôture introuvable.");
-  const unresolved=(items??[]).filter((item)=>item.item_key!==closureKey && !["validated","not_applicable"].includes(item.status));
-  if (unresolved.length>0) throw new Error(`Le dossier ne peut pas être clôturé : ${unresolved.length} point(s) restent à finaliser.`);
-  const now=new Date().toISOString();
-  const { error:closureError }=await admin.from("daily_session_checklist_items").update({status:"validated",note:note||"Revue finale Selen effectuée lors de la clôture."}).eq("id",closureItem.id).eq("session_id",sessionId);
-  if (closureError) throw new Error(closureError.message);
-  const { error:dossierUpdateError }=await admin.from("daily_session_dossiers").update({status:"completed",completed_at:now}).eq("session_id",sessionId).eq("status","active");
-  if (dossierUpdateError) throw new Error(dossierUpdateError.message);
-  revalidatePath(`/agent/daily/session-dossiers/${sessionId}`); revalidatePath("/agent/daily/session-dossiers"); revalidatePath("/agent/daily");
-}
-
-async function archiveDossier(formData: FormData) {
-  "use server";
-  const auth=await requireSupportAgent(); if (!auth.ok) throw new Error(auth.error);
-  const sessionId=String(formData.get("session_id")??""); if (!sessionId) throw new Error("Session invalide.");
-  const admin=createSupabaseAdminClient();
-  const { data,error }=await admin.from("daily_session_dossiers").update({status:"archived"}).eq("session_id",sessionId).eq("status","completed").select("session_id").maybeSingle();
-  if (error) throw new Error(error.message); if (!data) throw new Error("Le dossier doit être clôturé avant archivage.");
-  revalidatePath(`/agent/daily/session-dossiers/${sessionId}`); revalidatePath("/agent/daily/session-dossiers"); revalidatePath("/agent/daily");
-}
-
-async function reopenDossier(formData: FormData) {
-  "use server";
-  const auth=await requireSupportAgent(); if (!auth.ok) throw new Error(auth.error);
-  const sessionId=String(formData.get("session_id")??""); if (!sessionId) throw new Error("Session invalide.");
-  const admin=createSupabaseAdminClient();
-  const { data,error }=await admin.from("daily_session_dossiers").update({status:"active",completed_at:null}).eq("session_id",sessionId).in("status",["completed","archived"]).select("session_id").maybeSingle();
-  if (error) throw new Error(error.message); if (!data) throw new Error("Ce dossier est déjà actif.");
-  const { error:closureError }=await admin.from("daily_session_checklist_items").update({status:"todo",note:"Dossier rouvert : une nouvelle revue de clôture est requise."}).eq("session_id",sessionId).eq("item_key",closureKey);
-  if (closureError) throw new Error(closureError.message);
-  revalidatePath(`/agent/daily/session-dossiers/${sessionId}`); revalidatePath("/agent/daily/session-dossiers"); revalidatePath("/agent/daily");
 }
 
 export default async function SessionDossierPage({ params }: Props) {
@@ -112,9 +58,6 @@ export default async function SessionDossierPage({ params }: Props) {
   const criticalFollowup=openFollowup.filter((entry)=>entry.level==="critical");
   const assessedCount=(assessments??[]).filter((assessment)=>assessment.outcome!=="pending").length;
   const feedbackCount=(feedbackResponses??[]).length;
-  const closureItem=(items??[]).find((item)=>item.item_key===closureKey);
-  const unresolvedBeforeClosure=(items??[]).filter((item)=>item.item_key!==closureKey && !["validated","not_applicable"].includes(item.status));
-  const canClose=dossier.status==="active" && unresolvedBeforeClosure.length===0;
 
   function enrolmentName(enrolmentId?: string|null) {
     if (!enrolmentId) return null;
@@ -125,7 +68,6 @@ export default async function SessionDossierPage({ params }: Props) {
 
   return <main style={{maxWidth:1180,margin:"0 auto",padding:28}}>
     <h1 style={{marginBottom:4}}>{formation?.title ?? "Dossier de session"}</h1><p style={{marginTop:0,color:"var(--selen-text2)"}}>{org?.name ?? "OF"} · {session.internal_reference || "Sans référence"} · {open} point(s) ouvert(s){blocked?` · ${blocked} bloqué(s)`:""}{openFollowup.length?` · ${openFollowup.length} suivi(s) pendant session ouvert(s)`:""}</p>
-    <SelenCard><SelenCardTitle>État du dossier</SelenCardTitle><p style={{fontSize:13,color:"var(--selen-text2)"}}>Statut : <strong>{dossierStatusLabels[dossier.status]??dossier.status}</strong>{dossier.completed_at?` · clôturé le ${new Date(dossier.completed_at).toLocaleString("fr-FR")}`:""}</p>{dossier.status==="active"?<>{canClose?<p style={{fontSize:13}}>Tous les contrôles préalables sont finalisés. La revue Selen peut clôturer le dossier.</p>:<p style={{fontSize:13,color:"var(--selen-text2)"}}>{unresolvedBeforeClosure.length} point(s) doivent encore être validés ou déclarés non applicables avant la clôture.</p>}<form action={closeDossier} style={{display:"grid",gap:8,maxWidth:720}}><input type="hidden" name="session_id" value={id}/><input name="closure_note" placeholder="Note de revue finale Selen (facultatif)" disabled={!canClose}/><SelenButton type="submit" disabled={!canClose}>Clôturer le dossier</SelenButton></form></>:dossier.status==="completed"?<div style={{display:"flex",gap:8,flexWrap:"wrap"}}><form action={archiveDossier}><input type="hidden" name="session_id" value={id}/><SelenButton type="submit">Archiver le dossier</SelenButton></form><form action={reopenDossier}><input type="hidden" name="session_id" value={id}/><SelenButton type="submit" variant="secondary">Rouvrir</SelenButton></form></div>:<form action={reopenDossier}><input type="hidden" name="session_id" value={id}/><SelenButton type="submit" variant="secondary">Rouvrir le dossier</SelenButton></form>}</SelenCard>
     <SelenCard><SelenCardTitle>Assignation</SelenCardTitle><form action={assignAgent} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><input type="hidden" name="session_id" value={id}/><select name="agent_profile_id" defaultValue={dossier.assigned_agent_profile_id ?? ""}><option value="">Non assigné</option>{(agents??[]).map((a)=><option key={a.id} value={a.id}>{`${a.first_name??""} ${a.last_name??""}`.trim()||a.email}</option>)}</select><SelenButton type="submit">Enregistrer</SelenButton></form></SelenCard>
 
     {(attendanceSlots??[]).length>0?<section style={{marginTop:18}}><h2>Preuves de présence</h2><SelenCard><SelenCardTitle>Émargements collectés</SelenCardTitle><p style={{fontSize:13,color:"var(--selen-text2)"}}>{presentCount} présence(s) signée(s) sur {expectedCount} émargement(s) attendu(s). Les preuves signées conservent horodatage et empreintes SHA-256.</p><div style={{display:"grid",gap:10}}>{(attendanceSlots??[]).map((slot)=><div key={slot.id} style={{borderTop:"1px solid var(--selen-border)",paddingTop:10}}><strong>{new Date(`${slot.slot_date}T12:00:00`).toLocaleDateString("fr-FR")} · {String(slot.starts_at).slice(0,5)}–{String(slot.ends_at).slice(0,5)}</strong><div style={{fontSize:12,color:"var(--selen-text2)",margin:"4px 0 8px"}}>{slot.mode.replaceAll("_"," ")} · {slot.status}</div><div style={{display:"grid",gap:5}}>{activeEnrolments.map((enrolment)=>{const learner=Array.isArray(enrolment.daily_learners)?enrolment.daily_learners[0]:enrolment.daily_learners;const record=(slot.daily_attendance_records??[]).find((row)=>row.enrolment_id===enrolment.id);return <div key={enrolment.id} style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:13}}><span>{`${learner?.first_name??""} ${learner?.last_name??""}`.trim()||learner?.email||"Apprenant"}</span><span>{attendanceLabels[record?.status??"pending"]??record?.status}{record?.status==="present"&&record?.proof_sha256?" · preuve hashée":""}</span></div>})}</div></div>)}</div></SelenCard></section>:null}
@@ -134,6 +76,6 @@ export default async function SessionDossierPage({ params }: Props) {
 
     {((assessments??[]).length>0||(feedbackResponses??[]).length>0)?<section style={{marginTop:18}}><h2>Évaluations & satisfaction</h2><SelenCard><SelenCardTitle>Fin de formation</SelenCardTitle><p style={{fontSize:13,color:"var(--selen-text2)"}}>{assessedCount} évaluation(s) des acquis renseignée(s) sur {activeEnrolments.length} apprenant(s) actif(s) · {feedbackCount} questionnaire(s) de satisfaction reçu(s).</p><div style={{display:"grid",gap:10}}>{activeEnrolments.map((enrolment)=>{const assessment=(assessments??[]).find((row)=>row.enrolment_id===enrolment.id);const feedback=(feedbackResponses??[]).find((row)=>row.enrolment_id===enrolment.id);return <div key={enrolment.id} style={{borderTop:"1px solid var(--selen-border)",paddingTop:10}}><div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><strong>{enrolmentName(enrolment.id)}</strong><span>{assessmentLabels[assessment?.outcome??"pending"]??assessment?.outcome}{assessment?.score!=null&&assessment?.score_max!=null?` · ${assessment.score}/${assessment.score_max}`:""}</span></div>{assessment?.method?<p style={{fontSize:13}}><strong>Méthode :</strong> {assessment.method}</p>:null}{assessment?.notes?<p style={{fontSize:13}}>{assessment.notes}</p>:null}{feedback?<details><summary>Satisfaction · {feedback.overall_rating}/5 · reçue le {new Date(feedback.submitted_at).toLocaleDateString("fr-FR")}</summary><p style={{fontSize:13}}>Objectifs {feedback.objectives_rating}/5 · Formateur {feedback.trainer_rating??"-"}/5 · Organisation {feedback.organisation_rating??"-"}/5 · Contenu {feedback.content_rating??"-"}/5 · Rythme {feedback.pace_rating??"-"}/5{feedback.would_recommend==null?"":` · Recommande : ${feedback.would_recommend?"oui":"non"}`}</p>{feedback.strengths?<p style={{fontSize:13}}><strong>Points forts :</strong> {feedback.strengths}</p>:null}{feedback.improvements?<p style={{fontSize:13}}><strong>Améliorations :</strong> {feedback.improvements}</p>:null}{feedback.adaptation_feedback?<p style={{fontSize:13}}><strong>Adaptations :</strong> {feedback.adaptation_feedback}</p>:null}{feedback.free_comment?<p style={{fontSize:13}}><strong>Commentaire :</strong> {feedback.free_comment}</p>:null}</details>:<p style={{fontSize:12,color:"var(--selen-text2)"}}>Satisfaction en attente.</p>}</div>})}</div></SelenCard></section>:null}
 
-    {(["before","during","after"] as const).map((phase)=><section key={phase} style={{marginTop:18}}><h2>{phaseLabels[phase]}</h2><div style={{display:"grid",gap:10}}>{(items??[]).filter((i)=>i.phase===phase).map((item)=><SelenCard key={item.id}><SelenCardTitle>{item.label}</SelenCardTitle><p style={{fontSize:13,color:"var(--selen-text2)"}}>{item.description}</p><div style={{fontSize:12,marginBottom:8}}>Responsabilité : {responsibilityLabels[item.responsibility] ?? item.responsibility}{item.due_at?` · Échéance ${new Date(item.due_at).toLocaleDateString("fr-FR")}`:""}</div>{item.item_key===closureKey?<div style={{fontSize:13,padding:10,border:"1px solid var(--selen-border)",borderRadius:8}}><strong>{statusLabels[item.status]??item.status}</strong>{item.note?` · ${item.note}`:""}<div style={{marginTop:5,color:"var(--selen-text2)"}}>Ce contrôle est validé automatiquement par l'action « Clôturer le dossier » lorsque tous les autres points sont finalisés.</div></div>:<form action={updateItem} style={{display:"grid",gridTemplateColumns:"minmax(140px,180px) 1fr auto",gap:8}}><input type="hidden" name="session_id" value={id}/><input type="hidden" name="item_id" value={item.id}/><select name="status" defaultValue={item.status}>{Object.entries(statusLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select><input name="note" defaultValue={item.note ?? ""} placeholder="Note interne ou de suivi"/><SelenButton type="submit">Mettre à jour</SelenButton></form>}</SelenCard>)}</div></section>)}
+    {(["before","during","after"] as const).map((phase)=><section key={phase} style={{marginTop:18}}><h2>{phaseLabels[phase]}</h2><div style={{display:"grid",gap:10}}>{(items??[]).filter((i)=>i.phase===phase).map((item)=><SelenCard key={item.id}><SelenCardTitle>{item.label}</SelenCardTitle><p style={{fontSize:13,color:"var(--selen-text2)"}}>{item.description}</p><div style={{fontSize:12,marginBottom:8}}>Responsabilité : {responsibilityLabels[item.responsibility] ?? item.responsibility}{item.due_at?` · Échéance ${new Date(item.due_at).toLocaleDateString("fr-FR")}`:""}</div><form action={updateItem} style={{display:"grid",gridTemplateColumns:"minmax(140px,180px) 1fr auto",gap:8}}><input type="hidden" name="session_id" value={id}/><input type="hidden" name="item_id" value={item.id}/><select name="status" defaultValue={item.status}>{Object.entries(statusLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select><input name="note" defaultValue={item.note ?? ""} placeholder="Note interne ou de suivi"/><SelenButton type="submit">Mettre à jour</SelenButton></form></SelenCard>)}</div></section>)}
   </main>;
 }
