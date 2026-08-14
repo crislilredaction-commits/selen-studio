@@ -35,7 +35,7 @@ async function closeDossier(formData: FormData) {
   const { error } = await admin.rpc("daily_close_session_dossier", {
     p_session_id: sessionId,
     p_note: note || null,
-    p_validated_by: null,
+    p_validated_by: auth.userId,
   });
   if (error) throw new Error(error.message);
   revalidateDossier(sessionId);
