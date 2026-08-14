@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(10);
+select plan(12);
 
 insert into auth.users(id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at) values
 ('1a000000-0000-4000-8400-000000000001','authenticated','authenticated','lot3e-client@example.invalid','x',now(),now(),now()),
@@ -25,11 +25,13 @@ select lives_ok($$select public.daily_close_session_dossier('1a000000-0000-4000-
 select is((select status from public.daily_session_dossiers where session_id='1a000000-0000-4000-8400-000000000040'),'completed','closure marks dossier completed');
 select ok((select completed_at is not null from public.daily_session_dossiers where session_id='1a000000-0000-4000-8400-000000000040'),'closure timestamps dossier on server');
 select ok((select status='validated' and note='Dossier contrôlé.' and validated_by='1a000000-0000-4000-8400-000000000002'::uuid from public.daily_session_checklist_items where session_id='1a000000-0000-4000-8400-000000000040' and item_key='selen_closure_review'),'closure review records validation evidence');
+select lives_ok($$select public.daily_archive_session_dossier('1a000000-0000-4000-8400-000000000040')$$,'completed dossier can be archived logically');
+select is((select status from public.daily_session_dossiers where session_id='1a000000-0000-4000-8400-000000000040'),'archived','logical archive preserves dossier with archived status');
 
 update public.daily_session_checklist_items set status='in_progress' where session_id='1a000000-0000-4000-8400-000000000040' and item_key='training_ready';
-select is((select status from public.daily_session_dossiers where session_id='1a000000-0000-4000-8400-000000000040'),'active','upstream regression automatically reopens dossier');
+select is((select status from public.daily_session_dossiers where session_id='1a000000-0000-4000-8400-000000000040'),'active','upstream regression automatically reopens archived dossier');
 select is((select status from public.daily_session_checklist_items where session_id='1a000000-0000-4000-8400-000000000040' and item_key='selen_closure_review'),'to_review','upstream regression reopens Selen closure review');
-select ok(not has_function_privilege('authenticated','public.daily_close_session_dossier(uuid,text,uuid)','EXECUTE') and not has_function_privilege('authenticated','public.daily_reopen_session_dossier(uuid,text)','EXECUTE'),'closure RPCs are not executable by authenticated clients');
+select ok(not has_function_privilege('authenticated','public.daily_close_session_dossier(uuid,text,uuid)','EXECUTE') and not has_function_privilege('authenticated','public.daily_reopen_session_dossier(uuid,text)','EXECUTE') and not has_function_privilege('authenticated','public.daily_archive_session_dossier(uuid)','EXECUTE'),'closure RPCs are not executable by authenticated clients');
 
 select * from finish();
 rollback;
