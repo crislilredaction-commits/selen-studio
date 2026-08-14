@@ -19,6 +19,7 @@ export default function DailyStudioLayout({ children }: { children: ReactNode })
         <Link href="/agent/daily/session-dossiers" style={linkStyle}>Dossiers de session</Link>
         <Link href="/agent/daily/learners" style={linkStyle}>Apprenants</Link>
         <Link href="/agent/daily/pretraining-documents" style={linkStyle}>Documents préformation</Link>
+        <Link href="/agent/daily/posttraining-documents" style={linkStyle}>Documents de fin</Link>
       </div>
       {children}
     </>
