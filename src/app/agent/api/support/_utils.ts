@@ -5,8 +5,9 @@ export async function requireSupportAgent() {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   const email = userData.user?.email?.trim().toLowerCase();
+  const userId = userData.user?.id;
 
-  if (!email) return { ok: false as const, error: "Non authentifie.", status: 401 };
+  if (!email || !userId) return { ok: false as const, error: "Non authentifie.", status: 401 };
 
   const { data: adminUser } = await supabase
     .from("selen_admin_users")
@@ -16,7 +17,7 @@ export async function requireSupportAgent() {
     .maybeSingle();
 
   if (adminUser && ["agent", "admin"].includes(adminUser.role)) {
-    return { ok: true as const, email };
+    return { ok: true as const, email, userId };
   }
 
   const { data: profile, error } = await supabase
@@ -31,7 +32,7 @@ export async function requireSupportAgent() {
     return { ok: false as const, error: "Acces agent requis.", status: 403 };
   }
 
-  return { ok: true as const, email };
+  return { ok: true as const, email, userId };
 }
 
 export async function requireSupportAdmin() {
