@@ -16,6 +16,13 @@ const statusLabels: Record<string, string> = {
 
 type Props = { params: Promise<{ id: string }> };
 
+function revalidateDossier(sessionId: string) {
+  revalidatePath(`/agent/daily/session-dossiers/${sessionId}`);
+  revalidatePath(`/agent/daily/session-dossiers/${sessionId}/closure`);
+  revalidatePath("/agent/daily/session-dossiers");
+  revalidatePath("/agent/daily");
+}
+
 async function closeDossier(formData: FormData) {
   "use server";
   const auth = await requireSupportAgent();
@@ -31,11 +38,20 @@ async function closeDossier(formData: FormData) {
     p_validated_by: null,
   });
   if (error) throw new Error(error.message);
+  revalidateDossier(sessionId);
+}
 
-  revalidatePath(`/agent/daily/session-dossiers/${sessionId}`);
-  revalidatePath(`/agent/daily/session-dossiers/${sessionId}/closure`);
-  revalidatePath("/agent/daily/session-dossiers");
-  revalidatePath("/agent/daily");
+async function archiveDossier(formData: FormData) {
+  "use server";
+  const auth = await requireSupportAgent();
+  if (!auth.ok) throw new Error(auth.error);
+  const sessionId = String(formData.get("session_id") ?? "");
+  if (!sessionId) throw new Error("Session invalide.");
+
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.rpc("daily_archive_session_dossier", { p_session_id: sessionId });
+  if (error) throw new Error(error.message);
+  revalidateDossier(sessionId);
 }
 
 async function reopenDossier(formData: FormData) {
@@ -52,11 +68,7 @@ async function reopenDossier(formData: FormData) {
     p_note: note || "Réouverture manuelle du dossier de session.",
   });
   if (error) throw new Error(error.message);
-
-  revalidatePath(`/agent/daily/session-dossiers/${sessionId}`);
-  revalidatePath(`/agent/daily/session-dossiers/${sessionId}/closure`);
-  revalidatePath("/agent/daily/session-dossiers");
-  revalidatePath("/agent/daily");
+  revalidateDossier(sessionId);
 }
 
 export default async function SessionClosurePage({ params }: Props) {
@@ -82,7 +94,9 @@ export default async function SessionClosurePage({ params }: Props) {
   const upstream = (items ?? []).filter((item) => item.item_key !== "selen_closure_review");
   const blockers = upstream.filter((item) => !["validated", "not_applicable"].includes(item.status));
   const ready = blockers.length === 0;
-  const closed = dossier.status === "completed" || dossier.status === "archived";
+  const completed = dossier.status === "completed";
+  const archived = dossier.status === "archived";
+  const closed = completed || archived;
 
   return (
     <main style={{ maxWidth: 920, margin: "0 auto", padding: 28 }}>
@@ -93,10 +107,10 @@ export default async function SessionClosurePage({ params }: Props) {
       </p>
 
       <SelenCard>
-        <SelenCardTitle>{closed ? "Dossier clôturé" : ready ? "Dossier prêt à clôturer" : "Clôture impossible pour le moment"}</SelenCardTitle>
+        <SelenCardTitle>{archived ? "Dossier archivé" : completed ? "Dossier clôturé" : ready ? "Dossier prêt à clôturer" : "Clôture impossible pour le moment"}</SelenCardTitle>
         {closed ? (
           <p style={{ fontSize: 13, color: "var(--selen-text2)" }}>
-            La revue Selen est validée{dossier.completed_at ? ` depuis le ${new Date(dossier.completed_at).toLocaleString("fr-FR")}` : ""}. Le dossier reste conservé intégralement et consultable.
+            La revue Selen est validée{dossier.completed_at ? ` depuis le ${new Date(dossier.completed_at).toLocaleString("fr-FR")}` : ""}. {archived ? "Le dossier est classé en archive logique." : "Il peut maintenant être classé en archive."} Toutes les données et pièces restent conservées et consultables.
           </p>
         ) : ready ? (
           <p style={{ fontSize: 13, color: "var(--selen-text2)" }}>
@@ -130,6 +144,12 @@ export default async function SessionClosurePage({ params }: Props) {
           {closed ? (
             <>
               {closureItem?.note ? <p style={{ fontSize: 13 }}><strong>Note de clôture :</strong> {closureItem.note}</p> : null}
+              {completed ? (
+                <form action={archiveDossier} style={{ marginBottom: 14 }}>
+                  <input type="hidden" name="session_id" value={id} />
+                  <SelenButton type="submit">Archiver le dossier</SelenButton>
+                </form>
+              ) : null}
               <form action={reopenDossier} style={{ display: "grid", gap: 10 }}>
                 <input type="hidden" name="session_id" value={id} />
                 <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
