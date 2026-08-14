@@ -216,7 +216,8 @@ begin
   end if;
   if old_session is not null then perform public.daily_sync_session_posttraining_checklist(old_session); end if;
   if new_session is not null and new_session is distinct from old_session then perform public.daily_sync_session_posttraining_checklist(new_session); end if;
-  return coalesce(new, old);
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
 end;
 $$;
 revoke execute on function public.daily_sync_posttraining_document_checklist_trigger() from public, anon, authenticated;
@@ -238,7 +239,8 @@ begin
   if tg_op <> 'DELETE' and (tg_op = 'INSERT' or new.session_id is distinct from old.session_id or new.status is distinct from old.status) then
     perform public.daily_sync_session_posttraining_checklist(new.session_id);
   end if;
-  return coalesce(new, old);
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
 end;
 $$;
 revoke execute on function public.daily_sync_posttraining_attendance_checklist_trigger() from public, anon, authenticated;
@@ -246,7 +248,7 @@ grant execute on function public.daily_sync_posttraining_attendance_checklist_tr
 
 drop trigger if exists daily_attendance_records_sync_posttraining_checklist on public.daily_attendance_records;
 create trigger daily_attendance_records_sync_posttraining_checklist
-after insert or update of session_id, status or delete on public.daily_attendance_records
+after insert or update or delete on public.daily_attendance_records
 for each row execute function public.daily_sync_posttraining_attendance_checklist_trigger();
 
 create or replace function public.daily_sync_posttraining_enrolment_checklist_trigger()
@@ -260,7 +262,8 @@ begin
   if tg_op <> 'DELETE' and (tg_op = 'INSERT' or new.session_id is distinct from old.session_id or new.status is distinct from old.status) then
     perform public.daily_sync_session_posttraining_checklist(new.session_id);
   end if;
-  return coalesce(new, old);
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
 end;
 $$;
 revoke execute on function public.daily_sync_posttraining_enrolment_checklist_trigger() from public, anon, authenticated;
@@ -268,7 +271,7 @@ grant execute on function public.daily_sync_posttraining_enrolment_checklist_tri
 
 drop trigger if exists daily_session_enrolments_sync_posttraining_checklist on public.daily_session_enrolments;
 create trigger daily_session_enrolments_sync_posttraining_checklist
-after insert or update of session_id, status or delete on public.daily_session_enrolments
+after insert or update or delete on public.daily_session_enrolments
 for each row execute function public.daily_sync_posttraining_enrolment_checklist_trigger();
 
 create or replace function public.daily_sync_posttraining_slot_checklist_trigger()
@@ -282,7 +285,8 @@ begin
   if tg_op <> 'DELETE' and (tg_op = 'INSERT' or new.session_id is distinct from old.session_id or new.status is distinct from old.status) then
     perform public.daily_sync_session_posttraining_checklist(new.session_id);
   end if;
-  return coalesce(new, old);
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
 end;
 $$;
 revoke execute on function public.daily_sync_posttraining_slot_checklist_trigger() from public, anon, authenticated;
@@ -290,7 +294,7 @@ grant execute on function public.daily_sync_posttraining_slot_checklist_trigger(
 
 drop trigger if exists daily_attendance_slots_sync_posttraining_checklist on public.daily_attendance_slots;
 create trigger daily_attendance_slots_sync_posttraining_checklist
-after insert or update of session_id, status or delete on public.daily_attendance_slots
+after insert or update or delete on public.daily_attendance_slots
 for each row execute function public.daily_sync_posttraining_slot_checklist_trigger();
 
 create policy "Session managers read Daily post-training documents"
