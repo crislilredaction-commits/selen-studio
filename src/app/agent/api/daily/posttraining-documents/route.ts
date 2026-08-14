@@ -5,10 +5,50 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
 const types=["attendance_summary","completion_certificate"];
 
+async function fallbackSyncChecklist(admin:ReturnType<typeof createSupabaseAdminClient>,sessionId:string){
+  const [{data:enrolments},{data:slots},{data:records},{data:docs}]=await Promise.all([
+    admin.from("daily_session_enrolments").select("id,status").eq("session_id",sessionId).not("status","in",'(declined,cancelled)'),
+    admin.from("daily_attendance_slots").select("id,status").eq("session_id",sessionId).neq("status","cancelled"),
+    admin.from("daily_attendance_records").select("enrolment_id,slot_id,status").eq("session_id",sessionId),
+    admin.from("daily_documents").select("document_type,linked_object_type,linked_object_id,status").in("document_type",types).eq("is_current",true),
+  ]);
+  const activeEnrolments=enrolments??[];
+  const activeSlots=slots??[];
+  const activeEnrolmentIds=new Set(activeEnrolments.map((row)=>row.id));
+  const activeSlotIds=new Set(activeSlots.map((row)=>row.id));
+  const relevantRecords=(records??[]).filter((row)=>activeEnrolmentIds.has(row.enrolment_id)&&activeSlotIds.has(row.slot_id));
+  const expectedRecords=activeEnrolments.length*activeSlots.length;
+  const settledRecords=relevantRecords.filter((row)=>row.status!=="pending").length;
+  const eligibleIds=new Set(relevantRecords.filter((row)=>row.status==="present").map((row)=>row.enrolment_id));
+  const expectedDocuments=activeSlots.length>0&&settledRecords===expectedRecords?1+eligibleIds.size:activeSlots.length>0?1:0;
+  const current=(docs??[]).filter((doc)=>
+    (doc.document_type==="attendance_summary"&&doc.linked_object_type==="session"&&doc.linked_object_id===sessionId)||
+    (doc.document_type==="completion_certificate"&&doc.linked_object_type==="enrolment"&&eligibleIds.has(doc.linked_object_id)),
+  );
+  const validated=current.filter((doc)=>doc.status==="validated").length;
+  let status="todo";
+  let note="Aucun créneau de présence disponible pour préparer les documents de fin.";
+  if(activeSlots.length>0&&expectedRecords>0&&settledRecords<expectedRecords){
+    status=settledRecords>0||current.length>0?"in_progress":"todo";
+    note=`${settledRecords}/${expectedRecords} présence(s) finalisée(s) avant génération des documents de fin.`;
+  }else if(activeSlots.length>0&&current.length===0){
+    note=`${expectedDocuments} document(s) de fin attendu(s).`;
+  }else if(current.length<expectedDocuments){
+    status="in_progress";
+    note=`${current.length}/${expectedDocuments} document(s) de fin préparé(s).`;
+  }else if(validated<expectedDocuments){
+    status="to_review";
+    note=`${current.length}/${expectedDocuments} document(s) de fin préparé(s), contrôle Selen requis.`;
+  }else if(expectedDocuments>0){
+    status="validated";
+    note=`${expectedDocuments} document(s) de fin validé(s).`;
+  }
+  await admin.from("daily_session_checklist_items").update({status,note}).eq("session_id",sessionId).eq("item_key","posttraining_documents").neq("status","not_applicable");
+}
+
 async function syncChecklist(admin:ReturnType<typeof createSupabaseAdminClient>,sessionId:string){
-  const {data:docs}=await admin.from("daily_documents").select("status").in("document_type",types).eq("is_current",true).contains("metadata",{session_id:sessionId});
-  const rows=docs??[]; if(rows.length===0)return; const status=rows.every((doc)=>doc.status==="validated")?"validated":"to_review";
-  await admin.from("daily_session_checklist_items").update({status}).eq("session_id",sessionId).eq("item_key","posttraining_documents").neq("status","not_applicable");
+  const {error}=await admin.rpc("daily_sync_session_posttraining_checklist",{p_session_id:sessionId});
+  if(error)await fallbackSyncChecklist(admin,sessionId);
 }
 
 export async function GET(){
