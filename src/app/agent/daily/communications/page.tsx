@@ -121,10 +121,11 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
                 {documents.length ? (
                   <div style={{ marginTop: 12, borderTop: "1px solid var(--selen-border)", paddingTop: 10 }}>
                     <strong style={{ fontSize: 13 }}>Documents rattachés à cet envoi</strong>
-                    <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
                       {documents.map((document) => (
                         <div key={`${communication.id}-${document.document_id}`} style={{ fontSize: 12 }}>
-                          {document.logical_name || document.document_type} · version {document.document_version} · SHA-256 <code>{document.sha256}</code>
+                          <div>{document.logical_name || document.document_type} · version {document.document_version} · SHA-256 <code>{document.sha256}</code></div>
+                          <a href={`/agent/daily/communications/document?communication_id=${encodeURIComponent(communication.id)}&document_id=${encodeURIComponent(document.document_id)}`} style={{ display: "inline-block", marginTop: 4 }}>Télécharger cette version exacte</a>
                         </div>
                       ))}
                     </div>
