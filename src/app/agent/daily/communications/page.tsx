@@ -114,7 +114,10 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
                 <div style={{ fontSize: 12, color: "var(--selen-text2)", marginTop: 10 }}>
                   Prestataire : {communication.provider ?? "—"} · ID message : {communication.provider_message_id ?? "—"} · ID Selen : {communication.id}
                 </div>
-                {communication.session_id ? <p style={{ marginBottom: 0 }}><Link href={`/agent/daily/session-dossiers/${communication.session_id}`}>Ouvrir le dossier de session</Link></p> : null}
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
+                  <a href={`/agent/daily/communications/proof?communication_id=${encodeURIComponent(communication.id)}`}>Télécharger la preuve PDF</a>
+                  {communication.session_id ? <Link href={`/agent/daily/session-dossiers/${communication.session_id}`}>Ouvrir le dossier de session</Link> : null}
+                </div>
                 {documents.length ? (
                   <div style={{ marginTop: 12, borderTop: "1px solid var(--selen-border)", paddingTop: 10 }}>
                     <strong style={{ fontSize: 13 }}>Documents rattachés à cet envoi</strong>
