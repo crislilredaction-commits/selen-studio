@@ -2,6 +2,7 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import ReviewFeedbackForm from "./ReviewFeedbackForm";
+import ForwardFeedbackButton from "./ForwardFeedbackButton";
 
 const STATUS_LABELS: Record<string, string> = {
   received: "À examiner par Selen",
@@ -163,6 +164,7 @@ export default async function DailyStakeholderFeedbackPage() {
                 </div>
 
                 {item.status === "received" ? <ReviewFeedbackForm id={item.id} /> : null}
+                {item.status === "selen_reviewed" ? <ForwardFeedbackButton id={item.id} /> : null}
               </SelenCard>
             );
           })

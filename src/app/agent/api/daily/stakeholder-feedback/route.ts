@@ -12,7 +12,7 @@ export async function PATCH(req: Request) {
   const action = typeof body.action === "string" ? body.action : "";
   const note = typeof body.note === "string" ? body.note.trim() : "";
 
-  if (!id || action !== "review") {
+  if (!id || !["review", "forward"].includes(action)) {
     return NextResponse.json({ error: "Action invalide." }, { status: 400 });
   }
 
@@ -32,26 +32,52 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Réclamation ou suggestion introuvable." }, { status: 404 });
   }
 
-  if (current.status !== "received") {
+  const now = new Date().toISOString();
+
+  if (action === "review") {
+    if (current.status !== "received") {
+      return NextResponse.json(
+        { error: "Cette demande a déjà quitté la file de revue initiale Selen." },
+        { status: 409 }
+      );
+    }
+
+    const { data, error } = await admin
+      .from("daily_stakeholder_feedback")
+      .update({
+        status: "selen_reviewed",
+        selen_review_note: note || null,
+        selen_reviewed_at: now,
+        selen_reviewed_by: userId,
+        updated_at: now,
+      })
+      .eq("id", id)
+      .eq("status", "received")
+      .select("id,status,selen_review_note,selen_reviewed_at")
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ feedback: data });
+  }
+
+  if (current.status !== "selen_reviewed") {
     return NextResponse.json(
-      { error: "Cette demande a déjà quitté la file de revue initiale Selen." },
+      { error: "La demande doit être revue par Selen avant d’être transmise à l’organisme." },
       { status: 409 }
     );
   }
 
-  const reviewedAt = new Date().toISOString();
   const { data, error } = await admin
     .from("daily_stakeholder_feedback")
     .update({
-      status: "selen_reviewed",
-      selen_review_note: note || null,
-      selen_reviewed_at: reviewedAt,
-      selen_reviewed_by: userId,
-      updated_at: reviewedAt,
+      status: "forwarded_to_organisation",
+      forwarded_at: now,
+      forwarded_by: userId,
+      updated_at: now,
     })
     .eq("id", id)
-    .eq("status", "received")
-    .select("id,status,selen_review_note,selen_reviewed_at")
+    .eq("status", "selen_reviewed")
+    .select("id,status,forwarded_at")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
