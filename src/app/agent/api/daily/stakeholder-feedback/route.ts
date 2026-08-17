@@ -12,7 +12,7 @@ export async function PATCH(req: Request) {
   const action = typeof body.action === "string" ? body.action : "";
   const note = typeof body.note === "string" ? body.note.trim() : "";
 
-  if (!id || !["review", "forward"].includes(action)) {
+  if (!id || !["review", "forward", "resolve"].includes(action)) {
     return NextResponse.json({ error: "Action invalide." }, { status: 400 });
   }
 
@@ -24,7 +24,7 @@ export async function PATCH(req: Request) {
   const admin = createSupabaseAdminClient();
   const { data: current, error: readError } = await admin
     .from("daily_stakeholder_feedback")
-    .select("id,status")
+    .select("id,status,organisation_response")
     .eq("id", id)
     .single();
 
@@ -60,9 +60,40 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ feedback: data });
   }
 
-  if (current.status !== "selen_reviewed") {
+  if (action === "forward") {
+    if (current.status !== "selen_reviewed") {
+      return NextResponse.json(
+        { error: "La demande doit être revue par Selen avant d’être transmise à l’organisme." },
+        { status: 409 }
+      );
+    }
+
+    const { data, error } = await admin
+      .from("daily_stakeholder_feedback")
+      .update({
+        status: "forwarded_to_organisation",
+        forwarded_at: now,
+        forwarded_by: userId,
+        updated_at: now,
+      })
+      .eq("id", id)
+      .eq("status", "selen_reviewed")
+      .select("id,status,forwarded_at")
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ feedback: data });
+  }
+
+  if (current.status !== "forwarded_to_organisation") {
     return NextResponse.json(
-      { error: "La demande doit être revue par Selen avant d’être transmise à l’organisme." },
+      { error: "Seule une demande transmise à l’organisme peut être clôturée." },
+      { status: 409 }
+    );
+  }
+  if (!String(current.organisation_response ?? "").trim()) {
+    return NextResponse.json(
+      { error: "La réponse de l’organisme doit être enregistrée avant la clôture Selen." },
       { status: 409 }
     );
   }
@@ -70,14 +101,14 @@ export async function PATCH(req: Request) {
   const { data, error } = await admin
     .from("daily_stakeholder_feedback")
     .update({
-      status: "forwarded_to_organisation",
-      forwarded_at: now,
-      forwarded_by: userId,
+      status: "resolved",
+      resolved_at: now,
+      resolved_by: userId,
       updated_at: now,
     })
     .eq("id", id)
-    .eq("status", "selen_reviewed")
-    .select("id,status,forwarded_at")
+    .eq("status", "forwarded_to_organisation")
+    .select("id,status,resolved_at")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
