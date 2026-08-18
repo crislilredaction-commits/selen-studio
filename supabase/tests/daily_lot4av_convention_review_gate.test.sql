@@ -16,27 +16,25 @@ select has_trigger(
   'Daily conventions are protected by the registration review trigger'
 );
 
-select like(
-  pg_get_functiondef('public.daily_guard_convention_after_registration_review()'::regprocedure),
-  '%summary_validated%',
+select ok(
+  position('summary_validated' in pg_get_functiondef('public.daily_guard_convention_after_registration_review()'::regprocedure)) > 0,
   'Convention guard requires the Selen registration summary to be validated'
 );
 
-select like(
-  pg_get_functiondef('public.daily_guard_convention_after_registration_review()'::regprocedure),
-  '%prerequisites_validated%',
+select ok(
+  position('prerequisites_validated' in pg_get_functiondef('public.daily_guard_convention_after_registration_review()'::regprocedure)) > 0,
   'Convention guard checks prerequisites when the formation declares them'
 );
 
-select like(
-  pg_get_functiondef('public.daily_guard_convention_after_registration_review()'::regprocedure),
-  '%signature_signed_at is not null%',
+select ok(
+  position('signature_signed_at IS NOT NULL' in pg_get_functiondef('public.daily_guard_convention_after_registration_review()'::regprocedure)) > 0
+  or position('signature_signed_at is not null' in pg_get_functiondef('public.daily_guard_convention_after_registration_review()'::regprocedure)) > 0,
   'Convention guard requires a signed registration file'
 );
 
-select like(
-  pg_get_functiondef('public.daily_guard_convention_after_registration_review()'::regprocedure),
-  '%maintained%adapted%',
+select ok(
+  position('maintained' in pg_get_functiondef('public.daily_guard_convention_after_registration_review()'::regprocedure)) > 0
+  and position('adapted' in pg_get_functiondef('public.daily_guard_convention_after_registration_review()'::regprocedure)) > 0,
   'Convention guard only allows maintained or adapted review decisions'
 );
 
