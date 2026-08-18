@@ -78,7 +78,6 @@ $$;
 comment on function public.daily_guard_convention_after_registration_review() is
   'Blocks Daily convention creation until Selen has reviewed the registration, manually checked prerequisites when applicable, and a signed application exists for the recipient.';
 
-drop trigger if exists daily_conventions_require_registration_review on public.daily_conventions;
 create trigger daily_conventions_require_registration_review
 before insert on public.daily_conventions
 for each row
