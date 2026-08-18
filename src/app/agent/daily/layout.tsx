@@ -15,6 +15,7 @@ export default function DailyStudioLayout({ children }: { children: ReactNode })
         }}
       >
         <Link href="/agent/daily" style={linkStyle}>Pilotage Daily</Link>
+        <Link href="/agent/daily/actions" style={actionLinkStyle}>Actions à faire</Link>
         <Link href="/agent/daily/organisations" style={linkStyle}>Organismes</Link>
         <Link href="/agent/daily/onboarding-preparation" style={linkStyle}>Préparation onboarding</Link>
         <Link href="/agent/daily/trainers/annual-follow-up" style={linkStyle}>Suivi formateurs</Link>
@@ -39,4 +40,10 @@ const linkStyle = {
   borderRadius: 999,
   padding: "7px 11px",
   background: "var(--selen-bg2)",
+};
+
+const actionLinkStyle = {
+  ...linkStyle,
+  color: "var(--selen-gold2)",
+  borderColor: "color-mix(in srgb, var(--selen-gold) 45%, var(--selen-border))",
 };
