@@ -70,6 +70,7 @@ export function buildDailyConvocationDocumentHtml(data: DailyConvocationDocument
       .header { border: 1.5pt solid #d5d0c8; background: #fbfaf7; padding: 22pt; margin-bottom: 22pt; }
       .small { font-size: 9.5pt; color: #5d5a55; }
       .box { border: 1pt solid #d5d0c8; padding: 12pt; margin: 10pt 0; }
+      .welcome { page-break-before: always; }
       .footer { border-top: 1pt solid #c8c1b8; color: #5d5a55; font-size: 8.5pt; margin-top: 28pt; padding-top: 10pt; }
     </style>
   </head>
@@ -103,8 +104,35 @@ export function buildDailyConvocationDocumentHtml(data: DailyConvocationDocument
       <h2>Preparation</h2>
       <p>${displayMultiline(data.practicalNotes, "Merci de vous presenter avec les elements utiles a votre participation. Les informations complementaires seront transmises par l'organisme de formation si necessaire.")}</p>
 
+      <div class="welcome">
+        <h1>Livret d'accueil</h1>
+        <p>Bienvenue dans votre formation <strong>${display(data.formationTitle)}</strong>. Ce livret rassemble les reperes essentiels pour preparer et suivre votre parcours dans de bonnes conditions.</p>
+
+        <h2>Votre accueil</h2>
+        <p>La formation est organisee selon les informations de la convocation. En cas de difficulte d'acces, de retard ou d'empechement, contactez <strong>${display(data.organisationName)}</strong> a l'adresse ${display(data.organisationEmail)}.</p>
+
+        <h2>Deroulement de la formation</h2>
+        <p><strong>Dates et horaires :</strong><br />${displayMultiline(data.schedule)}</p>
+        <p><strong>Lieu ou acces distanciel :</strong><br />${displayMultiline(data.location)}</p>
+        <p><strong>Modalite :</strong> ${display(data.modality)}<br />${displayMultiline(data.modalityDetails)}</p>
+        <p>Les horaires, pauses et modalites pratiques sont precises par le formateur. Les supports necessaires sont remis ou rendus accessibles selon les modalites prevues.</p>
+
+        <h2>Formateur et accompagnement</h2>
+        <p><strong>Formateur :</strong> ${display(data.trainerNames, "A confirmer")}</p>
+        <p>Pour toute question administrative ou besoin lie au deroulement de la formation, l'organisme de formation reste votre interlocuteur.</p>
+
+        <h2>Accessibilite et besoins specifiques</h2>
+        <p>Tout besoin d'adaptation lie a une situation de handicap, une contrainte personnelle, materielle ou organisationnelle peut etre signale afin d'etudier les amenagements possibles dans le respect de la confidentialite.</p>
+
+        <h2>Presence, evaluation et suivi</h2>
+        <p>La participation, les evaluations prevues et les justificatifs de presence font partie du suivi de l'action de formation. Les demandes d'emargement et questionnaires utiles peuvent etre transmis par Selen Daily pendant ou apres la session.</p>
+
+        <h2>Reclamations et suggestions</h2>
+        <p>Un formulaire de reclamation et de suggestion est accessible depuis votre espace Selen Daily. Les demandes sont d'abord prises en charge par Selen avant transmission a l'organisme de formation lorsque cela est necessaire.</p>
+      </div>
+
       <div class="footer">
-        ${display(data.organisationName)} - ${display(data.organisationAddress)} - ${display(data.organisationEmail)}
+        ${display(data.organisationName)} - ${display(data.organisationAddress)} - ${display(data.organisationEmail)} - Convocation et livret d'accueil generes le ${escapeHtml(generatedDate)}
       </div>
     </div>
   </body>
