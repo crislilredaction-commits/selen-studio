@@ -173,19 +173,20 @@ export async function GET(req: Request) {
         continue;
       }
 
-      const { data: profile, error: profileError } = await admin
-        .from("profiles")
-        .select("email, full_name")
+      const { data: agent, error: agentError } = await admin
+        .from("agent_profiles")
+        .select("email")
         .eq("id", first.target_user_id)
+        .eq("is_active", true)
         .maybeSingle();
 
-      if (profileError || !profile?.email) {
+      if (agentError || !agent?.email) {
         results.push({
           dossierId: first.dossier_id,
           targetUserId: first.target_user_id,
           count: unreadNotifications.length,
           status: "skipped",
-          reason: profileError?.message ?? "agent_email_missing",
+          reason: agentError?.message ?? "agent_email_missing",
         });
         continue;
       }
@@ -202,7 +203,7 @@ export async function GET(req: Request) {
       });
 
       const email = await sendSelenEmail({
-        to: profile.email,
+        to: agent.email,
         subject:
           unreadNotifications.length === 1
             ? "Selen — message client non lu"
