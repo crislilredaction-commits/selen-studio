@@ -39,6 +39,16 @@ type RegistrationSession = {
   daily_formations: { title: string } | null;
 };
 
+type PendingAssessment = {
+  id: string;
+  session_id: string;
+  enrolment_id: string;
+  score: number | null;
+  score_max: number | null;
+  notes: string | null;
+  updated_at: string;
+};
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "medium",
@@ -78,7 +88,7 @@ export default async function DailyActionsPage() {
   const supabase = await createClient();
   const admin = createSupabaseAdminClient();
 
-  const [notificationsRes, feedbackRes, registrationsRes] = await Promise.all([
+  const [notificationsRes, feedbackRes, registrationsRes, assessmentsRes] = await Promise.all([
     supabase
       .from("notifications")
       .select(
@@ -110,10 +120,17 @@ export default async function DailyActionsPage() {
       .neq("status", "archived")
       .order("created_at", { ascending: false })
       .limit(30),
+    admin
+      .from("daily_learning_assessments")
+      .select("id,session_id,enrolment_id,score,score_max,notes,updated_at")
+      .eq("outcome", "pending")
+      .eq("method", "Selen quiz")
+      .order("updated_at", { ascending: false })
+      .limit(50),
   ]);
 
   const loadError =
-    notificationsRes.error ?? feedbackRes.error ?? registrationsRes.error;
+    notificationsRes.error ?? feedbackRes.error ?? registrationsRes.error ?? assessmentsRes.error;
 
   if (loadError) {
     return (
@@ -133,8 +150,9 @@ export default async function DailyActionsPage() {
         !row.resolved_at),
   );
   const registrations = (registrationsRes.data ?? []) as unknown as RegistrationSession[];
+  const assessments = (assessmentsRes.data ?? []) as PendingAssessment[];
 
-  const totalActions = notifications.length + feedback.length + registrations.length;
+  const totalActions = notifications.length + feedback.length + registrations.length + assessments.length;
   const unreadNotifications = notifications.filter((row) => !row.read_at).length;
   const escalatedNotifications = notifications.filter(
     (row) => row.escalation_at && new Date(row.escalation_at) <= new Date(),
@@ -161,7 +179,7 @@ export default async function DailyActionsPage() {
         <Stat label="Actions actives" value={totalActions} />
         <Stat label="Notifications non lues" value={unreadNotifications} />
         <Stat label="Actions escaladées" value={escalatedNotifications} />
-        <Stat label="Candidatures à contrôler" value={registrations.length} />
+        <Stat label="Évaluations à valider" value={assessments.length} />
       </section>
 
       <SelenCard style={styles.sectionCard}>
@@ -244,6 +262,37 @@ export default async function DailyActionsPage() {
       </SelenCard>
 
       <SelenCard style={styles.sectionCard}>
+        <SelenCardTitle>Évaluations Selen à valider</SelenCardTitle>
+        <p style={styles.helpText}>
+          Les questionnaires Selen transmis restent visibles tant que le résultat pédagogique est encore à valider. Le score automatique n’est qu’une aide à la relecture.
+        </p>
+        {assessments.length === 0 ? (
+          <p style={styles.empty}>Aucune évaluation Selen en attente de validation.</p>
+        ) : (
+          <div style={styles.list}>
+            {assessments.map((assessment) => (
+              <article key={assessment.id} style={styles.item}>
+                <div style={styles.itemHead}>
+                  <div style={styles.badges}>
+                    <SelenBadge variant="warn" dot>Validation humaine</SelenBadge>
+                    {assessment.score != null && assessment.score_max != null ? (
+                      <SelenBadge variant="info">{assessment.score}/{assessment.score_max}</SelenBadge>
+                    ) : null}
+                  </div>
+                  <span style={styles.date}>{formatDate(assessment.updated_at)}</span>
+                </div>
+                <h2 style={styles.itemTitle}>Questionnaire apprenant transmis</h2>
+                <p style={styles.itemText}>{assessment.notes ?? "Le résultat pédagogique doit encore être qualifié."}</p>
+                <Link href={`/agent/daily/session-dossiers/${assessment.session_id}`} style={styles.link}>
+                  Ouvrir le dossier de session →
+                </Link>
+              </article>
+            ))}
+          </div>
+        )}
+      </SelenCard>
+
+      <SelenCard style={styles.sectionCard}>
         <SelenCardTitle>Réclamations & suggestions</SelenCardTitle>
         <p style={styles.helpText}>
           Seules les étapes nécessitant réellement une action Selen sont
@@ -298,106 +347,25 @@ function Stat({ label, value }: { label: string; value: number }) {
 }
 
 const styles = {
-  page: {
-    maxWidth: 1180,
-    margin: "0 auto",
-    padding: "28px",
-    color: "var(--selen-text)",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 20,
-    marginBottom: 22,
-    flexWrap: "wrap" as const,
-  },
-  eyebrow: {
-    margin: 0,
-    fontFamily: "var(--font-display)",
-    fontSize: 9,
-    letterSpacing: "0.28em",
-    textTransform: "uppercase" as const,
-    color: "var(--selen-gold)",
-  },
-  title: {
-    margin: "8px 0 0",
-    fontFamily: "var(--font-display)",
-    fontSize: 30,
-    lineHeight: 1.15,
-  },
-  subtitle: {
-    margin: "10px 0 0",
-    maxWidth: 760,
-    color: "var(--selen-text2)",
-    fontSize: 14,
-    lineHeight: 1.65,
-  },
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
-    gap: 12,
-    marginBottom: 18,
-  },
-  stat: {
-    border: "1px solid var(--selen-border)",
-    background: "var(--selen-bg2)",
-    borderRadius: "var(--radius-md)",
-    padding: 14,
-    display: "grid",
-    gap: 8,
-  },
+  page: { maxWidth: 1180, margin: "0 auto", padding: "28px", color: "var(--selen-text)" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 22, flexWrap: "wrap" as const },
+  eyebrow: { margin: 0, fontFamily: "var(--font-display)", fontSize: 9, letterSpacing: "0.28em", textTransform: "uppercase" as const, color: "var(--selen-gold)" },
+  title: { margin: "8px 0 0", fontFamily: "var(--font-display)", fontSize: 30, lineHeight: 1.15 },
+  subtitle: { margin: "10px 0 0", maxWidth: 760, color: "var(--selen-text2)", fontSize: 14, lineHeight: 1.65 },
+  statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 18 },
+  stat: { border: "1px solid var(--selen-border)", background: "var(--selen-bg2)", borderRadius: "var(--radius-md)", padding: 14, display: "grid", gap: 8 },
   statLabel: { fontSize: 11, color: "var(--selen-text3)" },
-  statValue: {
-    fontFamily: "var(--font-display)",
-    fontSize: 25,
-    color: "var(--selen-gold2)",
-  },
+  statValue: { fontFamily: "var(--font-display)", fontSize: 25, color: "var(--selen-gold2)" },
   sectionCard: { marginBottom: 18 },
-  helpText: {
-    margin: "7px 0 14px",
-    color: "var(--selen-text2)",
-    fontSize: 12,
-    lineHeight: 1.6,
-  },
-  empty: {
-    margin: 0,
-    color: "var(--selen-text3)",
-    fontSize: 13,
-  },
+  helpText: { margin: "7px 0 14px", color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.6 },
+  empty: { margin: 0, color: "var(--selen-text3)", fontSize: 13 },
   list: { display: "grid", gap: 10 },
-  item: {
-    border: "1px solid var(--selen-border)",
-    background: "var(--selen-bg3)",
-    borderRadius: "var(--radius-md)",
-    padding: 14,
-  },
-  itemHead: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-    flexWrap: "wrap" as const,
-  },
+  item: { border: "1px solid var(--selen-border)", background: "var(--selen-bg3)", borderRadius: "var(--radius-md)", padding: 14 },
+  itemHead: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" as const },
   badges: { display: "flex", gap: 7, flexWrap: "wrap" as const },
   date: { fontSize: 11, color: "var(--selen-text3)" },
   itemTitle: { margin: "10px 0 5px", fontSize: 15, lineHeight: 1.4 },
-  itemText: {
-    margin: 0,
-    color: "var(--selen-text2)",
-    fontSize: 12,
-    lineHeight: 1.55,
-  },
-  link: {
-    display: "inline-block",
-    marginTop: 10,
-    color: "var(--selen-gold2)",
-    textDecoration: "none",
-    fontSize: 12,
-    fontWeight: 700,
-  },
-  error: {
-    color: "var(--selen-danger)",
-    fontSize: 14,
-  },
+  itemText: { margin: 0, color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.55 },
+  link: { display: "inline-block", marginTop: 10, color: "var(--selen-gold2)", textDecoration: "none", fontSize: 12, fontWeight: 700 },
+  error: { color: "var(--selen-danger)", fontSize: 14 },
 };

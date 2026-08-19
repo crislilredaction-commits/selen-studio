@@ -20,7 +20,7 @@ export async function GET() {
   const supabase = await createClient();
   const admin = createSupabaseAdminClient();
 
-  const [notificationsResult, feedbackResult, registrationsResult] =
+  const [notificationsResult, feedbackResult, registrationsResult, assessmentsResult] =
     await Promise.all([
       supabase
         .from("notifications")
@@ -40,10 +40,18 @@ export async function GET() {
         .select("id", { count: "exact", head: true })
         .in("registration_status", ["to_review", "summary_to_review"])
         .neq("status", "archived"),
+      admin
+        .from("daily_learning_assessments")
+        .select("id", { count: "exact", head: true })
+        .eq("outcome", "pending")
+        .eq("method", "Selen quiz"),
     ]);
 
   const firstError =
-    notificationsResult.error ?? feedbackResult.error ?? registrationsResult.error;
+    notificationsResult.error ??
+    feedbackResult.error ??
+    registrationsResult.error ??
+    assessmentsResult.error;
 
   if (firstError) {
     console.error("Erreur chargement résumé actions Daily:", firstError);
@@ -73,6 +81,12 @@ export async function GET() {
       key: "registrations",
       label: "Candidatures à contrôler",
       count: registrationsResult.count ?? 0,
+      href: "/agent/daily/actions",
+    },
+    {
+      key: "assessments",
+      label: "Évaluations à valider",
+      count: assessmentsResult.count ?? 0,
       href: "/agent/daily/actions",
     },
     {
