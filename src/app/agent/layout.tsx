@@ -1,3 +1,4 @@
+import AgentDailyActionBanner from "@/components/agent/AgentDailyActionBanner";
 import AgentSidebar from "@/components/layout/AgentSidebar";
 
 export default function AgentLayout({
@@ -25,6 +26,7 @@ export default function AgentLayout({
             "radial-gradient(circle at 72% 6%, rgba(245, 208, 138, 0.08), transparent 24%), transparent",
         }}
       >
+        <AgentDailyActionBanner />
         {children}
       </main>
     </div>
