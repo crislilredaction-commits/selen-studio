@@ -20,37 +20,47 @@ export async function GET() {
   const supabase = await createClient();
   const admin = createSupabaseAdminClient();
 
-  const [notificationsResult, feedbackResult, registrationsResult, assessmentsResult] =
-    await Promise.all([
-      supabase
-        .from("notifications")
-        .select("id", { count: "exact", head: true })
-        .like("source_kind", "daily_%")
-        .is("dismissed_at", null),
-      admin
-        .from("daily_stakeholder_feedback")
-        .select("id,status,organisation_response,resolved_at")
-        .in("status", [
-          "received",
-          "selen_reviewed",
-          "forwarded_to_organisation",
-        ]),
-      admin
-        .from("daily_sessions")
-        .select("id", { count: "exact", head: true })
-        .in("registration_status", ["to_review", "summary_to_review"])
-        .neq("status", "archived"),
-      admin
-        .from("daily_learning_assessments")
-        .select("id", { count: "exact", head: true })
-        .eq("outcome", "pending")
-        .eq("method", "Selen quiz"),
-    ]);
+  const [
+    notificationsResult,
+    feedbackResult,
+    registrationsResult,
+    publicApplicationsResult,
+    assessmentsResult,
+  ] = await Promise.all([
+    supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .like("source_kind", "daily_%")
+      .is("dismissed_at", null),
+    admin
+      .from("daily_stakeholder_feedback")
+      .select("id,status,organisation_response,resolved_at")
+      .in("status", [
+        "received",
+        "selen_reviewed",
+        "forwarded_to_organisation",
+      ]),
+    admin
+      .from("daily_sessions")
+      .select("id", { count: "exact", head: true })
+      .in("registration_status", ["to_review", "summary_to_review"])
+      .neq("status", "archived"),
+    admin
+      .from("daily_formation_registration_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "to_attach"),
+    admin
+      .from("daily_learning_assessments")
+      .select("id", { count: "exact", head: true })
+      .eq("outcome", "pending")
+      .eq("method", "Selen quiz"),
+  ]);
 
   const firstError =
     notificationsResult.error ??
     feedbackResult.error ??
     registrationsResult.error ??
+    publicApplicationsResult.error ??
     assessmentsResult.error;
 
   if (firstError) {
@@ -82,6 +92,12 @@ export async function GET() {
       label: "Candidatures à contrôler",
       count: registrationsResult.count ?? 0,
       href: "/agent/daily/actions",
+    },
+    {
+      key: "public_applications",
+      label: "Candidatures publiques à rattacher",
+      count: publicApplicationsResult.count ?? 0,
+      href: "/agent/daily/public-applications",
     },
     {
       key: "assessments",
