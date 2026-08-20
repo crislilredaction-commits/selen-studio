@@ -26,6 +26,7 @@ export async function GET() {
     registrationsResult,
     publicApplicationsResult,
     assessmentsResult,
+    followupsResult,
   ] = await Promise.all([
     supabase
       .from("notifications")
@@ -54,6 +55,11 @@ export async function GET() {
       .select("id", { count: "exact", head: true })
       .eq("outcome", "pending")
       .eq("method", "Selen quiz"),
+    admin
+      .from("daily_session_followup_entries")
+      .select("id", { count: "exact", head: true })
+      .neq("entry_type", "note")
+      .eq("status", "open"),
   ]);
 
   const firstError =
@@ -61,7 +67,8 @@ export async function GET() {
     feedbackResult.error ??
     registrationsResult.error ??
     publicApplicationsResult.error ??
-    assessmentsResult.error;
+    assessmentsResult.error ??
+    followupsResult.error;
 
   if (firstError) {
     console.error("Erreur chargement résumé actions Daily:", firstError);
@@ -103,6 +110,12 @@ export async function GET() {
       key: "assessments",
       label: "Évaluations à valider",
       count: assessmentsResult.count ?? 0,
+      href: "/agent/daily/actions",
+    },
+    {
+      key: "followups",
+      label: "Situations en session à suivre",
+      count: followupsResult.count ?? 0,
       href: "/agent/daily/actions",
     },
     {
