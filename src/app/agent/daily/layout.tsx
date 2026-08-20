@@ -19,6 +19,7 @@ export default function DailyStudioLayout({ children }: { children: ReactNode })
         <Link href="/agent/daily/organisations" style={linkStyle}>Organismes</Link>
         <Link href="/agent/daily/onboarding-preparation" style={linkStyle}>Préparation onboarding</Link>
         <Link href="/agent/daily/trainers/annual-follow-up" style={linkStyle}>Suivi formateurs</Link>
+        <Link href="/agent/daily/session-followup" style={linkStyle}>Suivi en session</Link>
         <Link href="/agent/daily/session-dossiers" style={linkStyle}>Dossiers de session</Link>
         <Link href="/agent/daily/learners" style={linkStyle}>Apprenants</Link>
         <Link href="/agent/daily/pretraining-documents" style={linkStyle}>Documents préformation</Link>
