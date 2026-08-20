@@ -219,6 +219,7 @@ export default async function DailyActionsPage() {
       <section style={styles.statsGrid}>
         <Stat label="Actions actives" value={totalActions} />
         <Stat label="Notifications non lues" value={unreadNotifications} />
+        <Stat label="Actions escaladées" value={escalatedNotifications} />
         <Stat label="Situations critiques" value={criticalFollowups.length} />
         <Stat label="Évaluations à valider" value={assessments.length} />
       </section>
