@@ -49,6 +49,19 @@ type PendingAssessment = {
   updated_at: string;
 };
 
+type OpenSessionFollowup = {
+  id: string;
+  session_id: string;
+  entry_type: "incident" | "adaptation" | string;
+  level: "info" | "attention" | "critical" | string;
+  summary: string;
+  occurred_at: string;
+  daily_sessions: {
+    internal_reference: string | null;
+    daily_formations: { title: string } | null;
+  } | null;
+};
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "medium",
@@ -88,7 +101,13 @@ export default async function DailyActionsPage() {
   const supabase = await createClient();
   const admin = createSupabaseAdminClient();
 
-  const [notificationsRes, feedbackRes, registrationsRes, assessmentsRes] = await Promise.all([
+  const [
+    notificationsRes,
+    feedbackRes,
+    registrationsRes,
+    assessmentsRes,
+    followupsRes,
+  ] = await Promise.all([
     supabase
       .from("notifications")
       .select(
@@ -127,15 +146,30 @@ export default async function DailyActionsPage() {
       .eq("method", "Selen quiz")
       .order("updated_at", { ascending: false })
       .limit(50),
+    admin
+      .from("daily_session_followup_entries")
+      .select(
+        "id,session_id,entry_type,level,summary,occurred_at,daily_sessions(internal_reference,daily_formations(title))",
+      )
+      .neq("entry_type", "note")
+      .eq("status", "open")
+      .order("occurred_at", { ascending: false })
+      .limit(50),
   ]);
 
   const loadError =
-    notificationsRes.error ?? feedbackRes.error ?? registrationsRes.error ?? assessmentsRes.error;
+    notificationsRes.error ??
+    feedbackRes.error ??
+    registrationsRes.error ??
+    assessmentsRes.error ??
+    followupsRes.error;
 
   if (loadError) {
     return (
       <main style={styles.page}>
-        <p style={styles.error}>Impossible de charger les actions Daily : {loadError.message}</p>
+        <p style={styles.error}>
+          Impossible de charger les actions Daily : {loadError.message}
+        </p>
       </main>
     );
   }
@@ -151,8 +185,15 @@ export default async function DailyActionsPage() {
   );
   const registrations = (registrationsRes.data ?? []) as unknown as RegistrationSession[];
   const assessments = (assessmentsRes.data ?? []) as PendingAssessment[];
+  const followups = (followupsRes.data ?? []) as unknown as OpenSessionFollowup[];
+  const criticalFollowups = followups.filter((row) => row.level === "critical");
 
-  const totalActions = notifications.length + feedback.length + registrations.length + assessments.length;
+  const totalActions =
+    notifications.length +
+    feedback.length +
+    registrations.length +
+    assessments.length +
+    followups.length;
   const unreadNotifications = notifications.filter((row) => !row.read_at).length;
   const escalatedNotifications = notifications.filter(
     (row) => row.escalation_at && new Date(row.escalation_at) <= new Date(),
@@ -179,6 +220,7 @@ export default async function DailyActionsPage() {
         <Stat label="Actions actives" value={totalActions} />
         <Stat label="Notifications non lues" value={unreadNotifications} />
         <Stat label="Actions escaladées" value={escalatedNotifications} />
+        <Stat label="Situations critiques" value={criticalFollowups.length} />
         <Stat label="Évaluations à valider" value={assessments.length} />
       </section>
 
@@ -225,6 +267,64 @@ export default async function DailyActionsPage() {
       </SelenCard>
 
       <SelenCard style={styles.sectionCard}>
+        <SelenCardTitle>Situations en session à suivre</SelenCardTitle>
+        <p style={styles.helpText}>
+          Incidents, cas particuliers et adaptations encore ouverts remontent ici.
+          Les notes libres restent consultables dans le suivi transverse mais ne
+          créent jamais de tâche agent.
+        </p>
+        {followups.length === 0 ? (
+          <p style={styles.empty}>Aucune situation opérationnelle ouverte.</p>
+        ) : (
+          <div style={styles.list}>
+            {followups.map((row) => {
+              const session = Array.isArray(row.daily_sessions)
+                ? row.daily_sessions[0]
+                : row.daily_sessions;
+              const formation = Array.isArray(session?.daily_formations)
+                ? session?.daily_formations[0]
+                : session?.daily_formations;
+              return (
+                <article key={row.id} style={styles.item}>
+                  <div style={styles.itemHead}>
+                    <div style={styles.badges}>
+                      <SelenBadge
+                        variant={row.level === "critical" ? "danger" : "warn"}
+                        dot
+                      >
+                        {row.level === "critical" ? "Critique" : "À suivre"}
+                      </SelenBadge>
+                      <SelenBadge variant="info">
+                        {row.entry_type === "adaptation"
+                          ? "Adaptation"
+                          : "Incident / cas particulier"}
+                      </SelenBadge>
+                    </div>
+                    <span style={styles.date}>{formatDate(row.occurred_at)}</span>
+                  </div>
+                  <h2 style={styles.itemTitle}>{row.summary}</h2>
+                  <p style={styles.itemText}>
+                    {formation?.title ?? session?.internal_reference ?? "Session Daily"}
+                  </p>
+                  <Link
+                    href={`/agent/daily/session-dossiers/${row.session_id}`}
+                    style={styles.link}
+                  >
+                    Ouvrir le dossier de session →
+                  </Link>
+                </article>
+              );
+            })}
+          </div>
+        )}
+        {followups.length > 0 ? (
+          <Link href="/agent/daily/session-followup" style={styles.link}>
+            Voir tout le suivi en session →
+          </Link>
+        ) : null}
+      </SelenCard>
+
+      <SelenCard style={styles.sectionCard}>
         <SelenCardTitle>Candidatures à contrôler</SelenCardTitle>
         <p style={styles.helpText}>
           Les dossiers restent ici tant qu’une revue ou une synthèse Selen est
@@ -264,7 +364,9 @@ export default async function DailyActionsPage() {
       <SelenCard style={styles.sectionCard}>
         <SelenCardTitle>Évaluations Selen à valider</SelenCardTitle>
         <p style={styles.helpText}>
-          Les questionnaires Selen transmis restent visibles tant que le résultat pédagogique est encore à valider. Le score automatique n’est qu’une aide à la relecture.
+          Les questionnaires Selen transmis restent visibles tant que le résultat
+          pédagogique est encore à valider. Le score automatique n’est qu’une aide
+          à la relecture.
         </p>
         {assessments.length === 0 ? (
           <p style={styles.empty}>Aucune évaluation Selen en attente de validation.</p>
@@ -274,16 +376,26 @@ export default async function DailyActionsPage() {
               <article key={assessment.id} style={styles.item}>
                 <div style={styles.itemHead}>
                   <div style={styles.badges}>
-                    <SelenBadge variant="warn" dot>Validation humaine</SelenBadge>
+                    <SelenBadge variant="warn" dot>
+                      Validation humaine
+                    </SelenBadge>
                     {assessment.score != null && assessment.score_max != null ? (
-                      <SelenBadge variant="info">{assessment.score}/{assessment.score_max}</SelenBadge>
+                      <SelenBadge variant="info">
+                        {assessment.score}/{assessment.score_max}
+                      </SelenBadge>
                     ) : null}
                   </div>
                   <span style={styles.date}>{formatDate(assessment.updated_at)}</span>
                 </div>
                 <h2 style={styles.itemTitle}>Questionnaire apprenant transmis</h2>
-                <p style={styles.itemText}>{assessment.notes ?? "Le résultat pédagogique doit encore être qualifié."}</p>
-                <Link href={`/agent/daily/session-dossiers/${assessment.session_id}`} style={styles.link}>
+                <p style={styles.itemText}>
+                  {assessment.notes ??
+                    "Le résultat pédagogique doit encore être qualifié."}
+                </p>
+                <Link
+                  href={`/agent/daily/session-dossiers/${assessment.session_id}`}
+                  style={styles.link}
+                >
                   Ouvrir le dossier de session →
                 </Link>
               </article>
@@ -295,9 +407,8 @@ export default async function DailyActionsPage() {
       <SelenCard style={styles.sectionCard}>
         <SelenCardTitle>Réclamations & suggestions</SelenCardTitle>
         <p style={styles.helpText}>
-          Seules les étapes nécessitant réellement une action Selen sont
-          affichées. Une demande transmise à l’OF reste silencieuse jusqu’à sa
-          réponse.
+          Seules les étapes nécessitant réellement une action Selen sont affichées.
+          Une demande transmise à l’OF reste silencieuse jusqu’à sa réponse.
         </p>
         {feedback.length === 0 ? (
           <p style={styles.empty}>Aucune réclamation ou suggestion à traiter.</p>
@@ -315,15 +426,15 @@ export default async function DailyActionsPage() {
                         ? "Réclamation"
                         : "Suggestion"}
                     </SelenBadge>
-                    <SelenBadge variant="warn">
-                      {feedbackActionLabel(row)}
-                    </SelenBadge>
+                    <SelenBadge variant="warn">{feedbackActionLabel(row)}</SelenBadge>
                   </div>
                   <span style={styles.date}>{formatDate(row.created_at)}</span>
                 </div>
                 <h2 style={styles.itemTitle}>{row.subject ?? "Demande sans objet"}</h2>
                 <p style={styles.itemText}>
-                  {[row.submitter_name, row.stakeholder_type].filter(Boolean).join(" · ")}
+                  {[row.submitter_name, row.stakeholder_type]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
                 <Link href="/agent/daily/stakeholder-feedback" style={styles.link}>
                   Ouvrir la file de traitement →
@@ -347,25 +458,99 @@ function Stat({ label, value }: { label: string; value: number }) {
 }
 
 const styles = {
-  page: { maxWidth: 1180, margin: "0 auto", padding: "28px", color: "var(--selen-text)" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 22, flexWrap: "wrap" as const },
-  eyebrow: { margin: 0, fontFamily: "var(--font-display)", fontSize: 9, letterSpacing: "0.28em", textTransform: "uppercase" as const, color: "var(--selen-gold)" },
-  title: { margin: "8px 0 0", fontFamily: "var(--font-display)", fontSize: 30, lineHeight: 1.15 },
-  subtitle: { margin: "10px 0 0", maxWidth: 760, color: "var(--selen-text2)", fontSize: 14, lineHeight: 1.65 },
-  statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 18 },
-  stat: { border: "1px solid var(--selen-border)", background: "var(--selen-bg2)", borderRadius: "var(--radius-md)", padding: 14, display: "grid", gap: 8 },
+  page: {
+    maxWidth: 1180,
+    margin: "0 auto",
+    padding: "28px",
+    color: "var(--selen-text)",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 20,
+    marginBottom: 22,
+    flexWrap: "wrap" as const,
+  },
+  eyebrow: {
+    margin: 0,
+    fontFamily: "var(--font-display)",
+    fontSize: 9,
+    letterSpacing: "0.28em",
+    textTransform: "uppercase" as const,
+    color: "var(--selen-gold)",
+  },
+  title: {
+    margin: "8px 0 0",
+    fontFamily: "var(--font-display)",
+    fontSize: 30,
+    lineHeight: 1.15,
+  },
+  subtitle: {
+    margin: "10px 0 0",
+    maxWidth: 760,
+    color: "var(--selen-text2)",
+    fontSize: 14,
+    lineHeight: 1.65,
+  },
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+    gap: 12,
+    marginBottom: 18,
+  },
+  stat: {
+    border: "1px solid var(--selen-border)",
+    background: "var(--selen-bg2)",
+    borderRadius: "var(--radius-md)",
+    padding: 14,
+    display: "grid",
+    gap: 8,
+  },
   statLabel: { fontSize: 11, color: "var(--selen-text3)" },
-  statValue: { fontFamily: "var(--font-display)", fontSize: 25, color: "var(--selen-gold2)" },
+  statValue: {
+    fontFamily: "var(--font-display)",
+    fontSize: 25,
+    color: "var(--selen-gold2)",
+  },
   sectionCard: { marginBottom: 18 },
-  helpText: { margin: "7px 0 14px", color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.6 },
+  helpText: {
+    margin: "7px 0 14px",
+    color: "var(--selen-text2)",
+    fontSize: 12,
+    lineHeight: 1.6,
+  },
   empty: { margin: 0, color: "var(--selen-text3)", fontSize: 13 },
   list: { display: "grid", gap: 10 },
-  item: { border: "1px solid var(--selen-border)", background: "var(--selen-bg3)", borderRadius: "var(--radius-md)", padding: 14 },
-  itemHead: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" as const },
+  item: {
+    border: "1px solid var(--selen-border)",
+    background: "var(--selen-bg3)",
+    borderRadius: "var(--radius-md)",
+    padding: 14,
+  },
+  itemHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    flexWrap: "wrap" as const,
+  },
   badges: { display: "flex", gap: 7, flexWrap: "wrap" as const },
   date: { fontSize: 11, color: "var(--selen-text3)" },
   itemTitle: { margin: "10px 0 5px", fontSize: 15, lineHeight: 1.4 },
-  itemText: { margin: 0, color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.55 },
-  link: { display: "inline-block", marginTop: 10, color: "var(--selen-gold2)", textDecoration: "none", fontSize: 12, fontWeight: 700 },
+  itemText: {
+    margin: 0,
+    color: "var(--selen-text2)",
+    fontSize: 12,
+    lineHeight: 1.55,
+  },
+  link: {
+    display: "inline-block",
+    marginTop: 10,
+    color: "var(--selen-gold2)",
+    textDecoration: "none",
+    fontSize: 12,
+    fontWeight: 700,
+  },
   error: { color: "var(--selen-danger)", fontSize: 14 },
 };
