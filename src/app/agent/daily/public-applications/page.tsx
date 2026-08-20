@@ -5,6 +5,7 @@ import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import PublicApplicationAttachAction from "./PublicApplicationAttachAction";
 
 type PublicApplication = {
   id: string;
@@ -121,9 +122,15 @@ export default async function PublicApplicationsPage() {
                 </p>
                 <p style={styles.itemText}>
                   {row.attached_session_id
-                    ? "Le prospect a sélectionné une session disponible. Selen doit contrôler le dossier avant de confirmer le rattachement."
-                    : "Aucune session n’était sélectionnable : l’organisme devra proposer ou créer une session après contrôle du dossier."}
+                    ? "Le prospect a sélectionné une session disponible. Selen peut confirmer le rattachement après contrôle du dossier ; la synthèse de la session repassera ensuite en revue avant toute convention."
+                    : "Aucune session n’était sélectionnable : l’organisme devra proposer ou créer une session avant que Selen puisse rattacher le dossier."}
                 </p>
+
+                {row.attached_session_id ? (
+                  <div style={styles.actionArea}>
+                    <PublicApplicationAttachAction requestId={row.id} />
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
@@ -196,6 +203,11 @@ const styles = {
   date: { color: "var(--selen-text3)", fontSize: 11 },
   itemTitle: { margin: 0, fontSize: 16, color: "var(--selen-text)" },
   itemText: { margin: 0, color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.55 },
+  actionArea: {
+    borderTop: "1px solid var(--selen-border)",
+    marginTop: 4,
+    paddingTop: 11,
+  },
   error: {
     border: "1px solid var(--selen-danger)",
     borderRadius: "var(--radius-md)",
