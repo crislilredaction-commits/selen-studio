@@ -81,8 +81,69 @@ create trigger daily_session_dossier_seed_quality_analysis_review
 after insert on public.daily_session_dossiers
 for each row execute function public.daily_seed_quality_analysis_review();
 
--- The database remains the final guard: a session cannot be closed before it has ended,
--- and the Selen quality-analysis review must be explicitly validated.
+-- Keep the historical direct-checklist guard aligned with the new closure rules so an
+-- older Studio screen cannot bypass the canonical RPC.
+create or replace function public.daily_guard_session_closure_review()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  session_end_date date;
+  quality_status text;
+  blocking_count integer;
+begin
+  if new.item_key <> 'selen_closure_review' then
+    return new;
+  end if;
+
+  if new.status = 'not_applicable' then
+    raise exception 'Selen closure review cannot be marked not applicable';
+  end if;
+
+  if new.status = 'validated' and old.status is distinct from 'validated' then
+    select s.end_date into session_end_date
+    from public.daily_sessions s
+    where s.id = new.session_id;
+
+    if session_end_date is null then
+      raise exception 'Session dossier cannot be closed: session end date is missing';
+    end if;
+
+    if (now() at time zone 'Europe/Paris')::date <= session_end_date then
+      raise exception 'Session dossier cannot be closed before the session has fully ended';
+    end if;
+
+    select i.status into quality_status
+    from public.daily_session_checklist_items i
+    where i.session_id = new.session_id
+      and i.item_key = 'quality_analysis_review';
+
+    if quality_status is distinct from 'validated' then
+      raise exception 'Session dossier cannot be closed: satisfaction and performance analyses are not validated';
+    end if;
+
+    select count(*) into blocking_count
+    from public.daily_session_checklist_items
+    where session_id = new.session_id
+      and item_key <> 'selen_closure_review'
+      and status not in ('validated', 'not_applicable');
+
+    if blocking_count > 0 then
+      raise exception 'Session dossier cannot be closed: % checklist item(s) remain incomplete', blocking_count;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function public.daily_guard_session_closure_review() from public, anon, authenticated;
+grant execute on function public.daily_guard_session_closure_review() to service_role;
+
+-- The canonical RPC carries the same guards: the training must be over and the
+-- satisfaction/performance analysis must have been explicitly reviewed by Selen.
 create or replace function public.daily_close_session_dossier(
   p_session_id uuid,
   p_note text default null,
