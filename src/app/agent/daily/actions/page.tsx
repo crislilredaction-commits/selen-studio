@@ -34,10 +34,10 @@ type FollowupRow = {
   status: string;
   occurred_at: string;
   daily_sessions: {
-    reference?: string | null;
+    internal_reference?: string | null;
     daily_formations?: { title?: string | null } | { title?: string | null }[] | null;
   } | {
-    reference?: string | null;
+    internal_reference?: string | null;
     daily_formations?: { title?: string | null } | { title?: string | null }[] | null;
   }[] | null;
 };
@@ -211,7 +211,7 @@ export default async function DailyAgentActionsPage() {
       .limit(100),
     admin
       .from("daily_session_followup_entries")
-      .select("id,session_id,level,summary,status,occurred_at,daily_sessions(reference,daily_formations(title))")
+      .select("id,session_id,level,summary,status,occurred_at,daily_sessions(internal_reference,daily_formations(title))")
       .neq("status", "resolved")
       .order("occurred_at", { ascending: true })
       .limit(100),
@@ -260,7 +260,7 @@ export default async function DailyAgentActionsPage() {
       return {
         id: `followup-${row.id}`,
         title: row.summary || "Situation de session à suivre",
-        detail: `${formation?.title || session?.reference || "Session Daily"} · Situation ${row.level === "critical" ? "critique" : "importante"} encore ouverte.`,
+        detail: `${formation?.title || session?.internal_reference || "Session Daily"} · Situation ${row.level === "critical" ? "critique" : "importante"} encore ouverte.`,
         href: `/agent/daily/sessions/${row.session_id}`,
         date: row.occurred_at,
         variant: row.level === "critical" ? ("danger" as BadgeVariant) : ("warn" as BadgeVariant),
