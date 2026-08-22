@@ -6,9 +6,15 @@ import {
   renderSelenEmailFromText,
 } from "@/lib/server/selenEmailLayout";
 import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
+import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireSupportAgent();
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const supabase = await createClient();
     const { dossierId, content, senderType } = await req.json();
 
