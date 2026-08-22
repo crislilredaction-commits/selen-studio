@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireLilOwner } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
@@ -18,17 +19,21 @@ type PendingNotification = {
   created_at: string;
 };
 
+function safeEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return (
+    leftBuffer.length === rightBuffer.length &&
+    timingSafeEqual(leftBuffer, rightBuffer)
+  );
+}
+
 async function authorize(req: Request) {
   const cronSecret = process.env.CRON_SECRET?.trim();
   const authHeader = req.headers.get("authorization") ?? "";
 
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+  if (cronSecret && safeEqual(authHeader, `Bearer ${cronSecret}`)) {
     return { ok: true as const, caller: "cron-secret" };
-  }
-
-  const userAgent = req.headers.get("user-agent") ?? "";
-  if (userAgent.includes("vercel-cron")) {
-    return { ok: true as const, caller: "vercel-cron" };
   }
 
   const auth = await requireLilOwner();
