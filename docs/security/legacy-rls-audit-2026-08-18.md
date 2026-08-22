@@ -47,6 +47,33 @@ Le socle Daily fournit déjà des fonctions d'autorisation cohérentes :
 
 Le durcissement historique doit **réutiliser ces fonctions** plutôt que créer une seconde logique d'identité.
 
+## Vérification des parcours NDA client réels
+
+La revue du code `selen-editions-site` confirme que les principaux parcours historiques NDA inspectés ne dépendent pas d'un accès direct du navigateur aux 10 tables historiques. Ils passent par des routes serveur qui :
+
+1. authentifient ou résolvent l'accès au dossier via `clientNdaAccess` ;
+2. vérifient le dossier et son organisation avant l'opération métier ;
+3. utilisent ensuite le client serveur `service_role`.
+
+Parcours contrôlés à ce stade :
+
+| Parcours | Table(s) historique(s) | Garde d'accès observée | Client DB utilisé |
+|---|---|---|---|
+| dépôt document client | `documents`, `dossiers` | `verifyClientNdaDossierAccess()` avant upload et INSERT, portée dossier + organisation issue de l'accès vérifié | serveur / service role |
+| téléchargement document | `documents` | accès NDA vérifié, document recherché par `id` + `dossier_id`, puis contrôle `is_visible_to_client` | serveur / service role |
+| liste des messages | `messages` | accès NDA vérifié puis lecture limitée à `dossier_id` | serveur / service role |
+| marquage messages lus | `messages` | accès NDA vérifié puis UPDATE limité à `dossier_id` + `sender_type = agent` | serveur / service role |
+| programme courant | `dossier_program_versions` | accès NDA vérifié puis lecture limitée à `dossier_id` + `version_type = client_sent` | serveur / service role |
+| décision programme | `dossier_program_versions` | résolution préalable de l'accès au dossier, version récupérée dans le dossier autorisé avant modification | serveur / service role |
+| suivi du dépôt NDA | `dossiers`, `nda_variables`, `messages`, `notifications` | résolution préalable de l'accès NDA, écritures bornées au dossier et à l'organisation vérifiés | serveur / service role |
+| état du dossier | `dossiers` et registres associés | résolution préalable de l'accès, lecture du dossier par `id` + `organisation_id` | serveur / service role |
+
+### Conséquence pour le durcissement
+
+Les constats ci-dessus réduisent fortement le besoin de conserver des privilèges DML directs `anon` / `authenticated` sur les tables historiques pour les parcours client NDA inspectés. La protection doit rester portée par les routes serveur existantes et leur vérification d'accès, tandis que RLS constitue une seconde barrière côté base.
+
+Cela **ne suffit pas encore** pour appliquer la migration : les routes Studio/agent historiques et les derniers endpoints NDA doivent également être confrontés au modèle cible afin de vérifier s'ils utilisent `service_role` ou un client utilisateur soumis à RLS.
+
 ## Matrice cible provisoire
 
 Cette matrice est volontairement conservative. Elle ne devient pas une migration de production tant que les appels historiques NDA n'ont pas été confrontés au code réel et aux tests de parcours.
