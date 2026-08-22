@@ -4,7 +4,7 @@ Date : 22 août 2026
 
 ## Objet
 
-Compléter le lot de préparation du durcissement RLS des dix tables historiques par un test transactionnel d’écriture, sans modification durable de Supabase Selen Studio.
+Compléter le lot de préparation du durcissement RLS des dix tables historiques par des tests transactionnels d’écriture, sans modification durable de Supabase Selen Studio.
 
 ## Méthode
 
@@ -15,16 +15,23 @@ Deux contextes JWT synthétiques ont ensuite été testés avec le rôle Postgre
 - un utilisateur authentifié non staff ;
 - un compte staff actif existant, sans exposer son identité dans ce document.
 
-Le test d’écriture utilise un dossier historique existant et effectue uniquement une mise à jour neutre (`updated_at = updated_at`). La transaction est ensuite annulée.
+Les tests d’écriture utilisent des lignes historiques existantes et effectuent uniquement des mises à jour neutres :
+
+- dossier : `updated_at = updated_at` ;
+- message : `content = content`.
+
+Chaque transaction est ensuite annulée.
 
 ## Résultats
 
-| Test | Lignes affectées | Résultat attendu |
-| --- | ---: | --- |
-| Non-staff authenticated | 0 | ✅ refus direct par RLS |
-| Staff actif | 1 | ✅ écriture directe autorisée |
+| Table | Contexte | Lignes affectées | Résultat attendu |
+| --- | --- | ---: | --- |
+| `dossiers` | Non-staff authenticated | 0 | ✅ refus direct par RLS |
+| `dossiers` | Staff actif | 1 | ✅ écriture directe autorisée |
+| `messages` | Non-staff authenticated | 0 | ✅ refus direct par RLS |
+| `messages` | Staff actif | 1 | ✅ écriture directe autorisée |
 
-Les règles `legacy_dossiers_staff_all` se comportent donc comme prévu pour l’écriture directe : un utilisateur authentifié ordinaire ne peut pas modifier un dossier historique, tandis qu’un agent Selen actif conserve l’accès nécessaire.
+Les règles `legacy_dossiers_staff_all` et `legacy_messages_staff_all` se comportent donc comme prévu pour l’écriture directe : un utilisateur authentifié ordinaire ne peut pas modifier les données historiques, tandis qu’un agent Selen actif conserve l’accès nécessaire.
 
 ## Incidents de harnais de test
 
@@ -37,7 +44,7 @@ Le harnais a été corrigé en utilisant un CTE `WITH changed AS (...)` puis en 
 
 ## Garantie de non-modification
 
-- transaction terminée par `ROLLBACK` ;
+- transactions terminées par `ROLLBACK` ;
 - aucune donnée métier persistée ;
 - aucune policy `legacy_*` persistée ;
 - aucun changement durable de privilège ou de RLS ;
@@ -47,7 +54,7 @@ Le harnais a été corrigé en utilisant un CTE `WITH changed AS (...)` puis en 
 
 Avant promotion en migration permanente :
 
-- tester au moins un parcours d’écriture staff sur une autre table métier sensible, notamment `messages` ou `documents` ;
 - vérifier les dernières routes Studio qui utilisent encore un client Supabase de session ;
 - contrôler les parcours NDA Vitrine essentiels via leurs API serveur ;
+- tester si nécessaire une écriture supplémentaire sur `documents` avant minimisation des grants ;
 - seulement ensuite promouvoir le brouillon en migration et exécuter les Security Advisors.
