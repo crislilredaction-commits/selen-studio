@@ -5,6 +5,7 @@ import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/agent/LogoutButton";
+import DailyActionSummarySection from "@/components/agent/DailyActionSummarySection";
 import { isOwnerLil } from "@/lib/ownerLil";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
@@ -778,6 +779,8 @@ export default async function AgentHomePage() {
           <LogoutButton />
         </div>
       </section>
+
+      <DailyActionSummarySection userId={staff.user_id} />
 
       <section
         style={{
