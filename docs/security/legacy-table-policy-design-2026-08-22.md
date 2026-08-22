@@ -2,75 +2,149 @@
 
 ## Objet
 
-Préparer le durcissement des 10 tables historiques exposées sans modifier encore la base de production. Ce lot s’appuie sur le modèle d’accès organisationnel déjà présent dans Daily afin d’éviter un second système d’autorisation.
+Préparer le durcissement des 10 tables historiques exposées sans modifier encore durablement la base de production. Le modèle a été resserré après inspection du parcours NDA Vitrine et tests transactionnels sur Supabase Selen Studio.
+
+## Constat déterminant sur le parcours NDA historique
+
+Le parcours NDA client principal ne dépend pas d’un accès PostgREST direct aux tables historiques :
+
+- la page client utilise le client Supabase navigateur pour vérifier la session Auth ;
+- les lectures et écritures métier passent par des routes serveur ;
+- les routes serveur utilisent `verifyClientNdaDossierAccess()` avant d’interroger les données ;
+- ce contrôle exige un utilisateur authentifié puis vérifie explicitement le dossier et son organisation ;
+- pour le parcours NDA historique, l’accès client est notamment validé par correspondance entre l’email authentifié et `organisations.email` ;
+- après cette autorisation applicative, les opérations métier utilisent le client Supabase service role ;
+- les documents visibles sont en outre recontrôlés côté serveur avant génération d’un lien Storage signé.
+
+La base contient actuellement 0 ligne active dans `organisation_memberships` alors que des dossiers historiques existent. Il serait donc incorrect de transformer rétroactivement ces parcours NDA en accès direct fondé sur les memberships sans migration fonctionnelle distincte.
+
+Conclusion V1 : **les clients NDA n’ont pas besoin d’un accès direct aux neuf tables métier historiques**. Leur voie d’accès reste les API serveur contrôlées existantes. RLS doit donc protéger ces tables contre tout accès direct non-staff, plutôt que reproduire dans PostgreSQL une logique historique déjà correctement bornée dans les routes serveur.
 
 ## Socle d’autorisation réutilisé
 
-Les contrôles directs sur Supabase Selen Studio confirment que le modèle moderne fournit déjà :
+Le modèle moderne Daily fournit notamment :
 
-- `has_active_organisation_membership(organisation_id)` pour vérifier l’appartenance active d’un utilisateur à une organisation ;
-- `has_organisation_role(organisation_id, role)` pour les rôles organisationnels ;
-- `has_organisation_permission_block(organisation_id, permission_block)` pour les permissions ciblées ;
-- `can_access_organisation(organisation_id)` pour la lecture organisationnelle incluant le personnel Selen ;
-- `daily_is_selen_staff()` pour les agents/admins Selen.
+- `has_active_organisation_membership(organisation_id)` ;
+- `has_organisation_role(organisation_id, role)` ;
+- `has_organisation_permission_block(organisation_id, permission_block)` ;
+- `can_access_organisation(organisation_id)` ;
+- `daily_is_selen_staff()`.
 
-Les policies modernes de `organisations`, `organisation_memberships`, `daily_documents`, `daily_formations`, `daily_sessions` et `daily_session_dossiers` utilisent déjà ces helpers. La future sécurisation historique doit donc reprendre ces primitives plutôt que l’email, `profiles.app_role` ou une nouvelle logique propriétaire.
+Ces helpers restent la référence pour Daily et les tables modernes. Pour les tables historiques de ce lot, `daily_is_selen_staff()` suffit au contrôle direct des accès métier, puisque les clients passent par les routes serveur et la service role après vérification applicative.
 
 ## Cible V1 par table
 
-| Table | Lecture client authentifié | Écriture client directe | Staff Selen | Cible V1 |
+| Table | Accès direct client authentifié | Écriture client directe | Staff Selen | Cible V1 |
 | --- | --- | --- | --- | --- |
-| `profiles` | uniquement son propre profil si un usage client historique est confirmé | non par défaut | oui | réduire au strict nécessaire ; privilégier les profils modernes |
-| `dossiers` | seulement les dossiers de son organisation active | non par défaut | oui | `organisation_id` + appartenance active |
+| `profiles` | lecture de son propre profil uniquement | non | oui | self-read minimal + staff |
+| `dossiers` | non | non | oui | staff direct / routes serveur client |
 | `dossier_assignments` | non | non | oui | staff uniquement |
-| `formations` | seulement son organisation si un parcours historique le nécessite encore | non par défaut | oui | `organisation_id` + appartenance active |
-| `documents` | seulement documents de son organisation/dossier et explicitement visibles côté client | non par défaut | oui | rattachement organisation + dossier ; éviter l’accès brut lorsque la route serveur suffit |
-| `nda_variables` | seulement son organisation/dossier si nécessaire au parcours NDA | non par défaut | oui | rattachement organisation strict ; sinon serveur uniquement |
-| `messages` | uniquement les messages de ses propres dossiers selon le sens client/agent | éviter l’écriture brute ; passer par route contrôlée | oui | policy dossier + routes applicatives gardées |
+| `formations` | non | non | oui | staff direct / serveur uniquement |
+| `documents` | non | non | oui | staff direct ; téléchargement client via route contrôlée et URL signée |
+| `nda_variables` | non | non | oui | staff direct ; NDA client via route serveur |
+| `messages` | non | non | oui | staff direct ; messagerie client via routes contrôlées |
 | `internal_messages` | jamais | jamais | oui | staff uniquement |
-| `program_ai_analyses` | pas d’accès brut ; seulement restitution filtrée par route dédiée si nécessaire | jamais | oui | staff/serveur uniquement |
-| `dossier_program_versions` | uniquement via le parcours NDA lié à un dossier appartenant à son organisation | non par défaut | oui | dossier + organisation, lecture minimale |
+| `program_ai_analyses` | jamais | jamais | oui | staff/serveur uniquement |
+| `dossier_program_versions` | non | non | oui | staff direct ; restitution client via route serveur |
 
 ## Grants minimaux visés
 
 La base présente actuellement des grants historiques très larges à `anon` et `authenticated`, incluant selon les tables `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES` et `TRIGGER`.
 
-La migration finale devra suivre deux étapes distinctes :
+La cible de ce lot est :
 
-1. activer RLS et poser les policies compatibles ;
-2. révoquer les privilèges inutiles, notamment `TRUNCATE`, `REFERENCES`, `TRIGGER` et les écritures directes non nécessaires.
+1. activer RLS sur les 10 tables ;
+2. retirer **tous** les privilèges directs de `anon` ;
+3. retirer immédiatement `TRUNCATE`, `REFERENCES` et `TRIGGER` à `authenticated` ;
+4. conserver temporairement les grants DML ordinaires de `authenticated` pour ne pas casser les anciens écrans Studio pendant la transition ;
+5. laisser RLS borner ces opérations aux comptes staff ;
+6. révoquer ensuite les grants DML réellement inutiles dans un lot de minimisation distinct, après inventaire complet des accès Studio.
 
-Aucun privilège `anon` ne doit être conservé sur ces tables historiques sauf preuve explicite d’un parcours public qui ne peut pas être servi par une route serveur/tokenisée. À ce stade, aucun besoin de ce type n’est retenu par défaut.
+Cette séquence évite de confondre deux protections différentes : les grants déterminent si PostgREST peut atteindre la table, RLS détermine quelles lignes et opérations sont permises une fois la table atteignable.
+
+## Policies V1 proposées
+
+### `profiles`
+
+Deux policies seulement :
+
+- `SELECT` sur son propre profil par correspondance email avec le JWT ;
+- `ALL` pour le staff Selen via `daily_is_selen_staff()`.
+
+### Neuf tables métier historiques
+
+Une policy `ALL TO authenticated` par table, toujours avec :
+
+- `USING (public.daily_is_selen_staff())` ;
+- `WITH CHECK (public.daily_is_selen_staff())`.
+
+Tables concernées :
+
+- `dossiers` ;
+- `dossier_assignments` ;
+- `formations` ;
+- `documents` ;
+- `nda_variables` ;
+- `messages` ;
+- `internal_messages` ;
+- `program_ai_analyses` ;
+- `dossier_program_versions`.
+
+Aucune policy `anon` n’est créée.
+
+## Validation transactionnelle déjà réalisée
+
+Le brouillon strict a été exécuté dans `BEGIN ... ROLLBACK` uniquement.
+
+Résultat structurel pendant la transaction :
+
+- 10 / 10 tables avec RLS activé ;
+- 11 policies créées ;
+- 0 privilège `anon` ;
+- 0 privilège `TRUNCATE`, `REFERENCES` ou `TRIGGER` pour `authenticated`.
+
+Test avec claims synthétiques `authenticated` non-staff :
+
+- 0 dossier visible ;
+- 0 document visible ;
+- 0 message visible ;
+- 0 variable NDA visible ;
+- 0 version de programme visible ;
+- 0 profil visible.
+
+Test avec un compte staff actif existant :
+
+- `daily_is_selen_staff()` retourne `true` ;
+- les dossiers, documents et messages historiques restent visibles.
+
+Après rollback, les 10 tables sont revenues à leur état initial : RLS désactivé, aucune policy `legacy_*` persistée et grants historiques restaurés.
 
 ## Règles de conception
 
-- Les policies client ciblent `authenticated`, jamais `anon` par défaut.
-- `TO authenticated` seul n’est jamais considéré comme une autorisation suffisante : il doit être associé à l’appartenance organisationnelle/dossier.
-- Les policies `UPDATE` doivent définir à la fois `USING` et `WITH CHECK`.
-- Les opérations staff réutilisent `daily_is_selen_staff()` ou restent derrière les routes serveur déjà protégées.
-- Les tables sensibles sans besoin de lecture directe client (`internal_messages`, `program_ai_analyses`, `dossier_assignments`) restent staff/serveur uniquement.
-- Les routes NDA client existantes restent la voie préférée lorsque leur filtrage serveur est plus précis qu’une exposition PostgREST directe.
-- Aucune policy ne doit dépendre de `raw_user_meta_data`.
+- Aucune policy n’utilise `raw_user_meta_data`.
+- `TO authenticated` seul n’est jamais considéré comme une autorisation.
+- Les écritures staff utilisent toujours `USING` **et** `WITH CHECK`.
+- Les clients NDA utilisent les API serveur vérifiées, pas l’accès direct aux tables historiques.
+- La service role reste exclusivement côté serveur.
+- Les liens Storage client sont signés côté serveur après contrôle d’accès et vérification de visibilité du document.
+- Aucun besoin direct `anon` n’est retenu sur ces dix tables.
 
 ## Dépendances observées
 
-Plusieurs fonctions SQL `SECURITY DEFINER` ou triggers référencent directement ou indirectement des objets historiques. Elles devront être incluses dans la recette de non-régression, mais ne justifient pas de conserver les grants publics : une fonction correctement autorisée peut continuer à opérer côté serveur indépendamment des policies utilisateur.
+Plusieurs fonctions SQL, triggers et anciens écrans Studio référencent directement ou indirectement des objets historiques. Ils doivent être inclus dans la recette de non-régression, mais ne justifient pas de conserver les grants publics non bornés.
 
-Le Security Advisor signale également d’autres sujets (vue `security_definer`, fonctions exécutables, `search_path`, etc.). Ils sont hors périmètre de ce lot et doivent rester séparés afin de ne pas transformer le durcissement des 10 tables en migration fourre-tout.
+Le Security Advisor signale également d’autres sujets distincts (vues, fonctions privilégiées, `search_path`, etc.). Ils restent hors périmètre pour éviter une migration de sécurité fourre-tout impossible à diagnostiquer proprement en cas de régression.
 
-## Séquence de test avant application
+## Séquence restante avant application
 
-1. Capturer l’état des policies, grants et volumes des 10 tables.
-2. Tester le parcours agent actuel sur les routes déjà protégées.
-3. Tester un client authentifié appartenant à l’organisation A : lecture autorisée uniquement sur A.
-4. Tester le même client sur une organisation B : zéro ligne / accès refusé selon le chemin.
-5. Tester un utilisateur authentifié sans membership actif : aucun accès historique.
-6. Tester un appel `anon` : aucun accès direct aux 10 tables.
-7. Tester les parcours NDA client qui consomment encore les données historiques via les routes dédiées.
-8. Tester les messages, documents, versions de programme et variables NDA avec données appartenant à deux organisations distinctes.
-9. Tester les écritures qui doivent rester serveur-only.
-10. Rejouer les Security Advisors après migration et vérifier qu’aucune nouvelle alerte critique n’est créée.
+1. Vérifier les anciens écrans Studio encore basés sur un client Supabase lié à la session.
+2. Compléter la cartographie des accès directs éventuels côté Vitrine hors parcours NDA principal.
+3. Tester les écritures staff nécessaires avec RLS actif dans une transaction annulée.
+4. Rejouer les routes NDA client essentielles sur une preview compatible.
+5. Promouvoir seulement alors le brouillon sous `supabase/migrations`.
+6. Appliquer la migration au checkpoint sécurité autorisé.
+7. Relancer les Security Advisors et les tests de non-régression après application.
 
 ## Décision de migration
 
-Ce document ne déclenche aucune modification distante. La prochaine étape est de construire le SQL de migration et un jeu de tests transactionnels/rollback. L’application sur Supabase production ne doit intervenir qu’après validation technique de ces tests et confirmation que les parcours NDA historiques ne dépendent plus de grants publics non bornés.
+Ce document et le brouillon SQL ne déclenchent encore aucune modification durable. L’application permanente reste volontairement bloquée jusqu’à la fin des tests de compatibilité Studio et NDA.
