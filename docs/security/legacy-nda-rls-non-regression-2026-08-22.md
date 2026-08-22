@@ -54,6 +54,20 @@ La route :
 
 Là encore, aucune écriture métier ne repose sur les grants directs du rôle `authenticated`.
 
+### `POST /api/client/nda/refusal-letter`
+
+La route :
+
+1. exige le fichier et le `dossierId` ;
+2. appelle `verifyClientNdaDossierAccess` avant l’upload ou toute écriture ;
+3. dépose le courrier dans le bucket Storage `documents` via le client admin ;
+4. crée la ligne `documents` via le client admin ;
+5. crée le message système et la notification agent ;
+6. met à jour `nda_variables` avec le statut `refusal_received` ;
+7. journalise explicitement le mode assistance agent lorsqu’il est utilisé.
+
+Cette route confirme donc aussi que les écritures sur `documents`, `messages` et `nda_variables` ne dépendent pas des grants directs `authenticated` sur les tables historiques.
+
 ## Conclusion pour le brouillon RLS
 
 La cible actuelle reste cohérente :
@@ -66,6 +80,6 @@ La cible actuelle reste cohérente :
 
 ## Point encore à vérifier avant migration permanente
 
-Ce contrôle couvre le garde commun et deux routes NDA critiques d’écriture. Avant promotion du brouillon en migration permanente, il reste à relire la route de lettre de refus et les éventuels anciens écrans Vitrine/Studio qui utiliseraient encore un client Supabase de session directement sur les tables historiques.
+Le garde commun et les trois routes NDA critiques d’écriture actuellement présentes sous `app/api/client/nda` ont été relus. Avant promotion du brouillon en migration permanente, il reste à contrôler les éventuels anciens écrans Vitrine/Studio qui utiliseraient encore un client Supabase de session directement sur les tables historiques, puis à effectuer la dernière revue des routes de lecture et de messagerie historiques déjà durcies côté Studio.
 
 Aucune migration n’est appliquée par ce document et aucune donnée réelle n’est modifiée.
