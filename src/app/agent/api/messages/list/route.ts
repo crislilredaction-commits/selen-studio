@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
 export async function GET(req: Request) {
   try {
+    const auth = await requireSupportAgent();
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const { searchParams } = new URL(req.url);
     const dossierId = searchParams.get("dossierId");
 
