@@ -21,7 +21,8 @@ Les données métier du dossier ne sont pas chargées directement depuis `dossie
 - `GET /api/client/dossier/state` ;
 - `POST /api/client/dossier/step-1` ;
 - `POST /api/client/dossier/step-2` ;
-- routes d'upload du dossier ;
+- `POST /api/client/upload` ;
+- `POST /api/client/dossier/final-upload` ;
 - `GET /api/client/program/latest` ;
 - routes NDA de dépôt officiel, documents finaux et refus DREETS.
 
@@ -76,6 +77,41 @@ Ce modèle est compatible avec une suppression des accès directs `anon` et avec
 - lit ensuite les données NDA via le client admin ;
 - confirme que le chargement principal du dossier client reste côté serveur privilégié après contrôle d'accès.
 
+### `POST /api/client/dossier/step-1`
+
+- utilise `getAdminSupabase()` ;
+- appelle `verifyClientNdaDossierAccess()` avant toute modification ;
+- met à jour `organisations`, `nda_variables` et éventuellement le statut de `dossiers` avec le client admin ;
+- aucune écriture navigateur directe sur les tables historiques.
+
+### `POST /api/client/dossier/step-2`
+
+- utilise `getAdminSupabase()` ;
+- appelle `verifyClientNdaDossierAccess()` avant toute lecture/écriture ;
+- lit puis met à jour `nda_variables` côté serveur ;
+- aucune dépendance identifiée à une policy client directe.
+
+### `POST /api/client/upload`
+
+- utilise `getAdminSupabase()` ;
+- appelle `verifyClientNdaDossierAccess()` avant l'upload ;
+- écrit dans Storage puis dans `documents` avec le client admin ;
+- aucune écriture navigateur directe sur `documents`.
+
+### `POST /api/client/dossier/final-upload`
+
+- utilise `getAdminSupabase()` ;
+- appelle `verifyClientNdaDossierAccess()` avant l'upload ;
+- écrit dans Storage puis dans `documents` avec le client admin ;
+- aucune dépendance identifiée à une policy client directe.
+
+### `GET /api/client/program/latest`
+
+- utilise `getAdminSupabase()` ;
+- appelle `verifyClientNdaDossierAccess()` avant la lecture ;
+- lit `dossier_program_versions` avec le client admin ;
+- confirme que la lecture du programme client ne nécessite pas de SELECT direct `authenticated` sur cette table.
+
 ## Conclusion provisoire
 
 Le parcours NDA client principal inspecté confirme le modèle retenu dans le brouillon RLS :
@@ -88,8 +124,7 @@ Le parcours NDA client principal inspecté confirme le modèle retenu dans le br
 
 ## Vérifications restant à faire avant migration permanente
 
-- vérifier les routes `step-1`, `step-2`, upload initial/final et programme pour confirmer qu'elles suivent toutes le même socle ;
-- vérifier les anciens composants de messagerie client pour exclure un accès direct à `messages` ;
+- vérifier les anciens composants/routes de messagerie client pour exclure un accès direct à `messages` ;
 - tester les écritures Studio staff avec le brouillon RLS dans une transaction avec rollback ;
 - tester au moins un parcours NDA complet en conditions de session authentifiée ;
 - relancer les Security Advisors après application permanente seulement.
