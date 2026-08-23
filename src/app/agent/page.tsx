@@ -7,6 +7,10 @@ import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/agent/LogoutButton";
 import DailyActionSummarySection from "@/components/agent/DailyActionSummarySection";
 import { isOwnerLil } from "@/lib/ownerLil";
+import {
+  getDailyActionSummary,
+  type DailyActionSummary,
+} from "@/lib/server/dailyActionSummary";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 type StaffRole = "agent" | "admin";
@@ -96,6 +100,7 @@ type DashboardData = {
   supportTickets: DashboardItem[];
   refundRequests: DashboardItem[];
   actionDossiers: DashboardItem[];
+  actionDossiersCount: number;
   auditBlancItems: DashboardItem[];
   unassignedItems: DashboardItem[];
   unreadMessagesCount: number;
@@ -291,6 +296,32 @@ function buildSupportTicketItem(ticket: SupportTicketRow): DashboardItem {
     ].join(" · "),
     href: `/agent/support/${ticket.id}`,
     date: supportActivityDate(ticket),
+  };
+}
+
+function buildDailyActionItem(summary: DailyActionSummary): DashboardItem | null {
+  if (summary.total <= 0) return null;
+
+  const details = [
+    summary.candidatures > 0
+      ? `${summary.candidatures} candidature${summary.candidatures > 1 ? "s" : ""}`
+      : null,
+    summary.feedback > 0
+      ? `${summary.feedback} réclamation${summary.feedback > 1 ? "s / suggestions" : " / suggestion"}`
+      : null,
+    summary.unreadMessages > 0
+      ? `${summary.unreadMessages} message${summary.unreadMessages > 1 ? "s" : ""}`
+      : null,
+    summary.sensitiveFollowups > 0
+      ? `${summary.sensitiveFollowups} situation${summary.sensitiveFollowups > 1 ? "s sensibles" : " sensible"}`
+      : null,
+  ].filter(Boolean) as string[];
+
+  return {
+    id: "daily-actions-summary",
+    title: `Daily · ${summary.total} action${summary.total > 1 ? "s" : ""} à traiter`,
+    subtitle: details.join(" · "),
+    href: summary.href,
   };
 }
 
@@ -570,7 +601,24 @@ async function getDashboardData(
     );
   }
 
-  const actionDossiers = uniqueItems([
+  let dailyActionSummary: DailyActionSummary | null = null;
+  if (staff.user_id) {
+    try {
+      dailyActionSummary = await getDailyActionSummary(staff.user_id);
+    } catch (error) {
+      const readError = error as { code?: string; message?: string };
+      console.error("[agent-dashboard] Daily action summary read failed", {
+        code: readError.code,
+        message: readError.message,
+      });
+    }
+  }
+
+  const dailyActionItem = dailyActionSummary
+    ? buildDailyActionItem(dailyActionSummary)
+    : null;
+
+  const legacyActionDossiers = uniqueItems([
     ...unreadMessageDossiers,
     ...relanceDossiers.filter(
       (item) =>
@@ -581,6 +629,13 @@ async function getDashboardData(
         ),
     ),
   ]);
+
+  const actionDossiers = uniqueItems([
+    ...(dailyActionItem ? [dailyActionItem] : []),
+    ...legacyActionDossiers,
+  ]);
+  const actionDossiersCount =
+    legacyActionDossiers.length + (dailyActionSummary?.total ?? 0);
 
   const { data: allAssignmentData } = await supabase
     .from("dossier_assignments")
@@ -668,6 +723,7 @@ async function getDashboardData(
     supportTickets: supportTickets.slice(0, 6),
     refundRequests,
     actionDossiers: actionDossiers.slice(0, 8),
+    actionDossiersCount,
     auditBlancItems,
     unassignedItems: [...unassignedDossiers, ...unassignedAudits].slice(0, 8),
     unreadMessagesCount: activeUnreadMessagesCount,
@@ -803,7 +859,7 @@ export default async function AgentHomePage() {
         <TaskCard
           icon="⚡"
           title="Dossiers à traiter"
-          count={dashboard.actionDossiers.length}
+          count={dashboard.actionDossiersCount}
           emptyText="Aucune action immédiate détectée."
           items={dashboard.actionDossiers}
         />
