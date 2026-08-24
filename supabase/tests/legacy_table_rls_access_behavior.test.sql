@@ -23,6 +23,7 @@ insert into legacy_rls_expected_counts(table_name, row_count) values
   ('internal_messages', (select count(*) from public.internal_messages)),
   ('program_ai_analyses', (select count(*) from public.program_ai_analyses)),
   ('dossier_program_versions', (select count(*) from public.dossier_program_versions));
+grant select on legacy_rls_expected_counts to authenticated;
 
 -- 1-10: an authenticated user who is not Selen staff must not see any direct
 -- business-table rows. profiles is checked separately because self-read is an
@@ -63,6 +64,7 @@ where ap.is_active = true
   and (ap.user_id is not null or ap.email is not null)
 order by case when ap.user_id is not null then 0 else 1 end, ap.created_at
 limit 1;
+grant select on legacy_rls_test_staff to authenticated;
 
 select ok((select count(*) = 1 from legacy_rls_test_staff), 'an active staff identity is available for RLS verification');
 select set_config(
