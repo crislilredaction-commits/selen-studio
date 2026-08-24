@@ -4,50 +4,89 @@ Date : 23 août 2026
 
 ## Objet
 
-Compléter les tests du brouillon `legacy-table-rls-hardening-draft.sql` par des contrôles d'écriture directs sous rôle `authenticated`, sans modifier durablement Supabase.
+Compléter les tests du brouillon `legacy-table-rls-hardening-draft.sql` par des contrôles de lecture et d'écriture directs sous rôle `authenticated` sur les dix tables historiques, sans modifier durablement Supabase.
 
 ## Méthode
 
-Les contrôles ont été exécutés directement sur le projet Supabase Selen Studio à l'intérieur de transactions `BEGIN ... ROLLBACK`.
+Les contrôles ont été exécutés directement sur le projet Supabase Selen Studio à l'intérieur d'une transaction unique `BEGIN ... ROLLBACK`.
 
-Le test active temporairement RLS sur `dossiers` et `messages`, installe les policies staff-only du brouillon, simule successivement :
+Le test :
 
-- un compte staff actif existant, via des claims synthétiques correspondant à un profil staff déjà présent ;
-- un utilisateur authentifié non staff avec un UUID et une adresse de test inexistants.
+- active temporairement RLS sur les dix tables historiques ;
+- applique les policies du brouillon ;
+- révoque temporairement les privilèges `anon` et les privilèges dangereux `TRUNCATE`, `REFERENCES` et `TRIGGER` de `authenticated` ;
+- simule un compte staff actif existant via des claims synthétiques correspondant à `agent_profiles` ;
+- simule ensuite un utilisateur authentifié non staff avec un UUID et une adresse de test inexistants ;
+- mesure les lignes visibles ;
+- tente une mise à jour neutre `id = id` sur au plus une ligne de chaque table ;
+- annule intégralement la transaction.
 
-Les écritures testées sont des mises à jour neutres (`updated_at = updated_at` et `content = content`) sur une ligne existante. Elles sont entièrement annulées par `ROLLBACK`.
+Les mises à jour sont neutres et entièrement annulées par `ROLLBACK`.
+
+## État des tables au moment du test
+
+| Table | Lignes réelles |
+| --- | ---: |
+| `profiles` | 0 |
+| `dossiers` | 5 |
+| `dossier_assignments` | 2 |
+| `formations` | 0 |
+| `documents` | 16 |
+| `nda_variables` | 2 |
+| `messages` | 3 |
+| `internal_messages` | 6 |
+| `program_ai_analyses` | 5 |
+| `dossier_program_versions` | 5 |
 
 ## Résultats staff actif
 
-- `daily_is_selen_staff()` : `true` ;
-- dossiers visibles : 5 ;
-- messages visibles : 3 ;
-- mise à jour directe d'un dossier : 1 ligne autorisée ;
-- mise à jour directe d'un message : 1 ligne autorisée.
+`daily_is_selen_staff()` retourne `true`.
 
-Le rôle staff conserve donc les écritures attendues sous RLS.
+Pour les huit tables contenant des lignes réelles :
+
+- toutes les lignes existantes restent visibles ;
+- une mise à jour neutre sur une ligne est autorisée.
+
+Résultats observés :
+
+| Table | Lignes visibles | Lignes mises à jour |
+| --- | ---: | ---: |
+| `dossiers` | 5 | 1 |
+| `dossier_assignments` | 2 | 1 |
+| `documents` | 16 | 1 |
+| `nda_variables` | 2 | 1 |
+| `messages` | 3 | 1 |
+| `internal_messages` | 6 | 1 |
+| `program_ai_analyses` | 5 | 1 |
+| `dossier_program_versions` | 5 | 1 |
+
+`profiles` et `formations` contiennent actuellement 0 ligne ; leur visibilité et leur mise à jour restent donc à 0 pendant ce test, sans signaler un refus de policy.
 
 ## Résultats authenticated non staff
 
-- `daily_is_selen_staff()` : `false` ;
-- dossiers visibles : 0 ;
-- messages visibles : 0 ;
-- mise à jour directe d'un dossier : 0 ligne ;
-- mise à jour directe d'un message : 0 ligne.
+`daily_is_selen_staff()` retourne `false`.
 
-Le rôle authentifié non staff ne peut ni lire ni modifier directement ces données historiques.
+Pour les dix tables :
+
+- 0 ligne visible ;
+- 0 ligne mise à jour.
+
+Cela confirme que les policies staff-only du brouillon bloquent les lectures et mises à jour directes des données historiques pour un utilisateur authentifié non staff.
 
 ## Contrôle de rollback
 
-Un premier essai de test utilisant une table temporaire a échoué sur un privilège d'insertion du rôle `authenticated`. La transaction a été abandonnée, puis l'état réel a été contrôlé avant reprise : les 10 tables historiques avaient toujours RLS désactivé, donc aucune modification durable n'avait été conservée.
+Après `ROLLBACK`, un contrôle direct a confirmé :
 
-Les deux tests suivants ont utilisé uniquement des CTE et des mises à jour neutres dans des transactions explicitement annulées.
+- RLS désactivé sur 10/10 tables, comme avant le test ;
+- 0 policy `legacy_*` persistée sur les dix tables ;
+- aucune modification permanente de privilège ;
+- aucune donnée métier modifiée.
 
-## Compatibilité applicative inspectée
+## Compatibilité applicative déjà inspectée
 
 La route Studio `src/app/agent/api/documents/review-status/route.ts` vérifie `requireStudioAgent()` puis utilise `createSupabaseAdminClient()` pour les lectures/écritures historiques. La route `src/app/agent/api/internal-messages/list/route.ts` suit également le même modèle : garde agent explicite puis client serveur admin.
 
-Cela reste compatible avec la cible RLS staff-only et avec les parcours serveur utilisant la service role.
+Les parcours NDA Vitrine inspectés passent eux aussi par des routes serveur qui vérifient le dossier / l'organisation avant d'utiliser la service role. Ce modèle reste compatible avec la cible RLS staff-only.
 
 ## État du gate de promotion
 
@@ -55,18 +94,19 @@ Validé :
 
 - brouillon SQL exécutable en transaction ;
 - RLS et policies créables sans erreur ;
-- aucun privilège anon pendant le test complet précédent ;
-- aucun privilège dangereux authenticated pendant le test complet précédent ;
-- lectures non-staff refusées ;
-- lectures staff autorisées ;
-- mises à jour staff autorisées sur `dossiers` et `messages` ;
-- mises à jour non-staff refusées sur `dossiers` et `messages` ;
-- rollback contrôlé.
+- aucun privilège `anon` pendant le test ;
+- aucun privilège dangereux `authenticated` pendant le test ;
+- lectures non-staff refusées sur les dix tables ;
+- lectures staff autorisées sur toutes les tables contenant des données ;
+- mises à jour staff autorisées sur les huit tables contenant des données ;
+- mises à jour non-staff refusées sur les dix tables ;
+- rollback complet contrôlé.
 
 Reste à vérifier avant promotion en migration :
 
-- les écritures Studio sur les autres tables historiques ;
+- les derniers accès directs éventuellement encore présents côté Studio/Vitrine ;
 - les routes NDA client essentielles de bout en bout avec le modèle service-role après contrôle d'accès ;
-- les derniers accès directs éventuellement encore présents côté Studio/Vitrine.
+- les cas d'insertion/suppression historiques réellement utilisés, s'il en subsiste, afin de confirmer qu'ils passent bien par les routes serveur contrôlées ;
+- le comportement de `profiles` et `formations` lorsqu'elles contiendront de nouveau des lignes, notamment la self-read minimale de `profiles`.
 
 Aucune migration permanente n'est appliquée dans ce lot.
