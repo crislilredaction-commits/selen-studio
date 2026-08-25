@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
@@ -59,7 +60,7 @@ function agentLabel(assignment?: AssignmentRow) {
 }
 
 function isAttentionStatus(status: string) {
-  return ["todo", "to_review", "blocked"].includes(status);
+  return ["to_review", "blocked"].includes(status);
 }
 
 function isCompletedStatus(status: string) {
@@ -80,24 +81,52 @@ export default async function DailyOrganisationsPage() {
   }
 
   const admin = createSupabaseAdminClient();
+
+  let dailyOrganisationIds: string[];
+  try {
+    dailyOrganisationIds = await getActiveDailyOrganisationIds();
+  } catch (error) {
+    return (
+      <main style={s.page}>
+        <p style={s.error}>
+          Erreur Daily : {error instanceof Error ? error.message : "périmètre Daily indisponible"}
+        </p>
+      </main>
+    );
+  }
+
+  // `.in()` doit toujours recevoir une liste non vide. Cet UUID impossible sert
+  // uniquement à produire zéro résultat quand aucun abonnement Daily n'est actif.
+  const scopeIds = dailyOrganisationIds.length
+    ? dailyOrganisationIds
+    : ["00000000-0000-0000-0000-000000000000"];
+
   const [organisationsRes, assignmentsRes, checklistRes, validationsRes, trainersRes, certificationsRes] =
     await Promise.all([
       admin
         .from("organisations")
         .select("id,name,legal_name,siret,nda_number,nda_status,qualiopi_status,status")
+        .in("id", scopeIds)
         .neq("status", "archived")
         .order("name"),
       admin
         .from("daily_organisation_assignments")
-        .select("organisation_id,agent_profile_id,agent_profiles(first_name,last_name,email)"),
+        .select("organisation_id,agent_profile_id,agent_profiles(first_name,last_name,email)")
+        .in("organisation_id", scopeIds),
       admin
         .from("daily_organisation_checklist_items")
-        .select("organisation_id,status,signaled_at"),
+        .select("organisation_id,status,signaled_at")
+        .in("organisation_id", scopeIds),
       admin
         .from("daily_organisation_profile_change_requests")
         .select("organisation_id,status")
+        .in("organisation_id", scopeIds)
         .eq("status", "pending"),
-      admin.from("daily_trainer_profiles").select("id,organisation_id").eq("active", true),
+      admin
+        .from("daily_trainer_profiles")
+        .select("id,organisation_id")
+        .in("organisation_id", scopeIds)
+        .eq("active", true),
       admin
         .from("daily_trainer_certifications")
         .select("trainer_profile_id,validity_mode,valid_until")
@@ -147,7 +176,7 @@ export default async function DailyOrganisationsPage() {
           <p style={s.eyebrow}>Daily · Studio</p>
           <h1 style={s.title}>Organismes</h1>
           <p style={s.subtitle}>
-            Pilotage des organismes, vérifications, validations Selen et échéances formateurs.
+            Pilotage des organismes abonnés à Selen Daily, vérifications, validations Selen et échéances formateurs.
           </p>
         </div>
         <Link href="/agent/daily" style={{ textDecoration: "none" }}>
@@ -156,16 +185,16 @@ export default async function DailyOrganisationsPage() {
       </header>
 
       <section style={s.stats}>
-        <Stat label="Organismes actifs" value={organisations.length} />
+        <Stat label="Organismes Daily actifs" value={organisations.length} />
         <Stat label="Points à traiter" value={totalAttention} tone="warn" />
         <Stat label="Validations Selen" value={pendingValidations} tone="info" />
         <Stat label="Certifications ≤ 90 j" value={expiringCertifications} tone="danger" />
       </section>
 
       <SelenCard>
-        <SelenCardTitle>Dossiers organismes</SelenCardTitle>
+        <SelenCardTitle>Dossiers organismes Daily</SelenCardTitle>
         {organisations.length === 0 ? (
-          <p style={s.empty}>Aucun organisme Daily actif pour le moment.</p>
+          <p style={s.empty}>Aucun organisme abonné à Daily pour le moment.</p>
         ) : (
           <div style={s.list}>
             {organisations.map((organisation) => {
