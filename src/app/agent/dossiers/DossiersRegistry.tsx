@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import SelenBadge from "@/components/ui/SelenBadge";
-import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
 export type RegistryEntry = {
@@ -228,12 +227,6 @@ export default function DossiersRegistry({ entries }: { entries: RegistryEntry[]
           </div>
         )}
       </SelenCard>
-
-      <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <Link href="/agent/dossiers/new" style={{ textDecoration: "none" }}>
-          <SelenButton variant="secondary" size="sm">+ Nouveau dossier</SelenButton>
-        </Link>
-      </div>
     </>
   );
 }
