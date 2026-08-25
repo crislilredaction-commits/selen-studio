@@ -40,6 +40,7 @@ function normalise(value: string | null | undefined) {
 export default function DossiersRegistry({ entries }: { entries: RegistryEntry[] }) {
   const [search, setSearch] = useState("");
   const [prestation, setPrestation] = useState("all");
+  const [hideArchived, setHideArchived] = useState(true);
 
   const prestations = useMemo(() => {
     const labels = new Map<string, string>();
@@ -47,9 +48,16 @@ export default function DossiersRegistry({ entries }: { entries: RegistryEntry[]
     return [...labels.entries()].sort((a, b) => a[1].localeCompare(b[1], "fr"));
   }, [entries]);
 
+  const archivedCount = useMemo(
+    () => entries.filter((entry) => entry.status === "archived").length,
+    [entries],
+  );
+
   const filteredEntries = useMemo(() => {
     const q = normalise(search);
     return entries.filter((entry) => {
+      if (hideArchived && entry.status === "archived") return false;
+
       const matchesPrestation = prestation === "all" || entry.prestationKey === prestation;
       if (!matchesPrestation) return false;
       if (!q) return true;
@@ -61,16 +69,17 @@ export default function DossiersRegistry({ entries }: { entries: RegistryEntry[]
       );
       return haystack.includes(q);
     });
-  }, [entries, prestation, search]);
+  }, [entries, hideArchived, prestation, search]);
 
   return (
     <>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(220px, 1fr) minmax(190px, 260px)",
+          gridTemplateColumns: "minmax(220px, 1fr) minmax(190px, 260px) auto",
           gap: 10,
           marginBottom: 16,
+          alignItems: "center",
         }}
       >
         <input
@@ -114,6 +123,30 @@ export default function DossiersRegistry({ entries }: { entries: RegistryEntry[]
             </option>
           ))}
         </select>
+
+        <label
+          style={{
+            minHeight: 42,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0 12px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--selen-border)",
+            background: "var(--selen-bg3)",
+            color: "var(--selen-text2)",
+            fontSize: 12,
+            whiteSpace: "nowrap",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={hideArchived}
+            onChange={(event) => setHideArchived(event.target.checked)}
+          />
+          Masquer les archivés{archivedCount > 0 ? ` (${archivedCount})` : ""}
+        </label>
       </div>
 
       <SelenCard>
