@@ -93,7 +93,9 @@ export default async function SessionClosurePage({ params }: Props) {
   const closureItem = (items ?? []).find((item) => item.item_key === "selen_closure_review");
   const upstream = (items ?? []).filter((item) => item.item_key !== "selen_closure_review");
   const blockers = upstream.filter((item) => !["validated", "not_applicable"].includes(item.status));
-  const ready = blockers.length === 0;
+  const parisToday = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Paris" }).format(new Date());
+  const sessionEnded = Boolean(session.end_date && session.end_date < parisToday);
+  const ready = blockers.length === 0 && sessionEnded;
   const completed = dossier.status === "completed";
   const archived = dossier.status === "archived";
   const closed = completed || archived;
@@ -114,11 +116,15 @@ export default async function SessionClosurePage({ params }: Props) {
           </p>
         ) : ready ? (
           <p style={{ fontSize: 13, color: "var(--selen-text2)" }}>
-            Les huit contrôles amont sont validés ou déclarés non applicables. La clôture horodatera le dossier côté serveur et validera le contrôle interne final.
+            La session est terminée et tous les contrôles amont sont validés. Les analyses de satisfaction et de performance ont notamment été revues par Selen. La clôture horodatera le dossier côté serveur et validera le contrôle interne final.
+          </p>
+        ) : !sessionEnded ? (
+          <p style={{ fontSize: 13, color: "var(--selen-text2)" }}>
+            La session doit être entièrement terminée avant de pouvoir être clôturée. La base applique également ce garde-fou, même en dehors de cet écran.
           </p>
         ) : (
           <p style={{ fontSize: 13, color: "var(--selen-text2)" }}>
-            {blockers.length} point(s) doivent encore être traités avant la revue finale. La base bloque également toute clôture prématurée, même en dehors de cet écran.
+            {blockers.length} point(s) doivent encore être traités avant la revue finale. La mise à jour des analyses de satisfaction et de performance fait partie des contrôles obligatoires Selen.
           </p>
         )}
       </SelenCard>

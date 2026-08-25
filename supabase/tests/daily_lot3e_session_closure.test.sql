@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(12);
+select plan(14);
 
 insert into auth.users(id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at) values
 ('1a000000-0000-4000-8400-000000000001','authenticated','authenticated','lot3e-client@example.invalid','x',now(),now(),now()),
@@ -14,13 +14,18 @@ insert into public.daily_organisation_assignments(organisation_id,agent_profile_
 insert into public.daily_formations(id,user_id,organisation_id,title,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,accessibility,pedagogical_methods,pedagogical_resources,evaluation_methods,results_pending,contact_phone,contact_email,status)
 values('1a000000-0000-4000-8400-000000000030','1a000000-0000-4000-8400-000000000001','1a000000-0000-4000-8400-000000000020','Formation 3E','Objectif','["Objectif 1"]'::jsonb,'Public','Aucun',7,1,'presentiel','Salle','7 jours','Selen','500 €','Programme','Accessible','Méthode','Supports','Quiz',true,'0102030405','contact@example.invalid','draft');
 insert into public.daily_sessions(id,user_id,organisation_id,formation_id,internal_reference,max_participants,modality,start_date,end_date,schedule_blocks,location_address,companies,beneficiaries,individual_beneficiaries,trainer_ids,status)
-values('1a000000-0000-4000-8400-000000000040','1a000000-0000-4000-8400-000000000001','1a000000-0000-4000-8400-000000000020','1a000000-0000-4000-8400-000000000030','SES-3E',10,'presentiel','2026-09-20','2026-09-20','[{"date":"2026-09-20","start":"09:00","end":"17:00"}]'::jsonb,'1 rue Test','[]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb,'draft');
+values('1a000000-0000-4000-8400-000000000040','1a000000-0000-4000-8400-000000000001','1a000000-0000-4000-8400-000000000020','1a000000-0000-4000-8400-000000000030','SES-3E',10,'presentiel','2026-08-01','2026-08-01','[{"date":"2026-08-01","start":"09:00","end":"17:00"}]'::jsonb,'1 rue Test','[]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb,'draft');
 
 select is((select status from public.daily_session_dossiers where session_id='1a000000-0000-4000-8400-000000000040'),'active','new dossier starts active');
-select throws_ok($$select public.daily_close_session_dossier('1a000000-0000-4000-8400-000000000040',null,'1a000000-0000-4000-8400-000000000002')$$,'P0001','Session dossier cannot be closed: 8 checklist item(s) remain incomplete','incomplete dossier cannot close');
-select throws_ok($$update public.daily_session_checklist_items set status='validated' where session_id='1a000000-0000-4000-8400-000000000040' and item_key='selen_closure_review'$$,'P0001','Session dossier cannot be closed: 8 checklist item(s) remain incomplete','direct checklist update cannot bypass closure gate');
+select ok(exists(select 1 from public.daily_session_checklist_items where session_id='1a000000-0000-4000-8400-000000000040' and item_key='quality_analysis_review' and responsibility='selen'),'new dossier receives Selen quality analysis review');
+select throws_ok($$select public.daily_close_session_dossier('1a000000-0000-4000-8400-000000000040',null,'1a000000-0000-4000-8400-000000000002')$$,'P0001','Session dossier cannot be closed: satisfaction and performance analyses are not validated','quality analysis blocks closure before generic checklist evaluation');
+select throws_ok($$update public.daily_session_checklist_items set status='validated' where session_id='1a000000-0000-4000-8400-000000000040' and item_key='selen_closure_review'$$,'P0001','Session dossier cannot be closed: satisfaction and performance analyses are not validated','direct checklist update cannot bypass quality analysis gate');
 
-update public.daily_session_checklist_items set status='validated' where session_id='1a000000-0000-4000-8400-000000000040' and item_key<>'selen_closure_review';
+update public.daily_session_checklist_items set status='validated' where session_id='1a000000-0000-4000-8400-000000000040' and item_key not in ('selen_closure_review','quality_analysis_review');
+update public.daily_session_checklist_items set status='not_applicable' where session_id='1a000000-0000-4000-8400-000000000040' and item_key='quality_analysis_review';
+select throws_ok($$select public.daily_close_session_dossier('1a000000-0000-4000-8400-000000000040',null,'1a000000-0000-4000-8400-000000000002')$$,'P0001','Session dossier cannot be closed: satisfaction and performance analyses are not validated','quality analysis must be explicitly validated, not marked not applicable');
+update public.daily_session_checklist_items set status='validated' where session_id='1a000000-0000-4000-8400-000000000040' and item_key='quality_analysis_review';
+
 select lives_ok($$select public.daily_close_session_dossier('1a000000-0000-4000-8400-000000000040','Dossier contrôlé.','1a000000-0000-4000-8400-000000000002')$$,'complete dossier closes');
 select is((select status from public.daily_session_dossiers where session_id='1a000000-0000-4000-8400-000000000040'),'completed','closure marks dossier completed');
 select ok((select completed_at is not null from public.daily_session_dossiers where session_id='1a000000-0000-4000-8400-000000000040'),'closure timestamps dossier on server');
