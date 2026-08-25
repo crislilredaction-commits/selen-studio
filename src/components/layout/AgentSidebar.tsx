@@ -127,11 +127,38 @@ const navigationOrder = [
   "/agent/gestion",
 ];
 
+const friendlyNotes = [
+  "On range le chaos avec élégance ✨",
+  "Un dossier à la fois. Le monde survivra.",
+  "Les cases se cochent. Les cafés refroidissent.",
+  "Tout va bien. Enfin, le dashboard le prétend.",
+  "Mission du jour : moins de clics, plus de contrôle.",
+  "Les dossiers ne se traiteront pas seuls. Quel manque d’initiative.",
+  "Qualiopi n’a qu’à bien se tenir.",
+  "Aujourd’hui, on vise le propre, pas le spectaculaire.",
+  "Le calme administratif existe. On enquête encore.",
+  "Si tout est vert, profite. Ça ne dure jamais très longtemps.",
+];
+
+function displayNameFromEmail(email: string | null) {
+  if (!email) return "Agent";
+  const raw = email.split("@")[0]?.split(/[._-]/)[0]?.trim();
+  if (!raw) return "Agent";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function noteForPath(pathname: string) {
+  const score = Array.from(pathname).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return friendlyNotes[score % friendlyNotes.length];
+}
+
 export default function AgentSidebar() {
   const pathname = usePathname();
   const supabase = useMemo(() => createClient(), []);
   const [role, setRole] = useState<"agent" | "admin">("agent");
   const [email, setEmail] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState<string | null>(null);
+  const friendlyNote = useMemo(() => noteForPath(pathname), [pathname]);
   const userSectionActive =
     pathname.startsWith("/agent/clients") || pathname.startsWith("/agent/admin/agents");
   const [usersOpen, setUsersOpen] = useState(userSectionActive);
@@ -146,26 +173,26 @@ export default function AgentSidebar() {
       if (!email) return;
       if (!cancelled) setEmail(email);
 
-      const { data: adminUser } = await supabase
-        .from("selen_admin_users")
-        .select("role, is_active")
-        .eq("email", email)
-        .eq("is_active", true)
-        .maybeSingle();
+      const [{ data: adminUser }, { data: profile }] = await Promise.all([
+        supabase
+          .from("selen_admin_users")
+          .select("role, is_active")
+          .eq("email", email)
+          .eq("is_active", true)
+          .maybeSingle(),
+        supabase
+          .from("agent_profiles")
+          .select("role, is_active, first_name")
+          .eq("email", email)
+          .eq("is_active", true)
+          .maybeSingle(),
+      ]);
 
-      if (!cancelled && adminUser?.role === "admin") {
-        setRole("admin");
-        return;
+      if (!cancelled && profile?.first_name?.trim()) {
+        setFirstName(profile.first_name.trim());
       }
 
-      const { data: profile } = await supabase
-        .from("agent_profiles")
-        .select("role, is_active")
-        .eq("email", email)
-        .eq("is_active", true)
-        .maybeSingle();
-
-      if (!cancelled && profile?.role === "admin") {
+      if (!cancelled && (adminUser?.role === "admin" || profile?.role === "admin")) {
         setRole("admin");
       }
     }
@@ -350,7 +377,7 @@ export default function AgentSidebar() {
             letterSpacing: "0.05em",
           }}
         >
-          Agent
+          {firstName || displayNameFromEmail(email)}
         </h1>
 
         <p
@@ -359,9 +386,10 @@ export default function AgentSidebar() {
             color: "var(--selen-text3)",
             marginTop: 4,
             lineHeight: 1.4,
+            maxWidth: 250,
           }}
         >
-          Belle journée :)
+          {friendlyNote}
         </p>
       </div>
 
