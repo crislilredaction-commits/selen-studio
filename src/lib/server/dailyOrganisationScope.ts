@@ -3,12 +3,11 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 /**
  * Source canonique du périmètre Studio Daily.
  *
- * Un organisme n'appartient à Daily que si le compte client correspondant
- * possède un abonnement Daily actif. Le simple fait d'exister dans
- * `organisations` (NDA, Prépa, Review, etc.) ne donne jamais accès au
- * pilotage Daily.
+ * Un client n'appartient à Daily que si son abonnement Daily est actif. Le
+ * simple fait d'exister dans `organisations` (NDA, Prépa, Review, etc.) ne
+ * donne jamais accès au pilotage Daily.
  */
-export async function getActiveDailyOrganisationIds() {
+export async function getActiveDailyUserIds() {
   const admin = createSupabaseAdminClient();
 
   const { data: subscriptions, error: subscriptionsError } = await admin
@@ -22,13 +21,18 @@ export async function getActiveDailyOrganisationIds() {
     );
   }
 
-  const userIds = Array.from(
+  return Array.from(
     new Set(
       (subscriptions ?? [])
         .map((row) => row.user_id)
         .filter((value): value is string => Boolean(value)),
     ),
   );
+}
+
+export async function getActiveDailyOrganisationIds() {
+  const admin = createSupabaseAdminClient();
+  const userIds = await getActiveDailyUserIds();
 
   if (userIds.length === 0) return [] as string[];
 
@@ -71,4 +75,10 @@ export async function isActiveDailyOrganisation(organisationId: string) {
   if (!organisationId) return false;
   const ids = await getActiveDailyOrganisationIds();
   return ids.includes(organisationId);
+}
+
+export async function isActiveDailyUser(userId: string) {
+  if (!userId) return false;
+  const ids = await getActiveDailyUserIds();
+  return ids.includes(userId);
 }
