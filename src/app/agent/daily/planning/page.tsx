@@ -3,8 +3,6 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 function parisDateString(date = new Date()) {
   return new Intl.DateTimeFormat("sv-SE", {
     timeZone: "Europe/Paris",
