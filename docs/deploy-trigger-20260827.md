@@ -1,0 +1,1 @@
+Déclenchement contrôlé du déploiement production Studio après suppression des cartes Messages et Remboursements du dashboard actif.
