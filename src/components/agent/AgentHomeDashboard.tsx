@@ -14,7 +14,6 @@ type DossierRow = { id: string; title: string | null; type: string | null; statu
 type AuditRow = { id: string; client_email: string; status: string | null; offer: string | null; updated_at: string | null; agent_id: string | null; agent_email: string | null; report_status: string | null };
 type ReminderRow = { id: string; client_email: string | null; dossier_id: string | null; reminder_type: string | null; status: string | null; subject: string | null; due_at: string | null; metadata: Record<string, unknown> | null };
 type TicketRow = { id: string; client_email: string | null; client_name: string | null; subject: string | null; category: string | null; priority: string | null; status: string | null; last_message_at: string | null; updated_at: string | null; created_at: string | null };
-type RefundRow = { id: string; ticket_id: string | null; client_email: string | null; amount_cents: number | null; reason: string | null; created_at: string | null };
 type DailySessionDossierRow = { session_id: string; status: string; assigned_agent_profile_id: string | null; updated_at: string | null };
 type DailySessionRow = { id: string; formation_id: string; internal_reference: string | null; start_date: string | null; updated_at: string | null };
 type DailyFormationRow = { id: string; title: string | null };
@@ -118,12 +117,6 @@ export default async function AgentHomeDashboard() {
   const { data: ticketData } = await admin.from("support_tickets").select("id,client_email,client_name,subject,category,priority,status,last_message_at,updated_at,created_at").order("last_message_at", { ascending: false, nullsFirst: false }).limit(20);
   const tickets = ((ticketData ?? []) as TicketRow[]).filter((row) => !["closed", "resolved"].includes(String(row.status))).slice(0, 6).map((row) => ({ id: row.id, title: row.subject || "Ticket support", subtitle: [row.client_name || row.client_email || "Client", row.category || "support", row.priority || "normal"].join(" · "), href: `/agent/support/${row.id}`, date: row.last_message_at || row.updated_at || row.created_at }));
 
-  let refunds: DashboardItem[] = [];
-  if (canAccessGestionLil) {
-    const { data } = await admin.from("support_refund_requests").select("id,ticket_id,client_email,amount_cents,reason,created_at").eq("status", "to_process").order("created_at", { ascending: false }).limit(6);
-    refunds = ((data ?? []) as RefundRow[]).map((row) => ({ id: row.id, title: row.client_email || "Client à rembourser", subtitle: `${row.reason || "Remboursement à traiter"}${row.amount_cents ? ` · ${(row.amount_cents / 100).toFixed(2)} €` : ""}`, href: row.ticket_id ? `/agent/support/${row.ticket_id}` : "/agent/support", date: row.created_at }));
-  }
-
   let auditQuery = admin.from("audit_blanc_cases").select("id,client_email,status,offer,updated_at,agent_id,agent_email,report_status").order("updated_at", { ascending: false }).limit(20);
   if (staff.role !== "admin") {
     if (staff.id && staff.email) auditQuery = auditQuery.or(`agent_id.eq.${staff.id},agent_email.eq.${staff.email}`);
@@ -143,17 +136,15 @@ export default async function AgentHomeDashboard() {
 
   return <main style={{ padding: "24px 28px", maxWidth: 1180, margin: "0 auto", color: "var(--selen-text)" }}>
     <section style={{ display: "grid", gap: 18, marginBottom: 24 }}>
-      <div><p style={eyebrow}>Selen Studio</p><h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 600, marginTop: 8 }}>Bonjour {greeting} ✨</h1><p style={lead}>Voici ton tableau de bord du jour : les dossiers à suivre, les messages clients et les actions qui demandent réellement ton attention.</p>{staff.email ? <p style={small}>Connecté avec : {staff.email} · rôle : {staff.role}</p> : null}</div>
+      <div><p style={eyebrow}>Selen Studio</p><h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 600, marginTop: 8 }}>Bonjour {greeting} ✨</h1><p style={lead}>Voici ton tableau de bord du jour : les dossiers à suivre et les actions qui demandent réellement ton attention.</p>{staff.email ? <p style={small}>Connecté avec : {staff.email} · rôle : {staff.role}</p> : null}</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><Link href="/agent/dossiers/new" style={{ textDecoration: "none" }}><SelenButton variant="primary">Créer un dossier</SelenButton></Link><Link href="/agent/clients/new" style={{ textDecoration: "none" }}><SelenButton variant="ghost">Créer un client</SelenButton></Link><LogoutButton /></div>
     </section>
 
     <section style={grid}>
-      <TaskCard icon="💬" title="Nouveaux messages" count={unreadItems.length} emptyText="Aucun nouveau message client." items={unreadItems} footerHref="/agent/dossiers" footerLabel="Ouvrir les dossiers avec messages" />
       <TaskCard icon="⚡" title="Dossiers à traiter" count={actionDossiers.length} emptyText="Aucune action immédiate détectée." items={actionDossiers} />
       <TaskCard icon="🧾" title="Audits blancs Review" count={audits.length} emptyText="Aucun audit blanc Review actif à suivre." items={audits} footerHref="/agent/audits-blancs" footerLabel="Ouvrir les audits blancs" />
       <TaskCard icon="📨" title="Clients à relancer" count={reminders.length} emptyText="Aucune relance client détectée." items={reminders} footerHref="/agent/relances" footerLabel="Ouvrir les relances" />
       <TaskCard icon="🛟" title="Support à traiter" count={tickets.length} emptyText="Aucun ticket support à traiter." items={tickets} footerHref="/agent/support" footerLabel="Ouvrir le support" />
-      {canAccessGestionLil ? <TaskCard icon="💸" title="Remboursements à traiter" count={refunds.length} emptyText="Aucun remboursement en attente." items={refunds} footerHref="/agent/support" footerLabel="Ouvrir le support" /> : null}
     </section>
 
     {assigned.length ? <section style={{ marginBottom: 24 }}><TaskCard icon="📌" title="Mes dossiers attribués" count={assigned.length} emptyText="Aucun dossier attribué." items={assigned.map(dossierItem)} footerHref="/agent/dossiers" footerLabel="Voir les dossiers" /></section> : null}
