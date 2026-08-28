@@ -1,12 +1,23 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { isOwnerLil } from "@/lib/ownerLil";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
 export async function POST(req: Request) {
   try {
-    const auth = await requireSupportAgent();
-    if (!auth.ok) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const supabase = await createClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const email = userData.user?.email?.trim().toLowerCase();
+
+    if (userError || !userData.user) {
+      return NextResponse.json({ error: "Non authentifie." }, { status: 401 });
+    }
+
+    if (!isOwnerLil(email)) {
+      const auth = await requireSupportAgent();
+      if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+      }
     }
 
     const body = await req.json().catch(() => null);
@@ -19,7 +30,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = await createClient();
     const { data, error } = await supabase
       .from("messages")
       .update({ read_by_agent_at: new Date().toISOString() })
