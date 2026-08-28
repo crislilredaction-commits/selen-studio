@@ -27,6 +27,7 @@ export default function AgentMessagingDrawer({
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<MessageItem[]>(initialMessages);
   const [localHasUnread, setLocalHasUnread] = useState(hasUnread);
+  const [localUnreadCount, setLocalUnreadCount] = useState(unreadCount);
 
   const sortedMessages = useMemo(() => {
     return [...messages].sort(
@@ -47,14 +48,15 @@ export default function AgentMessagingDrawer({
 
   useEffect(() => {
     setLocalHasUnread(hasUnread);
-  }, [hasUnread]);
+    setLocalUnreadCount(unreadCount);
+  }, [hasUnread, unreadCount]);
 
   useEffect(() => {
     async function markAsRead() {
       if (!isOpen || !localHasUnread) return;
 
       try {
-        await fetch("/agent/api/messages/read-agent", {
+        const response = await fetch("/agent/api/messages/read-agent", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -62,13 +64,21 @@ export default function AgentMessagingDrawer({
           body: JSON.stringify({ dossierId }),
         });
 
+        if (!response.ok) return;
+
         setLocalHasUnread(false);
+        setLocalUnreadCount(0);
+        window.dispatchEvent(
+          new CustomEvent("selen:client-messages-read", {
+            detail: { dossierId },
+          }),
+        );
       } catch {
         // on laisse silencieux : ce n'est pas bloquant pour l'UI
       }
     }
 
-    markAsRead();
+    void markAsRead();
   }, [isOpen, localHasUnread, dossierId]);
 
   async function sendMessage() {
@@ -154,8 +164,8 @@ export default function AgentMessagingDrawer({
               marginTop: 4,
             }}
           >
-            {unreadCount > 0
-              ? `${unreadCount} message${unreadCount > 1 ? "s" : ""} non lu${unreadCount > 1 ? "s" : ""}`
+            {localUnreadCount > 0
+              ? `${localUnreadCount} message${localUnreadCount > 1 ? "s" : ""} non lu${localUnreadCount > 1 ? "s" : ""}`
               : messages.length > 0
                 ? "Conversation ouverte"
                 : "Ouvrir la conversation"}
@@ -186,7 +196,7 @@ export default function AgentMessagingDrawer({
             </span>
           )}
 
-          {unreadCount > 0 && (
+          {localUnreadCount > 0 && (
             <span
               style={{
                 minWidth: 22,
@@ -202,7 +212,7 @@ export default function AgentMessagingDrawer({
                 padding: "0 6px",
               }}
             >
-              {unreadCount}
+              {localUnreadCount}
             </span>
           )}
 
