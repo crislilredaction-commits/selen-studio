@@ -60,7 +60,18 @@ export default async function AgentDailyPage() {
         </div>
         <p style={s.detail}>{item.detail}</p>
         <div style={s.actions}>
-          <Link href={item.href} style={s.primary}>{item.kind === "assignment" ? "Assigner un agent →" : "Traiter maintenant →"}</Link>
+          {item.kind === "assignment" ? (
+            role === "admin" ? (
+              <Link href={item.href} style={s.primary}>Assigner un agent →</Link>
+            ) : (
+              <form method="post" action="/agent/api/daily/organisation-assignment">
+                <input type="hidden" name="organisation_id" value={item.organisationId} />
+                <button type="submit" style={s.primaryButton}>Me l’assigner →</button>
+              </form>
+            )
+          ) : (
+            <Link href={item.href} style={s.primary}>Traiter maintenant →</Link>
+          )}
           {item.kind !== "assignment" ? <Link href={`/agent/daily/organisations/${item.organisationId}`} style={s.secondary}>Voir l'organisme</Link> : null}
         </div>
       </SelenCard>)}
@@ -82,6 +93,7 @@ const s: Record<string, React.CSSProperties> = {
   org: { margin: "5px 0 0", fontSize: 12, color: "var(--selen-text3)" }, date: { fontSize: 11, color: "var(--selen-text3)", whiteSpace: "nowrap" },
   detail: { margin: "14px 0", maxWidth: 760, lineHeight: 1.55, fontSize: 13, color: "var(--selen-text2)" },
   actions: { display: "flex", gap: 9, flexWrap: "wrap" }, primary: { display: "inline-flex", alignItems: "center", minHeight: 38, padding: "0 13px", borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", textDecoration: "none", fontWeight: 800, fontSize: 13 },
+  primaryButton: { display: "inline-flex", alignItems: "center", minHeight: 38, padding: "0 13px", borderRadius: 9, border: 0, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, fontSize: 13, cursor: "pointer" },
   secondary: { display: "inline-flex", alignItems: "center", minHeight: 38, padding: "0 13px", borderRadius: 9, border: "1px solid var(--selen-border)", color: "var(--selen-text)", textDecoration: "none", fontWeight: 700, fontSize: 13 },
   empty: { padding: 30, textAlign: "center" }, muted: { margin: "8px auto 0", maxWidth: 660, lineHeight: 1.6, color: "var(--selen-text2)", fontSize: 13 }, error: { color: "var(--selen-danger)" },
 };
