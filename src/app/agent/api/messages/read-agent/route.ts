@@ -20,9 +20,15 @@ export async function POST(req: Request) {
     }
 
     const supabase = await createClient();
+    const readAt = new Date().toISOString();
     const { data, error } = await supabase
       .from("messages")
-      .update({ read_by_agent_at: new Date().toISOString() })
+      .update({
+        read_by_agent_at: readAt,
+        // Maintient la colonne historique synchronisée pour les vues qui
+        // utilisent encore `read_at` pendant la transition.
+        read_at: readAt,
+      })
       .eq("dossier_id", dossierId)
       .eq("sender_type", "client")
       .is("read_by_agent_at", null)
