@@ -1,11 +1,8 @@
 import AgentSidebar from "@/components/layout/AgentSidebar";
 import AgentFriendlyBanner from "@/components/AgentFriendlyBanner";
+import StudioTutoiementGuard from "@/components/StudioTutoiementGuard";
 
-export default function AgentLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function AgentLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="agent-shell"
@@ -17,7 +14,6 @@ export default function AgentLayout({
       }}
     >
       <AgentSidebar />
-
       <main
         className="agent-content"
         style={{
@@ -26,6 +22,7 @@ export default function AgentLayout({
             "radial-gradient(circle at 72% 6%, rgba(245, 208, 138, 0.08), transparent 24%), transparent",
         }}
       >
+        <StudioTutoiementGuard />
         <AgentFriendlyBanner />
         {children}
       </main>
