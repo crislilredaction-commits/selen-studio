@@ -18,8 +18,23 @@ export type DailyAgentTask = {
 
 type Org = { id: string; name: string | null; legal_name: string | null; created_at: string | null };
 type Assignment = { organisation_id: string; agent_profile_id: string; assigned_at: string | null };
-type Session = { id: string; organisation_id: string; formation_id: string; internal_reference: string | null; registration_status: string | null; adaptation_needed: boolean | null; updated_at: string | null };
-type Formation = { id: string; title: string | null; status: string | null; updated_at: string | null };
+type Session = {
+  id: string;
+  organisation_id: string;
+  formation_id: string;
+  internal_reference: string | null;
+  registration_status: string | null;
+  adaptation_needed: boolean | null;
+  registration_responses_received_at: string | null;
+  updated_at: string | null;
+};
+type Formation = {
+  id: string;
+  title: string | null;
+  status: string | null;
+  agent_review_signaled_at: string | null;
+  updated_at: string | null;
+};
 type Response = { id: string; session_id: string; created_at: string | null };
 
 const SLA_MS = 72 * 60 * 60 * 1000;
@@ -43,7 +58,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
   const [orgRes, assignmentRes, sessionRes] = await Promise.all([
     admin.from("organisations").select("id,name,legal_name,created_at").in("id", organisationIds).neq("status", "archived"),
     admin.from("daily_organisation_assignments").select("organisation_id,agent_profile_id,assigned_at").in("organisation_id", organisationIds),
-    admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,registration_status,adaptation_needed,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
+    admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,registration_status,adaptation_needed,registration_responses_received_at,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
   ]);
   const error = orgRes.error ?? assignmentRes.error ?? sessionRes.error;
   if (error) throw new Error(error.message);
@@ -57,8 +72,8 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
   const formationIds = [...new Set(sessions.map((row) => row.formation_id).filter(Boolean))];
   const sessionIds = sessions.map((row) => row.id);
   const [formationRes, responseRes] = await Promise.all([
-    formationIds.length ? admin.from("daily_formations").select("id,title,status,updated_at").in("id", formationIds).neq("status", "archived") : Promise.resolve({ data: [], error: null }),
-    sessionIds.length ? admin.from("daily_registration_responses").select("id,session_id,created_at").in("session_id", sessionIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    formationIds.length ? admin.from("daily_formations").select("id,title,status,agent_review_signaled_at,updated_at").in("id", formationIds).neq("status", "archived") : Promise.resolve({ data: [], error: null }),
+    sessionIds.length ? admin.from("daily_registration_responses").select("id,session_id,created_at").in("session_id", sessionIds).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
   ]);
   if (formationRes.error || responseRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? "Erreur Daily");
 
@@ -97,7 +112,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
 
     if (formation.status === "review" && !programSeen.has(formation.id)) {
       programSeen.add(formation.id);
-      const createdAt = formation.updated_at ?? session.updated_at;
+      const createdAt = formation.agent_review_signaled_at ?? formation.updated_at ?? session.updated_at;
       const overdueShared = isOverdue(createdAt);
       tasks.push({
         id: `daily-program-${formation.id}`,
@@ -120,7 +135,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
     if (registrationResponses.length === 0) continue;
     const needsRegistration = session.adaptation_needed === true || ["to_review", "responses_received", "summary_to_review"].includes(session.registration_status ?? "");
     if (!needsRegistration) continue;
-    const createdAt = registrationResponses[0]?.created_at ?? session.updated_at;
+    const createdAt = session.registration_responses_received_at ?? registrationResponses[0]?.created_at ?? session.updated_at;
     const overdueShared = isOverdue(createdAt);
     const adaptation = session.adaptation_needed === true;
     tasks.push({
