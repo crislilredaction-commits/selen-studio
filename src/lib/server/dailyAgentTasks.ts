@@ -44,7 +44,7 @@ function isOverdue(value: string | null) {
   return Number.isFinite(time) && Date.now() - time >= SLA_MS;
 }
 function visibleFor(task: DailyAgentTask, staff: DailyTaskStaff) {
-  if (task.kind === "assignment") return true;
+  if (task.kind === "assignment") return staff.role === "admin";
   if (!task.assignedAgentProfileId) return true;
   if (staff.id === task.assignedAgentProfileId) return true;
   return task.overdueShared;
