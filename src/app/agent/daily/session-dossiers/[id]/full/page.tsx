@@ -1,84 +1,191 @@
 import Link from "next/link";
-import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
-import { requireSupportAgent, requireSupportAdmin } from "@/app/agent/api/support/_utils";
+import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
-import SelenButton from "@/components/ui/SelenButton";
-
-const statusLabels: Record<string,string> = { todo:"À faire", in_progress:"En cours", to_review:"À vérifier", validated:"Validé", blocked:"Bloqué", not_applicable:"Non applicable" };
-const phaseLabels: Record<string,string> = { before:"Avant", during:"Pendant", after:"Après" };
-const responsibilityLabels: Record<string,string> = { client:"Client", selen:"Selen", shared:"Partagée" };
-const attendanceLabels: Record<string,string> = { pending:"À émarger", present:"Présent", absent:"Absent", excused:"Absence justifiée" };
-const followupTypeLabels: Record<string,string> = { incident:"Incident / difficulté", adaptation:"Adaptation" };
-const followupLevelLabels: Record<string,string> = { info:"Information", attention:"À suivre", critical:"Critique" };
-const assessmentLabels: Record<string,string> = { pending:"À évaluer", achieved:"Acquis", partially_achieved:"Partiellement acquis", not_achieved:"Non acquis", not_applicable:"Non applicable" };
 
 type Props = { params: Promise<{ id: string }> };
 
-async function updateItem(formData: FormData) {
-  "use server";
-  const auth = await requireSupportAgent(); if (!auth.ok) throw new Error(auth.error);
-  const sessionId=String(formData.get("session_id")??""); const itemId=String(formData.get("item_id")??""); const status=String(formData.get("status")??""); const note=String(formData.get("note")??"").trim();
-  if (!sessionId || !itemId || !Object.keys(statusLabels).includes(status)) throw new Error("Mise à jour invalide.");
-  const admin=createSupabaseAdminClient();
-  const { error }=await admin.from("daily_session_checklist_items").update({status,note:note||null}).eq("id",itemId).eq("session_id",sessionId);
-  if (error) throw new Error(error.message); revalidatePath(`/agent/daily/session-dossiers/${sessionId}`); revalidatePath("/agent/daily");
+type SessionRow = {
+  id: string;
+  organisation_id: string;
+  formation_id: string;
+  internal_reference: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  modality: string | null;
+  registration_status: string | null;
+  adaptation_needed: boolean | null;
+  status: string | null;
+};
+
+function formatDate(value?: string | null) {
+  return value ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(new Date(value)) : "Non renseignée";
 }
 
-async function assignAgent(formData: FormData) {
-  "use server";
-  const auth=await requireSupportAdmin(); if (!auth.ok) throw new Error(auth.error);
-  const sessionId=String(formData.get("session_id")??""); const agent=String(formData.get("agent_profile_id")??"");
-  if (!sessionId) throw new Error("Session invalide."); const admin=createSupabaseAdminClient();
-  const { error }=await admin.from("daily_session_dossiers").update({assigned_agent_profile_id:agent||null}).eq("session_id",sessionId);
-  if (error) throw new Error(error.message); revalidatePath(`/agent/daily/session-dossiers/${sessionId}`); revalidatePath("/agent/daily");
+function registrationLabel(status?: string | null) {
+  const labels: Record<string, string> = {
+    to_prepare: "En attente d'inscription",
+    to_review: "Dossier à vérifier",
+    ready_to_send: "Prêt à envoyer",
+    sent: "Dossier envoyé",
+    responses_received: "Réponses reçues",
+    summary_to_review: "Synthèse à relire",
+    summary_validated: "Synthèse validée",
+  };
+  return labels[status ?? ""] ?? "En attente";
 }
 
 export default async function FullSessionDossierPage({ params }: Props) {
-  const auth=await requireSupportAgent(); if (!auth.ok) return <main style={{padding:28}}>Accès refusé.</main>;
-  const { id }=await params; const admin=createSupabaseAdminClient();
-  const [{data:dossier},{data:session},{data:items},{data:agents},{data:attendanceSlots},{data:enrolments},{data:followupEntries},{data:assessments},{data:feedbackResponses}]=await Promise.all([
-    admin.from("daily_session_dossiers").select("*").eq("session_id",id).maybeSingle(),
-    admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,start_date,end_date,modality,status").eq("id",id).maybeSingle(),
-    admin.from("daily_session_checklist_items").select("*").eq("session_id",id).order("position"),
-    admin.from("agent_profiles").select("id,first_name,last_name,email").eq("is_active",true).order("first_name"),
-    admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,mode,status,daily_attendance_records(id,enrolment_id,status,signed_at,signature_sha256,proof_sha256,validated_at)").eq("session_id",id).order("slot_date").order("starts_at"),
-    admin.from("daily_session_enrolments").select("id,learner_id,status,daily_learners(first_name,last_name,email)").eq("session_id",id),
-    admin.from("daily_session_followup_entries").select("id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at").eq("session_id",id).order("occurred_at",{ascending:false}),
-    admin.from("daily_learning_assessments").select("id,enrolment_id,outcome,score,score_max,method,notes,assessed_at").eq("session_id",id),
-    admin.from("daily_learner_feedback_responses").select("id,enrolment_id,overall_rating,objectives_rating,trainer_rating,organisation_rating,content_rating,pace_rating,would_recommend,strengths,improvements,adaptation_feedback,free_comment,submitted_at").eq("session_id",id),
-  ]);
-  if (!dossier || !session) return <main style={{padding:28}}>Dossier introuvable.</main>;
-  const [{data:org},{data:formation}]=await Promise.all([admin.from("organisations").select("name").eq("id",session.organisation_id).maybeSingle(),admin.from("daily_formations").select("title").eq("id",session.formation_id).maybeSingle()]);
-  const open=(items??[]).filter((i)=>!["validated","not_applicable"].includes(i.status)).length; const blocked=(items??[]).filter((i)=>i.status==="blocked").length;
-  const activeEnrolments=(enrolments??[]).filter((enrolment)=>!["declined","cancelled"].includes(enrolment.status));
-  const attendanceRecords=(attendanceSlots??[]).flatMap((slot)=>slot.daily_attendance_records??[]);
-  const presentCount=attendanceRecords.filter((record)=>record.status==="present").length;
-  const expectedCount=(attendanceSlots??[]).length*activeEnrolments.length;
-  const openFollowup=(followupEntries??[]).filter((entry)=>entry.status==="open");
-  const criticalFollowup=openFollowup.filter((entry)=>entry.level==="critical");
-  const assessedCount=(assessments??[]).filter((assessment)=>assessment.outcome!=="pending").length;
-  const feedbackCount=(feedbackResponses??[]).length;
+  const auth = await requireSupportAgent();
+  if (!auth.ok) return <main style={s.page}>Accès refusé.</main>;
 
-  function enrolmentName(enrolmentId?: string|null) {
-    if (!enrolmentId) return null;
-    const enrolment=activeEnrolments.find((item)=>item.id===enrolmentId);
-    const learner=Array.isArray(enrolment?.daily_learners)?enrolment?.daily_learners[0]:enrolment?.daily_learners;
-    return `${learner?.first_name??""} ${learner?.last_name??""}`.trim()||learner?.email||"Apprenant";
+  const { id } = await params;
+  const admin = createSupabaseAdminClient();
+  const { data: session } = await admin
+    .from("daily_sessions")
+    .select("id,organisation_id,formation_id,internal_reference,start_date,end_date,modality,registration_status,adaptation_needed,status")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!session) return <main style={s.page}>Dossier introuvable.</main>;
+  const typedSession = session as SessionRow;
+
+  const [organisationRes, formationRes, responsesRes, enrolmentsRes, attendanceRes, followupRes, assessmentsRes, feedbackRes, dossierRes] = await Promise.all([
+    admin.from("organisations").select("name,legal_name").eq("id", typedSession.organisation_id).maybeSingle(),
+    admin.from("daily_formations").select("id,title,status,version,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,validation_note").eq("id", typedSession.formation_id).maybeSingle(),
+    admin.from("daily_registration_responses").select("id,response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,created_at").eq("session_id", id).order("created_at", { ascending: false }),
+    admin.from("daily_session_enrolments").select("id,status,daily_learners(first_name,last_name,email)").eq("session_id", id),
+    admin.from("daily_attendance_slots").select("id,daily_attendance_records(id,status)").eq("session_id", id),
+    admin.from("daily_session_followup_entries").select("id,entry_type,level,summary,status,occurred_at").eq("session_id", id).order("occurred_at", { ascending: false }),
+    admin.from("daily_learning_assessments").select("id,outcome,score,score_max").eq("session_id", id),
+    admin.from("daily_learner_feedback_responses").select("id,overall_rating,submitted_at").eq("session_id", id),
+    admin.from("daily_session_dossiers").select("assigned_agent_profile_id,status,completed_at").eq("session_id", id).maybeSingle(),
+  ]);
+
+  const formation = formationRes.data;
+  if (!formation) return <main style={s.page}>Formation introuvable.</main>;
+  const organisation = organisationRes.data?.legal_name || organisationRes.data?.name || "Organisme de formation";
+  const responses = responsesRes.data ?? [];
+  const enrolments = (enrolmentsRes.data ?? []).filter((row) => !["declined", "cancelled"].includes(row.status));
+  const attendanceRecords = (attendanceRes.data ?? []).flatMap((slot) => slot.daily_attendance_records ?? []);
+  const signedAttendance = attendanceRecords.filter((record) => record.status === "present").length;
+  const followups = followupRes.data ?? [];
+  const openFollowups = followups.filter((entry) => entry.status === "open");
+  const assessments = assessmentsRes.data ?? [];
+  const completedAssessments = assessments.filter((entry) => entry.outcome && entry.outcome !== "pending").length;
+  const feedbacks = feedbackRes.data ?? [];
+
+  const programNeedsReview = formation.status === "review";
+  const registrationNeedsReview = formation.status === "validated" && responses.length > 0 && (typedSession.adaptation_needed === true || ["to_review", "responses_received", "summary_to_review"].includes(typedSession.registration_status ?? ""));
+  const waitingForRegistration = formation.status === "validated" && responses.length === 0;
+
+  let currentTitle = "Dossier en suivi";
+  let currentText = "Aucune action immédiate n'est demandée. Les informations du dossier restent consultables ci-dessous.";
+  let currentHref: string | null = null;
+  let currentAction: string | null = null;
+
+  if (programNeedsReview) {
+    currentTitle = "Programme à vérifier";
+    currentText = "Le client a terminé son programme. C'est la seule étape à traiter maintenant.";
+    currentHref = `/agent/daily/session-dossiers/${id}`;
+    currentAction = "Vérifier le programme →";
+  } else if (registrationNeedsReview) {
+    currentTitle = typedSession.adaptation_needed ? "Dossier d'inscription avec adaptation" : "Dossier d'inscription à traiter";
+    currentText = `${responses.length} réponse${responses.length > 1 ? "s" : ""} reçue${responses.length > 1 ? "s" : ""}. Vérifie les besoins, prérequis et positionnements avant de poursuivre.`;
+    currentHref = `/agent/daily/sessions/${id}`;
+    currentAction = "Traiter l'inscription →";
+  } else if (waitingForRegistration) {
+    currentTitle = "En attente d'une inscription";
+    currentText = "Le programme est validé. Selen n'a rien à faire tant qu'aucun bénéficiaire ou entreprise n'a envoyé de dossier d'inscription.";
   }
 
-  return <main style={{maxWidth:1180,margin:"0 auto",padding:28}}>
-    <div style={{marginBottom:14}}><Link href={`/agent/daily/session-dossiers/${encodeURIComponent(id)}`} style={{color:"var(--selen-gold2)",fontWeight:700,textDecoration:"none"}}>← Retour à la préparation simplifiée</Link></div>
-    <h1 style={{marginBottom:4}}>{formation?.title ?? "Dossier de session"}</h1><p style={{marginTop:0,color:"var(--selen-text2)"}}>{org?.name ?? "OF"} · {session.internal_reference || "Sans référence"} · {open} point(s) ouvert(s){blocked?` · ${blocked} bloqué(s)`:""}{openFollowup.length?` · ${openFollowup.length} suivi(s) pendant session ouvert(s)`:""}</p>
-    <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"12px 0 18px"}}><Link href={`/agent/daily/communications?session_id=${encodeURIComponent(id)}`} style={{display:"inline-flex",alignItems:"center",minHeight:38,padding:"0 14px",border:"1px solid var(--selen-border)",borderRadius:10,textDecoration:"none",color:"var(--selen-text)",fontWeight:700}}>Communications & preuves</Link><Link href={`/agent/daily/session-dossiers/${encodeURIComponent(id)}/satisfaction`} style={{display:"inline-flex",alignItems:"center",minHeight:38,padding:"0 14px",border:"1px solid var(--selen-border)",borderRadius:10,textDecoration:"none",color:"var(--selen-text)",fontWeight:700}}>Satisfaction commanditaire & formateur</Link></div>
-    <SelenCard><SelenCardTitle>Assignation</SelenCardTitle><form action={assignAgent} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><input type="hidden" name="session_id" value={id}/><select name="agent_profile_id" defaultValue={dossier.assigned_agent_profile_id ?? ""}><option value="">Non assigné</option>{(agents??[]).map((a)=><option key={a.id} value={a.id}>{`${a.first_name??""} ${a.last_name??""}`.trim()||a.email}</option>)}</select><SelenButton type="submit">Enregistrer</SelenButton></form></SelenCard>
+  return <main style={s.page}>
+    <div style={s.backRow}><Link href="/agent/daily" style={s.back}>← Pilotage Daily</Link><Link href={`/agent/daily/session-dossiers/${id}`} style={s.back}>Programme</Link></div>
 
-    {(attendanceSlots??[]).length>0?<section style={{marginTop:18}}><h2>Preuves de présence</h2><SelenCard><SelenCardTitle>Émargements collectés</SelenCardTitle><p style={{fontSize:13,color:"var(--selen-text2)"}}>{presentCount} présence(s) signée(s) sur {expectedCount} émargement(s) attendu(s). Les preuves signées conservent horodatage et empreintes SHA-256.</p><div style={{display:"grid",gap:10}}>{(attendanceSlots??[]).map((slot)=><div key={slot.id} style={{borderTop:"1px solid var(--selen-border)",paddingTop:10}}><strong>{new Date(`${slot.slot_date}T12:00:00`).toLocaleDateString("fr-FR")} · {String(slot.starts_at).slice(0,5)}–{String(slot.ends_at).slice(0,5)}</strong><div style={{fontSize:12,color:"var(--selen-text2)",margin:"4px 0 8px"}}>{slot.mode.replaceAll("_"," ")} · {slot.status}</div><div style={{display:"grid",gap:5}}>{activeEnrolments.map((enrolment)=>{const learner=Array.isArray(enrolment.daily_learners)?enrolment.daily_learners[0]:enrolment.daily_learners;const record=(slot.daily_attendance_records??[]).find((row)=>row.enrolment_id===enrolment.id);return <div key={enrolment.id} style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:13}}><span>{`${learner?.first_name??""} ${learner?.last_name??""}`.trim()||learner?.email||"Apprenant"}</span><span>{attendanceLabels[record?.status??"pending"]??record?.status}{record?.status==="present"&&record?.proof_sha256?" · preuve hashée":""}</span></div>})}</div></div>)}</div></SelenCard></section>:null}
+    <header style={s.header}>
+      <div><p style={s.eyebrow}>Dossier de session</p><h1 style={s.h1}>{formation.title}</h1><p style={s.muted}>{organisation}{typedSession.internal_reference ? ` · ${typedSession.internal_reference}` : ""}</p></div>
+      <span style={s.status}>{registrationLabel(typedSession.registration_status)}</span>
+    </header>
 
-    {(followupEntries??[]).length>0?<section style={{marginTop:18}}><h2>Déroulement de la session</h2>{criticalFollowup.length?<p style={{padding:10,border:"1px solid var(--selen-danger)",color:"var(--selen-danger)"}}>{criticalFollowup.length} situation(s) critique(s) encore ouverte(s).</p>:null}<div style={{display:"grid",gap:10}}>{(followupEntries??[]).map((entry)=><SelenCard key={entry.id}><SelenCardTitle>{followupTypeLabels[entry.entry_type]??entry.entry_type} · {entry.summary}</SelenCardTitle><div style={{fontSize:12,color:"var(--selen-text2)",marginBottom:8}}>{new Date(entry.occurred_at).toLocaleString("fr-FR")} · {followupLevelLabels[entry.level]??entry.level} · {entry.status==="resolved"?"Traité":"Ouvert"}{enrolmentName(entry.enrolment_id)?` · ${enrolmentName(entry.enrolment_id)}`:""}</div>{entry.description?<p style={{fontSize:13}}>{entry.description}</p>:null}{entry.action_taken?<p style={{fontSize:13}}><strong>Action :</strong> {entry.action_taken}</p>:null}</SelenCard>)}</div></section>:null}
+    <section style={s.nowCard}>
+      <div><p style={s.eyebrow}>À faire maintenant</p><h2 style={s.h2}>{currentTitle}</h2><p style={s.lead}>{currentText}</p></div>
+      {currentHref && currentAction ? <Link href={currentHref} style={s.primary}>{currentAction}</Link> : <span style={s.rest}>Rien à traiter ✓</span>}
+    </section>
 
-    {((assessments??[]).length>0||(feedbackResponses??[]).length>0)?<section style={{marginTop:18}}><h2>Évaluations & satisfaction</h2><SelenCard><SelenCardTitle>Fin de formation</SelenCardTitle><p style={{fontSize:13,color:"var(--selen-text2)"}}>{assessedCount} évaluation(s) des acquis renseignée(s) sur {activeEnrolments.length} apprenant(s) actif(s) · {feedbackCount} questionnaire(s) de satisfaction reçu(s).</p><div style={{display:"grid",gap:10}}>{activeEnrolments.map((enrolment)=>{const assessment=(assessments??[]).find((row)=>row.enrolment_id===enrolment.id);const feedback=(feedbackResponses??[]).find((row)=>row.enrolment_id===enrolment.id);return <div key={enrolment.id} style={{borderTop:"1px solid var(--selen-border)",paddingTop:10}}><div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><strong>{enrolmentName(enrolment.id)}</strong><span>{assessmentLabels[assessment?.outcome??"pending"]??assessment?.outcome}{assessment?.score!=null&&assessment?.score_max!=null?` · ${assessment.score}/${assessment.score_max}`:""}</span></div>{assessment?.method?<p style={{fontSize:13}}><strong>Méthode :</strong> {assessment.method}</p>:null}{assessment?.notes?<p style={{fontSize:13}}>{assessment.notes}</p>:null}{feedback?<details><summary>Satisfaction · {feedback.overall_rating}/5 · reçue le {new Date(feedback.submitted_at).toLocaleDateString("fr-FR")}</summary><p style={{fontSize:13}}>Objectifs {feedback.objectives_rating}/5 · Formateur {feedback.trainer_rating??"-"}/5 · Organisation {feedback.organisation_rating??"-"}/5 · Contenu {feedback.content_rating??"-"}/5 · Rythme {feedback.pace_rating??"-"}/5{feedback.would_recommend==null?"":` · Recommande : ${feedback.would_recommend?"oui":"non"}`}</p>{feedback.strengths?<p style={{fontSize:13}}><strong>Points forts :</strong> {feedback.strengths}</p>:null}{feedback.improvements?<p style={{fontSize:13}}><strong>Améliorations :</strong> {feedback.improvements}</p>:null}{feedback.adaptation_feedback?<p style={{fontSize:13}}><strong>Adaptations :</strong> {feedback.adaptation_feedback}</p>:null}{feedback.free_comment?<p style={{fontSize:13}}><strong>Commentaire :</strong> {feedback.free_comment}</p>:null}</details>:<p style={{fontSize:12,color:"var(--selen-text2)"}}>Satisfaction en attente.</p>}</div>})}</div></SelenCard></section>:null}
+    <section style={s.metrics}>
+      <Metric label="Inscriptions reçues" value={responses.length} />
+      <Metric label="Participants inscrits" value={enrolments.length} />
+      <Metric label="Présences signées" value={signedAttendance} />
+      <Metric label="Suivis ouverts" value={openFollowups.length} />
+      <Metric label="Évaluations renseignées" value={completedAssessments} />
+      <Metric label="Satisfactions reçues" value={feedbacks.length} />
+    </section>
 
-    {(["before","during","after"] as const).map((phase)=><section key={phase} style={{marginTop:18}}><h2>{phaseLabels[phase]}</h2><div style={{display:"grid",gap:10}}>{(items??[]).filter((i)=>i.phase===phase).map((item)=><SelenCard key={item.id}><SelenCardTitle>{item.label}</SelenCardTitle><p style={{fontSize:13,color:"var(--selen-text2)"}}>{item.description}</p><div style={{fontSize:12,marginBottom:8}}>Responsabilité : {responsibilityLabels[item.responsibility] ?? item.responsibility}{item.due_at?` · Échéance ${new Date(item.due_at).toLocaleDateString("fr-FR")}`:""}</div><form action={updateItem} style={{display:"grid",gridTemplateColumns:"minmax(140px,180px) 1fr auto",gap:8}}><input type="hidden" name="session_id" value={id}/><input type="hidden" name="item_id" value={item.id}/><select name="status" defaultValue={item.status}>{Object.entries(statusLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select><input name="note" defaultValue={item.note ?? ""} placeholder="Note interne ou de suivi"/><SelenButton type="submit">Mettre à jour</SelenButton></form></SelenCard>)}</div></section>)}
+    <details style={s.details} open>
+      <summary style={s.summary}>Repères de la session</summary>
+      <div style={s.detailBody}>
+        <Info label="Début" value={formatDate(typedSession.start_date)} />
+        <Info label="Fin" value={formatDate(typedSession.end_date)} />
+        <Info label="Modalité" value={typedSession.modality || formation.modality || "Non renseignée"} />
+        <Info label="Durée" value={`${formation.duration_hours ?? "?"} h · ${formation.duration_days ?? "?"} j`} />
+        <Info label="Version du programme" value={`v${formation.version ?? 1}`} />
+        <Info label="Dossier" value={dossierRes.data?.completed_at ? `Clôturé le ${formatDate(dossierRes.data.completed_at)}` : "Actif"} />
+      </div>
+    </details>
+
+    <details style={s.details}>
+      <summary style={s.summary}>Programme de formation</summary>
+      <div style={s.textBlock}>
+        <Info label="Objectif" value={formation.global_objective || "Non renseigné"} />
+        <Info label="Public visé" value={formation.target_audience || "Non renseigné"} />
+        <Info label="Prérequis" value={formation.prerequisites || "Non renseignés"} />
+        {formation.validation_note ? <Info label="Note de validation" value={formation.validation_note} /> : null}
+      </div>
+    </details>
+
+    <details style={s.details} open={responses.length > 0}>
+      <summary style={s.summary}>Inscriptions ({responses.length})</summary>
+      <div style={s.list}>
+        {responses.length === 0 ? <p style={s.empty}>Aucun dossier d'inscription reçu pour le moment.</p> : responses.map((response) => <div key={response.id} style={s.row}>
+          <div><strong>{[response.respondent_first_name, response.respondent_last_name].filter(Boolean).join(" ") || response.company_name || "Dossier d'inscription"}</strong><p style={s.small}>{response.respondent_email || response.company_name || response.response_type}</p></div>
+          <span style={s.small}>{formatDate(response.created_at)}</span>
+        </div>)}
+        {responses.length > 0 ? <Link href={`/agent/daily/sessions/${id}`} style={s.secondary}>Ouvrir le traitement des inscriptions →</Link> : null}
+      </div>
+    </details>
+
+    <details style={s.details}>
+      <summary style={s.summary}>Déroulement & incidents ({followups.length})</summary>
+      <div style={s.list}>{followups.length === 0 ? <p style={s.empty}>Aucun incident ni adaptation enregistré.</p> : followups.map((entry) => <div key={entry.id} style={s.row}><div><strong>{entry.summary}</strong><p style={s.small}>{entry.entry_type} · {entry.level} · {entry.status === "resolved" ? "traité" : "ouvert"}</p></div><span style={s.small}>{formatDate(entry.occurred_at)}</span></div>)}</div>
+    </details>
+
+    <details style={s.details}>
+      <summary style={s.summary}>Présences, évaluations & satisfaction</summary>
+      <div style={s.detailBody}>
+        <Info label="Émargements" value={`${signedAttendance} présence(s) signée(s) sur ${attendanceRecords.length} enregistrement(s)`} />
+        <Info label="Évaluations des acquis" value={`${completedAssessments}/${enrolments.length || assessments.length} renseignée(s)`} />
+        <Info label="Questionnaires de satisfaction" value={`${feedbacks.length} reçu(s)`} />
+      </div>
+    </details>
+
+    <div style={s.footerLinks}>
+      <Link href={`/agent/daily/communications?session_id=${encodeURIComponent(id)}`} style={s.secondary}>Communications & preuves</Link>
+      <Link href={`/agent/daily/session-dossiers/${id}/followup`} style={s.secondary}>Fiche de suivi</Link>
+      <Link href={`/agent/daily/session-dossiers/${id}/satisfaction`} style={s.secondary}>Satisfaction commanditaire & formateur</Link>
+      <Link href={`/agent/daily/session-dossiers/${id}/closure`} style={s.secondary}>Clôture</Link>
+    </div>
   </main>;
 }
+
+function Metric({ label, value }: { label: string; value: number }) { return <div style={s.metric}><strong style={s.metricValue}>{value}</strong><span style={s.metricLabel}>{label}</span></div>; }
+function Info({ label, value }: { label: string; value: string }) { return <div style={s.info}><span style={s.infoLabel}>{label}</span><span style={s.infoValue}>{value}</span></div>; }
+
+const s: Record<string, React.CSSProperties> = {
+  page: { maxWidth: 1040, margin: "0 auto", padding: "28px 28px 70px", color: "var(--selen-text)" }, backRow: { display: "flex", gap: 14, marginBottom: 16 }, back: { color: "var(--selen-gold2)", textDecoration: "none", fontWeight: 700, fontSize: 12 },
+  header: { display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start", marginBottom: 18 }, eyebrow: { margin: 0, color: "var(--selen-gold2)", textTransform: "uppercase", letterSpacing: ".16em", fontSize: 10, fontWeight: 800 }, h1: { margin: "5px 0", fontFamily: "var(--font-display)", fontSize: 31 }, h2: { margin: "5px 0 7px", fontSize: 22 }, muted: { margin: 0, color: "var(--selen-text2)", fontSize: 13 }, lead: { margin: 0, maxWidth: 680, lineHeight: 1.6, color: "var(--selen-text2)", fontSize: 13 },
+  status: { border: "1px solid var(--selen-border)", borderRadius: 999, padding: "7px 10px", fontSize: 11, fontWeight: 800 }, nowCard: { display: "flex", justifyContent: "space-between", gap: 20, alignItems: "center", padding: 20, border: "1px solid var(--selen-border2)", borderRadius: 16, background: "var(--selen-bg2)", marginBottom: 16 }, primary: { display: "inline-flex", alignItems: "center", minHeight: 40, padding: "0 14px", borderRadius: 10, background: "var(--selen-gold2)", color: "var(--selen-bg)", textDecoration: "none", fontWeight: 800, fontSize: 13, whiteSpace: "nowrap" }, rest: { color: "var(--selen-success)", fontWeight: 800, fontSize: 13 },
+  metrics: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, marginBottom: 18 }, metric: { display: "grid", gap: 4, padding: 14, border: "1px solid var(--selen-border)", borderRadius: 12, background: "var(--selen-bg3)" }, metricValue: { fontSize: 24, color: "var(--selen-gold2)" }, metricLabel: { fontSize: 11, color: "var(--selen-text2)" },
+  details: { border: "1px solid var(--selen-border)", borderRadius: 12, background: "var(--selen-bg2)", marginBottom: 10, overflow: "hidden" }, summary: { cursor: "pointer", padding: "14px 16px", fontWeight: 800, fontSize: 14 }, detailBody: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10, padding: "0 16px 16px" }, textBlock: { display: "grid", gap: 10, padding: "0 16px 16px" }, info: { display: "grid", gap: 4, padding: 10, borderRadius: 9, background: "var(--selen-bg3)" }, infoLabel: { fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--selen-text3)", fontWeight: 800 }, infoValue: { fontSize: 13, lineHeight: 1.5 },
+  list: { display: "grid", gap: 8, padding: "0 16px 16px" }, row: { display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", padding: 10, borderRadius: 9, background: "var(--selen-bg3)" }, small: { margin: "3px 0 0", color: "var(--selen-text3)", fontSize: 11 }, empty: { margin: 0, padding: 10, color: "var(--selen-text3)", fontSize: 12 },
+  secondary: { display: "inline-flex", alignItems: "center", minHeight: 36, padding: "0 12px", border: "1px solid var(--selen-border)", borderRadius: 9, textDecoration: "none", color: "var(--selen-text)", fontSize: 12, fontWeight: 700 }, footerLinks: { display: "flex", flexWrap: "wrap", gap: 9, marginTop: 18 },
+};
