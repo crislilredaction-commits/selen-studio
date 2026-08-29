@@ -26,11 +26,14 @@ test("la validation crée l'action client de diffusion sans exposer le lien dans
   assert.doesNotMatch(page, /public-registration-qr/);
 });
 
-test("le dossier technique reste disponible en vue secondaire", () => {
+test("le dossier complet est une synthèse métier et non une checklist", () => {
   const full = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
-  assert.match(full, /Preuves de présence/);
-  assert.match(full, /Déroulement de la session/);
-  assert.match(full, /Évaluations & satisfaction/);
+  assert.match(full, /À faire maintenant/);
+  assert.match(full, /En attente d'une inscription/);
+  assert.match(full, /Inscriptions reçues/);
+  assert.match(full, /Présences, évaluations & satisfaction/);
+  assert.doesNotMatch(full, /daily_session_checklist_items/);
+  assert.doesNotMatch(full, /updateItem/);
 });
 
 test("les messages chaleureux restent dans la sidebar et non dans un bandeau", () => {
@@ -48,9 +51,19 @@ test("la messagerie exclut les alertes Daily", () => {
   assert.doesNotMatch(route, /daily_sync_trainer_certification_notifications/);
 });
 
-test("le pilotage des sessions affiche des tâches agent plutôt qu'une checklist", () => {
-  const page = read("src/app/agent/daily/session-dossiers/page.tsx");
-  assert.match(page, /Tâches agent/);
-  assert.match(page, /Vérifier et valider le programme/);
-  assert.match(page, /Traiter cette session/);
+test("Pilotage Daily ne montre que les interventions réelles", () => {
+  const page = read("src/app/agent/daily/page.tsx");
+  assert.match(page, /ne montre que les dossiers qui attendent réellement une intervention/);
+  assert.match(page, /responses\.length === 0/);
+  assert.match(page, /Programme à valider/);
+  assert.match(page, /Dossier d'inscription à traiter/);
+});
+
+test("le tableau de bord ne compte plus la checklist technique Daily", () => {
+  const dashboard = read("src/components/agent/AgentHomeDashboard.tsx");
+  assert.match(dashboard, /registrationNeedsAgent/);
+  assert.match(dashboard, /programme à vérifier et valider/);
+  assert.match(dashboard, /dossier.*d'inscription à traiter/);
+  assert.doesNotMatch(dashboard, /daily_session_checklist_items/);
+  assert.doesNotMatch(dashboard, /pendingCount/);
 });
