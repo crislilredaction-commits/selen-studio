@@ -32,5 +32,8 @@ alter function public.set_daily_updated_at()
 alter function public.set_lil_billing_profiles_updated_at()
   set search_path = '';
 
+alter function public.daily_normalize_subscription_price()
+  set search_path = '';
+
 alter function public.daily_registration_response_summary(uuid)
   set search_path = '';
