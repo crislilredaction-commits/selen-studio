@@ -76,7 +76,7 @@ export default async function AgentHomeDashboard() {
   let assigned: DossierRow[] = [];
   if (assignedIds.size) {
     const { data } = await admin.from("dossiers").select("id,title,type,status,updated_at").in("id", [...assignedIds]).order("updated_at", { ascending: false });
-    assigned = ((data ?? []) as DossierRow[]).filter((row) => active(row.status));
+    assigned = ((data ?? []) as DossierRow[]).filter((row) => active(row.status) && row.type !== "daily");
   }
 
   let unreadQuery = admin.from("messages").select("id,dossier_id,created_at").eq("sender_type", "client").is("read_by_agent_at", null).order("created_at", { ascending: false }).limit(50);
@@ -107,7 +107,7 @@ export default async function AgentHomeDashboard() {
 
   const { data: allAssignments } = await admin.from("dossier_assignments").select("dossier_id");
   const allAssigned = new Set((allAssignments ?? []).map((row) => row.dossier_id).filter(Boolean));
-  const { data: candidateData } = await admin.from("dossiers").select("id,title,type,status,updated_at").order("updated_at", { ascending: false }).limit(50);
+  const { data: candidateData } = await admin.from("dossiers").select("id,title,type,status,updated_at").neq("type", "daily").order("updated_at", { ascending: false }).limit(50);
   const unassigned = ((candidateData ?? []) as DossierRow[]).filter((row) => active(row.status) && !allAssigned.has(row.id)).slice(0, 8).map((row) => ({ ...dossierItem(row), subtitle: `${formatType(row.type)} · sans attribution` }));
 
   const actionDossiers = unique([...sessionDossiers, ...unreadItems, ...reminders.filter((item) => !((reminderData ?? []) as ReminderRow[]).some((reminder) => reminder.id === item.id && reminder.reminder_type === "preaudit_incomplete_15_days"))]).slice(0, 12);
