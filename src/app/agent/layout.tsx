@@ -1,4 +1,5 @@
 import AgentSidebar from "@/components/layout/AgentSidebar";
+import AgentFriendlyBanner from "@/components/AgentFriendlyBanner";
 
 export default function AgentLayout({
   children,
@@ -25,6 +26,7 @@ export default function AgentLayout({
             "radial-gradient(circle at 72% 6%, rgba(245, 208, 138, 0.08), transparent 24%), transparent",
         }}
       >
+        <AgentFriendlyBanner />
         {children}
       </main>
     </div>
