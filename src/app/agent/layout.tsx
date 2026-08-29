@@ -1,5 +1,4 @@
 import AgentSidebar from "@/components/layout/AgentSidebar";
-import AgentFriendlyBanner from "@/components/AgentFriendlyBanner";
 import StudioTutoiementGuard from "@/components/StudioTutoiementGuard";
 
 export default function AgentLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +22,6 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         }}
       >
         <StudioTutoiementGuard />
-        <AgentFriendlyBanner />
         {children}
       </main>
     </div>
