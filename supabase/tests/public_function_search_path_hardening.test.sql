@@ -1,6 +1,6 @@
 begin;
 
-select plan(12);
+select plan(13);
 
 select ok(
   (select proconfig @> array['search_path=""']
@@ -18,6 +18,7 @@ select ok((select proconfig @> array['search_path=""'] from pg_proc p join pg_na
 select ok((select proconfig @> array['search_path=""'] from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='set_articles_updated_at' and pg_get_function_identity_arguments(p.oid)=''), 'set_articles_updated_at pins an empty search_path');
 select ok((select proconfig @> array['search_path=""'] from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='set_daily_updated_at' and pg_get_function_identity_arguments(p.oid)=''), 'set_daily_updated_at pins an empty search_path');
 select ok((select proconfig @> array['search_path=""'] from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='set_lil_billing_profiles_updated_at' and pg_get_function_identity_arguments(p.oid)=''), 'set_lil_billing_profiles_updated_at pins an empty search_path');
+select ok((select proconfig @> array['search_path=""'] from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='daily_normalize_subscription_price' and pg_get_function_identity_arguments(p.oid)=''), 'daily_normalize_subscription_price pins an empty search_path');
 select ok((select proconfig @> array['search_path=""'] from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='daily_registration_response_summary' and pg_get_function_identity_arguments(p.oid)='p_session_id uuid'), 'daily_registration_response_summary pins an empty search_path');
 
 select ok(
