@@ -13,6 +13,7 @@ type LegacyDossier = {
   dossier_assignments: Array<{ is_primary: boolean; profiles: AssignmentProfile }> | null;
   messages: Array<{ sender_type: string; read_by_agent_at: string | null }> | null;
 };
+type DailyAssignment = { organisation_id: string; agent_profiles: AssignmentProfile };
 type PreauditSession = {
   session_id: string; user_id: string; client_name: string | null; client_email: string | null;
   organisation_name: string | null; session_status: string | null; audit_type: string | null; session_created_at: string;
@@ -28,6 +29,11 @@ function profileText(profile: Record<string, unknown> | null, keys: string[]) {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return null;
+}
+function agentName(value: AssignmentProfile) {
+  const profile = Array.isArray(value) ? value[0] ?? null : value;
+  if (!profile) return null;
+  return [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.email || null;
 }
 function dossierType(type: string) {
   switch (type) {
@@ -57,32 +63,39 @@ export default async function UnifiedDossiersPage() {
   if (!auth.ok) return <main style={{ padding: "24px 28px", color: "var(--selen-danger)" }}>{auth.error}</main>;
 
   const admin = createSupabaseAdminClient();
-  const [dossiersRes, preauditsRes, auditsBlancsRes, organisationsRes] = await Promise.all([
+  const [dossiersRes, preauditsRes, auditsBlancsRes, organisationsRes, dailyAssignmentsRes] = await Promise.all([
     admin.from("dossiers").select(`id,title,type,status,created_at,organisations(id,name,siret,email),dossier_assignments(is_primary,profiles:agent_id(first_name,last_name,email)),messages(sender_type,read_by_agent_at)`).order("created_at", { ascending: false }),
     admin.from("admin_preaudit_sessions_overview").select("session_id,user_id,client_name,client_email,organisation_name,session_status,audit_type,session_created_at").order("session_created_at", { ascending: false }),
     admin.from("audit_blanc_cases").select("id,client_email,status,created_at,profile_data").neq("status", "cancelled").order("created_at", { ascending: false }),
     admin.from("organisations").select("id,name,siret,email"),
+    admin.from("daily_organisation_assignments").select("organisation_id,agent_profiles(first_name,last_name,email)"),
   ]);
 
-  const firstError = dossiersRes.error ?? preauditsRes.error ?? auditsBlancsRes.error ?? organisationsRes.error;
+  const firstError = dossiersRes.error ?? preauditsRes.error ?? auditsBlancsRes.error ?? organisationsRes.error ?? dailyAssignmentsRes.error;
   if (firstError) return <main style={{ padding: "24px 28px", color: "var(--selen-danger)" }}>Impossible de charger le registre des dossiers. {firstError.message}</main>;
 
   const organisations = (organisationsRes.data ?? []) as Organisation[];
   const byEmail = new Map(organisations.map((organisation) => [normalisedEmail(organisation.email), organisation] as const).filter((pair): pair is [string, Organisation] => Boolean(pair[0])));
+  const dailyAgentByOrganisation = new Map(
+    ((dailyAssignmentsRes.data ?? []) as unknown as DailyAssignment[]).map((assignment) => [assignment.organisation_id, agentName(assignment.agent_profiles)] as const),
+  );
   const entries: RegistryEntry[] = [];
 
   for (const dossier of (dossiersRes.data ?? []) as unknown as LegacyDossier[]) {
     const organisation = singleOrganisation(dossier.organisations);
     const type = dossierType(dossier.type);
     const primary = dossier.dossier_assignments?.find((item) => item.is_primary) ?? dossier.dossier_assignments?.[0];
-    const profile = Array.isArray(primary?.profiles) ? primary?.profiles[0] : primary?.profiles;
-    const agentName = profile ? [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.email : null;
+    const legacyAgentName = agentName(primary?.profiles ?? null);
+    const assignedAgentName = dossier.type === "daily" && organisation
+      ? dailyAgentByOrganisation.get(organisation.id) ?? null
+      : legacyAgentName;
     const unread = (dossier.messages ?? []).filter((message) => message.sender_type === "client" && message.read_by_agent_at === null).length;
     entries.push({
       key: `dossier:${dossier.id}`, title: dossier.title, organisationName: organisation?.name ?? dossier.title,
       siret: organisation?.siret ?? null, prestation: type.label, prestationKey: type.key, status: dossier.status,
-      statusLabel: statusLabel(dossier.status), createdAt: dossier.created_at, href: `/agent/dossiers/${dossier.id}`,
-      secondary: [agentName ? `Agent : ${agentName}` : null, unread ? `${unread} message${unread > 1 ? "s" : ""} non lu${unread > 1 ? "s" : ""}` : null].filter(Boolean).join(" · ") || null,
+      statusLabel: statusLabel(dossier.status), createdAt: dossier.created_at,
+      href: dossier.type === "daily" && organisation ? `/agent/daily/organisations/${organisation.id}` : `/agent/dossiers/${dossier.id}`,
+      secondary: [assignedAgentName ? `Agent : ${assignedAgentName}` : dossier.type === "daily" ? "Agent : non assigné" : null, unread ? `${unread} message${unread > 1 ? "s" : ""} non lu${unread > 1 ? "s" : ""}` : null].filter(Boolean).join(" · ") || null,
     });
   }
 
