@@ -15,8 +15,8 @@ type AuditRow = { id: string; client_email: string; status: string | null; offer
 type ReminderRow = { id: string; client_email: string | null; dossier_id: string | null; reminder_type: string | null; status: string | null; subject: string | null; due_at: string | null; metadata: Record<string, unknown> | null };
 type TicketRow = { id: string; client_email: string | null; client_name: string | null; subject: string | null; category: string | null; priority: string | null; status: string | null; last_message_at: string | null; updated_at: string | null; created_at: string | null };
 type DailySessionDossierRow = { session_id: string; status: string; assigned_agent_profile_id: string | null; updated_at: string | null };
-type DailySessionRow = { id: string; formation_id: string; internal_reference: string | null; start_date: string | null; updated_at: string | null };
-type DailyFormationRow = { id: string; title: string | null };
+type DailySessionRow = { id: string; formation_id: string; internal_reference: string | null; registration_status: string | null; adaptation_needed: boolean | null; updated_at: string | null; daily_registration_responses?: Array<{ id: string }> | null };
+type DailyFormationRow = { id: string; title: string | null; status: string | null };
 
 const inactiveStatuses = new Set(["completed", "cancelled", "archived", "done", "termine", "terminé"]);
 const adminLinks = [
@@ -52,33 +52,45 @@ async function currentStaff(): Promise<StaffInfo> {
   return { id: profile?.id ?? null, user_id: profile?.user_id ?? user.id, email: profile?.email ?? email, role, first_name: profile?.first_name ?? null, last_name: profile?.last_name ?? null };
 }
 
+function registrationNeedsAgent(session: DailySessionRow) {
+  const responses = session.daily_registration_responses?.length ?? 0;
+  if (responses === 0) return false;
+  return session.adaptation_needed === true || ["to_review", "responses_received", "summary_to_review"].includes(session.registration_status ?? "");
+}
+
 async function dailySessionDossiers(admin: ReturnType<typeof createSupabaseAdminClient>, staff: StaffInfo): Promise<DashboardItem[]> {
-  let query = admin.from("daily_session_dossiers").select("session_id,status,assigned_agent_profile_id,updated_at").eq("status", "active").order("updated_at", { ascending: false }).limit(20);
+  let query = admin.from("daily_session_dossiers").select("session_id,status,assigned_agent_profile_id,updated_at").eq("status", "active").order("updated_at", { ascending: false }).limit(40);
   if (staff.role !== "admin" && staff.id) query = query.eq("assigned_agent_profile_id", staff.id);
   const { data: dossiers } = await query;
   const rows = (dossiers ?? []) as DailySessionDossierRow[];
   if (rows.length === 0) return [];
+
   const sessionIds = rows.map((row) => row.session_id);
-  const [{ data: sessions }, { data: checklist }] = await Promise.all([
-    admin.from("daily_sessions").select("id,formation_id,internal_reference,start_date,updated_at").in("id", sessionIds),
-    admin.from("daily_session_checklist_items").select("session_id,status").in("session_id", sessionIds),
-  ]);
-  const sessionRows = (sessions ?? []) as DailySessionRow[];
+  const { data: sessions } = await admin.from("daily_sessions").select("id,formation_id,internal_reference,registration_status,adaptation_needed,updated_at,daily_registration_responses(id)").in("id", sessionIds);
+  const sessionRows = (sessions ?? []) as unknown as DailySessionRow[];
   const formationIds = [...new Set(sessionRows.map((row) => row.formation_id).filter(Boolean))];
-  const { data: formations } = formationIds.length ? await admin.from("daily_formations").select("id,title").in("id", formationIds) : { data: [] };
-  const formationMap = new Map(((formations ?? []) as DailyFormationRow[]).map((row) => [row.id, row.title]));
+  const { data: formations } = formationIds.length ? await admin.from("daily_formations").select("id,title,status").in("id", formationIds) : { data: [] };
+  const formationMap = new Map(((formations ?? []) as DailyFormationRow[]).map((row) => [row.id, row]));
   const sessionMap = new Map(sessionRows.map((row) => [row.id, row]));
-  const pendingCount = new Map<string, number>();
-  for (const item of checklist ?? []) {
-    if (["validated", "not_applicable"].includes(item.status)) continue;
-    pendingCount.set(item.session_id, (pendingCount.get(item.session_id) ?? 0) + 1);
-  }
-  return rows.map((row) => {
+
+  const result: DashboardItem[] = [];
+  for (const row of rows) {
     const session = sessionMap.get(row.session_id);
-    const title = session ? formationMap.get(session.formation_id) || session.internal_reference || "Dossier de session Daily" : "Dossier de session Daily";
-    const count = pendingCount.get(row.session_id) ?? 0;
-    return { id: `daily-session-${row.session_id}`, title, subtitle: `Daily · dossier de session · ${count} tâche${count > 1 ? "s" : ""} à traiter`, href: `/agent/daily/session-dossiers/${row.session_id}`, date: row.updated_at ?? session?.updated_at };
-  });
+    if (!session) continue;
+    const formation = formationMap.get(session.formation_id);
+    const title = formation?.title || session.internal_reference || "Dossier de session Daily";
+
+    if (formation?.status === "review") {
+      result.push({ id: `daily-program-${row.session_id}`, title, subtitle: "Daily · programme à vérifier et valider", href: `/agent/daily/session-dossiers/${row.session_id}`, date: row.updated_at ?? session.updated_at });
+      continue;
+    }
+
+    if (formation?.status === "validated" && registrationNeedsAgent(session)) {
+      const responseCount = session.daily_registration_responses?.length ?? 0;
+      result.push({ id: `daily-registration-${row.session_id}`, title, subtitle: `Daily · ${responseCount} dossier${responseCount > 1 ? "s" : ""} d'inscription à traiter`, href: `/agent/daily/sessions/${row.session_id}`, date: row.updated_at ?? session.updated_at });
+    }
+  }
+  return result;
 }
 
 export default async function AgentHomeDashboard() {
@@ -86,7 +98,6 @@ export default async function AgentHomeDashboard() {
   const admin = createSupabaseAdminClient();
   const canAccessGestionLil = isOwnerLil(staff.email);
   const greeting = staff.first_name?.trim() || staff.email?.split("@")[0] || "agent";
-
   const sessionDossiers = await dailySessionDossiers(admin, staff);
 
   const assignedIds = new Set<string>();
