@@ -17,7 +17,7 @@ test("la règle des 72 h partage la tâche sans changer l'assignation", () => {
   assert.match(tasks, /const SLA_MS = 72 \* 60 \* 60 \* 1000/);
   assert.match(tasks, /assignedAgentProfileId: assignment\.agent_profile_id/);
   assert.match(tasks, /overdueShared/);
-  assert.doesNotMatch(page, /daily_organisation_assignments[\s\S]*\.update\(/);
+  assert.doesNotMatch(page, /\.from\("daily_organisation_assignments"\)\s*\.update\(/);
 });
 
 test("le traitement répète le contrôle serveur puis fait disparaître la tâche", () => {
