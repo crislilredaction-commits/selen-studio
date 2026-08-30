@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "npm run test:daily-qualiopi-preaudit && next build --webpack",
+    "build": "npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test:daily-qualiopi-preaudit": "node --test tests/dailyQualiopiPreauditTask.test.mjs"
+    "test:daily-qualiopi-preaudit": "node --test tests/dailyQualiopiPreauditTask.test.mjs",
+    "test:daily-satisfaction": "node --test tests/dailySatisfactionPhoneTasks.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
