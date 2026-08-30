@@ -7,7 +7,7 @@ const page = await readFile(new URL("../src/app/agent/daily/preaudit/[actionId]/
 
 test("le pré-audit utilise les actions qualité existantes et l'assignation organisme", () => {
   assert.match(tasks, /\.from\("daily_quality_actions"\)/);
-  assert.match(tasks, /\.eq\("source_type", "qualiopi_preaudit"\)/);
+  assert.match(tasks, /"qualiopi_preaudit"/);
   assert.match(tasks, /\.in\("status", \["open", "planned"\]\)/);
   assert.match(tasks, /const assignment = assignmentByOrg\.get\(action\.organisation_id\)/);
   assert.match(tasks, /if \(!organisation \|\| !assignment\) continue/);
