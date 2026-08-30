@@ -4,6 +4,7 @@ import test from "node:test";
 
 const route = await readFile(new URL("../src/app/agent/api/daily/organisation-assignment/route.ts", import.meta.url), "utf8");
 const pilotage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
+const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/20260809002121_daily_lot1b2_studio_pilotage.sql", import.meta.url), "utf8");
 
 test("un agent non-admin ne peut prendre qu’un organisme non assigné pour lui-même", () => {
@@ -26,6 +27,14 @@ test("le Pilotage Daily propose la prise en charge directe aux agents", () => {
   assert.match(pilotage, /role === "admin"/);
   assert.match(pilotage, /action="\/agent\/api\/daily\/organisation-assignment"/);
   assert.match(pilotage, /Me l’assigner →/);
+});
+
+test("la fiche organisme propose aussi la prise en charge uniquement si elle est non assignée", () => {
+  assert.match(organisationLayout, /daily_organisation_assignments/);
+  assert.match(organisationLayout, /!assignmentRes\.data/);
+  assert.match(organisationLayout, /profileRes\.data\?\.role === "agent"/);
+  assert.match(organisationLayout, /action="\/agent\/api\/daily\/organisation-assignment"/);
+  assert.match(organisationLayout, /Me l’assigner/);
 });
 
 test("les écritures directes authenticated restent fermées sur la table d’assignation", () => {
