@@ -13,7 +13,7 @@ export type DailyAgentTask = {
   createdAt: string | null;
   assignedAgentProfileId: string | null;
   overdueShared: boolean;
-  kind: "assignment" | "program" | "registration" | "adaptation";
+  kind: "assignment" | "program" | "registration" | "adaptation" | "preaudit";
 };
 
 type Org = { id: string; name: string | null; legal_name: string | null; created_at: string | null };
@@ -36,6 +36,16 @@ type Formation = {
   updated_at: string | null;
 };
 type Response = { id: string; session_id: string; created_at: string | null };
+type QualityAction = {
+  id: string;
+  organisation_id: string;
+  title: string | null;
+  observation: string | null;
+  proposed_solution: string | null;
+  status: string | null;
+  source_type: string | null;
+  created_at: string | null;
+};
 
 const SLA_MS = 72 * 60 * 60 * 1000;
 function isOverdue(value: string | null) {
@@ -55,17 +65,19 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
   const organisationIds = await getActiveDailyOrganisationIds();
   if (organisationIds.length === 0) return [];
 
-  const [orgRes, assignmentRes, sessionRes] = await Promise.all([
+  const [orgRes, assignmentRes, sessionRes, preauditRes] = await Promise.all([
     admin.from("organisations").select("id,name,legal_name,created_at").in("id", organisationIds).neq("status", "archived"),
     admin.from("daily_organisation_assignments").select("organisation_id,agent_profile_id,assigned_at").in("organisation_id", organisationIds),
     admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,registration_status,adaptation_needed,registration_responses_received_at,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
+    admin.from("daily_quality_actions").select("id,organisation_id,title,observation,proposed_solution,status,source_type,created_at").in("organisation_id", organisationIds).eq("source_type", "qualiopi_preaudit").in("status", ["open", "planned"]).order("created_at", { ascending: true }),
   ]);
-  const error = orgRes.error ?? assignmentRes.error ?? sessionRes.error;
+  const error = orgRes.error ?? assignmentRes.error ?? sessionRes.error ?? preauditRes.error;
   if (error) throw new Error(error.message);
 
   const organisations = (orgRes.data ?? []) as Org[];
   const assignments = (assignmentRes.data ?? []) as Assignment[];
   const sessions = (sessionRes.data ?? []) as Session[];
+  const preaudits = (preauditRes.data ?? []) as QualityAction[];
   const assignmentByOrg = new Map(assignments.map((row) => [row.organisation_id, row]));
   const orgById = new Map(organisations.map((row) => [row.id, row]));
 
@@ -98,6 +110,29 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       assignedAgentProfileId: null,
       overdueShared: false,
       kind: "assignment",
+    });
+  }
+
+  for (const action of preaudits) {
+    const organisation = orgById.get(action.organisation_id);
+    const assignment = assignmentByOrg.get(action.organisation_id);
+    if (!organisation || !assignment) continue;
+    const createdAt = action.created_at;
+    const overdueShared = isOverdue(createdAt);
+    tasks.push({
+      id: `daily-preaudit-${action.id}`,
+      organisationId: organisation.id,
+      organisation: organisation.legal_name || organisation.name || "Organisme Daily",
+      title: action.title || "Pré-audit Qualiopi à préparer",
+      reason: "Pré-audit Qualiopi",
+      detail: overdueShared
+        ? "Cette tâche dépasse 72 h. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter."
+        : action.observation || action.proposed_solution || "Prépare le pré-audit avant l'audit de surveillance Qualiopi.",
+      href: `/agent/daily/preaudit/${action.id}`,
+      createdAt,
+      assignedAgentProfileId: assignment.agent_profile_id,
+      overdueShared,
+      kind: "preaudit",
     });
   }
 
