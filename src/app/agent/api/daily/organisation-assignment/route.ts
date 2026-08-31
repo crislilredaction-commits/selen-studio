@@ -64,14 +64,26 @@ export async function POST(request: Request) {
   if (targetError) return NextResponse.json({ error: targetError.message }, { status: 500 });
   if (!target) return NextResponse.json({ error: "Agent cible inéligible." }, { status: 400 });
 
-  const now = new Date().toISOString();
-  const { error: writeError } = await admin.from("daily_organisation_assignments").upsert({
+  const payload = {
     organisation_id: organisationId,
     agent_profile_id: targetAgentProfileId,
     assigned_by: auth.userId,
-    assigned_at: now,
-  }, { onConflict: "organisation_id" });
-  if (writeError) return NextResponse.json({ error: writeError.message }, { status: 500 });
+    assigned_at: new Date().toISOString(),
+  };
+
+  // L'admin peut réellement réassigner. Un agent, lui, ne fait qu'un INSERT :
+  // si une assignation apparaît entre la lecture et l'écriture, l'unicité bloque
+  // l'opération au lieu qu'un upsert service-role ne réassigne silencieusement le dossier.
+  const write = isAdmin
+    ? await admin.from("daily_organisation_assignments").upsert(payload, { onConflict: "organisation_id" })
+    : await admin.from("daily_organisation_assignments").insert(payload);
+
+  if (write.error) {
+    if (!isAdmin && write.error.code === "23505") {
+      return NextResponse.json({ error: "Cet organisme vient d’être assigné. Seul un administrateur peut le réassigner." }, { status: 409 });
+    }
+    return NextResponse.json({ error: write.error.message }, { status: 500 });
+  }
 
   return redirectTo(request, organisationId);
 }
