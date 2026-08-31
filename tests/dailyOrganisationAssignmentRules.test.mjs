@@ -16,11 +16,20 @@ test("un agent non-admin ne peut prendre qu’un organisme non assigné pour lui
   assert.match(route, /Seul un administrateur peut le réassigner/);
 });
 
-test("un admin peut choisir un agent cible éligible", () => {
+test("la prise en charge agent reste un INSERT et ne peut pas devenir une réassignation par course", () => {
+  assert.match(route, /const write = isAdmin/);
+  assert.match(route, /\? await admin\.from\("daily_organisation_assignments"\)\.upsert\(payload/);
+  assert.match(route, /: await admin\.from\("daily_organisation_assignments"\)\.insert\(payload\)/);
+  assert.match(route, /write\.error\.code === "23505"/);
+  assert.match(route, /vient d’être assigné\. Seul un administrateur peut le réassigner/);
+});
+
+test("un admin peut choisir un agent cible éligible et réassigner", () => {
   assert.match(route, /isAdmin/);
   assert.match(route, /targetAgentProfileId = requestedAgentProfileId/);
   assert.match(route, /\.eq\("is_active", true\)/);
   assert.match(route, /\.in\("role", \["agent", "admin"\]\)/);
+  assert.match(route, /\.upsert\(payload, \{ onConflict: "organisation_id" \}\)/);
 });
 
 test("le Pilotage Daily propose la prise en charge directe aux agents", () => {
