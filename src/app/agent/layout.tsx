@@ -1,5 +1,6 @@
 import AgentSidebar from "@/components/layout/AgentSidebar";
 import StudioTutoiementGuard from "@/components/StudioTutoiementGuard";
+import SupportQuickCreateLink from "@/components/support/SupportQuickCreateLink";
 
 export default function AgentLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -22,6 +23,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         }}
       >
         <StudioTutoiementGuard />
+        <SupportQuickCreateLink />
         {children}
       </main>
     </div>
