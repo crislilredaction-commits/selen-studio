@@ -14,7 +14,7 @@ export type DailyAgentTask = {
   createdAt: string | null;
   assignedAgentProfileId: string | null;
   overdueShared: boolean;
-  kind: "assignment" | "program" | "registration" | "adaptation" | "preaudit" | "satisfaction" | "session";
+  kind: "assignment" | "program" | "registration" | "adaptation" | "satisfaction" | "session";
 };
 
 type Org = { id: string; name: string | null; legal_name: string | null; created_at: string | null };
@@ -86,7 +86,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
     admin.from("organisations").select("id,name,legal_name,created_at").in("id", organisationIds).neq("status", "archived"),
     admin.from("daily_organisation_assignments").select("organisation_id,agent_profile_id,assigned_at").in("organisation_id", organisationIds),
     admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,registration_status,adaptation_needed,registration_responses_received_at,start_date,end_date,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
-    admin.from("daily_quality_actions").select("id,organisation_id,session_id,title,observation,proposed_solution,status,source_type,created_at").in("organisation_id", organisationIds).in("source_type", ["qualiopi_preaudit", "satisfaction_phone_followup"]).in("status", ["open", "planned"]).order("created_at", { ascending: true }),
+    admin.from("daily_quality_actions").select("id,organisation_id,session_id,title,observation,proposed_solution,status,source_type,created_at").in("organisation_id", organisationIds).eq("source_type", "satisfaction_phone_followup").in("status", ["open", "planned"]).order("created_at", { ascending: true }),
   ]);
   const error = orgRes.error ?? assignmentRes.error ?? sessionRes.error ?? actionRes.error;
   if (error) throw new Error(error.message);
@@ -138,25 +138,22 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
     if (!organisation || !assignment) continue;
     const createdAt = action.created_at;
     const overdueShared = isOverdue(createdAt);
-    const satisfaction = action.source_type === "satisfaction_phone_followup";
     tasks.push({
-      id: satisfaction ? `daily-satisfaction-${action.id}` : `daily-preaudit-${action.id}`,
+      id: `daily-satisfaction-${action.id}`,
       organisationId: organisation.id,
       organisation: organisation.legal_name || organisation.name || "Organisme Daily",
-      title: action.title || (satisfaction ? "Relance téléphonique satisfaction" : "Pré-audit Qualiopi à préparer"),
-      reason: satisfaction ? "Relance satisfaction à effectuer" : "Pré-audit Qualiopi",
+      title: action.title || "Relance téléphonique satisfaction",
+      reason: "Relance satisfaction à effectuer",
       detail: overdueShared
         ? "Cette tâche dépasse 72 h. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter."
-        : action.observation || action.proposed_solution || (satisfaction
-          ? "Contacte la partie prenante par téléphone après les relances email J+2 et J+4 restées sans réponse."
-          : "Prépare le pré-audit avant l'audit de surveillance Qualiopi."),
-      href: satisfaction && action.session_id
+        : action.observation || action.proposed_solution || "Contacte la partie prenante par téléphone après les relances email J+2 et J+4 restées sans réponse.",
+      href: action.session_id
         ? `/agent/daily/session-dossiers/${action.session_id}/satisfaction`
-        : `/agent/daily/preaudit/${action.id}`,
+        : "/agent/daily",
       createdAt,
       assignedAgentProfileId: assignment.agent_profile_id,
       overdueShared,
-      kind: satisfaction ? "satisfaction" : "preaudit",
+      kind: "satisfaction",
     });
   }
 
