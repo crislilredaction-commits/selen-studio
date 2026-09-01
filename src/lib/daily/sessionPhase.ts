@@ -6,3 +6,8 @@ function normaliseDateKey(value?: string | null): string | null { if (!value) re
 export function getDailySessionPhase(session: SessionDates, now: Date = new Date()): DailySessionPhase { const today = toParisDateKey(now); const start = normaliseDateKey(session.start_date); const end = normaliseDateKey(session.end_date) ?? start; if (!start) return "before"; if (today < start) return "before"; if (end && today > end) return "after"; return "during"; }
 export function phaseLabel(phase: DailySessionPhase): string { return phase === "before" ? "Avant la session" : phase === "during" ? "Pendant la session" : "Après la session"; }
 export function isCurrentPhaseItem(itemPhase: string | null | undefined, phase: DailySessionPhase): boolean { return itemPhase === phase; }
+const phaseRank: Record<DailySessionPhase, number> = { before: 0, during: 1, after: 2 };
+export function isAvailablePhaseItem(itemPhase: string | null | undefined, currentPhase: DailySessionPhase): boolean {
+  if (itemPhase !== "before" && itemPhase !== "during" && itemPhase !== "after") return false;
+  return phaseRank[itemPhase] <= phaseRank[currentPhase];
+}

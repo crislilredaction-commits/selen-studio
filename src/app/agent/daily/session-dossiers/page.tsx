@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
-import { getDailySessionPhase, phaseLabel } from "@/lib/daily/sessionPhase";
+import { getDailySessionPhase, isAvailablePhaseItem, phaseLabel } from "@/lib/daily/sessionPhase";
 
 const taskLabels: Record<string, string> = {
   training_ready: "Vérifier et valider le programme",
@@ -64,7 +64,7 @@ export default async function SessionDossiersPage() {
       const openTasks = (items ?? []).filter(
         (item) =>
           item.session_id === dossier.session_id &&
-          item.phase === currentPhase &&
+          isAvailablePhaseItem(item.phase, currentPhase) &&
           !["validated", "not_applicable"].includes(item.status),
       );
       return { dossier, session, currentPhase, openTasks };
@@ -103,7 +103,7 @@ export default async function SessionDossiersPage() {
               <div style={s.cardHead}>
                 <div>
                   <SelenCardTitle>{formation?.title ?? "Session Daily"}</SelenCardTitle>
-                  <p style={s.meta}>{org?.name ?? "OF"} · {session?.internal_reference || "Sans référence"} · {phaseLabel(currentPhase)}</p>
+                  <p style={s.meta}>{org?.name ?? "OF"} · {session?.internal_reference || "Sans référence"} · {phaseLabel(currentPhase)} · les tâches antérieures non terminées restent affichées</p>
                 </div>
                 <span style={s.agentBadge}>{agentName}</span>
               </div>
