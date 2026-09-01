@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "npm run test:daily-assignment && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && next build --webpack",
+    "build": "npm run test:daily-assignment && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && npm run test:daily-navigation && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test:daily-assignment": "node --test tests/dailyOrganisationAssignmentRules.test.mjs tests/dailyAssignmentSourceOfTruth.test.mjs tests/dailyOrganisationAttentionCounter.test.mjs",
     "test:daily-qualiopi-preaudit": "node --test tests/dailyQualiopiPreauditTask.test.mjs",
-    "test:daily-satisfaction": "node --test tests/dailySatisfactionPhoneTasks.test.mjs"
+    "test:daily-satisfaction": "node --test tests/dailySatisfactionPhoneTasks.test.mjs",
+    "test:daily-navigation": "node --test tests/dailyNavigationCoverage.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
