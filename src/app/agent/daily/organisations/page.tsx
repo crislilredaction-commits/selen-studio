@@ -162,7 +162,12 @@ export default async function DailyOrganisationsPage() {
     }
   });
 
-  const totalAttention = checklist.filter((item) => isAttentionStatus(item.status)).length;
+  const assignedOrganisationIds = new Set(assignments.map((assignment) => assignment.organisation_id));
+  const unassignedOrganisationCount = organisations.filter(
+    (organisation) => !assignedOrganisationIds.has(organisation.id),
+  ).length;
+  const totalAttention =
+    checklist.filter((item) => isAttentionStatus(item.status)).length + unassignedOrganisationCount;
   const pendingValidations = validations.length;
   const expiringCertifications = Array.from(urgentCertificationByOrganisation.values()).reduce(
     (total, count) => total + count,
