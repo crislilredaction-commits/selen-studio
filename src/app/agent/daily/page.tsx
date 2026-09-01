@@ -114,15 +114,15 @@ export default async function AgentDailyPage() {
               <div style={s.actions}>
                 {item.kind === "assignment" ? (
                   role === "admin" ? (
-                    <Link href={item.href} style={s.primary}>Assigner un agent <span aria-hidden="true">→</span></Link>
+                    <Link href={item.href} style={s.primary}>Assigner un agent →</Link>
                   ) : (
                     <form method="post" action="/agent/api/daily/organisation-assignment">
                       <input type="hidden" name="organisation_id" value={item.organisationId} />
-                      <button type="submit" style={s.primaryButton}>Me l&apos;assigner <span aria-hidden="true">→</span></button>
+                      <button type="submit" style={s.primaryButton}>Me l’assigner →</button>
                     </form>
                   )
                 ) : (
-                  <Link href={item.href} style={s.primary}>Traiter maintenant <span aria-hidden="true">→</span></Link>
+                  <Link href={item.href} style={s.primary}>Traiter maintenant →</Link>
                 )}
                 {item.kind !== "assignment" ? <Link href={`/agent/daily/organisations/${item.organisationId}`} style={s.secondary}>Voir l&apos;organisme</Link> : null}
               </div>
