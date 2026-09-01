@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailySessionPhase, isAvailablePhaseItem } from "@/lib/daily/sessionPhase";
 
 export type DailyTaskStaff = { id: string | null; role: "agent" | "admin" };
 export type DailyAgentTask = {
@@ -13,7 +14,7 @@ export type DailyAgentTask = {
   createdAt: string | null;
   assignedAgentProfileId: string | null;
   overdueShared: boolean;
-  kind: "assignment" | "program" | "registration" | "adaptation" | "preaudit" | "satisfaction";
+  kind: "assignment" | "program" | "registration" | "adaptation" | "preaudit" | "satisfaction" | "session";
 };
 
 type Org = { id: string; name: string | null; legal_name: string | null; created_at: string | null };
@@ -26,6 +27,8 @@ type Session = {
   registration_status: string | null;
   adaptation_needed: boolean | null;
   registration_responses_received_at: string | null;
+  start_date: string | null;
+  end_date: string | null;
   updated_at: string | null;
 };
 type Formation = {
@@ -36,6 +39,18 @@ type Formation = {
   updated_at: string | null;
 };
 type Response = { id: string; session_id: string; created_at: string | null };
+type SessionChecklistItem = {
+  id: string;
+  session_id: string;
+  organisation_id: string;
+  item_key: string;
+  phase: string;
+  responsibility: string;
+  label: string;
+  description: string | null;
+  status: string;
+  signaled_at: string | null;
+};
 type QualityAction = {
   id: string;
   organisation_id: string;
@@ -56,6 +71,7 @@ function isOverdue(value: string | null) {
 }
 function visibleFor(task: DailyAgentTask, staff: DailyTaskStaff) {
   if (task.kind === "assignment") return true;
+  if (staff.role === "admin") return true;
   if (!task.assignedAgentProfileId) return true;
   if (staff.id === task.assignedAgentProfileId) return true;
   return task.overdueShared;
@@ -69,7 +85,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
   const [orgRes, assignmentRes, sessionRes, actionRes] = await Promise.all([
     admin.from("organisations").select("id,name,legal_name,created_at").in("id", organisationIds).neq("status", "archived"),
     admin.from("daily_organisation_assignments").select("organisation_id,agent_profile_id,assigned_at").in("organisation_id", organisationIds),
-    admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,registration_status,adaptation_needed,registration_responses_received_at,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
+    admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,registration_status,adaptation_needed,registration_responses_received_at,start_date,end_date,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
     admin.from("daily_quality_actions").select("id,organisation_id,session_id,title,observation,proposed_solution,status,source_type,created_at").in("organisation_id", organisationIds).in("source_type", ["qualiopi_preaudit", "satisfaction_phone_followup"]).in("status", ["open", "planned"]).order("created_at", { ascending: true }),
   ]);
   const error = orgRes.error ?? assignmentRes.error ?? sessionRes.error ?? actionRes.error;
@@ -84,14 +100,16 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
 
   const formationIds = [...new Set(sessions.map((row) => row.formation_id).filter(Boolean))];
   const sessionIds = sessions.map((row) => row.id);
-  const [formationRes, responseRes] = await Promise.all([
+  const [formationRes, responseRes, checklistRes] = await Promise.all([
     formationIds.length ? admin.from("daily_formations").select("id,title,status,agent_review_signaled_at,updated_at").in("id", formationIds).neq("status", "archived") : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_registration_responses").select("id,session_id,created_at").in("session_id", sessionIds).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
+    sessionIds.length ? admin.from("daily_session_checklist_items").select("id,session_id,organisation_id,item_key,phase,responsibility,label,description,status,signaled_at").in("session_id", sessionIds).in("responsibility", ["selen", "shared"]).in("status", ["todo", "in_progress", "to_review", "blocked"]).order("signaled_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
   ]);
-  if (formationRes.error || responseRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? "Erreur Daily");
+  if (formationRes.error || responseRes.error || checklistRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? checklistRes.error?.message ?? "Erreur Daily");
 
   const formations = (formationRes.data ?? []) as Formation[];
   const responses = (responseRes.data ?? []) as Response[];
+  const checklistItems = (checklistRes.data ?? []) as SessionChecklistItem[];
   const formationById = new Map(formations.map((row) => [row.id, row]));
   const responsesBySession = new Map<string, Response[]>();
   for (const response of responses) responsesBySession.set(response.session_id, [...(responsesBySession.get(response.session_id) ?? []), response]);
@@ -139,6 +157,37 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       assignedAgentProfileId: assignment.agent_profile_id,
       overdueShared,
       kind: satisfaction ? "satisfaction" : "preaudit",
+    });
+  }
+
+  const sessionById = new Map(sessions.map((row) => [row.id, row]));
+  for (const item of checklistItems) {
+    const session = sessionById.get(item.session_id);
+    const organisation = orgById.get(item.organisation_id);
+    const assignment = assignmentByOrg.get(item.organisation_id);
+    if (!session || !organisation || !assignment) continue;
+    const currentPhase = getDailySessionPhase(session);
+    if (!isAvailablePhaseItem(item.phase, currentPhase)) continue;
+
+    const formation = formationById.get(session.formation_id);
+    if (item.item_key === "training_ready" && formation?.status === "review") continue;
+
+    const createdAt = item.signaled_at ?? session.updated_at;
+    const overdueShared = isOverdue(createdAt);
+    tasks.push({
+      id: `daily-session-checklist-${item.id}`,
+      organisationId: organisation.id,
+      organisation: organisation.legal_name || organisation.name || "Organisme Daily",
+      title: formation?.title || session.internal_reference || "Dossier de session",
+      reason: item.status === "blocked" ? "Tâche de session bloquée" : item.status === "to_review" ? "Tâche de session à vérifier" : "Tâche de session à traiter",
+      detail: overdueShared
+        ? `Cette tâche dépasse 72 h : ${item.label}. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter.`
+        : `${item.label}${item.description ? ` · ${item.description}` : ""}`,
+      href: `/agent/daily/session-dossiers/${session.id}`,
+      createdAt,
+      assignedAgentProfileId: assignment.agent_profile_id,
+      overdueShared,
+      kind: "session",
     });
   }
 
