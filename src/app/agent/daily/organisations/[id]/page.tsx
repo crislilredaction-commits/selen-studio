@@ -133,57 +133,6 @@ async function updateMembershipAccess(formData: FormData) {
   revalidatePath(`/agent/daily/organisations/${organisationId}?tab=users`);
 }
 
-async function addCertification(formData: FormData) {
-  "use server";
-  const auth = await requireSupportAgent();
-  if (!auth.ok) throw new Error(auth.error);
-  const organisationId = String(formData.get("organisation_id") ?? "");
-  const trainerProfileId = String(formData.get("trainer_profile_id") ?? "");
-  const title = String(formData.get("title") ?? "").trim();
-  const issuer = String(formData.get("issuer") ?? "").trim();
-  const reference = String(formData.get("reference") ?? "").trim();
-  const obtainedOn = String(formData.get("obtained_on") ?? "").trim();
-  const validityMode = String(formData.get("validity_mode") ?? "unknown");
-  const validUntil = String(formData.get("valid_until") ?? "").trim();
-  if (!organisationId || !trainerProfileId || !title) throw new Error("Certification incomplète.");
-  if (!["lifetime", "limited", "unknown"].includes(validityMode)) throw new Error("Mode de validité invalide.");
-  if (validityMode === "limited" && !validUntil) throw new Error("La date de fin de validité est obligatoire.");
-  const admin = createSupabaseAdminClient();
-  const actor = await currentUserId();
-  const { data: trainer } = await admin.from("daily_trainer_profiles").select("id").eq("id", trainerProfileId).eq("organisation_id", organisationId).maybeSingle();
-  if (!trainer) throw new Error("Formateur introuvable dans cet organisme.");
-  const { error } = await admin.from("daily_trainer_certifications").insert({
-    trainer_profile_id: trainerProfileId,
-    title,
-    issuer: issuer || null,
-    reference: reference || null,
-    obtained_on: obtainedOn || null,
-    validity_mode: validityMode,
-    valid_until: validityMode === "limited" ? validUntil : null,
-    created_by: actor,
-    updated_by: actor,
-  });
-  if (error) throw new Error(error.message);
-  await admin.rpc("daily_sync_trainer_certification_notifications");
-  revalidatePath(`/agent/daily/organisations/${organisationId}?tab=trainers`);
-  revalidatePath("/agent/daily/organisations");
-}
-
-async function deleteCertification(formData: FormData) {
-  "use server";
-  const auth = await requireSupportAgent();
-  if (!auth.ok) throw new Error(auth.error);
-  const organisationId = String(formData.get("organisation_id") ?? "");
-  const certificationId = String(formData.get("certification_id") ?? "");
-  if (!organisationId || !certificationId) throw new Error("Certification introuvable.");
-  const admin = createSupabaseAdminClient();
-  const { error } = await admin.from("daily_trainer_certifications").delete().eq("id", certificationId);
-  if (error) throw new Error(error.message);
-  await admin.rpc("daily_sync_trainer_certification_notifications");
-  revalidatePath(`/agent/daily/organisations/${organisationId}?tab=trainers`);
-  revalidatePath("/agent/daily/organisations");
-}
-
 async function reviewTrainer(formData: FormData) {
   "use server";
   const auth = await requireSupportAdmin();
@@ -368,7 +317,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
 
       {tab === "trainers" ? <div style={s.stack}>{trainers.length === 0 ? <SelenCard><p style={s.muted}>Aucun formateur enregistré.</p></SelenCard> : trainers.map((trainer) => {
         const trainerCerts = certifications.filter((cert) => cert.trainer_profile_id === trainer.id);
-        return <SelenCard key={trainer.id}><div style={s.trainerHead}><div><SelenCardTitle>{trainer.display_name || trainer.professional_email || "Formateur"}</SelenCardTitle><p style={s.mutedInline}>{trainer.engagement_type} · {trainer.professional_email || "email non renseigné"}</p></div><div style={s.badgeLine}><SelenBadge variant={trainer.status === "validated" ? "success" : trainer.status === "pending_selen_review" ? "warn" : trainer.status === "rejected" ? "danger" : "neutral"}>{trainer.status}</SelenBadge>{isAdmin && trainer.status !== "validated" ? <form action={reviewTrainer} style={s.inlineForm}><input type="hidden" name="organisation_id" value={id} /><input type="hidden" name="trainer_profile_id" value={trainer.id} /><SelenButton type="submit" name="decision" value="validated" size="sm">Valider Selen</SelenButton><SelenButton type="submit" name="decision" value="rejected" size="sm" variant="danger">Refuser</SelenButton></form> : null}</div></div><div style={s.certList}>{trainerCerts.map((cert) => <div key={cert.id} style={s.certRow}><div><strong>{cert.title}</strong><p style={s.mutedInline}>{[cert.issuer, cert.reference, cert.obtained_on ? `obtenue le ${cert.obtained_on}` : null].filter(Boolean).join(" · ")}</p></div><SelenBadge variant={certVariant(cert.validity_mode, cert.valid_until)}>{certificationLabel(cert.validity_mode, cert.valid_until)}</SelenBadge><form action={deleteCertification}><input type="hidden" name="organisation_id" value={id} /><input type="hidden" name="certification_id" value={cert.id} /><button type="submit" style={s.deleteButton}>Supprimer</button></form></div>)}</div><form action={addCertification} style={s.certForm}><input type="hidden" name="organisation_id" value={id} /><input type="hidden" name="trainer_profile_id" value={trainer.id} /><input name="title" required placeholder="Certification / habilitation" style={s.input} /><input name="issuer" placeholder="Organisme certificateur" style={s.input} /><input name="reference" placeholder="Référence (facultatif)" style={s.input} /><label style={s.fieldLabel}>Date d’obtention<input type="date" name="obtained_on" style={s.input} /></label><label style={s.fieldLabel}>Validité<select name="validity_mode" defaultValue="unknown" style={s.select}><option value="unknown">Inconnue</option><option value="lifetime">À vie</option><option value="limited">Durée limitée</option></select></label><label style={s.fieldLabel}>Fin de validité<input type="date" name="valid_until" style={s.input} /></label><SelenButton type="submit" size="sm">Ajouter la certification</SelenButton></form></SelenCard>;
+        return <SelenCard key={trainer.id}><div style={s.trainerHead}><div><SelenCardTitle>{trainer.display_name || trainer.professional_email || "Formateur"}</SelenCardTitle><p style={s.mutedInline}>{trainer.engagement_type} · {trainer.professional_email || "email non renseigné"}</p></div><div style={s.badgeLine}><SelenBadge variant={trainer.status === "validated" ? "success" : trainer.status === "pending_selen_review" ? "warn" : trainer.status === "rejected" ? "danger" : "neutral"}>{trainer.status}</SelenBadge>{isAdmin && trainer.status !== "validated" ? <form action={reviewTrainer} style={s.inlineForm}><input type="hidden" name="organisation_id" value={id} /><input type="hidden" name="trainer_profile_id" value={trainer.id} /><SelenButton type="submit" name="decision" value="validated" size="sm">Valider Selen</SelenButton><SelenButton type="submit" name="decision" value="rejected" size="sm" variant="danger">Refuser</SelenButton></form> : null}</div></div><div style={s.certList}>{trainerCerts.length === 0 ? <p style={s.mutedInline}>Aucune certification renseignée par le formateur.</p> : trainerCerts.map((cert) => <div key={cert.id} style={s.certRow}><div><strong>{cert.title}</strong><p style={s.mutedInline}>{[cert.issuer, cert.reference, cert.obtained_on ? `obtenue le ${cert.obtained_on}` : null].filter(Boolean).join(" · ")}</p></div><SelenBadge variant={certVariant(cert.validity_mode, cert.valid_until)}>{certificationLabel(cert.validity_mode, cert.valid_until)}</SelenBadge></div>)}</div><p style={s.readOnlyNotice}>Certifications en consultation uniquement dans Studio. Le formateur les ajoute, les met à jour et dépose ses justificatifs depuis son espace Daily.</p></SelenCard>;
       })}</div> : null}
 
       {tab === "validations" ? <SelenCard><SelenCardTitle>Demandes de validation Selen</SelenCardTitle>{validations.length === 0 ? <p style={s.muted}>Aucune demande.</p> : validations.map((request) => <article key={request.id} style={s.validationRow}><div style={{ flex: 1 }}><div style={s.badgeLine}><SelenBadge variant={request.status === "pending" ? "warn" : request.status === "approved" ? "success" : "neutral"}>{request.status}</SelenBadge><strong>{request.request_type}</strong></div><pre style={s.pre}>{JSON.stringify(request.proposed_changes, null, 2)}</pre>{request.review_message ? <p style={s.mutedInline}>Décision : {request.review_message}</p> : null}</div>{request.status === "pending" && isAdmin ? <form action={reviewValidation} style={s.reviewForm}><input type="hidden" name="organisation_id" value={id} /><input type="hidden" name="request_id" value={request.id} /><textarea name="message" placeholder="Motif / commentaire" style={s.textarea} /><div style={s.badgeLine}><button type="submit" name="decision" value="approved" style={s.approveButton}>Valider</button><button type="submit" name="decision" value="rejected" style={s.rejectButton}>Refuser</button></div></form> : null}</article>)}</SelenCard> : null}
@@ -399,6 +348,6 @@ const s: Record<string, CSSProperties> = {
   twoCols: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 12 }, stack: { display: "grid", gap: 12 }, list: { display: "grid", gap: 10 }, attentionRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "1px solid var(--selen-border)" }, muted: { color: "var(--selen-text3)", fontSize: 13 }, mutedInline: { margin: "4px 0 0", color: "var(--selen-text3)", fontSize: 11, lineHeight: 1.45 }, tiny: { color: "var(--selen-text3)", fontSize: 10 }, signal: { display: "flex", justifyContent: "space-between", gap: 14, borderBottom: "1px solid var(--selen-border)", padding: "9px 0" },
   checkRow: { display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", padding: 12, border: "1px solid var(--selen-border)", borderRadius: 14, background: "var(--selen-bg3)" },
   memberCard: { borderTop: "1px solid var(--selen-border)", padding: "14px 0" }, userRow: { display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }, inlineForm: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }, accessForm: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, alignItems: "end", marginTop: 12, padding: 12, borderRadius: 12, background: "var(--selen-bg3)" }, fieldset: { border: "1px solid var(--selen-border)", borderRadius: 10, padding: 10, margin: 0 }, legend: { fontSize: 10, color: "var(--selen-text3)", padding: "0 4px" }, checkboxLabel: { display: "block", fontSize: 11, color: "var(--selen-text2)", margin: "5px 0" },
-  trainerHead: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }, certList: { display: "grid", marginTop: 8 }, certRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", borderTop: "1px solid var(--selen-border)", padding: "10px 0" }, certForm: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end", marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--selen-border)" }, fieldLabel: { display: "grid", gap: 5, fontSize: 10, color: "var(--selen-text3)" }, deleteButton: { border: 0, background: "transparent", color: "#f0a0a0", cursor: "pointer", fontSize: 11 },
+  trainerHead: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }, certList: { display: "grid", marginTop: 8 }, certRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", borderTop: "1px solid var(--selen-border)", padding: "10px 0" }, readOnlyNotice: { margin: "12px 0 0", paddingTop: 12, borderTop: "1px solid var(--selen-border)", color: "var(--selen-text3)", fontSize: 11, lineHeight: 1.5 },
   validationRow: { display: "flex", gap: 16, justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", borderBottom: "1px solid var(--selen-border)", padding: "13px 0" }, badgeLine: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, pre: { whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11, color: "var(--selen-text2)", background: "var(--selen-bg3)", borderRadius: 10, padding: 10 }, reviewForm: { display: "grid", gap: 8, minWidth: 240 }, textarea: { background: "var(--selen-bg3)", color: "var(--selen-text)", border: "1px solid var(--selen-border)", borderRadius: 10, padding: 10, minHeight: 70 }, approveButton: { background: "#40735c", color: "white", border: 0, borderRadius: 10, padding: "9px 12px", cursor: "pointer" }, rejectButton: { background: "#7d4747", color: "white", border: 0, borderRadius: 10, padding: "9px 12px", cursor: "pointer" }, historyRow: { display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--selen-border)" }, error: { color: "#ffb0b0" },
 };
