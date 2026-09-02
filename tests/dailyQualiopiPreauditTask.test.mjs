@@ -3,24 +3,31 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
+const page = await readFile(new URL("../src/app/agent/daily/preaudit/[actionId]/page.tsx", import.meta.url), "utf8");
 
-test("le pré-audit Qualiopi reste hors du périmètre des tâches Daily", () => {
-  assert.doesNotMatch(tasks, /qualiopi_preaudit/);
-  assert.doesNotMatch(tasks, /daily-preaudit/);
-  assert.doesNotMatch(tasks, /kind:\s*"preaudit"/);
-  assert.doesNotMatch(tasks, /\/agent\/daily\/preaudit\//);
-});
-
-test("les actions qualité Daily conservent uniquement la relance satisfaction", () => {
+test("le pré-audit utilise les actions qualité existantes et l'assignation organisme", () => {
   assert.match(tasks, /\.from\("daily_quality_actions"\)/);
-  assert.match(tasks, /\.eq\("source_type", "satisfaction_phone_followup"\)/);
+  assert.match(tasks, /"qualiopi_preaudit"/);
   assert.match(tasks, /\.in\("status", \["open", "planned"\]\)/);
-  assert.match(tasks, /id: `daily-satisfaction-\$\{action\.id\}`/);
-  assert.match(tasks, /kind: "satisfaction"/);
+  assert.match(tasks, /const assignment = assignmentByOrg\.get\(action\.organisation_id\)/);
+  assert.match(tasks, /if \(!organisation \|\| !assignment\) continue/);
 });
 
-test("la règle des 72 h reste appliquée sans changer l'assignation organisme", () => {
+test("la règle des 72 h partage la tâche sans changer l'assignation", () => {
   assert.match(tasks, /const SLA_MS = 72 \* 60 \* 60 \* 1000/);
   assert.match(tasks, /assignedAgentProfileId: assignment\.agent_profile_id/);
   assert.match(tasks, /overdueShared/);
+  assert.doesNotMatch(page, /\.from\("daily_organisation_assignments"\)\s*\.update\(/);
+});
+
+test("le traitement répète le contrôle serveur puis fait disparaître la tâche", () => {
+  assert.match(page, /assignment\?\.agent_profile_id === profile\.id \|\| isOverdue\(action\.created_at\)/);
+  assert.match(page, /Cette tâche est encore réservée à l’agent assigné/);
+  assert.match(page, /status: "implemented"/);
+  assert.match(page, /implemented_at: new Date\(\)\.toISOString\(\)/);
+  assert.match(page, /revalidatePath\("\/agent\/daily"\)/);
+});
+
+test("la checklist pré-audit reste explicitement extensible", () => {
+  assert.match(page, /checklist détaillée reste extensible/i);
 });
