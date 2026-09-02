@@ -1,8 +1,13 @@
--- Daily trainer certifications are owned by the trainer.
--- Studio agents remain readers/validators of the trainer profile, but must not
--- mutate certifications or proof links on behalf of the trainer.
+-- Daily trainer certifications and their proof links are owned by the trainer.
+-- Client managers and Studio staff keep consultation access only.
 
 DROP POLICY IF EXISTS daily_trainer_certifications_staff_all
+  ON public.daily_trainer_certifications;
+DROP POLICY IF EXISTS daily_trainer_certifications_manager_insert
+  ON public.daily_trainer_certifications;
+DROP POLICY IF EXISTS daily_trainer_certifications_manager_update
+  ON public.daily_trainer_certifications;
+DROP POLICY IF EXISTS daily_trainer_certifications_manager_delete
   ON public.daily_trainer_certifications;
 
 DROP POLICY IF EXISTS daily_trainer_certifications_staff_select
@@ -11,18 +16,35 @@ CREATE POLICY daily_trainer_certifications_staff_select
   ON public.daily_trainer_certifications
   FOR SELECT
   TO authenticated
-  USING (public.is_daily_staff());
+  USING (public.daily_is_selen_staff());
 
-DROP POLICY IF EXISTS daily_trainer_profile_documents_agent_manage_all
+DROP POLICY IF EXISTS "Staff can manage Daily trainer document links"
+  ON public.daily_trainer_profile_documents;
+DROP POLICY IF EXISTS "Managers can manage organisation trainer document links"
   ON public.daily_trainer_profile_documents;
 
-DROP POLICY IF EXISTS daily_trainer_profile_documents_agent_select
+DROP POLICY IF EXISTS "Staff can read Daily trainer document links"
   ON public.daily_trainer_profile_documents;
-CREATE POLICY daily_trainer_profile_documents_agent_select
+CREATE POLICY "Staff can read Daily trainer document links"
   ON public.daily_trainer_profile_documents
   FOR SELECT
   TO authenticated
-  USING (public.is_selen_agent());
+  USING (public.daily_is_selen_staff());
+
+DROP POLICY IF EXISTS "Managers can read organisation trainer document links"
+  ON public.daily_trainer_profile_documents;
+CREATE POLICY "Managers can read organisation trainer document links"
+  ON public.daily_trainer_profile_documents
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.daily_trainer_profiles dtp
+      WHERE dtp.id = daily_trainer_profile_documents.trainer_profile_id
+        AND public.can_manage_daily_trainers(dtp.organisation_id)
+    )
+  );
 
 CREATE OR REPLACE FUNCTION public.daily_guard_trainer_certification_self_write()
 RETURNS trigger
