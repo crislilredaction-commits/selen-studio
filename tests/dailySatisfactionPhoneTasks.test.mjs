@@ -5,10 +5,10 @@ import test from "node:test";
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
 
 test("les relances téléphoniques satisfaction utilisent les actions qualité existantes", () => {
-  assert.match(tasks, /\.eq\("source_type", "satisfaction_phone_followup"\)/);
-  assert.match(tasks, /kind: "satisfaction"/);
+  assert.match(tasks, /\.in\("source_type", \["qualiopi_preaudit", "satisfaction_phone_followup"\]\)/);
+  assert.match(tasks, /const satisfaction = action\.source_type === "satisfaction_phone_followup"/);
+  assert.match(tasks, /kind: satisfaction \? "satisfaction" : "preaudit"/);
   assert.match(tasks, /Relance satisfaction à effectuer/);
-  assert.doesNotMatch(tasks, /preaudit/);
 });
 
 test("l'assignation reste celle de l'organisme avec partage après 72 h", () => {
