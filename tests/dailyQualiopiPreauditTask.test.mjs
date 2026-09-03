@@ -4,6 +4,8 @@ import test from "node:test";
 
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
 const page = await readFile(new URL("../src/app/agent/daily/preaudit/[actionId]/page.tsx", import.meta.url), "utf8");
+const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
+const cyclePage = await readFile(new URL("../src/app/agent/daily/organisations/[id]/qualiopi-cycle/page.tsx", import.meta.url), "utf8");
 
 test("le pré-audit utilise les actions qualité existantes et l'assignation organisme", () => {
   assert.match(tasks, /\.from\("daily_quality_actions"\)/);
@@ -30,4 +32,20 @@ test("le traitement répète le contrôle serveur puis fait disparaître la tâc
 
 test("la checklist pré-audit reste explicitement extensible", () => {
   assert.match(page, /checklist détaillée reste extensible/i);
+});
+
+test("Studio expose le cycle Qualiopi canonique en lecture seule", () => {
+  assert.match(organisationLayout, /qualiopi-cycle/);
+  assert.match(cyclePage, /requireSupportAgent\(\)/);
+  assert.match(cyclePage, /\.from\("organisations"\)/);
+  assert.match(cyclePage, /qualiopi_valid_from/);
+  assert.match(cyclePage, /qualiopi_valid_until/);
+  assert.match(cyclePage, /qualiopi_surveillance_window_start/);
+  assert.match(cyclePage, /qualiopi_surveillance_window_end/);
+  assert.match(cyclePage, /qualiopi_surveillance_audit_date/);
+  assert.match(cyclePage, /qualiopi_renewal_reminder_on/);
+  assert.doesNotMatch(cyclePage, /\.insert\(/);
+  assert.doesNotMatch(cyclePage, /\.update\(/);
+  assert.doesNotMatch(cyclePage, /\.delete\(/);
+  assert.doesNotMatch(cyclePage, /\.upsert\(/);
 });
