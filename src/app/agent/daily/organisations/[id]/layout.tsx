@@ -86,6 +86,19 @@ export default async function DailyOrganisationLayout({
 
   return (
     <>
+      <div
+        style={{
+          maxWidth: 1220,
+          margin: "18px auto 0",
+          padding: "0 24px",
+          display: "flex",
+          justifyContent: "flex-end",
+        }}
+      >
+        <Link href={`/agent/daily/organisations/${id}/trainer-certification-proofs`} style={{ textDecoration: "none" }}>
+          <SelenButton size="sm" variant="secondary">Justificatifs formateurs</SelenButton>
+        </Link>
+      </div>
       {canSelfAssign ? (
         <div
           style={{
