@@ -93,8 +93,13 @@ export default async function DailyOrganisationLayout({
           padding: "0 24px",
           display: "flex",
           justifyContent: "flex-end",
+          gap: 8,
+          flexWrap: "wrap",
         }}
       >
+        <Link href={`/agent/daily/organisations/${id}/qualiopi-cycle`} style={{ textDecoration: "none" }}>
+          <SelenButton size="sm" variant="secondary">Cycle Qualiopi</SelenButton>
+        </Link>
         <Link href={`/agent/daily/organisations/${id}/trainer-certification-proofs`} style={{ textDecoration: "none" }}>
           <SelenButton size="sm" variant="secondary">Justificatifs formateurs</SelenButton>
         </Link>
