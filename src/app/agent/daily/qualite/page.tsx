@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { getDailyCorrectiveActionQuarterStatus } from "@/lib/daily/qualityActionCadence";
 import { getDailyWatchCadenceStatus } from "@/lib/daily/watchCadence";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { createClient } from "@/lib/supabase/server";
@@ -85,14 +86,16 @@ function frDate(value?: string | null) {
 
 export default async function DailyQualityStudioPage() {
   const admin = createSupabaseAdminClient();
-  const [{ data: watches }, { data: organisations }, { data: usages }] = await Promise.all([
+  const [{ data: watches }, { data: organisations }, { data: usages }, { data: qualityActions }] = await Promise.all([
     admin.from("daily_watch_entries").select("id,watch_type,title,article_url,analysis_and_improvement,published_at,status").order("published_at", { ascending: false }),
     admin.from("organisations").select("id,name,legal_name,status").eq("status", "active").order("name"),
     admin.from("daily_organisation_watch_entries").select("watch_entry_id,interested,forced_by_studio,improvement_note,organisation_id"),
+    admin.from("daily_quality_actions").select("category,status,created_at,updated_at"),
   ]);
   const usageRows = usages ?? [];
   const cadence = getDailyWatchCadenceStatus(watches ?? []);
   const watchReminderCount = cadence.filter((item) => !item.currentMonthCovered).length;
+  const correctiveCadence = getDailyCorrectiveActionQuarterStatus(qualityActions ?? []);
 
   return (
     <main style={s.page}>
@@ -116,6 +119,23 @@ export default async function DailyQualityStudioPage() {
               <small style={s.cadenceDate}>Dernière publication : {frDate(item.lastPublishedAt)}</small>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section style={s.reminderCard} aria-label="Rappel trimestriel des actions correctives">
+        <div>
+          <p style={s.reminderEyebrow}>Cadence qualité · {correctiveCadence.quarterLabel}</p>
+          <h2 style={s.reminderTitle}>
+            {correctiveCadence.dueForReviewCount === 0
+              ? "Actions correctives suivies ce trimestre"
+              : `${correctiveCadence.dueForReviewCount} action(s) corrective(s) à revoir`}
+          </h2>
+          <p style={s.muted}>Ce rappel réutilise les actions correctives existantes. Une action ouverte ou planifiée sans mise à jour pendant le trimestre est signalée à revoir ; aucune donnée de rappel parallèle n'est créée.</p>
+        </div>
+        <div style={correctiveCadence.dueForReviewCount === 0 ? s.cadenceOk : s.cadenceDue}>
+          <strong>{correctiveCadence.openCount} action(s) ouverte(s) ou planifiée(s)</strong>
+          <span style={s.cadenceStatus}>{correctiveCadence.reviewedThisQuarterCount} avec activité ce trimestre</span>
+          <small style={s.cadenceDate}>Dernière activité : {frDate(correctiveCadence.lastActivityAt)}</small>
         </div>
       </section>
 
