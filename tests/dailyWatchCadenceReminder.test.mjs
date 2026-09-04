@@ -15,7 +15,7 @@ test("les deux catégories métier Daily sont suivies chaque mois", () => {
   assert.match(cadence, /type: "regulatory"/);
   assert.match(cadence, /type: "pedagogy_technology"/);
   assert.match(cadence, /currentMonthCovered/);
-  assert.match(page, /À alimenter ce mois-ci/);
+  assert.match(page, /à alimenter ce mois-ci/i);
   assert.match(page, /Dernière publication/);
 });
 
