@@ -41,6 +41,14 @@ export default async function AgentDailyPage() {
       <p style={s.ruleText}>Une tâche est d'abord visible par l'agent responsable de l'organisme. Si elle reste ouverte plus de 72 h, elle devient aussi traitable par les autres agents, sans modifier l'assignation du dossier.</p>
     </SelenCard>
 
+    <SelenCard style={s.qualityShortcut}>
+      <div>
+        <strong>Bilan annuel des compétences formateurs</strong>
+        <p style={s.ruleText}>Contrôle en un coup d'œil les bilans de l'année : contribution du formateur, partie manager et dossiers encore à compléter.</p>
+      </div>
+      <Link href="/agent/daily/revues-formateurs" style={s.secondary}>Voir le suivi annuel →</Link>
+    </SelenCard>
+
     {tasks.length === 0 ? <SelenCard style={s.empty}>
       <div style={{ fontSize: 30 }}>✓</div>
       <SelenCardTitle>Rien ne demande ton intervention</SelenCardTitle>
@@ -86,7 +94,8 @@ const s: Record<string, React.CSSProperties> = {
   h1: { margin: "6px 0 5px", fontFamily: "var(--font-display)", fontSize: 32 },
   lead: { margin: 0, maxWidth: 720, lineHeight: 1.65, color: "var(--selen-text2)", fontSize: 14 },
   counter: { minWidth: 105, display: "grid", justifyItems: "center", padding: "14px 18px", border: "1px solid var(--selen-border)", borderRadius: 14, background: "var(--selen-bg2)" },
-  ruleCard: { marginBottom: 18, padding: 15 }, ruleText: { margin: "5px 0 0", color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.55 },
+  ruleCard: { marginBottom: 12, padding: 15 }, ruleText: { margin: "5px 0 0", color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.55 },
+  qualityShortcut: { marginBottom: 18, padding: 15, display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" },
   list: { display: "grid", gap: 12 }, card: { padding: 18 }, cardHead: { display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start" }, badges: { display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 8 },
   badge: { display: "inline-block", padding: "4px 8px", borderRadius: 999, background: "rgba(201,148,58,.14)", color: "var(--selen-gold2)", fontSize: 11, fontWeight: 800 },
   badgeAssignment: { background: "rgba(201,148,58,.22)", color: "var(--selen-gold2)" }, badgeInfo: { background: "rgba(83,132,166,.12)", color: "var(--selen-info)" }, badgeDanger: { background: "rgba(180,78,70,.12)", color: "var(--selen-danger)" }, badgeOverdue: { background: "rgba(180,78,70,.16)", color: "var(--selen-danger)" },
