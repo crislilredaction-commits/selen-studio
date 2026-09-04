@@ -14,9 +14,10 @@ test("les tâches Daily dérivent l’agent de l’organisme, jamais du dossier 
   assert.doesNotMatch(tasks, /assigned_agent_profile_id/);
 });
 
-test("le dashboard Daily consomme le moteur de tâches canonique et écarte les anciens dossiers Daily", () => {
+test("le dashboard Daily consomme le moteur de tâches canonique et écarte tous les anciens dossiers Daily", () => {
   assert.match(dashboard, /getDailyAgentTasks/);
-  assert.match(dashboard, /row\.type !== "daily"/);
+  assert.match(dashboard, /assigned = \(\(data \?\? \[\]\) as DossierRow\[\]\)\.filter\(\(row\) => active\(row\.status\) && row\.type !== "daily"\)/);
+  assert.match(dashboard, /unreadDossiers = \(\(data \?\? \[\]\) as DossierRow\[\]\)\.filter\(\(row\) => active\(row\.status\) && row\.type !== "daily"\)/);
   assert.match(dashboard, /\.neq\("type", "daily"\)/);
 });
 
