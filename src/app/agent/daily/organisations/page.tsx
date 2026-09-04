@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailyAgentTasks } from "@/lib/server/dailyAgentTasks";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
@@ -81,6 +82,28 @@ export default async function DailyOrganisationsPage() {
   }
 
   const admin = createSupabaseAdminClient();
+  const [{ data: profile, error: profileError }, { data: adminUser, error: adminUserError }] = await Promise.all([
+    admin.from("agent_profiles").select("id,role").eq("email", auth.email).eq("is_active", true).maybeSingle(),
+    admin.from("selen_admin_users").select("role").eq("email", auth.email).eq("is_active", true).maybeSingle(),
+  ]);
+  const staffReadError = profileError ?? adminUserError;
+  if (staffReadError) {
+    return <main style={s.page}><p style={s.error}>Erreur Daily : {staffReadError.message}</p></main>;
+  }
+  const role = (adminUser?.role === "admin" || profile?.role === "admin" ? "admin" : "agent") as "admin" | "agent";
+
+  let attentionTasks;
+  try {
+    attentionTasks = await getDailyAgentTasks({ id: profile?.id ?? null, role });
+  } catch (error) {
+    return (
+      <main style={s.page}>
+        <p style={s.error}>
+          Erreur Daily : {error instanceof Error ? error.message : "pilotage Daily indisponible"}
+        </p>
+      </main>
+    );
+  }
 
   let dailyOrganisationIds: string[];
   try {
@@ -162,12 +185,7 @@ export default async function DailyOrganisationsPage() {
     }
   });
 
-  const assignedOrganisationIds = new Set(assignments.map((assignment) => assignment.organisation_id));
-  const unassignedOrganisationCount = organisations.filter(
-    (organisation) => !assignedOrganisationIds.has(organisation.id),
-  ).length;
-  const totalAttention =
-    checklist.filter((item) => isAttentionStatus(item.status)).length + unassignedOrganisationCount;
+  const totalAttention = attentionTasks.length;
   const pendingValidations = validations.length;
   const expiringCertifications = Array.from(urgentCertificationByOrganisation.values()).reduce(
     (total, count) => total + count,

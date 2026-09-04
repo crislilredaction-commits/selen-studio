@@ -7,14 +7,17 @@ const source = await readFile(
   "utf8",
 );
 
-test("le compteur des points à traiter inclut les organismes non assignés", () => {
-  assert.match(source, /new Set\(assignments\.map\(\(assignment\) => assignment\.organisation_id\)\)/);
-  assert.match(source, /unassignedOrganisationCount = organisations\.filter/);
-  assert.match(source, /!assignedOrganisationIds\.has\(organisation\.id\)/);
-  assert.match(
-    source,
-    /checklist\.filter\(\(item\) => isAttentionStatus\(item\.status\)\)\.length \+ unassignedOrganisationCount/,
-  );
+test("le compteur des points à traiter réutilise le pilotage Daily canonique", () => {
+  assert.match(source, /getDailyAgentTasks/);
+  assert.match(source, /attentionTasks = await getDailyAgentTasks\(\{ id: profile\?\.id \?\? null, role \}\)/);
+  assert.match(source, /const totalAttention = attentionTasks\.length/);
+  assert.doesNotMatch(source, /unassignedOrganisationCount/);
+});
+
+test("le compteur canonique respecte la visibilité de l'agent courant", () => {
+  assert.match(source, /from\("agent_profiles"\)\.select\("id,role"\)/);
+  assert.match(source, /from\("selen_admin_users"\)\.select\("role"\)/);
+  assert.match(source, /const role = \(adminUser\?\.role === "admin" \|\| profile\?\.role === "admin"/);
 });
 
 test("l'assignation affichée reste issue de daily_organisation_assignments", () => {
