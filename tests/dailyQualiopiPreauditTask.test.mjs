@@ -4,6 +4,7 @@ import test from "node:test";
 
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
 const page = await readFile(new URL("../src/app/agent/daily/preaudit/[actionId]/page.tsx", import.meta.url), "utf8");
+const checklist = await readFile(new URL("../src/lib/daily/qualiopiPreauditChecklist.ts", import.meta.url), "utf8");
 const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
 const cyclePage = await readFile(new URL("../src/app/agent/daily/organisations/[id]/qualiopi-cycle/page.tsx", import.meta.url), "utf8");
 
@@ -30,8 +31,20 @@ test("le traitement répète le contrôle serveur puis fait disparaître la tâc
   assert.match(page, /revalidatePath\("\/agent\/daily"\)/);
 });
 
-test("la checklist pré-audit reste explicitement extensible", () => {
-  assert.match(page, /checklist détaillée reste extensible/i);
+test("la checklist pré-audit consolidée reste extensible et centralisée", () => {
+  assert.match(page, /QUALIOPI_PREAUDIT_CHECKLIST/);
+  assert.match(page, /checklist reste extensible/i);
+  for (const indicators of ["1", "2", "4 \/ 5", "6 \/ 10", "8", "9", "11", "12", "17", "18", "19", "21", "22", "23 \/ 24 \/ 25", "26", "27", "30", "31 \/ 32"]) {
+    assert.match(checklist, new RegExp(`indicators: "${indicators}"`));
+  }
+  assert.match(checklist, /Pointer vers les preuves existantes plutôt que les dupliquer/);
+});
+
+test("Sélion est prévu comme pré-check non décisionnaire et l'agent garde la validation finale", () => {
+  assert.match(checklist, /Sélion peut effectuer un premier pré-check automatique/);
+  assert.match(checklist, /La validation finale du pré-audit reste sous la responsabilité de l’agent/);
+  assert.match(checklist, /futur audit live/);
+  assert.match(page, /réellement été réalisé et validé par un agent/);
 });
 
 test("Studio expose le cycle Qualiopi canonique en lecture seule", () => {
