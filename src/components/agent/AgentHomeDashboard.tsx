@@ -86,7 +86,7 @@ export default async function AgentHomeDashboard() {
   let unreadDossiers: DossierRow[] = [];
   if (unreadDossierIds.length) {
     const { data } = await admin.from("dossiers").select("id,title,type,status,updated_at").in("id", unreadDossierIds);
-    unreadDossiers = ((data ?? []) as DossierRow[]).filter((row) => active(row.status));
+    unreadDossiers = ((data ?? []) as DossierRow[]).filter((row) => active(row.status) && row.type !== "daily");
   }
   const unreadItems = unreadDossiers.map((row) => ({ ...dossierItem(row), subtitle: `${formatType(row.type)} · message client non lu` }));
 
