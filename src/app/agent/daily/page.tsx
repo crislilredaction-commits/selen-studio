@@ -49,6 +49,14 @@ export default async function AgentDailyPage() {
       <Link href="/agent/daily/revues-formateurs" style={s.secondary}>Voir le suivi annuel →</Link>
     </SelenCard>
 
+    <SelenCard style={s.qualityShortcut}>
+      <div>
+        <strong>Procédures internes</strong>
+        <p style={s.ruleText}>Retrouve les procédures Daily existantes, les brouillons et les revues documentaires annuelles à prévoir.</p>
+      </div>
+      <Link href="/agent/daily/procedures-internes" style={s.secondary}>Voir les procédures →</Link>
+    </SelenCard>
+
     {tasks.length === 0 ? <SelenCard style={s.empty}>
       <div style={{ fontSize: 30 }}>✓</div>
       <SelenCardTitle>Rien ne demande ton intervention</SelenCardTitle>
@@ -95,8 +103,8 @@ const s: Record<string, React.CSSProperties> = {
   lead: { margin: 0, maxWidth: 720, lineHeight: 1.65, color: "var(--selen-text2)", fontSize: 14 },
   counter: { minWidth: 105, display: "grid", justifyItems: "center", padding: "14px 18px", border: "1px solid var(--selen-border)", borderRadius: 14, background: "var(--selen-bg2)" },
   ruleCard: { marginBottom: 12, padding: 15 }, ruleText: { margin: "5px 0 0", color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.55 },
-  qualityShortcut: { marginBottom: 18, padding: 15, display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" },
-  list: { display: "grid", gap: 12 }, card: { padding: 18 }, cardHead: { display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start" }, badges: { display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 8 },
+  qualityShortcut: { marginBottom: 12, padding: 15, display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" },
+  list: { display: "grid", gap: 12, marginTop: 6 }, card: { padding: 18 }, cardHead: { display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start" }, badges: { display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 8 },
   badge: { display: "inline-block", padding: "4px 8px", borderRadius: 999, background: "rgba(201,148,58,.14)", color: "var(--selen-gold2)", fontSize: 11, fontWeight: 800 },
   badgeAssignment: { background: "rgba(201,148,58,.22)", color: "var(--selen-gold2)" }, badgeInfo: { background: "rgba(83,132,166,.12)", color: "var(--selen-info)" }, badgeDanger: { background: "rgba(180,78,70,.12)", color: "var(--selen-danger)" }, badgeOverdue: { background: "rgba(180,78,70,.16)", color: "var(--selen-danger)" },
   org: { margin: "5px 0 0", fontSize: 12, color: "var(--selen-text3)" }, date: { fontSize: 11, color: "var(--selen-text3)", whiteSpace: "nowrap" },
@@ -104,5 +112,5 @@ const s: Record<string, React.CSSProperties> = {
   actions: { display: "flex", gap: 9, flexWrap: "wrap" }, primary: { display: "inline-flex", alignItems: "center", minHeight: 38, padding: "0 13px", borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", textDecoration: "none", fontWeight: 800, fontSize: 13 },
   primaryButton: { display: "inline-flex", alignItems: "center", minHeight: 38, padding: "0 13px", borderRadius: 9, border: 0, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, fontSize: 13, cursor: "pointer" },
   secondary: { display: "inline-flex", alignItems: "center", minHeight: 38, padding: "0 13px", borderRadius: 9, border: "1px solid var(--selen-border)", color: "var(--selen-text)", textDecoration: "none", fontWeight: 700, fontSize: 13 },
-  empty: { padding: 30, textAlign: "center" }, muted: { margin: "8px auto 0", maxWidth: 660, lineHeight: 1.6, color: "var(--selen-text2)", fontSize: 13 }, error: { color: "var(--selen-danger)" },
+  empty: { padding: 30, textAlign: "center", marginTop: 6 }, muted: { margin: "8px auto 0", maxWidth: 660, lineHeight: 1.6, color: "var(--selen-text2)", fontSize: 13 }, error: { color: "var(--selen-danger)" },
 };
