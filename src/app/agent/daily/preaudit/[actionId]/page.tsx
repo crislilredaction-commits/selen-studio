@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { QUALIOPI_PREAUDIT_CHECKLIST, QUALIOPI_PREAUDIT_PRINCIPLES } from "@/lib/daily/qualiopiPreauditChecklist";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
@@ -106,12 +107,24 @@ export default async function DailyQualiopiPreauditPage({ params }: { params: Pr
 
     <section style={s.grid}>
       <SelenCard><SelenCardTitle>Cycle Qualiopi</SelenCardTitle><Info label="Début du cycle" value={frDate(organisation?.qualiopi_valid_from)} /><Info label="Fin du cycle" value={frDate(organisation?.qualiopi_valid_until)} /><Info label="Fenêtre de surveillance" value={`${frDate(organisation?.qualiopi_surveillance_window_start)} → ${frDate(organisation?.qualiopi_surveillance_window_end)}`} /><Info label="Audit planifié" value={frDate(organisation?.qualiopi_surveillance_audit_date)} /></SelenCard>
-      <SelenCard><SelenCardTitle>Préparation</SelenCardTitle><p style={s.muted}>{action.observation || "Préparer le pré-audit avant l’audit de surveillance."}</p>{action.proposed_solution ? <p style={s.muted}>{action.proposed_solution}</p> : null}<p style={s.note}>La checklist détaillée reste extensible : elle sera complétée à réception du modèle de pré-audit consolidé, sans modifier ce mécanisme de prise en charge.</p></SelenCard>
+      <SelenCard><SelenCardTitle>Préparation</SelenCardTitle><p style={s.muted}>{action.observation || "Préparer le pré-audit avant l’audit de surveillance."}</p>{action.proposed_solution ? <p style={s.muted}>{action.proposed_solution}</p> : null}<p style={s.note}>{QUALIOPI_PREAUDIT_PRINCIPLES.reuseEvidence} {QUALIOPI_PREAUDIT_PRINCIPLES.flagGaps}</p></SelenCard>
     </section>
 
     <SelenCard style={{ marginTop: 14 }}>
+      <SelenCardTitle>Checklist pré-audit</SelenCardTitle>
+      <p style={s.muted}>Aide-mémoire agent fondé sur les preuves déjà présentes dans Daily. La checklist reste extensible et servira aussi de source de vérité au futur pré-check Sélion et à l’audit live.</p>
+      <div style={s.checklist}>
+        {QUALIOPI_PREAUDIT_CHECKLIST.map((item) => <div key={item.indicators} style={s.checkItem}>
+          <strong style={s.indicator}>Ind. {item.indicators}</strong>
+          <ul style={s.evidenceList}>{item.evidence.map((evidence) => <li key={evidence}>{evidence}</li>)}</ul>
+        </div>)}
+      </div>
+      <p style={s.note}><strong>Pré-check Sélion :</strong> {QUALIOPI_PREAUDIT_PRINCIPLES.selionRole} {QUALIOPI_PREAUDIT_PRINCIPLES.agentRole}</p>
+    </SelenCard>
+
+    <SelenCard style={{ marginTop: 14 }}>
       <SelenCardTitle>Clôturer cette intervention</SelenCardTitle>
-      {canTreat ? <><p style={s.muted}>Marque la tâche comme traitée lorsque le pré-audit a réellement été réalisé. Elle disparaîtra alors du Pilotage pour tous les agents.</p><form action={completePreaudit}><input type="hidden" name="action_id" value={action.id} /><button type="submit" style={s.primary}>Pré-audit traité</button></form></> : <p style={s.warning}>Cette tâche est encore réservée à l’agent assigné à l’organisme. Elle deviendra partageable après 72 h si elle reste ouverte.</p>}
+      {canTreat ? <><p style={s.muted}>Marque la tâche comme traitée lorsque le pré-audit a réellement été réalisé et validé par un agent. Elle disparaîtra alors du Pilotage pour tous les agents.</p><form action={completePreaudit}><input type="hidden" name="action_id" value={action.id} /><button type="submit" style={s.primary}>Pré-audit traité</button></form></> : <p style={s.warning}>Cette tâche est encore réservée à l’agent assigné à l’organisme. Elle deviendra partageable après 72 h si elle reste ouverte.</p>}
     </SelenCard>
   </main>;
 }
@@ -128,6 +141,10 @@ const s: Record<string, React.CSSProperties> = {
   muted: { color: "var(--selen-text2)", lineHeight: 1.6, fontSize: 13 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14 },
   info: { display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "9px 0", borderBottom: "1px solid var(--selen-border)", fontSize: 13 },
+  checklist: { display: "grid", gap: 10, marginTop: 14 },
+  checkItem: { display: "grid", gridTemplateColumns: "100px 1fr", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--selen-border)" },
+  indicator: { color: "var(--selen-gold2)", fontSize: 13 },
+  evidenceList: { margin: 0, paddingLeft: 18, color: "var(--selen-text2)", fontSize: 13, lineHeight: 1.55 },
   note: { marginTop: 14, padding: 12, borderLeft: "3px solid var(--selen-gold2)", background: "rgba(201,148,58,.07)", color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.55 },
   warning: { padding: 12, border: "1px solid rgba(180,78,70,.4)", background: "rgba(180,78,70,.08)", color: "var(--selen-danger)", lineHeight: 1.5, fontSize: 13 },
   primary: { minHeight: 40, border: 0, borderRadius: 8, background: "var(--selen-gold2)", color: "var(--selen-bg)", padding: "0 14px", fontWeight: 800, cursor: "pointer" },
