@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { getDailyWatchCadenceStatus } from "@/lib/daily/watchCadence";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -75,6 +76,13 @@ async function forceUsage(formData: FormData) {
   revalidatePath("/agent/daily/qualite");
 }
 
+function frDate(value?: string | null) {
+  if (!value) return "Jamais";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "Date invalide";
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(date);
+}
+
 export default async function DailyQualityStudioPage() {
   const admin = createSupabaseAdminClient();
   const [{ data: watches }, { data: organisations }, { data: usages }] = await Promise.all([
@@ -83,6 +91,8 @@ export default async function DailyQualityStudioPage() {
     admin.from("daily_organisation_watch_entries").select("watch_entry_id,interested,forced_by_studio,improvement_note,organisation_id"),
   ]);
   const usageRows = usages ?? [];
+  const cadence = getDailyWatchCadenceStatus(watches ?? []);
+  const watchReminderCount = cadence.filter((item) => !item.currentMonthCovered).length;
 
   return (
     <main style={s.page}>
@@ -91,6 +101,23 @@ export default async function DailyQualityStudioPage() {
         <h1 style={s.h1}>Qualité & veilles</h1>
         <p style={s.muted}>Publie les veilles communes, résume ce qu'il faut retenir et propose directement les améliorations utiles aux clients Daily.</p>
       </header>
+
+      <section style={s.reminderCard} aria-label="Rappel mensuel des veilles">
+        <div>
+          <p style={s.reminderEyebrow}>Cadence qualité · mensuelle</p>
+          <h2 style={s.reminderTitle}>{watchReminderCount === 0 ? "Veilles du mois à jour" : `${watchReminderCount} veille(s) à alimenter ce mois-ci`}</h2>
+          <p style={s.muted}>Le contrôle est calculé à partir des veilles déjà publiées : au moins un apport par mois et par catégorie. Il sert d'aide-mémoire et ne crée pas de doublon documentaire.</p>
+        </div>
+        <div style={s.cadenceGrid}>
+          {cadence.map((item) => (
+            <div key={item.type} style={item.currentMonthCovered ? s.cadenceOk : s.cadenceDue}>
+              <strong>{item.label}</strong>
+              <span style={s.cadenceStatus}>{item.currentMonthCovered ? "À jour ce mois-ci" : "À alimenter"}</span>
+              <small style={s.cadenceDate}>Dernière publication : {frDate(item.lastPublishedAt)}</small>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section style={s.grid}>
         <article style={s.card}>
@@ -175,6 +202,14 @@ const s: Record<string, React.CSSProperties> = {
   kicker: { fontSize: 10, textTransform: "uppercase", letterSpacing: ".2em", color: "var(--selen-gold)" },
   h1: { fontFamily: "var(--font-display)", fontSize: 32, margin: "6px 0" },
   muted: { color: "var(--selen-text2)", lineHeight: 1.6, fontSize: 13 },
+  reminderCard: { border: "1px solid var(--selen-border)", borderRadius: "var(--radius-md)", background: "var(--selen-bg2)", padding: 18, margin: "22px 0 14px", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(360px,1.15fr)", gap: 18, alignItems: "start" },
+  reminderEyebrow: { margin: 0, fontSize: 10, textTransform: "uppercase", letterSpacing: ".18em", color: "var(--selen-gold2)", fontWeight: 800 },
+  reminderTitle: { margin: "6px 0 4px", fontFamily: "var(--font-display)", fontSize: 22 },
+  cadenceGrid: { display: "grid", gap: 8 },
+  cadenceOk: { display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 10px", border: "1px solid rgba(74,150,104,.38)", background: "rgba(74,150,104,.08)", borderRadius: 8, padding: 12, fontSize: 12 },
+  cadenceDue: { display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 10px", border: "1px solid rgba(201,148,58,.45)", background: "rgba(201,148,58,.08)", borderRadius: 8, padding: 12, fontSize: 12 },
+  cadenceStatus: { fontWeight: 800, color: "var(--selen-gold2)" },
+  cadenceDate: { gridColumn: "1 / -1", color: "var(--selen-text2)" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14, margin: "22px 0" },
   card: { border: "1px solid var(--selen-border)", borderRadius: "var(--radius-md)", background: "var(--selen-bg2)", padding: 18, marginBottom: 14 },
   form: { display: "grid", gap: 10 },

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "npm run test:daily-assignment && npm run test:daily-trainer-certifications-ui && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && npm run test:daily-navigation && npm run test:daily-session-tasks && npm run test:support-manual-ticket && next build --webpack",
+    "build": "npm run test:daily-assignment && npm run test:daily-trainer-certifications-ui && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && npm run test:daily-navigation && npm run test:daily-session-tasks && npm run test:daily-watch-cadence && npm run test:support-manual-ticket && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test:daily-assignment": "node --test tests/dailyOrganisationAssignmentRules.test.mjs tests/dailyAssignmentSourceOfTruth.test.mjs tests/dailyOrganisationAttentionCounter.test.mjs",
@@ -13,6 +13,7 @@
     "test:daily-satisfaction": "node --test tests/dailySatisfactionPhoneTasks.test.mjs",
     "test:daily-navigation": "node --test tests/dailyNavigationCoverage.test.mjs",
     "test:daily-session-tasks": "node --test tests/dailySessionTaskAggregation.test.mjs",
+    "test:daily-watch-cadence": "node --test tests/dailyWatchCadenceReminder.test.mjs",
     "test:support-manual-ticket": "node --test tests/supportManualTicket.test.mjs"
   },
   "dependencies": {
