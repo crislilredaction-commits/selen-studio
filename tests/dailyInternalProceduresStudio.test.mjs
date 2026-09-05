@@ -16,6 +16,13 @@ test("le suivi réutilise daily_internal_procedures sans stockage parallèle", (
   assert.doesNotMatch(proceduresPage, /daily_internal_procedure_reminders/);
 });
 
+test("la vue est bornée aux organismes dont Daily est actif", () => {
+  assert.match(proceduresPage, /getActiveDailyOrganisationIds/);
+  assert.match(proceduresPage, /\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(proceduresPage, /\.in\("id", dailyOrganisationIds\)/);
+  assert.doesNotMatch(proceduresPage, /\.neq\("status", "archived"\)/);
+});
+
 test("la vue signale les brouillons et la revue documentaire annuelle", () => {
   assert.match(proceduresPage, /procedure\.status === "draft"/);
   assert.match(proceduresPage, /365 \* 24 \* 60 \* 60 \* 1000/);
