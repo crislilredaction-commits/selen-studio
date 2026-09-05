@@ -57,6 +57,14 @@ export default async function AgentDailyPage() {
       <Link href="/agent/daily/procedures-internes" style={s.secondary}>Voir les procédures →</Link>
     </SelenCard>
 
+    <SelenCard style={s.qualityShortcut}>
+      <div>
+        <strong>Réclamations & suggestions</strong>
+        <p style={s.ruleText}>Repère les retours encore ouverts, leur revue Selen, leur transmission à l’organisme et leur résolution.</p>
+      </div>
+      <Link href="/agent/daily/reclamations" style={s.secondary}>Voir les retours →</Link>
+    </SelenCard>
+
     {tasks.length === 0 ? <SelenCard style={s.empty}>
       <div style={{ fontSize: 30 }}>✓</div>
       <SelenCardTitle>Rien ne demande ton intervention</SelenCardTitle>
