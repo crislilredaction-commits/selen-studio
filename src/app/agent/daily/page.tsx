@@ -65,6 +65,14 @@ export default async function AgentDailyPage() {
       <Link href="/agent/daily/reclamations" style={s.secondary}>Voir les retours →</Link>
     </SelenCard>
 
+    <SelenCard style={s.qualityShortcut}>
+      <div>
+        <strong>Suivi sessions & incidents</strong>
+        <p style={s.ruleText}>Contrôle les incidents, adaptations et notes de suivi déjà enregistrés pendant les sessions, avec leur niveau de criticité et leur résolution.</p>
+      </div>
+      <Link href="/agent/daily/suivi-sessions" style={s.secondary}>Voir le suivi des sessions →</Link>
+    </SelenCard>
+
     {tasks.length === 0 ? <SelenCard style={s.empty}>
       <div style={{ fontSize: 30 }}>✓</div>
       <SelenCardTitle>Rien ne demande ton intervention</SelenCardTitle>
