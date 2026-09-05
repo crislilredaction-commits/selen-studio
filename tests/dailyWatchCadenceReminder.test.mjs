@@ -22,3 +22,12 @@ test("les deux catégories métier Daily sont suivies chaque mois", () => {
 test("les entrées archivées ne valident pas la cadence du mois", () => {
   assert.match(cadence, /entry\.status !== "archived"/);
 });
+
+test("les améliorations de veille restent bornées aux organismes Daily actifs côté serveur et UI", () => {
+  assert.match(page, /getActiveDailyOrganisationIds/);
+  assert.match(page, /const dailyOrganisationIds = await getActiveDailyOrganisationIds\(\)/);
+  assert.match(page, /target === "all"\s*\? dailyOrganisationIds/);
+  assert.match(page, /dailyOrganisationIds\.includes\(target\)/);
+  assert.match(page, /\.in\("id", dailyOrganisationIds\)/);
+  assert.doesNotMatch(page, /from\("organisations"\)\.select\("id"\)\.eq\("status", "active"\)/);
+});
