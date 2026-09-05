@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "npm run test:daily-assignment && npm run test:daily-trainer-certifications-ui && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && npm run test:daily-navigation && npm run test:daily-session-tasks && npm run test:daily-watch-cadence && npm run test:daily-corrective-actions-cadence && npm run test:daily-trainer-annual-review && npm run test:daily-internal-procedures && npm run test:support-manual-ticket && next build --webpack",
+    "build": "npm run test:daily-assignment && npm run test:daily-trainer-certifications-ui && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && npm run test:daily-navigation && npm run test:daily-session-tasks && npm run test:daily-watch-cadence && npm run test:daily-corrective-actions-cadence && npm run test:daily-trainer-annual-review && npm run test:daily-internal-procedures && npm run test:daily-stakeholder-feedback && npm run test:support-manual-ticket && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test:daily-assignment": "node --test tests/dailyOrganisationAssignmentRules.test.mjs tests/dailyAssignmentSourceOfTruth.test.mjs tests/dailyOrganisationAttentionCounter.test.mjs",
@@ -17,6 +17,7 @@
     "test:daily-corrective-actions-cadence": "node --test tests/dailyCorrectiveActionQuarterReminder.test.mjs",
     "test:daily-trainer-annual-review": "node --test tests/dailyTrainerAnnualReviewStudio.test.mjs",
     "test:daily-internal-procedures": "node --test tests/dailyInternalProceduresStudio.test.mjs",
+    "test:daily-stakeholder-feedback": "node --test tests/dailyStakeholderFeedbackStudio.test.mjs",
     "test:support-manual-ticket": "node --test tests/supportManualTicket.test.mjs"
   },
   "dependencies": {
