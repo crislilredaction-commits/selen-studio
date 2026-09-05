@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 
 function formatDate(value?: string | null) {
   if (!value) return "Non renseignée";
@@ -15,20 +16,47 @@ export default async function DailyTrainerAnnualReviewsPage() {
 
   const year = new Date().getFullYear();
   const admin = createSupabaseAdminClient();
-  const [{ data: trainers, error: trainersError }, { data: reviews, error: reviewsError }] = await Promise.all([
-    admin
-      .from("daily_trainer_profiles")
-      .select("id,display_name,professional_email,engagement_type,status,active")
-      .eq("active", true)
-      .neq("status", "archived")
-      .order("display_name"),
-    admin
-      .from("daily_trainer_annual_reviews")
-      .select("id,trainer_profile_id,review_year,status,submitted_at,manager_completed_at,updated_at")
-      .eq("review_year", year),
-  ]);
 
-  if (trainersError || reviewsError) {
+  let dailyOrganisationIds: string[];
+  try {
+    dailyOrganisationIds = await getActiveDailyOrganisationIds();
+  } catch (error) {
+    return (
+      <main style={s.page}>
+        <p style={s.error}>
+          Impossible de charger le périmètre Daily : {error instanceof Error ? error.message : "périmètre indisponible"}
+        </p>
+      </main>
+    );
+  }
+
+  const scopeIds = dailyOrganisationIds.length
+    ? dailyOrganisationIds
+    : ["00000000-0000-0000-0000-000000000000"];
+
+  const { data: trainers, error: trainersError } = await admin
+    .from("daily_trainer_profiles")
+    .select("id,organisation_id,display_name,professional_email,engagement_type,status,active")
+    .in("organisation_id", scopeIds)
+    .eq("active", true)
+    .neq("status", "archived")
+    .order("display_name");
+
+  if (trainersError) {
+    return <main style={s.page}><p style={s.error}>Impossible de charger les formateurs Daily actifs.</p></main>;
+  }
+
+  const trainerIds = (trainers ?? []).map((trainer) => trainer.id);
+  const reviewScope = trainerIds.length
+    ? trainerIds
+    : ["00000000-0000-0000-0000-000000000000"];
+  const { data: reviews, error: reviewsError } = await admin
+    .from("daily_trainer_annual_reviews")
+    .select("id,trainer_profile_id,review_year,status,submitted_at,manager_completed_at,updated_at")
+    .eq("review_year", year)
+    .in("trainer_profile_id", reviewScope);
+
+  if (reviewsError) {
     return <main style={s.page}><p style={s.error}>Impossible de charger les bilans annuels formateurs.</p></main>;
   }
 
@@ -44,7 +72,7 @@ export default async function DailyTrainerAnnualReviewsPage() {
         <div>
           <p style={s.eyebrow}>Selen Daily · Qualité</p>
           <h1 style={s.h1}>Bilan annuel des compétences formateurs</h1>
-          <p style={s.lead}>Vue de contrôle pour {year}. Elle réutilise les profils et bilans annuels existants, sans créer de second suivi. Le bilan n'est considéré comme terminé qu'après la contribution du formateur et la partie manager.</p>
+          <p style={s.lead}>Vue de contrôle pour {year}. Elle réutilise les profils et bilans annuels existants, sans créer de second suivi. Le bilan n&apos;est considéré comme terminé qu&apos;après la contribution du formateur et la partie manager.</p>
         </div>
         <Link href="/agent/daily" style={s.back}>← Pilotage Daily</Link>
       </header>
@@ -60,7 +88,7 @@ export default async function DailyTrainerAnnualReviewsPage() {
         <div style={s.cardHead}>
           <div>
             <h2 style={s.h2}>Suivi {year}</h2>
-            <p style={s.muted}>Cette vue sert d'aide-mémoire aux agents. Les données restent celles de <code>daily_trainer_profiles</code> et <code>daily_trainer_annual_reviews</code>.</p>
+            <p style={s.muted}>Cette vue sert d&apos;aide-mémoire aux agents. Les données restent celles de <code>daily_trainer_profiles</code> et <code>daily_trainer_annual_reviews</code>, limitées aux organismes dont l&apos;abonnement Daily est actif.</p>
           </div>
         </div>
 
