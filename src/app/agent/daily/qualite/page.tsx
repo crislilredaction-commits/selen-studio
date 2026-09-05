@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { getDailyCorrectiveActionQuarterStatus } from "@/lib/daily/qualityActionCadence";
 import { getDailyWatchCadenceStatus } from "@/lib/daily/watchCadence";
+import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -48,13 +49,12 @@ async function forceUsage(formData: FormData) {
   if (!watchId || !improvement) return;
 
   const admin = createSupabaseAdminClient();
-  let organisationIds: string[] = [];
-  if (target === "all") {
-    const { data } = await admin.from("organisations").select("id").eq("status", "active");
-    organisationIds = (data ?? []).map((row) => row.id);
-  } else {
-    organisationIds = [target];
-  }
+  const dailyOrganisationIds = await getActiveDailyOrganisationIds();
+  const organisationIds = target === "all"
+    ? dailyOrganisationIds
+    : dailyOrganisationIds.includes(target)
+      ? [target]
+      : [];
 
   const agentId = await currentAgentProfileId();
   const now = new Date().toISOString();
@@ -86,9 +86,16 @@ function frDate(value?: string | null) {
 
 export default async function DailyQualityStudioPage() {
   const admin = createSupabaseAdminClient();
-  const [{ data: watches }, { data: organisations }, { data: usages }, { data: qualityActions }] = await Promise.all([
+  const dailyOrganisationIds = await getActiveDailyOrganisationIds();
+  const organisations = dailyOrganisationIds.length
+    ? (await admin
+        .from("organisations")
+        .select("id,name,legal_name,status")
+        .in("id", dailyOrganisationIds)
+        .order("name")).data
+    : [];
+  const [{ data: watches }, { data: usages }, { data: qualityActions }] = await Promise.all([
     admin.from("daily_watch_entries").select("id,watch_type,title,article_url,analysis_and_improvement,published_at,status").order("published_at", { ascending: false }),
-    admin.from("organisations").select("id,name,legal_name,status").eq("status", "active").order("name"),
     admin.from("daily_organisation_watch_entries").select("watch_entry_id,interested,forced_by_studio,improvement_note,organisation_id"),
     admin.from("daily_quality_actions").select("category,status,created_at,updated_at"),
   ]);
