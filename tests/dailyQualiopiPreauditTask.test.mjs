@@ -62,3 +62,13 @@ test("Studio expose le cycle Qualiopi canonique en lecture seule", () => {
   assert.doesNotMatch(cyclePage, /\.delete\(/);
   assert.doesNotMatch(cyclePage, /\.upsert\(/);
 });
+
+test("Studio contrôle l'état du moteur de rappels Qualiopi existant sans le dupliquer", () => {
+  assert.match(cyclePage, /\.from\("client_reminders"\)/);
+  assert.match(cyclePage, /\.eq\("prestation_type", "daily_qualiopi"\)/);
+  assert.match(cyclePage, /qualiopi_surveillance_window_open/);
+  assert.match(cyclePage, /qualiopi_renewal_4_months/);
+  assert.match(cyclePage, /qualiopi_certificate_expiry/);
+  assert.match(cyclePage, /Échéance moteur/);
+  assert.match(cyclePage, /Elle ne crée aucun rappel parallèle/);
+});
