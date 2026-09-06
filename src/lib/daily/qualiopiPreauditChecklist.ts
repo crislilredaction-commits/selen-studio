@@ -1,6 +1,11 @@
 export type QualiopiPreauditChecklistItem = {
   indicators: string;
   evidence: string[];
+  upcomingRequirement?: {
+    effectiveFrom: string;
+    reference: string;
+    evidence: string[];
+  };
 };
 
 /**
@@ -46,6 +51,13 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
   {
     indicators: "12",
     evidence: ["Émargements", "Procédure de gestion et prévention des absences et abandons"],
+    upcomingRequirement: {
+      effectiveFrom: "2026-11-01",
+      reference: "Décret n° 2026-728 du 1er août 2026",
+      evidence: [
+        "Procédure couvrant la prévention et le traitement des violences, dont les violences sexistes et sexuelles, du harcèlement et des discriminations dans le cadre de la formation",
+      ],
+    },
   },
   {
     indicators: "17",
@@ -78,6 +90,13 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
   {
     indicators: "27",
     evidence: ["Ordres de mission"],
+    upcomingRequirement: {
+      effectiveFrom: "2026-11-01",
+      reference: "Décret n° 2026-728 du 1er août 2026",
+      evidence: [
+        "Contrat de sous-traitance ou pièce contractuelle associée à l’ordre de mission assurant la traçabilité du respect du référentiel national qualité",
+      ],
+    },
   },
   {
     indicators: "30",
@@ -92,6 +111,7 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
 export const QUALIOPI_PREAUDIT_PRINCIPLES = {
   reuseEvidence: "Pointer vers les preuves existantes plutôt que les dupliquer.",
   flagGaps: "Signaler les pièces absentes, périmées, non signées ou à vérifier.",
+  regulatoryReadiness: "Les exigences futures sont affichées comme éléments à anticiper jusqu’à leur date d’entrée en vigueur, sans les confondre avec les exigences applicables au jour du pré-audit.",
   selionRole: "Sélion peut effectuer un premier pré-check automatique, sans valider à la place de l’agent.",
   agentRole: "La validation finale du pré-audit reste sous la responsabilité de l’agent.",
   auditLive: "La même source de vérité doit pouvoir être réutilisée par le futur audit live.",
