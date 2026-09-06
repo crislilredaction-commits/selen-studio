@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
@@ -63,11 +64,15 @@ export default async function DailyPlanningPage() {
   const days = Array.from({ length: 21 }, (_, index) => addDays(today, index));
   const horizonEnd = days[days.length - 1];
   const recentStart = addDays(today, -7);
+  const organisationIds = await getActiveDailyOrganisationIds();
 
-  const { data: dossiers } = await admin
-    .from("daily_session_dossiers")
-    .select("session_id,organisation_id,status,updated_at")
-    .order("updated_at", { ascending: false });
+  const { data: dossiers } = organisationIds.length
+    ? await admin
+        .from("daily_session_dossiers")
+        .select("session_id,organisation_id,status,updated_at")
+        .in("organisation_id", organisationIds)
+        .order("updated_at", { ascending: false })
+    : { data: [] };
 
   const sessionIds = (dossiers ?? []).map((d) => d.session_id);
   const orgIds = [...new Set((dossiers ?? []).map((d) => d.organisation_id))];
