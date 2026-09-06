@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
 function badge(value: string) {
@@ -11,11 +12,20 @@ export default async function DailyLearnersStudioPage() {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={{ padding: 28 }}>Accès refusé.</main>;
   const admin = createSupabaseAdminClient();
-  const [{ data: learners }, { data: enrolments }, { data: supportNeeds }] = await Promise.all([
-    admin.from("daily_learners").select("*,organisations(name)").order("last_name"),
-    admin.from("daily_session_enrolments").select("*,daily_learners(first_name,last_name,email),daily_sessions(id,internal_reference,start_date,end_date,daily_formations(title)),organisations(name)").order("created_at", { ascending: false }),
-    admin.from("daily_enrolment_support_needs").select("*").eq("has_specific_needs", true),
-  ]);
+  const organisationIds = await getActiveDailyOrganisationIds();
+
+  const [{ data: learners }, { data: enrolments }] = organisationIds.length
+    ? await Promise.all([
+        admin.from("daily_learners").select("*,organisations(name)").in("organisation_id", organisationIds).order("last_name"),
+        admin.from("daily_session_enrolments").select("*,daily_learners(first_name,last_name,email),daily_sessions(id,internal_reference,start_date,end_date,daily_formations(title)),organisations(name)").in("organisation_id", organisationIds).order("created_at", { ascending: false }),
+      ])
+    : [{ data: [] }, { data: [] }];
+
+  const enrolmentIds = (enrolments ?? []).map((item) => item.id);
+  const { data: supportNeeds } = enrolmentIds.length
+    ? await admin.from("daily_enrolment_support_needs").select("*").in("enrolment_id", enrolmentIds).eq("has_specific_needs", true)
+    : { data: [] };
+
   const needsMap = new Map((supportNeeds ?? []).map((item) => [item.enrolment_id, item]));
   const confirmed = (enrolments ?? []).filter((e) => e.status === "confirmed").length;
   const adaptations = (supportNeeds ?? []).length;
