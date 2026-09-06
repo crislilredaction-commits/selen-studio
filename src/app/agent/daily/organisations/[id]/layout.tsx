@@ -122,7 +122,7 @@ export default async function DailyOrganisationLayout({
                 fontSize: 13,
               }}
             >
-              Vous pouvez prendre ce dossier en charge. L’assignation s’appliquera à
+              Tu peux prendre ce dossier en charge. L’assignation s’appliquera à
               l’ensemble de ses formations, sessions, inscriptions, adaptations,
               documents et tâches Daily.
             </p>
