@@ -5,6 +5,7 @@ import test from "node:test";
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashboard.tsx", import.meta.url), "utf8");
 const registry = await readFile(new URL("../src/app/agent/dossiers/UnifiedDossiersPage.tsx", import.meta.url), "utf8");
+const legacyTasksPage = await readFile(new URL("../src/app/agent/daily/session-dossiers/page.tsx", import.meta.url), "utf8");
 const sessionNotificationAssignment = await readFile(
   new URL("../supabase/migrations/20260905084500_daily_session_notifications_use_org_assignment.sql", import.meta.url),
   "utf8",
@@ -31,6 +32,13 @@ test("le registre transversal affiche l’assignation Daily issue de l’organis
   assert.match(registry, /dossier\.type === "daily" && organisation/);
   assert.match(registry, /dailyAgentByOrganisation\.get\(organisation\.id\)/);
   assert.match(registry, /\/agent\/daily\/organisations\/\$\{organisation\.id\}/);
+});
+
+test("l’ancienne page Tâches agent délègue au Pilotage Daily canonique", () => {
+  assert.match(legacyTasksPage, /redirect\("\/agent\/daily"\)/);
+  assert.doesNotMatch(legacyTasksPage, /daily_session_dossiers/);
+  assert.doesNotMatch(legacyTasksPage, /assigned_agent_profile_id/);
+  assert.doesNotMatch(legacyTasksPage, /daily_session_checklist_items/);
 });
 
 test("une tâche précise dépassant 72 h devient partageable sans réassigner l’organisme", () => {

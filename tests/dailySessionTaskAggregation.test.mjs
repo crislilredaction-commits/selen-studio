@@ -4,14 +4,13 @@ import test from "node:test";
 
 const phases = await readFile(new URL("../src/lib/daily/sessionPhase.ts", import.meta.url), "utf8");
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
-const sessions = await readFile(new URL("../src/app/agent/daily/session-dossiers/page.tsx", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashboard.tsx", import.meta.url), "utf8");
 const pilotage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
 
 test("les phases de session sont cumulatives", () => {
   assert.match(phases, /phaseRank\[itemPhase\] <= phaseRank\[currentPhase\]/);
-  assert.match(sessions, /isAvailablePhaseItem\(item\.phase, currentPhase\)/);
-  assert.doesNotMatch(sessions, /item\.phase === currentPhase/);
+  assert.match(tasks, /isAvailablePhaseItem\(item\.phase, currentPhase\)/);
+  assert.doesNotMatch(tasks, /item\.phase === currentPhase/);
 });
 
 test("la source commune agrège les tâches de session ouvertes attribuées à Selen", () => {
