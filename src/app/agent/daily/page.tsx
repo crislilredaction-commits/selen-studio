@@ -43,6 +43,14 @@ export default async function AgentDailyPage() {
 
     <SelenCard style={s.qualityShortcut}>
       <div>
+        <strong>Indicateurs formation</strong>
+        <p style={s.ruleText}>Consulte les volumes, présences, résultats d’évaluation et niveaux de satisfaction calculés depuis les données opérationnelles Daily.</p>
+      </div>
+      <Link href="/agent/daily/indicateurs" style={s.secondary}>Voir les indicateurs →</Link>
+    </SelenCard>
+
+    <SelenCard style={s.qualityShortcut}>
+      <div>
         <strong>Bilan annuel des compétences formateurs</strong>
         <p style={s.ruleText}>Contrôle en un coup d'œil les bilans de l'année : contribution du formateur, partie manager et dossiers encore à compléter.</p>
       </div>
