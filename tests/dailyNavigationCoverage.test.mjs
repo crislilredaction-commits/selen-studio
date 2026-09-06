@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const layout = await readFile(new URL("../src/app/agent/daily/layout.tsx", import.meta.url), "utf8");
+const planningPage = await readFile(new URL("../src/app/agent/daily/planning/page.tsx", import.meta.url), "utf8");
 
 test("la navigation Studio Daily expose les écrans métier déjà disponibles", () => {
   const expectedRoutes = [
@@ -20,4 +21,10 @@ test("la navigation Studio Daily expose les écrans métier déjà disponibles",
   for (const route of expectedRoutes) {
     assert.match(layout, new RegExp(`href=\\"${route.replaceAll("/", "\\/")}\\"`));
   }
+});
+
+test("le planning est borné au périmètre canonique des organismes Daily actifs", () => {
+  assert.match(planningPage, /getActiveDailyOrganisationIds/);
+  assert.match(planningPage, /\.from\("daily_session_dossiers"\)[\s\S]*\.in\("organisation_id", organisationIds\)/);
+  assert.match(planningPage, /organisationIds\.length\s*\?\s*await admin/);
 });
