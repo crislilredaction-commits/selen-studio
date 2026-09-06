@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const layout = await readFile(new URL("../src/app/agent/daily/layout.tsx", import.meta.url), "utf8");
 const planningPage = await readFile(new URL("../src/app/agent/daily/planning/page.tsx", import.meta.url), "utf8");
+const indicatorsPage = await readFile(new URL("../src/app/agent/daily/indicateurs/page.tsx", import.meta.url), "utf8");
 const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
 
 test("la navigation Studio Daily expose les écrans métier déjà disponibles", () => {
@@ -12,6 +13,7 @@ test("la navigation Studio Daily expose les écrans métier déjà disponibles",
     "/agent/daily/planning",
     "/agent/daily/organisations",
     "/agent/daily/session-dossiers",
+    "/agent/daily/indicateurs",
     "/agent/daily/pretraining-documents",
     "/agent/daily/posttraining-documents",
     "/agent/daily/communications",
@@ -28,6 +30,20 @@ test("le planning est borné au périmètre canonique des organismes Daily actif
   assert.match(planningPage, /getActiveDailyOrganisationIds/);
   assert.match(planningPage, /\.from\("daily_session_dossiers"\)[\s\S]*\.in\("organisation_id", organisationIds\)/);
   assert.match(planningPage, /organisationIds\.length\s*\?\s*await admin/);
+});
+
+test("les indicateurs formation dérivent des sources Daily existantes et restent bornés aux abonnements actifs", () => {
+  assert.match(indicatorsPage, /getActiveDailyOrganisationIds/);
+  for (const table of [
+    "daily_sessions",
+    "daily_session_enrolments",
+    "daily_attendance_records",
+    "daily_learning_assessments",
+    "daily_learner_feedback_responses",
+    "daily_stakeholder_satisfaction_responses",
+  ]) {
+    assert.match(indicatorsPage, new RegExp(`\\.from\\(\\"${table}\\"\\)[\\s\\S]*?\\.in\\(\\"organisation_id\\", organisationIds\\)`));
+  }
 });
 
 test("l’auto-attribution Studio Daily reste au tutoiement", () => {
