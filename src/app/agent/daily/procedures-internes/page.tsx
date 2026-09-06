@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 const PROCEDURE_LABELS: Record<string, string> = {
@@ -28,15 +29,23 @@ export default async function DailyInternalProceduresPage() {
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
 
   const admin = createSupabaseAdminClient();
+  const dailyOrganisationIds = await getActiveDailyOrganisationIds();
+  const proceduresRequest = dailyOrganisationIds.length
+    ? admin
+        .from("daily_internal_procedures")
+        .select("id,organisation_id,procedure_type,title,purpose,steps,responsibilities,evidence,status,reviewed_at,updated_at")
+        .in("organisation_id", dailyOrganisationIds)
+        .order("updated_at", { ascending: false })
+    : Promise.resolve({ data: [], error: null });
+  const organisationsRequest = dailyOrganisationIds.length
+    ? admin
+        .from("organisations")
+        .select("id,name,legal_name,status")
+        .in("id", dailyOrganisationIds)
+    : Promise.resolve({ data: [], error: null });
   const [{ data: procedures, error: proceduresError }, { data: organisations, error: organisationsError }] = await Promise.all([
-    admin
-      .from("daily_internal_procedures")
-      .select("id,organisation_id,procedure_type,title,purpose,steps,responsibilities,evidence,status,reviewed_at,updated_at")
-      .order("updated_at", { ascending: false }),
-    admin
-      .from("organisations")
-      .select("id,name,legal_name,status")
-      .neq("status", "archived"),
+    proceduresRequest,
+    organisationsRequest,
   ]);
 
   if (proceduresError || organisationsError) {
