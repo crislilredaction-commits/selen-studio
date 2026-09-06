@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const layout = await readFile(new URL("../src/app/agent/daily/layout.tsx", import.meta.url), "utf8");
 const planningPage = await readFile(new URL("../src/app/agent/daily/planning/page.tsx", import.meta.url), "utf8");
+const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
 
 test("la navigation Studio Daily expose les écrans métier déjà disponibles", () => {
   const expectedRoutes = [
@@ -27,4 +28,9 @@ test("le planning est borné au périmètre canonique des organismes Daily actif
   assert.match(planningPage, /getActiveDailyOrganisationIds/);
   assert.match(planningPage, /\.from\("daily_session_dossiers"\)[\s\S]*\.in\("organisation_id", organisationIds\)/);
   assert.match(planningPage, /organisationIds\.length\s*\?\s*await admin/);
+});
+
+test("l’auto-attribution Studio Daily reste au tutoiement", () => {
+  assert.match(organisationLayout, /Tu peux prendre ce dossier en charge/);
+  assert.doesNotMatch(organisationLayout, /Vous pouvez prendre ce dossier en charge/);
 });
