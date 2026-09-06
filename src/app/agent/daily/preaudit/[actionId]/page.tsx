@@ -116,9 +116,17 @@ export default async function DailyQualiopiPreauditPage({ params }: { params: Pr
       <div style={s.checklist}>
         {QUALIOPI_PREAUDIT_CHECKLIST.map((item) => <div key={item.indicators} style={s.checkItem}>
           <strong style={s.indicator}>Ind. {item.indicators}</strong>
-          <ul style={s.evidenceList}>{item.evidence.map((evidence) => <li key={evidence}>{evidence}</li>)}</ul>
+          <div>
+            <ul style={s.evidenceList}>{item.evidence.map((evidence) => <li key={evidence}>{evidence}</li>)}</ul>
+            {item.upcomingRequirement ? <div style={s.upcoming}>
+              <strong style={s.upcomingTitle}>À anticiper à partir du {frDate(item.upcomingRequirement.effectiveFrom)}</strong>
+              <ul style={s.evidenceList}>{item.upcomingRequirement.evidence.map((evidence) => <li key={evidence}>{evidence}</li>)}</ul>
+              <span style={s.regulatorySource}>{item.upcomingRequirement.reference}</span>
+            </div> : null}
+          </div>
         </div>)}
       </div>
+      <p style={s.note}>{QUALIOPI_PREAUDIT_PRINCIPLES.regulatoryReadiness}</p>
       <p style={s.note}><strong>Pré-check Sélion :</strong> {QUALIOPI_PREAUDIT_PRINCIPLES.selionRole} {QUALIOPI_PREAUDIT_PRINCIPLES.agentRole}</p>
     </SelenCard>
 
@@ -145,6 +153,9 @@ const s: Record<string, React.CSSProperties> = {
   checkItem: { display: "grid", gridTemplateColumns: "100px 1fr", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--selen-border)" },
   indicator: { color: "var(--selen-gold2)", fontSize: 13 },
   evidenceList: { margin: 0, paddingLeft: 18, color: "var(--selen-text2)", fontSize: 13, lineHeight: 1.55 },
+  upcoming: { marginTop: 10, padding: 10, border: "1px solid rgba(201,148,58,.32)", borderRadius: 8, background: "rgba(201,148,58,.06)" },
+  upcomingTitle: { display: "block", marginBottom: 6, color: "var(--selen-gold2)", fontSize: 11 },
+  regulatorySource: { display: "block", marginTop: 6, color: "var(--selen-text3)", fontSize: 10 },
   note: { marginTop: 14, padding: 12, borderLeft: "3px solid var(--selen-gold2)", background: "rgba(201,148,58,.07)", color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.55 },
   warning: { padding: 12, border: "1px solid rgba(180,78,70,.4)", background: "rgba(180,78,70,.08)", color: "var(--selen-danger)", lineHeight: 1.5, fontSize: 13 },
   primary: { minHeight: 40, border: 0, borderRadius: 8, background: "var(--selen-gold2)", color: "var(--selen-bg)", padding: "0 14px", fontWeight: 800, cursor: "pointer" },
