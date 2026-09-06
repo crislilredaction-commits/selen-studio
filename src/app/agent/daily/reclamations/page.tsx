@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -31,16 +32,21 @@ export default async function DailyStakeholderFeedbackPage() {
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
 
   const admin = createSupabaseAdminClient();
-  const [{ data: feedback, error: feedbackError }, { data: organisations, error: organisationsError }] = await Promise.all([
-    admin
-      .from("daily_stakeholder_feedback")
-      .select("id,organisation_id,session_id,enrolment_id,submission_type,stakeholder_type,submitter_name,submitter_email,subject,message,status,selen_review_note,selen_reviewed_at,forwarded_at,organisation_response,resolved_at,created_at,updated_at")
-      .order("created_at", { ascending: false }),
-    admin
-      .from("organisations")
-      .select("id,name,legal_name,status")
-      .neq("status", "archived"),
-  ]);
+  const organisationIds = await getActiveDailyOrganisationIds();
+  const [{ data: feedback, error: feedbackError }, { data: organisations, error: organisationsError }] = organisationIds.length
+    ? await Promise.all([
+        admin
+          .from("daily_stakeholder_feedback")
+          .select("id,organisation_id,session_id,enrolment_id,submission_type,stakeholder_type,submitter_name,submitter_email,subject,message,status,selen_review_note,selen_reviewed_at,forwarded_at,organisation_response,resolved_at,created_at,updated_at")
+          .in("organisation_id", organisationIds)
+          .order("created_at", { ascending: false }),
+        admin
+          .from("organisations")
+          .select("id,name,legal_name,status")
+          .in("id", organisationIds)
+          .neq("status", "archived"),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }];
 
   if (feedbackError || organisationsError) {
     return <main style={s.page}><p style={s.error}>Impossible de charger les réclamations et suggestions Daily.</p></main>;
