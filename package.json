@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test:daily-assignment": "node --test tests/dailyOrganisationAssignmentRules.test.mjs tests/dailyAssignmentSourceOfTruth.test.mjs tests/dailyOrganisationAttentionCounter.test.mjs",
     "test:daily-trainer-certifications-ui": "node --test tests/dailyTrainerCertificationReadonlyUi.test.mjs",
-    "test:daily-qualiopi-preaudit": "node --test tests/dailyQualiopiPreauditTask.test.mjs",
+    "test:daily-qualiopi-preaudit": "node --test tests/dailyQualiopiPreauditTask.test.mjs tests/dailyQualiopiNov2026Readiness.test.mjs",
     "test:daily-satisfaction": "node --test tests/dailySatisfactionPhoneTasks.test.mjs",
     "test:daily-navigation": "node --test tests/dailyNavigationCoverage.test.mjs",
     "test:daily-session-tasks": "node --test tests/dailySessionTaskAggregation.test.mjs",
