@@ -18,9 +18,28 @@ test("l'indicateur 12 anticipe violences harcèlement et discriminations sans re
   assert.match(checklist, /indicators: "12"[\s\S]*violences sexistes et sexuelles[\s\S]*harcèlement[\s\S]*discriminations/);
 });
 
+test("l'indicateur 19 anticipe la preuve du suivi à distance et le référent pédagogique conditionnel", () => {
+  assert.match(checklist, /indicators: "19"[\s\S]*effectivité du suivi par chaque apprenant/);
+  assert.match(checklist, /indicators: "19"[\s\S]*seuil d’intervenants fixé par arrêté[\s\S]*référent pédagogique/);
+});
+
 test("l'indicateur 27 conserve l'ordre de mission et anticipe la traçabilité RNQ de la sous-traitance", () => {
   assert.match(checklist, /indicators: "27"[\s\S]*Ordres de mission/);
   assert.match(checklist, /indicators: "27"[\s\S]*pièce contractuelle associée à l’ordre de mission[\s\S]*référentiel national qualité/);
+});
+
+test("l'indicateur 32 anticipe l'analyse des risques qualité", () => {
+  assert.match(checklist, /indicators: "31 \/ 32"[\s\S]*Analyse documentée des risques[\s\S]*qualité des formations/);
+  assert.match(checklist, /risques identifiés[\s\S]*actions d’amélioration continue/);
+});
+
+test("le nouvel indicateur 33 reste borné à l'apprentissage", () => {
+  assert.match(checklist, /indicators: "33"/);
+  assert.match(checklist, /Apprentissage uniquement/);
+  assert.match(checklist, /4° de l’article L\. 6313-1/);
+  assert.match(checklist, /distincte du questionnaire général de satisfaction/);
+  assert.match(checklist, /Résultats partagés avec les équipes pédagogiques/);
+  assert.match(checklist, /mesure périodique de son efficacité/);
 });
 
 test("Studio affiche séparément les preuves actuelles et les exigences à venir", () => {

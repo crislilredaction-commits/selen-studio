@@ -1,6 +1,7 @@
 export type QualiopiPreauditChecklistItem = {
   indicators: string;
   evidence: string[];
+  scope?: string;
   upcomingRequirement?: {
     effectiveFrom: string;
     reference: string;
@@ -70,6 +71,14 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
   {
     indicators: "19",
     evidence: ["Ressources disponibles dans les espaces apprenants"],
+    upcomingRequirement: {
+      effectiveFrom: "2026-11-01",
+      reference: "Décret n° 2026-728 du 1er août 2026",
+      evidence: [
+        "Pour les modules réalisés à distance : preuve vérifiable de l’effectivité du suivi par chaque apprenant",
+        "Si le seuil d’intervenants fixé par arrêté est dépassé : référent pédagogique identifié pour la formation et preuve de coordination pédagogique",
+      ],
+    },
   },
   {
     indicators: "21",
@@ -105,6 +114,28 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
   {
     indicators: "31 / 32",
     evidence: ["Tableaux d’amélioration", "Traitement des difficultés"],
+    upcomingRequirement: {
+      effectiveFrom: "2026-11-01",
+      reference: "Décret n° 2026-728 du 1er août 2026",
+      evidence: [
+        "Analyse documentée des risques pesant sur la qualité des formations délivrées",
+        "Lien traçable entre risques identifiés, appréciations, réclamations et actions d’amélioration continue",
+      ],
+    },
+  },
+  {
+    indicators: "33",
+    scope: "Apprentissage uniquement (actions mentionnées au 4° de l’article L. 6313-1 du code du travail)",
+    evidence: [],
+    upcomingRequirement: {
+      effectiveFrom: "2026-11-01",
+      reference: "Décret n° 2026-728 du 1er août 2026",
+      evidence: [
+        "Évaluation des contenus et des enseignements par les apprentis, distincte du questionnaire général de satisfaction",
+        "Résultats partagés avec les équipes pédagogiques",
+        "Démarche d’amélioration continue formalisée à partir des résultats et mesure périodique de son efficacité",
+      ],
+    },
   },
 ];
 
@@ -112,6 +143,7 @@ export const QUALIOPI_PREAUDIT_PRINCIPLES = {
   reuseEvidence: "Pointer vers les preuves existantes plutôt que les dupliquer.",
   flagGaps: "Signaler les pièces absentes, périmées, non signées ou à vérifier.",
   regulatoryReadiness: "Les exigences futures sont affichées comme éléments à anticiper jusqu’à leur date d’entrée en vigueur, sans les confondre avec les exigences applicables au jour du pré-audit.",
+  scopedRequirements: "Respecter le périmètre d’application de chaque indicateur et ne pas réclamer une preuve à un organisme non concerné.",
   selionRole: "Sélion peut effectuer un premier pré-check automatique, sans valider à la place de l’agent.",
   agentRole: "La validation finale du pré-audit reste sous la responsabilité de l’agent.",
   auditLive: "La même source de vérité doit pouvoir être réutilisée par le futur audit live.",
