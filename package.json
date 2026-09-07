@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "npm run test:daily-assignment && npm run test:daily-trainer-certifications-ui && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && npm run test:daily-navigation && npm run test:daily-session-tasks && npm run test:daily-watch-cadence && npm run test:daily-corrective-actions-cadence && npm run test:daily-trainer-annual-review && npm run test:daily-internal-procedures && npm run test:daily-stakeholder-feedback && npm run test:daily-session-followup && npm run test:daily-session-followup-pdf && npm run test:daily-learners-scope && npm run test:daily-document-scope && npm run test:daily-document-publication && npm run test:support-manual-ticket && next build --webpack",
+    "build": "npm run test:agent-access && npm run test:daily-assignment && npm run test:daily-trainer-certifications-ui && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && npm run test:daily-navigation && npm run test:daily-session-tasks && npm run test:daily-watch-cadence && npm run test:daily-corrective-actions-cadence && npm run test:daily-trainer-annual-review && npm run test:daily-internal-procedures && npm run test:daily-stakeholder-feedback && npm run test:daily-session-followup && npm run test:daily-session-followup-pdf && npm run test:daily-learners-scope && npm run test:daily-document-scope && npm run test:daily-document-publication && npm run test:support-manual-ticket && next build --webpack",
     "start": "next start",
     "lint": "eslint",
+    "test:agent-access": "node --test tests/agentAccessGuard.test.mjs",
     "test:daily-assignment": "node --test tests/dailyOrganisationAssignmentRules.test.mjs tests/dailyAssignmentSourceOfTruth.test.mjs tests/dailyOrganisationAttentionCounter.test.mjs",
     "test:daily-trainer-certifications-ui": "node --test tests/dailyTrainerCertificationReadonlyUi.test.mjs",
     "test:daily-qualiopi-preaudit": "node --test tests/dailyQualiopiPreauditTask.test.mjs tests/dailyQualiopiNov2026Readiness.test.mjs",
