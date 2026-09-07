@@ -275,6 +275,11 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
             </select>
             <SelenButton type="submit" size="sm">Attribuer</SelenButton>
           </form>
+        ) : !assignment ? (
+          <form method="post" action="/agent/api/daily/organisation-assignment" style={s.assignmentForm}>
+            <input type="hidden" name="organisation_id" value={id} />
+            <SelenButton type="submit" size="sm">Me l’assigner</SelenButton>
+          </form>
         ) : null}
       </header>
 
