@@ -1,6 +1,7 @@
 export type QualiopiPreauditChecklistItem = {
   indicators: string;
   evidence: string[];
+  scope?: string;
   upcomingRequirement?: {
     effectiveFrom: string;
     reference: string;
@@ -55,7 +56,7 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
       effectiveFrom: "2026-11-01",
       reference: "Décret n° 2026-728 du 1er août 2026",
       evidence: [
-        "Procédure couvrant la prévention et le traitement des violences, dont les violences sexistes et sexuelles, du harcèlement et des discriminations dans le cadre de la formation",
+        "Procédure couvrant la prévention et le traitement de toute situation de violence, dont les violences sexistes et sexuelles, de harcèlement ou de discrimination dans le cadre de la formation",
       ],
     },
   },
@@ -70,6 +71,14 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
   {
     indicators: "19",
     evidence: ["Ressources disponibles dans les espaces apprenants"],
+    upcomingRequirement: {
+      effectiveFrom: "2026-11-01",
+      reference: "Décret n° 2026-728 du 1er août 2026",
+      evidence: [
+        "Pour les modules réalisés à distance : preuve vérifiable de l’effectivité du suivi par chaque apprenant",
+        "Si le nombre d’intervenants par formation dépasse le seuil qui sera fixé par arrêté : référent pédagogique identifié pour la formation et preuve de coordination pédagogique",
+      ],
+    },
   },
   {
     indicators: "21",
@@ -94,7 +103,7 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
       effectiveFrom: "2026-11-01",
       reference: "Décret n° 2026-728 du 1er août 2026",
       evidence: [
-        "Contrat de sous-traitance ou pièce contractuelle associée à l’ordre de mission assurant la traçabilité du respect du référentiel national qualité",
+        "Contrat de sous-traitance ou pièce contractuelle associée à l’ordre de mission permettant de tracer le respect du référentiel national qualité par le sous-traitant ou le salarié porté",
       ],
     },
   },
@@ -105,6 +114,28 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
   {
     indicators: "31 / 32",
     evidence: ["Tableaux d’amélioration", "Traitement des difficultés"],
+    upcomingRequirement: {
+      effectiveFrom: "2026-11-01",
+      reference: "Décret n° 2026-728 du 1er août 2026",
+      evidence: [
+        "Analyse documentée des risques pesant sur la qualité des formations délivrées",
+        "Lien traçable entre appréciations, réclamations, risques identifiés et actions d’amélioration continue",
+      ],
+    },
+  },
+  {
+    indicators: "33",
+    scope: "Apprentissage uniquement — actions mentionnées au 4° de l’article L. 6313-1 du code du travail",
+    evidence: [],
+    upcomingRequirement: {
+      effectiveFrom: "2026-11-01",
+      reference: "Décret n° 2026-728 du 1er août 2026",
+      evidence: [
+        "Évaluation des contenus et des enseignements par les apprentis, distincte du recueil général de satisfaction",
+        "Résultats partagés avec les équipes pédagogiques",
+        "Démarche d’amélioration continue formalisée à partir des résultats et mesure périodique de son efficacité",
+      ],
+    },
   },
 ];
 
@@ -112,6 +143,7 @@ export const QUALIOPI_PREAUDIT_PRINCIPLES = {
   reuseEvidence: "Pointer vers les preuves existantes plutôt que les dupliquer.",
   flagGaps: "Signaler les pièces absentes, périmées, non signées ou à vérifier.",
   regulatoryReadiness: "Les exigences futures sont affichées comme éléments à anticiper jusqu’à leur date d’entrée en vigueur, sans les confondre avec les exigences applicables au jour du pré-audit.",
+  scopedRequirements: "Respecter le périmètre d’application de chaque indicateur et ne pas réclamer une preuve à un organisme non concerné.",
   selionRole: "Sélion peut effectuer un premier pré-check automatique, sans valider à la place de l’agent.",
   agentRole: "La validation finale du pré-audit reste sous la responsabilité de l’agent.",
   auditLive: "La même source de vérité doit pouvoir être réutilisée par le futur audit live.",
