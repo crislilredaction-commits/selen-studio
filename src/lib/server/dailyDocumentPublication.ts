@@ -89,7 +89,7 @@ export async function publishDailyDocumentAndNotify(params: {
     ...(document.metadata ?? {}),
     published_by_email: publishedByEmail ?? null,
     publication_notification_sent_at: publishedAt,
-    publication_notification_resend_id: notification.resendId ?? null,
+    publication_notification_resend_id: "resendId" in notification ? notification.resendId ?? null : null,
   };
   const { data: updated, error: updateError } = await admin
     .from("daily_documents")
