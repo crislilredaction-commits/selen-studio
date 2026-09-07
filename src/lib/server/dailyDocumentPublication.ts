@@ -175,10 +175,11 @@ export async function publishDailyDocument({
   }
 
   const sentAt = new Date().toISOString();
+  const providerMessageId = "resendId" in sent ? sent.resendId ?? null : null;
   await admin.from("daily_communications").update({
     status: "sent",
     sent_at: sentAt,
-    provider_message_id: sent.resendId ?? null,
+    provider_message_id: providerMessageId,
     failed_at: null,
     failure_reason: null,
   }).eq("id", communication.id);
