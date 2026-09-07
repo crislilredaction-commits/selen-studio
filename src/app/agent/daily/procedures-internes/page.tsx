@@ -7,6 +7,7 @@ const PROCEDURE_LABELS: Record<string, string> = {
   learner_administration: "Parcours administratif apprenant",
   stakeholder_satisfaction: "Satisfaction des parties prenantes",
   absence_dropout: "Absences et abandons",
+  difficulties_hazards: "Prévention des difficultés et aléas",
 };
 
 function formatDate(value?: string | null) {
