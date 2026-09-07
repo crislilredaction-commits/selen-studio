@@ -56,7 +56,7 @@ export async function publishDailyDocument({
 
   const label = documentLabels[document.document_type] ?? "Document";
   const organisationName = String(organisation.legal_name || organisation.name || "").trim();
-  const subject = `Nouveau document disponible dans votre espace Selen Daily`;
+  const subject = "Nouveau document disponible dans votre espace Selen Daily";
   const bodyText = [
     "Bonjour,",
     `${label} (version ${document.version}) vient d’être publié dans votre espace Selen Daily.`,
@@ -67,7 +67,7 @@ export async function publishDailyDocument({
     title: "Nouveau document Selen Daily",
     bodyText,
     ctaLabel: "Ouvrir Selen Daily",
-    ctaUrl: `${getVitrineBaseUrl()}/client/daily/documents`,
+    ctaUrl: `${getVitrineBaseUrl()}/client`,
   });
 
   const { data: communication, error: communicationError } = await admin
