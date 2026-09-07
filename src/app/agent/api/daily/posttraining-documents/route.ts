@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { publishDailyDocument } from "@/lib/server/dailyDocumentPublication";
 import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
 const types=["attendance_summary","completion_certificate"];
+const completedDocumentStatuses=["validated","published","signed","active"];
 
 async function fallbackSyncChecklist(admin:ReturnType<typeof createSupabaseAdminClient>,sessionId:string){
   const [{data:enrolments},{data:slots},{data:records},{data:docs}]=await Promise.all([
@@ -26,7 +28,7 @@ async function fallbackSyncChecklist(admin:ReturnType<typeof createSupabaseAdmin
     (doc.document_type==="attendance_summary"&&doc.linked_object_type==="session"&&doc.linked_object_id===sessionId)||
     (doc.document_type==="completion_certificate"&&doc.linked_object_type==="enrolment"&&eligibleIds.has(doc.linked_object_id)),
   );
-  const validated=current.filter((doc)=>doc.status==="validated").length;
+  const validated=current.filter((doc)=>completedDocumentStatuses.includes(doc.status)).length;
   let status="todo";
   let note="Aucun créneau de présence disponible pour préparer les documents de fin.";
   if(activeSlots.length>0&&expectedRecords>0&&settledRecords<expectedRecords){
@@ -76,7 +78,7 @@ export async function PATCH(req:Request){
   const id=String(body.id??"");
   const action=String(body.action??"");
   const note=typeof body.note==="string"?body.note.trim():"";
-  if(!id||!["validate","request_correction"].includes(action))return NextResponse.json({error:"Action invalide."},{status:400});
+  if(!id||!["validate","request_correction","publish"].includes(action))return NextResponse.json({error:"Action invalide."},{status:400});
   const supabase=await createClient();
   const {data:userData}=await supabase.auth.getUser();
   const userId=userData.user?.id;
@@ -86,18 +88,31 @@ export async function PATCH(req:Request){
   const admin=createSupabaseAdminClient();
   const {data:current,error:readError}=await admin
     .from("daily_documents")
-    .select("id,status,metadata,organisation_id")
+    .select("id,status,metadata,organisation_id,session_id,enrolment_id,document_type,logical_name,version,sha256,storage_path,published_at")
     .eq("id",id)
     .in("organisation_id",organisationIds)
     .in("document_type",types)
     .eq("is_current",true)
     .single();
   if(readError||!current)return NextResponse.json({error:"Document introuvable."},{status:404});
+
+  if(action==="publish"){
+    if(current.status!=="validated")return NextResponse.json({error:"Le document doit être validé avant publication."},{status:409});
+    try{
+      const result=await publishDailyDocument({admin,userId,document:current});
+      const sessionId=typeof current.session_id==="string"?current.session_id:typeof current.metadata?.session_id==="string"?current.metadata.session_id:"";
+      if(sessionId)await syncChecklist(admin,sessionId);
+      return NextResponse.json(result);
+    }catch(cause){
+      return NextResponse.json({error:cause instanceof Error?cause.message:"Publication impossible."},{status:400});
+    }
+  }
+
   const metadata={...(current.metadata??{}),review_note:note||null,reviewed_at:new Date().toISOString(),reviewed_by_email:auth.email};
   const updates=action==="validate"?{status:"validated",validated_by:userId,validated_at:new Date().toISOString(),updated_by:userId,metadata}:{status:"correction_requested",validated_by:null,validated_at:null,updated_by:userId,metadata};
   const {data,error}=await admin.from("daily_documents").update(updates).eq("id",id).select("*").single();
   if(error)return NextResponse.json({error:error.message},{status:400});
-  const sessionId=typeof metadata.session_id==="string"?metadata.session_id:"";
+  const sessionId=typeof current.session_id==="string"?current.session_id:typeof metadata.session_id==="string"?metadata.session_id:"";
   if(sessionId)await syncChecklist(admin,sessionId);
   return NextResponse.json({document:data});
 }
