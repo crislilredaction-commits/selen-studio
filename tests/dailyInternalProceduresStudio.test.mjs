@@ -16,6 +16,13 @@ test("le suivi réutilise daily_internal_procedures sans stockage parallèle", (
   assert.doesNotMatch(proceduresPage, /daily_internal_procedure_reminders/);
 });
 
+test("Studio reconnaît les quatre procédures internes Daily", () => {
+  assert.match(proceduresPage, /learner_administration: "Parcours administratif apprenant"/);
+  assert.match(proceduresPage, /stakeholder_satisfaction: "Satisfaction des parties prenantes"/);
+  assert.match(proceduresPage, /absence_dropout: "Absences et abandons"/);
+  assert.match(proceduresPage, /difficulties_hazards: "Prévention des difficultés et aléas"/);
+});
+
 test("la vue est bornée aux organismes dont Daily est actif", () => {
   assert.match(proceduresPage, /getActiveDailyOrganisationIds/);
   assert.match(proceduresPage, /\.in\("organisation_id", dailyOrganisationIds\)/);
