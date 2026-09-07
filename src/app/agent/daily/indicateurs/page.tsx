@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
+export const dynamic = "force-dynamic";
+
 function percent(value: number, total: number) {
   if (!total) return "—";
   return `${Math.round((value / total) * 100)} %`;
