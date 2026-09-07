@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { publishDailyDocumentAndNotify } from "@/lib/server/dailyDocumentPublication";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
 const types=["attendance_summary","completion_certificate"];
@@ -76,7 +77,7 @@ export async function PATCH(req:Request){
   const id=String(body.id??"");
   const action=String(body.action??"");
   const note=typeof body.note==="string"?body.note.trim():"";
-  if(!id||!["validate","request_correction"].includes(action))return NextResponse.json({error:"Action invalide."},{status:400});
+  if(!id||!["validate","request_correction","publish"].includes(action))return NextResponse.json({error:"Action invalide."},{status:400});
   const supabase=await createClient();
   const {data:userData}=await supabase.auth.getUser();
   const userId=userData.user?.id;
@@ -86,13 +87,23 @@ export async function PATCH(req:Request){
   const admin=createSupabaseAdminClient();
   const {data:current,error:readError}=await admin
     .from("daily_documents")
-    .select("id,status,metadata,organisation_id")
+    .select("id,status,metadata,organisation_id,document_type,logical_name,version")
     .eq("id",id)
     .in("organisation_id",organisationIds)
     .in("document_type",types)
     .eq("is_current",true)
     .single();
   if(readError||!current)return NextResponse.json({error:"Document introuvable."},{status:404});
+
+  if(action==="publish"){
+    const publication=await publishDailyDocumentAndNotify({admin,document:current,publishedBy:userId,publishedByEmail:auth.email});
+    if(!publication.ok)return NextResponse.json({error:publication.error},{status:publication.status});
+    const sessionId=typeof current.metadata?.session_id==="string"?current.metadata.session_id:"";
+    if(sessionId)await syncChecklist(admin,sessionId);
+    return NextResponse.json({document:publication.document,notification:{sent:true}});
+  }
+
+  if(["published","signed","archived"].includes(current.status))return NextResponse.json({error:"Ce document n’est plus modifiable dans ce circuit de revue."},{status:400});
   const metadata={...(current.metadata??{}),review_note:note||null,reviewed_at:new Date().toISOString(),reviewed_by_email:auth.email};
   const updates=action==="validate"?{status:"validated",validated_by:userId,validated_at:new Date().toISOString(),updated_by:userId,metadata}:{status:"correction_requested",validated_by:null,validated_at:null,updated_by:userId,metadata};
   const {data,error}=await admin.from("daily_documents").update(updates).eq("id",id).select("*").single();
