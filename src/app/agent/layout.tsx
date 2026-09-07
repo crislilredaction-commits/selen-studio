@@ -2,6 +2,8 @@ import AgentSidebar from "@/components/layout/AgentSidebar";
 import StudioTutoiementGuard from "@/components/StudioTutoiementGuard";
 import SupportQuickCreateLink from "@/components/support/SupportQuickCreateLink";
 
+export const dynamic = "force-dynamic";
+
 export default function AgentLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
