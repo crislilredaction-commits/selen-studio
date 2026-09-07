@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { publishDailyDocument } from "@/lib/server/dailyDocumentPublication";
 import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
@@ -30,7 +31,7 @@ export async function PATCH(req: Request) {
   const id = String(body.id ?? "");
   const action = String(body.action ?? "");
   const note = typeof body.note === "string" ? body.note.trim() : "";
-  if (!id || !["validate", "request_correction"].includes(action)) {
+  if (!id || !["validate", "request_correction", "publish"].includes(action)) {
     return NextResponse.json({ error: "Action invalide." }, { status: 400 });
   }
   const supabase = await createClient();
@@ -44,13 +45,26 @@ export async function PATCH(req: Request) {
   const admin = createSupabaseAdminClient();
   const { data: current, error: readError } = await admin
     .from("daily_documents")
-    .select("id,status,metadata,organisation_id")
+    .select("id,status,metadata,organisation_id,session_id,enrolment_id,document_type,logical_name,version,sha256,storage_path,published_at")
     .eq("id", id)
     .in("organisation_id", organisationIds)
     .in("document_type", types)
     .eq("is_current", true)
     .single();
   if (readError || !current) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+
+  if (action === "publish") {
+    if (current.status !== "validated") {
+      return NextResponse.json({ error: "Le document doit être validé avant publication." }, { status: 409 });
+    }
+    try {
+      const result = await publishDailyDocument({ admin, userId, document: current });
+      return NextResponse.json(result);
+    } catch (cause) {
+      return NextResponse.json({ error: cause instanceof Error ? cause.message : "Publication impossible." }, { status: 400 });
+    }
+  }
+
   if (["published", "signed", "archived"].includes(current.status)) {
     return NextResponse.json({ error: "Ce document n’est plus modifiable dans ce circuit de revue." }, { status: 400 });
   }
