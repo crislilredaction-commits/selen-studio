@@ -6,6 +6,7 @@ const layout = await readFile(new URL("../src/app/agent/daily/layout.tsx", impor
 const planningPage = await readFile(new URL("../src/app/agent/daily/planning/page.tsx", import.meta.url), "utf8");
 const indicatorsPage = await readFile(new URL("../src/app/agent/daily/indicateurs/page.tsx", import.meta.url), "utf8");
 const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
+const globalCss = await readFile(new URL("../src/app/globals.css", import.meta.url), "utf8");
 
 test("la navigation Studio Daily expose les écrans métier déjà disponibles", () => {
   const expectedRoutes = [
@@ -24,6 +25,15 @@ test("la navigation Studio Daily expose les écrans métier déjà disponibles",
   for (const route of expectedRoutes) {
     assert.match(layout, new RegExp(`href=\\"${route.replaceAll("/", "\\/")}\\"`));
   }
+});
+
+test("la navigation et le planning Daily ont un comportement mobile explicite", () => {
+  assert.match(layout, /className="daily-subnav"/);
+  assert.match(planningPage, /className="daily-planning-page"/);
+  assert.match(planningPage, /className="daily-summary-grid"/);
+  assert.match(globalCss, /\.daily-subnav[\s\S]*overflow-x: auto/);
+  assert.match(globalCss, /\.daily-summary-grid[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(globalCss, /@media \(max-width: 480px\)[\s\S]*\.daily-summary-grid[\s\S]*grid-template-columns: 1fr/);
 });
 
 test("le planning est borné au périmètre canonique des organismes Daily actifs", () => {
