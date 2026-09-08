@@ -12,4 +12,4 @@ Règles fonctionnelles du lot :
 - seuls les documents courants dans un état validé, publié, signé ou actif sont considérés comme des preuves prêtes ;
 - affichage d'un score de préparation par session et par organisme avec accès direct au dossier complet.
 
-Les preuves de communication horodatées doivent être ajoutées au pré-audit dès que le modèle de traçabilité d'envoi est stabilisé, plutôt que d'imposer des captures d'écran manuelles.
+Les preuves de communication horodatées seront raccordées à cette vue dès que le modèle de traçabilité d'envoi est stabilisé. Elles devront provenir des traces natives Daily/Studio plutôt que de captures d'écran manuelles.
