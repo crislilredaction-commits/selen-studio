@@ -4,6 +4,34 @@ import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+type AuthErrorLike = {
+  code?: string;
+  message?: string;
+  name?: string;
+  status?: number;
+};
+
+function asAuthError(error: unknown): AuthErrorLike {
+  return error && typeof error === "object" ? (error as AuthErrorLike) : {};
+}
+
+function isInvalidCredentials(error: unknown) {
+  const authError = asAuthError(error);
+  return authError.code === "invalid_credentials" || /invalid login credentials/i.test(authError.message ?? "");
+}
+
+function isTransientAuthError(error: unknown) {
+  if (!error || isInvalidCredentials(error)) return false;
+
+  const authError = asAuthError(error);
+  if (authError.name === "AuthUnknownError") return true;
+  if (typeof authError.status === "number" && authError.status >= 500) return true;
+
+  return /unexpected token|not valid json|fetch|network|timeout|temporar/i.test(authError.message ?? "");
+}
+
+const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 export default function StudioLoginPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -13,16 +41,35 @@ export default function StudioLoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  async function signIn() {
+    try {
+      return await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    } catch (error) {
+      return { error };
+    }
+  }
+
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setErrorMessage("");
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) {
-      setErrorMessage("Connexion impossible. Vérifie ton email et ton mot de passe.");
+
+    let result = await signIn();
+    if (isTransientAuthError(result.error)) {
+      await wait(650);
+      result = await signIn();
+    }
+
+    if (result.error) {
+      setErrorMessage(
+        isInvalidCredentials(result.error)
+          ? "Email ou mot de passe incorrect."
+          : "Le service de connexion Selen est momentanément indisponible. Réessaie dans quelques instants.",
+      );
       setLoading(false);
       return;
     }
+
     router.push("/agent");
     router.refresh();
   }
