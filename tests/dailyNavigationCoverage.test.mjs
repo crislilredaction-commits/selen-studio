@@ -9,22 +9,26 @@ const indicatorsPage = await readFile(new URL("../src/app/agent/daily/indicateur
 const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
 const globalCss = await readFile(new URL("../src/app/globals.css", import.meta.url), "utf8");
 
-test("la navigation Studio Daily expose les écrans métier déjà disponibles", () => {
+test("la navigation Studio Daily reste concentrée sur les cinq entrées métier V1", () => {
   const expectedRoutes = [
     "/agent/daily",
     "/agent/daily/planning",
     "/agent/daily/organisations",
-    "/agent/daily/session-dossiers",
-    "/agent/daily/indicateurs",
-    "/agent/daily/pretraining-documents",
-    "/agent/daily/posttraining-documents",
-    "/agent/daily/communications",
     "/agent/daily/preaudit",
     "/agent/daily/qualite",
   ];
 
   for (const route of expectedRoutes) {
     assert.match(layout, new RegExp(`href=\\"${route.replaceAll("/", "\\/")}\\"`));
+  }
+  for (const hiddenRoute of [
+    "/agent/daily/session-dossiers",
+    "/agent/daily/indicateurs",
+    "/agent/daily/pretraining-documents",
+    "/agent/daily/posttraining-documents",
+    "/agent/daily/communications",
+  ]) {
+    assert.doesNotMatch(layout, new RegExp(`href=\\"${hiddenRoute.replaceAll("/", "\\/")}\\"`));
   }
 });
 
@@ -45,13 +49,13 @@ test("le conteneur Daily impose une base mobile aux vues encore desktop", () => 
   assert.match(globalCss, /@media \(max-width: 480px\)[\s\S]*\.daily-content > main > header > a[\s\S]*width: 100%/);
 });
 
-test("le pilotage Daily replie explicitement ses blocs principaux sur mobile", () => {
-  for (const className of ["daily-page", "daily-hero", "daily-counter", "daily-shortcut", "daily-task-head", "daily-task-actions"]) {
+test("le pilotage Daily conserve ses garde-fous mobiles après simplification", () => {
+  for (const className of ["daily-page", "daily-hero", "daily-counter", "daily-task-head", "daily-task-actions"]) {
     assert.match(dailyPage, new RegExp(`className=\\"${className}\\"`));
   }
+  assert.match(dailyPage, /gridTemplateColumns:"repeat\(auto-fit,minmax\(280px,1fr\)\)"/);
   assert.match(globalCss, /\.daily-page,[\s\S]*\.daily-planning-page[\s\S]*padding: 20px 12px 60px/);
-  assert.match(globalCss, /\.daily-hero,[\s\S]*\.daily-shortcut,[\s\S]*\.daily-task-head[\s\S]*flex-direction: column/);
-  assert.match(globalCss, /\.daily-shortcut > a[\s\S]*width: 100%/);
+  assert.match(globalCss, /\.daily-hero,[\s\S]*\.daily-task-head[\s\S]*flex-direction: column/);
   assert.match(globalCss, /@media \(max-width: 480px\)[\s\S]*\.daily-task-actions[\s\S]*flex-direction: column/);
 });
 
