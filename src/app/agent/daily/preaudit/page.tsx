@@ -13,34 +13,20 @@ type TrainerProfile = { id:string; organisation_id:string; display_name:string; 
 type TrainerCertification = { id:string; trainer_profile_id:string; title:string; valid_until:string|null };
 type Procedure = { id:string; organisation_id:string; status:string; procedure_type:string };
 type Watch = { id:string; organisation_id:string; watch_date:string };
-
+type ReadinessStatus="ok"|"attention"|"critical";
 type Check = { label:string; ok:boolean; detail:string };
-
-type SessionReadiness = {
-  session: Session;
-  formationTitle: string;
-  checks: Check[];
-  score: number;
-  status: "ok"|"attention"|"critical";
-};
-
-type OrganisationReadiness = {
-  organisation: Organisation;
-  sessions: SessionReadiness[];
-  organisationChecks: Check[];
-  score: number;
-  status: "ok"|"attention"|"critical";
-};
+type SessionReadiness = { session:Session; formationTitle:string; checks:Check[]; score:number; status:ReadinessStatus };
+type OrganisationReadiness = { organisation:Organisation; sessions:SessionReadiness[]; organisationChecks:Check[]; score:number; status:ReadinessStatus };
 
 function monthKey(value:string){return value.slice(0,7)}
 function lastMonths(count=12){const now=new Date();const values:string[]=[];for(let i=0;i<count;i++){const d=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-i,1));values.push(d.toISOString().slice(0,7));}return values.reverse()}
 function pct(checks:Check[]){if(!checks.length)return 100;return Math.round((checks.filter(c=>c.ok).length/checks.length)*100)}
-function readinessStatus(score:number){return score===100?"ok":score>=70?"attention":"critical" as const}
-function labelStatus(status:string){return status==="ok"?"Prêt":status==="attention"?"À vérifier":"Incomplet"}
-function styleStatus(status:string){if(status==="ok")return {color:"var(--selen-success)",borderColor:"rgba(74,150,104,.45)",background:"rgba(74,150,104,.08)"};if(status==="attention")return {color:"var(--selen-gold2)",borderColor:"rgba(201,148,58,.45)",background:"rgba(201,148,58,.08)"};return {color:"var(--selen-danger)",borderColor:"rgba(180,78,70,.45)",background:"rgba(180,78,70,.08)"}}
+function readinessStatus(score:number):ReadinessStatus{return score===100?"ok":score>=70?"attention":"critical"}
+function labelStatus(status:ReadinessStatus){return status==="ok"?"Prêt":status==="attention"?"À vérifier":"Incomplet"}
+function styleStatus(status:ReadinessStatus){if(status==="ok")return {color:"var(--selen-success)",borderColor:"rgba(74,150,104,.45)",background:"rgba(74,150,104,.08)"};if(status==="attention")return {color:"var(--selen-gold2)",borderColor:"rgba(201,148,58,.45)",background:"rgba(201,148,58,.08)"};return {color:"var(--selen-danger)",borderColor:"rgba(180,78,70,.45)",background:"rgba(180,78,70,.08)"}}
 function formatDate(value?:string|null){return value?new Intl.DateTimeFormat("fr-FR",{dateStyle:"medium"}).format(new Date(`${value}T12:00:00Z`)):"Non renseignée"}
-function relevantDocument(doc:DocumentRow){return doc.is_current && ["validated","published","signed","active"].includes(doc.status)}
-function hasDocument(docs:DocumentRow[], types:string[]){return docs.some(doc=>types.some(type=>doc.document_type.toLowerCase().includes(type)))}
+function relevantDocument(doc:DocumentRow){return doc.is_current&&["validated","published","signed","active"].includes(doc.status)}
+function hasDocument(docs:DocumentRow[],types:string[]){return docs.some(doc=>types.some(type=>doc.document_type.toLowerCase().includes(type)))}
 
 export default async function DailyPreauditPage(){
   const auth=await requireSupportAgent();
@@ -49,7 +35,7 @@ export default async function DailyPreauditPage(){
   const organisationIds=await getActiveDailyOrganisationIds();
   if(!organisationIds.length)return <main style={s.page}><h1>Pré-audit Daily</h1><p style={s.muted}>Aucun organisme Daily actif.</p></main>;
 
-  const [orgRes,sessionRes,trainerRes,procedureRes,watchRes]=await Promise.all([
+  const[orgRes,sessionRes,trainerRes,procedureRes,watchRes]=await Promise.all([
     admin.from("organisations").select("id,name,legal_name,created_at").in("id",organisationIds).order("name"),
     admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,start_date,end_date,status,trainer_ids").in("organisation_id",organisationIds).neq("status","archived").order("start_date",{ascending:false}),
     admin.from("daily_trainer_profiles").select("id,organisation_id,display_name,engagement_type,active,cv_updated_at").in("organisation_id",organisationIds).eq("active",true),
@@ -59,16 +45,9 @@ export default async function DailyPreauditPage(){
   const baseError=orgRes.error??sessionRes.error??trainerRes.error??procedureRes.error??watchRes.error;
   if(baseError)return <main style={s.page}><p style={s.error}>Pré-audit indisponible : {baseError.message}</p></main>;
 
-  const organisations=(orgRes.data??[]) as Organisation[];
-  const sessions=(sessionRes.data??[]) as Session[];
-  const trainers=(trainerRes.data??[]) as TrainerProfile[];
-  const procedures=(procedureRes.data??[]) as Procedure[];
-  const watches=(watchRes.data??[]) as Watch[];
-  const sessionIds=sessions.map(x=>x.id);
-  const formationIds=[...new Set(sessions.map(x=>x.formation_id).filter(Boolean))];
-  const trainerIds=trainers.map(x=>x.id);
-
-  const [formationRes,enrolmentRes,documentRes,certRes,attendanceSlotRes,assessmentRes,feedbackRes]=await Promise.all([
+  const organisations=(orgRes.data??[]) as Organisation[];const sessions=(sessionRes.data??[]) as Session[];const trainers=(trainerRes.data??[]) as TrainerProfile[];const procedures=(procedureRes.data??[]) as Procedure[];const watches=(watchRes.data??[]) as Watch[];
+  const sessionIds=sessions.map(x=>x.id);const formationIds=[...new Set(sessions.map(x=>x.formation_id).filter(Boolean))];const trainerIds=trainers.map(x=>x.id);
+  const[formationRes,enrolmentRes,documentRes,certRes,attendanceSlotRes,assessmentRes,feedbackRes]=await Promise.all([
     formationIds.length?admin.from("daily_formations").select("id,title,status").in("id",formationIds):Promise.resolve({data:[],error:null}),
     sessionIds.length?admin.from("daily_session_enrolments").select("id,session_id,learner_id,status").in("session_id",sessionIds):Promise.resolve({data:[],error:null}),
     admin.from("daily_documents").select("id,organisation_id,session_id,learner_id,linked_object_type,linked_object_id,document_type,status,is_current").in("organisation_id",organisationIds).eq("is_current",true),
@@ -87,8 +66,7 @@ export default async function DailyPreauditPage(){
   const attendanceSlots=(attendanceSlotRes.data??[]) as Array<{id:string;session_id:string;daily_attendance_records:Array<{id:string;status:string}>|null}>;
   const assessments=(assessmentRes.data??[]) as Array<{id:string;session_id:string;outcome:string|null}>;
   const feedbacks=(feedbackRes.data??[]) as Array<{id:string;session_id:string;submitted_at:string|null}>;
-  const months=lastMonths(12);
-  const today=new Date().toISOString().slice(0,10);
+  const months=lastMonths(12);const today=new Date().toISOString().slice(0,10);
 
   const readiness:OrganisationReadiness[]=organisations.map(organisation=>{
     const orgTrainers=trainers.filter(x=>x.organisation_id===organisation.id);
@@ -97,12 +75,12 @@ export default async function DailyPreauditPage(){
     const watchStart=organisation.created_at?monthKey(organisation.created_at):months[0];
     const expectedMonths=months.filter(month=>month>=watchStart);
     const missingMonths=expectedMonths.filter(month=>!orgWatchMonths.has(month));
-    const trainerDocs=docs.filter(x=>x.organisation_id===organisation.id && ["trainer","trainer_profile"].includes(String(x.linked_object_type)));
+    const trainerDocs=docs.filter(x=>x.organisation_id===organisation.id&&["trainer","trainer_profile"].includes(String(x.linked_object_type)));
     const trainerChecks=orgTrainers.map(trainer=>{
       const trainerCerts=certs.filter(c=>c.trainer_profile_id===trainer.id);
       const activeCert=trainerCerts.some(c=>!c.valid_until||c.valid_until>=today);
       const hasCv=Boolean(trainer.cv_updated_at)||trainerDocs.some(d=>d.linked_object_id===trainer.id&&d.document_type.toLowerCase().includes("cv"));
-      return {trainer,hasCv,activeCert};
+      return{trainer,hasCv,activeCert};
     });
     const organisationChecks:Check[]=[
       {label:"Procédures internes actives",ok:orgProcedures.length>=4&&orgProcedures.filter(p=>p.status==="active").length>=4,detail:`${orgProcedures.filter(p=>p.status==="active").length}/4 procédure(s) active(s)`},
@@ -111,18 +89,15 @@ export default async function DailyPreauditPage(){
       {label:"Certifications / compétences formateurs",ok:trainerChecks.every(x=>x.activeCert),detail:orgTrainers.length?`${trainerChecks.filter(x=>x.activeCert).length}/${orgTrainers.length} formateur(s) avec certification renseignée et non expirée`:"Aucun formateur actif"},
     ];
 
-    const sessionReadiness=sessions.filter(x=>x.organisation_id===organisation.id).map(session=>{
+    const sessionReadiness:SessionReadiness[]=sessions.filter(x=>x.organisation_id===organisation.id).map(session=>{
       const formation=formations.get(session.formation_id);
       const sessionEnrolments=enrolments.filter(x=>x.session_id===session.id&&!['declined','cancelled','abandoned'].includes(String(x.status)));
       const sessionDocs=docs.filter(x=>x.session_id===session.id);
       const learners=sessionEnrolments.map(x=>x.learner_id);
       const learnerDocs=docs.filter(x=>learners.includes(String(x.learner_id))||(x.linked_object_type==="learner"&&learners.includes(String(x.linked_object_id))));
-      const slots=attendanceSlots.filter(x=>x.session_id===session.id);
-      const attendanceRecords=slots.flatMap(x=>x.daily_attendance_records??[]);
-      const assessmentRows=assessments.filter(x=>x.session_id===session.id);
-      const feedbackRows=feedbacks.filter(x=>x.session_id===session.id);
-      const ended=Boolean(session.end_date&&session.end_date<today);
-      const started=Boolean(session.start_date&&session.start_date<=today);
+      const slots=attendanceSlots.filter(x=>x.session_id===session.id);const attendanceRecords=slots.flatMap(x=>x.daily_attendance_records??[]);
+      const assessmentRows=assessments.filter(x=>x.session_id===session.id);const feedbackRows=feedbacks.filter(x=>x.session_id===session.id);
+      const ended=Boolean(session.end_date&&session.end_date<today);const started=Boolean(session.start_date&&session.start_date<=today);
       const checks:Check[]=[
         {label:"Programme validé",ok:formation?.status==="validated",detail:formation?.status?`État : ${formation.status}`:"Programme introuvable"},
         {label:"Dossiers d'inscription",ok:sessionEnrolments.length>0,detail:`${sessionEnrolments.length} inscription(s) active(s)`},
@@ -134,24 +109,26 @@ export default async function DailyPreauditPage(){
         {label:"Documents de fin de formation",ok:!ended||hasDocument(sessionDocs,["attestation","certificat","realisation","réalisation"]),detail:!ended?"Contrôle exigible à la fin de session":hasDocument(sessionDocs,["attestation","certificat","realisation","réalisation"])?"Document(s) de fin validé(s)":"Attestation/certificat de réalisation manquant"},
       ];
       const score=pct(checks);
-      return {session,formationTitle:formation?.title||session.internal_reference||"Session Daily",checks,score,status:readinessStatus(score)};
+      return{session,formationTitle:formation?.title||session.internal_reference||"Session Daily",checks,score,status:readinessStatus(score)};
     });
-    const allChecks=[...organisationChecks,...sessionReadiness.flatMap(x=>x.checks)];
-    const score=pct(allChecks);
-    return {organisation,sessions:sessionReadiness,organisationChecks,score,status:readinessStatus(score)};
+    const allChecks=[...organisationChecks,...sessionReadiness.flatMap(x=>x.checks)];const score=pct(allChecks);
+    return{organisation,sessions:sessionReadiness,organisationChecks,score,status:readinessStatus(score)};
   });
 
   const readyCount=readiness.filter(x=>x.status==="ok").length;
   return <main style={s.page}>
     <header style={s.header}><div><p style={s.kicker}>Selen Studio · Daily</p><h1 style={s.h1}>Pré-audit</h1><p style={s.lead}>Vue « audit demain » : organismes, sessions et preuves essentielles. Un point manquant reste visible même si la session est déjà passée.</p></div><div style={s.counter}><strong>{readyCount}/{readiness.length}</strong><span>organisme(s) prêts</span></div></header>
     <section style={s.legend}><span><b style={{...s.dot,background:"var(--selen-success)"}}/>Prêt</span><span><b style={{...s.dot,background:"var(--selen-gold2)"}}/>À vérifier</span><span><b style={{...s.dot,background:"var(--selen-danger)"}}/>Incomplet</span></section>
-    <section style={s.list}>{readiness.map(org=>{
-      const name=org.organisation.legal_name||org.organisation.name||"Organisme Daily";
-      return <SelenCard key={org.organisation.id} style={s.card}>
-        <div style={s.orgHead}><div><SelenCardTitle>{name}</SelenCardTitle><p style={s.muted}>{org.sessions.length} session(s) contrôlée(s)</p></div><div style={s.scoreBox}><strong>{org.score}%</strong><span style={{...s.status,...styleStatus(org.status)}}>{labelStatus(org.status)}</span></div></div>
-        <details style={s.details} open={org.status!=="ok"}><summary style={s.summary}>Contrôles organisme</summary><div style={s.checkGrid}>{org.organisationChecks.map(check=><CheckRow key={check.label} check={check}/>)}</div></details>
-        <div style={s.sessions}>{org.sessions.length===0?<p style={s.muted}>Aucune session à contrôler.</p>:org.sessions.map(row=><article key={row.session.id} style={s.sessionCard}><div style={s.sessionHead}><div><strong>{row.formationTitle}</strong><p style={s.muted}>{row.session.internal_reference||"Sans référence"} · {formatDate(row.session.start_date)} → {formatDate(row.session.end_date)}</p></div><div style={s.sessionScore}><strong>{row.score}%</strong><span style={{...s.status,...styleStatus(row.status)}}>{labelStatus(row.status)}</span></div></div><div style={s.progress}><span style={{width:`${row.score}%`}}/></div><details style={s.details}><summary style={s.summary}>Voir les preuves contrôlées</summary><div style={s.checkGrid}>{row.checks.map(check=><CheckRow key={check.label} check={check}/>)}</div></details><div style={s.actions}><Link href={`/agent/daily/session-dossiers/${row.session.id}/full`} style={s.link}>Ouvrir le dossier de session →</Link></div></article>)}</div>
-      </SelenCard>})}</section>
+    <section style={s.list}>{readiness.map(org=>{const name=org.organisation.legal_name||org.organisation.name||"Organisme Daily";return <SelenCard key={org.organisation.id} style={s.card}>
+      <div style={s.orgHead}><div><SelenCardTitle>{name}</SelenCardTitle><p style={s.muted}>{org.sessions.length} session(s) contrôlée(s)</p></div><div style={s.scoreBox}><strong>{org.score}%</strong><span style={{...s.status,...styleStatus(org.status)}}>{labelStatus(org.status)}</span></div></div>
+      <details style={s.details} open={org.status!=="ok"}><summary style={s.summary}>Contrôles organisme</summary><div style={s.checkGrid}>{org.organisationChecks.map(check=><CheckRow key={check.label} check={check}/>)}</div></details>
+      <div style={s.sessions}>{org.sessions.length===0?<p style={s.muted}>Aucune session à contrôler.</p>:org.sessions.map(row=><article key={row.session.id} style={s.sessionCard}>
+        <div style={s.sessionHead}><div><strong>{row.formationTitle}</strong><p style={s.muted}>{row.session.internal_reference||"Sans référence"} · {formatDate(row.session.start_date)} → {formatDate(row.session.end_date)}</p></div><div style={s.sessionScore}><strong>{row.score}%</strong><span style={{...s.status,...styleStatus(row.status)}}>{labelStatus(row.status)}</span></div></div>
+        <div style={s.progress}><span style={{display:"block",height:"100%",width:`${row.score}%`,background:row.status==="ok"?"var(--selen-success)":row.status==="attention"?"var(--selen-gold2)":"var(--selen-danger)"}}/></div>
+        <details style={s.details}><summary style={s.summary}>Voir les preuves contrôlées</summary><div style={s.checkGrid}>{row.checks.map(check=><CheckRow key={check.label} check={check}/>)}</div></details>
+        <div style={s.actions}><Link href={`/agent/daily/session-dossiers/${row.session.id}/full`} style={s.link}>Ouvrir le dossier de session →</Link></div>
+      </article>)}</div>
+    </SelenCard>})}</section>
   </main>;
 }
 
