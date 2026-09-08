@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const layout = await readFile(new URL("../src/app/agent/daily/layout.tsx", import.meta.url), "utf8");
+const dailyPage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
 const planningPage = await readFile(new URL("../src/app/agent/daily/planning/page.tsx", import.meta.url), "utf8");
 const indicatorsPage = await readFile(new URL("../src/app/agent/daily/indicateurs/page.tsx", import.meta.url), "utf8");
 const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
@@ -34,6 +35,16 @@ test("la navigation et le planning Daily ont un comportement mobile explicite", 
   assert.match(globalCss, /\.daily-subnav[\s\S]*overflow-x: auto/);
   assert.match(globalCss, /\.daily-summary-grid[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(globalCss, /@media \(max-width: 480px\)[\s\S]*\.daily-summary-grid[\s\S]*grid-template-columns: 1fr/);
+});
+
+test("le pilotage Daily replie explicitement ses blocs principaux sur mobile", () => {
+  for (const className of ["daily-page", "daily-hero", "daily-counter", "daily-shortcut", "daily-task-head", "daily-task-actions"]) {
+    assert.match(dailyPage, new RegExp(`className=\\"${className}\\"`));
+  }
+  assert.match(globalCss, /\.daily-page,[\s\S]*\.daily-planning-page[\s\S]*padding: 20px 12px 60px/);
+  assert.match(globalCss, /\.daily-hero,[\s\S]*\.daily-shortcut,[\s\S]*\.daily-task-head[\s\S]*flex-direction: column/);
+  assert.match(globalCss, /\.daily-shortcut > a[\s\S]*width: 100%/);
+  assert.match(globalCss, /@media \(max-width: 480px\)[\s\S]*\.daily-task-actions[\s\S]*flex-direction: column/);
 });
 
 test("le planning est borné au périmètre canonique des organismes Daily actifs", () => {

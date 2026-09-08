@@ -10,7 +10,7 @@ function formatDate(value?: string | null) {
 
 export default async function AgentDailyPage() {
   const auth = await requireSupportAgent();
-  if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
+  if (!auth.ok) return <main className="daily-page" style={s.page}><p>Accès refusé.</p></main>;
 
   const admin = createSupabaseAdminClient();
   const [{ data: profile }, { data: adminUser }] = await Promise.all([
@@ -23,17 +23,17 @@ export default async function AgentDailyPage() {
   try {
     tasks = await getDailyAgentTasks({ id: profile?.id ?? null, role });
   } catch (error) {
-    return <main style={s.page}><p style={s.error}>Impossible de charger le pilotage Daily : {error instanceof Error ? error.message : "erreur inconnue"}</p></main>;
+    return <main className="daily-page" style={s.page}><p style={s.error}>Impossible de charger le pilotage Daily : {error instanceof Error ? error.message : "erreur inconnue"}</p></main>;
   }
 
-  return <main style={s.page}>
-    <header style={s.header}>
+  return <main className="daily-page" style={s.page}>
+    <header className="daily-hero" style={s.header}>
       <div>
         <p style={s.eyebrow}>Selen Daily</p>
         <h1 style={s.h1}>Pilotage Daily</h1>
         <p style={s.lead}>Ici, tu ne vois que les interventions réellement à faire. L'assignation d'un agent est toujours la première tâche d'un nouvel organisme. Ensuite, toutes ses formations, sessions et inscriptions restent rattachées au même agent.</p>
       </div>
-      <div style={s.counter}><strong>{tasks.length}</strong><span>à traiter</span></div>
+      <div className="daily-counter" style={s.counter}><strong>{tasks.length}</strong><span>à traiter</span></div>
     </header>
 
     <SelenCard style={s.ruleCard}>
@@ -41,7 +41,7 @@ export default async function AgentDailyPage() {
       <p style={s.ruleText}>Une tâche est d'abord visible par l'agent responsable de l'organisme. Si elle reste ouverte plus de 72 h, elle devient aussi traitable par les autres agents, sans modifier l'assignation du dossier.</p>
     </SelenCard>
 
-    <SelenCard style={s.qualityShortcut}>
+    <SelenCard className="daily-shortcut" style={s.qualityShortcut}>
       <div>
         <strong>Indicateurs formation</strong>
         <p style={s.ruleText}>Consulte les volumes, présences, résultats d’évaluation et niveaux de satisfaction calculés depuis les données opérationnelles Daily.</p>
@@ -49,7 +49,7 @@ export default async function AgentDailyPage() {
       <Link href="/agent/daily/indicateurs" style={s.secondary}>Voir les indicateurs →</Link>
     </SelenCard>
 
-    <SelenCard style={s.qualityShortcut}>
+    <SelenCard className="daily-shortcut" style={s.qualityShortcut}>
       <div>
         <strong>Bilan annuel des compétences formateurs</strong>
         <p style={s.ruleText}>Contrôle en un coup d'œil les bilans de l'année : contribution du formateur, partie manager et dossiers encore à compléter.</p>
@@ -57,7 +57,7 @@ export default async function AgentDailyPage() {
       <Link href="/agent/daily/revues-formateurs" style={s.secondary}>Voir le suivi annuel →</Link>
     </SelenCard>
 
-    <SelenCard style={s.qualityShortcut}>
+    <SelenCard className="daily-shortcut" style={s.qualityShortcut}>
       <div>
         <strong>Procédures internes</strong>
         <p style={s.ruleText}>Retrouve les procédures Daily existantes, les brouillons et les revues documentaires annuelles à prévoir.</p>
@@ -65,7 +65,7 @@ export default async function AgentDailyPage() {
       <Link href="/agent/daily/procedures-internes" style={s.secondary}>Voir les procédures →</Link>
     </SelenCard>
 
-    <SelenCard style={s.qualityShortcut}>
+    <SelenCard className="daily-shortcut" style={s.qualityShortcut}>
       <div>
         <strong>Réclamations & suggestions</strong>
         <p style={s.ruleText}>Repère les retours encore ouverts, leur revue Selen, leur transmission à l’organisme et leur résolution.</p>
@@ -73,7 +73,7 @@ export default async function AgentDailyPage() {
       <Link href="/agent/daily/reclamations" style={s.secondary}>Voir les retours →</Link>
     </SelenCard>
 
-    <SelenCard style={s.qualityShortcut}>
+    <SelenCard className="daily-shortcut" style={s.qualityShortcut}>
       <div>
         <strong>Suivi sessions & incidents</strong>
         <p style={s.ruleText}>Contrôle les incidents, adaptations et notes de suivi déjà enregistrés pendant les sessions, avec leur niveau de criticité et leur résolution.</p>
@@ -87,7 +87,7 @@ export default async function AgentDailyPage() {
       <p style={s.muted}>Les organismes qui te sont assignés n'ont actuellement aucune action à traiter. Une formation validée sans inscription reçue reste volontairement silencieuse.</p>
     </SelenCard> : <section style={s.list}>
       {tasks.map((item) => <SelenCard key={item.id} style={s.card}>
-        <div style={s.cardHead}>
+        <div className="daily-task-head" style={s.cardHead}>
           <div>
             <div style={s.badges}>
               <span style={{ ...s.badge, ...(item.kind === "assignment" ? s.badgeAssignment : item.kind === "adaptation" ? s.badgeDanger : item.kind === "registration" ? s.badgeInfo : {}) }}>{item.reason}</span>
@@ -99,7 +99,7 @@ export default async function AgentDailyPage() {
           <span style={s.date}>{formatDate(item.createdAt)}</span>
         </div>
         <p style={s.detail}>{item.detail}</p>
-        <div style={s.actions}>
+        <div className="daily-task-actions" style={s.actions}>
           {item.kind === "assignment" ? (
             role === "admin" ? (
               <Link href={item.href} style={s.primary}>Assigner un agent →</Link>
