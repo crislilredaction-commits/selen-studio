@@ -106,8 +106,37 @@ button {
     display: none;
   }
 
+  .daily-page,
   .daily-planning-page {
     padding: 20px 12px 60px !important;
+  }
+
+  .daily-hero,
+  .daily-shortcut,
+  .daily-task-head {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  .daily-counter {
+    min-width: 0 !important;
+    grid-template-columns: auto auto;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .daily-shortcut > a {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+
+  .daily-task-head {
+    gap: 8px !important;
+  }
+
+  .daily-task-head > span {
+    white-space: normal !important;
   }
 
   .daily-summary-grid {
@@ -118,6 +147,22 @@ button {
 @media (max-width: 480px) {
   .daily-summary-grid {
     grid-template-columns: 1fr !important;
+  }
+
+  .daily-task-actions {
+    flex-direction: column;
+  }
+
+  .daily-task-actions > a,
+  .daily-task-actions > form,
+  .daily-task-actions > form > button {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .daily-task-actions > a,
+  .daily-task-actions > form > button {
+    justify-content: center;
   }
 }
 
