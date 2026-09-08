@@ -51,6 +51,7 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
   },
   {
     indicators: "12",
+    scope: "Toutes les actions mentionnées aux 1° à 4° de l’article L. 6313-1 du code du travail",
     evidence: ["Émargements", "Procédure de gestion et prévention des absences et abandons"],
     upcomingRequirement: {
       effectiveFrom: "2026-11-01",
@@ -70,6 +71,7 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
   },
   {
     indicators: "19",
+    scope: "Toutes les actions mentionnées aux 1° à 4° de l’article L. 6313-1 du code du travail",
     evidence: ["Ressources disponibles dans les espaces apprenants"],
     upcomingRequirement: {
       effectiveFrom: "2026-11-01",
@@ -98,6 +100,7 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
   },
   {
     indicators: "27",
+    scope: "Toutes les actions mentionnées aux 1° à 4° de l’article L. 6313-1 du code du travail, lorsqu’il existe de la sous-traitance ou du portage salarial",
     evidence: ["Ordres de mission"],
     upcomingRequirement: {
       effectiveFrom: "2026-11-01",
@@ -113,6 +116,7 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
   },
   {
     indicators: "31 / 32",
+    scope: "Toutes les actions mentionnées aux 1° à 4° de l’article L. 6313-1 du code du travail",
     evidence: ["Tableaux d’amélioration", "Traitement des difficultés"],
     upcomingRequirement: {
       effectiveFrom: "2026-11-01",
@@ -131,7 +135,7 @@ export const QUALIOPI_PREAUDIT_CHECKLIST: QualiopiPreauditChecklistItem[] = [
       effectiveFrom: "2026-11-01",
       reference: "Décret n° 2026-728 du 1er août 2026",
       evidence: [
-        "Évaluation des contenus et des enseignements par les apprentis, distincte du recueil général de satisfaction",
+        "Évaluation des contenus et des enseignements par les apprenants relevant du périmètre apprentissage, distincte du recueil général de satisfaction",
         "Résultats partagés avec les équipes pédagogiques",
         "Démarche d’amélioration continue formalisée à partir des résultats et mesure périodique de son efficacité",
       ],

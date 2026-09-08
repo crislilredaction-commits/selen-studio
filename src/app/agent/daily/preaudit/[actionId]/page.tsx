@@ -117,6 +117,7 @@ export default async function DailyQualiopiPreauditPage({ params }: { params: Pr
         {QUALIOPI_PREAUDIT_CHECKLIST.map((item) => <div key={item.indicators} style={s.checkItem}>
           <strong style={s.indicator}>Ind. {item.indicators}</strong>
           <div>
+            {item.scope ? <p style={s.scope}><strong>Périmètre :</strong> {item.scope}</p> : null}
             <ul style={s.evidenceList}>{item.evidence.map((evidence) => <li key={evidence}>{evidence}</li>)}</ul>
             {item.upcomingRequirement ? <div style={s.upcoming}>
               <strong style={s.upcomingTitle}>À anticiper à partir du {frDate(item.upcomingRequirement.effectiveFrom)}</strong>
@@ -126,7 +127,7 @@ export default async function DailyQualiopiPreauditPage({ params }: { params: Pr
           </div>
         </div>)}
       </div>
-      <p style={s.note}>{QUALIOPI_PREAUDIT_PRINCIPLES.regulatoryReadiness}</p>
+      <p style={s.note}>{QUALIOPI_PREAUDIT_PRINCIPLES.regulatoryReadiness} {QUALIOPI_PREAUDIT_PRINCIPLES.scopedRequirements}</p>
       <p style={s.note}><strong>Pré-check Sélion :</strong> {QUALIOPI_PREAUDIT_PRINCIPLES.selionRole} {QUALIOPI_PREAUDIT_PRINCIPLES.agentRole}</p>
     </SelenCard>
 
@@ -152,6 +153,7 @@ const s: Record<string, React.CSSProperties> = {
   checklist: { display: "grid", gap: 10, marginTop: 14 },
   checkItem: { display: "grid", gridTemplateColumns: "100px 1fr", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--selen-border)" },
   indicator: { color: "var(--selen-gold2)", fontSize: 13 },
+  scope: { margin: "0 0 8px", color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.5 },
   evidenceList: { margin: 0, paddingLeft: 18, color: "var(--selen-text2)", fontSize: 13, lineHeight: 1.55 },
   upcoming: { marginTop: 10, padding: 10, border: "1px solid rgba(201,148,58,.32)", borderRadius: 8, background: "rgba(201,148,58,.06)" },
   upcomingTitle: { display: "block", marginBottom: 6, color: "var(--selen-gold2)", fontSize: 11 },
