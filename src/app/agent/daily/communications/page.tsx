@@ -61,11 +61,11 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
   const formationMap = new Map((formations ?? []).map((item) => [item.id, item.title]));
 
   return (
-    <main style={{ maxWidth: 1180, margin: "0 auto", padding: 28 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ marginBottom: 4 }}>Communications & preuves</h1>
-          <p style={{ marginTop: 0, color: "var(--selen-text2)" }}>
+    <main style={{ maxWidth: 1180, margin: "0 auto", padding: "clamp(16px, 4vw, 28px)", minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+          <h1 style={{ marginBottom: 4, overflowWrap: "anywhere" }}>Communications & preuves</h1>
+          <p style={{ marginTop: 0, color: "var(--selen-text2)", overflowWrap: "anywhere" }}>
             Historique exact des communications Daily conservées comme preuves d’audit.
           </p>
         </div>
@@ -73,8 +73,8 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
       </div>
 
       {sessionId ? (
-        <p style={{ padding: 10, border: "1px solid var(--selen-border)", borderRadius: 10 }}>
-          Filtre actif : session <code>{sessionId}</code>
+        <p style={{ padding: 10, border: "1px solid var(--selen-border)", borderRadius: 10, overflowWrap: "anywhere" }}>
+          Filtre actif : session <code style={{ wordBreak: "break-all" }}>{sessionId}</code>
         </p>
       ) : null}
 
@@ -84,7 +84,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
           <p style={{ color: "var(--selen-text2)", marginBottom: 0 }}>Le registre est prêt ; les prochains envois Daily apparaîtront ici automatiquement.</p>
         </SelenCard>
       ) : (
-        <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
           {(communications ?? []).map((communication) => {
             const session = communication.session_id ? sessionMap.get(communication.session_id) : undefined;
             const formationTitle = session?.formation_id ? formationMap.get(session.formation_id) : undefined;
@@ -96,41 +96,43 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
 
             return (
               <SelenCard key={communication.id}>
-                <SelenCardTitle>{typeLabels[communication.communication_type] ?? communication.communication_type}</SelenCardTitle>
-                <div style={{ fontSize: 12, color: "var(--selen-text2)", marginBottom: 8 }}>
-                  {organisationMap.get(communication.organisation_id) ?? "Organisme"}
-                  {formationTitle ? ` · ${formationTitle}` : ""}
-                  {session?.internal_reference ? ` · ${session.internal_reference}` : ""}
-                  {communication.sent_at ? ` · ${new Date(communication.sent_at).toLocaleString("fr-FR")}` : ""}
-                </div>
-                <p style={{ margin: "6px 0", fontSize: 13 }}><strong>Destinataire :</strong> {communication.recipient_name ? `${communication.recipient_name} · ` : ""}{communication.recipient_email}</p>
-                <p style={{ margin: "6px 0", fontSize: 13 }}><strong>Objet :</strong> {communication.subject}</p>
-                <p style={{ margin: "6px 0", fontSize: 13 }}><strong>Statut :</strong> {statusLabels[communication.status] ?? communication.status}{communication.delivered_at ? ` · livré ${new Date(communication.delivered_at).toLocaleString("fr-FR")}` : ""}</p>
-                {communication.failed_at || communication.failure_reason ? <p style={{ margin: "6px 0", fontSize: 13 }}><strong>Échec :</strong> {communication.failure_reason ?? new Date(communication.failed_at).toLocaleString("fr-FR")}</p> : null}
-                <details style={{ marginTop: 10 }}>
-                  <summary>Voir le contenu exact envoyé</summary>
-                  <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 13, borderTop: "1px solid var(--selen-border)", paddingTop: 10 }}>{communication.text_body}</pre>
-                </details>
-                <div style={{ fontSize: 12, color: "var(--selen-text2)", marginTop: 10 }}>
-                  Prestataire : {communication.provider ?? "—"} · ID message : {communication.provider_message_id ?? "—"} · ID Selen : {communication.id}
-                </div>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
-                  <a href={`/agent/daily/communications/proof?communication_id=${encodeURIComponent(communication.id)}`}>Télécharger la preuve PDF</a>
-                  {communication.session_id ? <Link href={`/agent/daily/session-dossiers/${communication.session_id}`}>Ouvrir le dossier de session</Link> : null}
-                </div>
-                {documents.length ? (
-                  <div style={{ marginTop: 12, borderTop: "1px solid var(--selen-border)", paddingTop: 10 }}>
-                    <strong style={{ fontSize: 13 }}>Documents rattachés à cet envoi</strong>
-                    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-                      {documents.map((document) => (
-                        <div key={`${communication.id}-${document.document_id}`} style={{ fontSize: 12 }}>
-                          <div>{document.logical_name || document.document_type} · version {document.document_version} · SHA-256 <code>{document.sha256}</code></div>
-                          <a href={`/agent/daily/communications/document?communication_id=${encodeURIComponent(communication.id)}&document_id=${encodeURIComponent(document.document_id)}`} style={{ display: "inline-block", marginTop: 4 }}>Télécharger cette version exacte</a>
-                        </div>
-                      ))}
-                    </div>
+                <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                  <SelenCardTitle>{typeLabels[communication.communication_type] ?? communication.communication_type}</SelenCardTitle>
+                  <div style={{ fontSize: 12, color: "var(--selen-text2)", marginBottom: 8, overflowWrap: "anywhere" }}>
+                    {organisationMap.get(communication.organisation_id) ?? "Organisme"}
+                    {formationTitle ? ` · ${formationTitle}` : ""}
+                    {session?.internal_reference ? ` · ${session.internal_reference}` : ""}
+                    {communication.sent_at ? ` · ${new Date(communication.sent_at).toLocaleString("fr-FR")}` : ""}
                   </div>
-                ) : null}
+                  <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Destinataire :</strong> {communication.recipient_name ? `${communication.recipient_name} · ` : ""}{communication.recipient_email}</p>
+                  <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Objet :</strong> {communication.subject}</p>
+                  <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Statut :</strong> {statusLabels[communication.status] ?? communication.status}{communication.delivered_at ? ` · livré ${new Date(communication.delivered_at).toLocaleString("fr-FR")}` : ""}</p>
+                  {communication.failed_at || communication.failure_reason ? <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Échec :</strong> {communication.failure_reason ?? new Date(communication.failed_at).toLocaleString("fr-FR")}</p> : null}
+                  <details style={{ marginTop: 10, minWidth: 0 }}>
+                    <summary>Voir le contenu exact envoyé</summary>
+                    <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word", maxWidth: "100%", fontFamily: "inherit", fontSize: 13, borderTop: "1px solid var(--selen-border)", paddingTop: 10 }}>{communication.text_body}</pre>
+                  </details>
+                  <div style={{ fontSize: 12, color: "var(--selen-text2)", marginTop: 10, overflowWrap: "anywhere" }}>
+                    Prestataire : {communication.provider ?? "—"} · ID message : <span style={{ wordBreak: "break-all" }}>{communication.provider_message_id ?? "—"}</span> · ID Selen : <span style={{ wordBreak: "break-all" }}>{communication.id}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
+                    <a href={`/agent/daily/communications/proof?communication_id=${encodeURIComponent(communication.id)}`}>Télécharger la preuve PDF</a>
+                    {communication.session_id ? <Link href={`/agent/daily/session-dossiers/${communication.session_id}`}>Ouvrir le dossier de session</Link> : null}
+                  </div>
+                  {documents.length ? (
+                    <div style={{ marginTop: 12, borderTop: "1px solid var(--selen-border)", paddingTop: 10, minWidth: 0 }}>
+                      <strong style={{ fontSize: 13 }}>Documents rattachés à cet envoi</strong>
+                      <div style={{ display: "grid", gap: 8, marginTop: 8, minWidth: 0 }}>
+                        {documents.map((document) => (
+                          <div key={`${communication.id}-${document.document_id}`} style={{ fontSize: 12, minWidth: 0, overflowWrap: "anywhere" }}>
+                            <div>{document.logical_name || document.document_type} · version {document.document_version} · SHA-256 <code style={{ wordBreak: "break-all" }}>{document.sha256}</code></div>
+                            <a href={`/agent/daily/communications/document?communication_id=${encodeURIComponent(communication.id)}&document_id=${encodeURIComponent(document.document_id)}`} style={{ display: "inline-block", marginTop: 4 }}>Télécharger cette version exacte</a>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </SelenCard>
             );
           })}
