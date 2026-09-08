@@ -37,6 +37,14 @@ test("la navigation et le planning Daily ont un comportement mobile explicite", 
   assert.match(globalCss, /@media \(max-width: 480px\)[\s\S]*\.daily-summary-grid[\s\S]*grid-template-columns: 1fr/);
 });
 
+test("le conteneur Daily impose une base mobile aux vues encore desktop", () => {
+  assert.match(layout, /className="daily-content"/);
+  assert.match(globalCss, /\.daily-content\s*\{[\s\S]*min-width: 0/);
+  assert.match(globalCss, /@media \(max-width: 820px\)[\s\S]*\.daily-content > main[\s\S]*padding-left: 12px[\s\S]*padding-right: 12px/);
+  assert.match(globalCss, /@media \(max-width: 820px\)[\s\S]*\.daily-content > main > header[\s\S]*flex-direction: column/);
+  assert.match(globalCss, /@media \(max-width: 480px\)[\s\S]*\.daily-content > main > header > a[\s\S]*width: 100%/);
+});
+
 test("le pilotage Daily replie explicitement ses blocs principaux sur mobile", () => {
   for (const className of ["daily-page", "daily-hero", "daily-counter", "daily-shortcut", "daily-task-head", "daily-task-actions"]) {
     assert.match(dailyPage, new RegExp(`className=\\"${className}\\"`));
