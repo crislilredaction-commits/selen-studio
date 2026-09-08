@@ -93,6 +93,32 @@ button {
     width: 100%;
     min-width: 0;
   }
+
+  .daily-subnav {
+    max-width: none !important;
+    padding: 0 12px !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .daily-subnav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .daily-planning-page {
+    padding: 20px 12px 60px !important;
+  }
+
+  .daily-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .daily-summary-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 select {

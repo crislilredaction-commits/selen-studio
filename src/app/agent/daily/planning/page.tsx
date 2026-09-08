@@ -137,7 +137,7 @@ export default async function DailyPlanningPage() {
     });
 
   return (
-    <main style={{ maxWidth: 1320, margin: "0 auto", padding: 28 }}>
+    <main className="daily-planning-page" style={{ maxWidth: 1320, margin: "0 auto", padding: 28 }}>
       <div style={{ marginBottom: 18 }}>
         <h1 style={{ marginBottom: 4 }}>Planning Daily</h1>
         <p style={{ color: "var(--selen-text2)", marginTop: 0 }}>
@@ -145,7 +145,7 @@ export default async function DailyPlanningPage() {
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 16 }}>
+      <div className="daily-summary-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 16 }}>
         {["À préparer", "Prête", "En cours", "À clôturer"].map((state) => (
           <SelenCard key={state}>
             <div style={{ fontSize: 12, color: "var(--selen-text3)" }}>{state}</div>
