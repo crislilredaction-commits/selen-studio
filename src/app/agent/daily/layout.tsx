@@ -2,6 +2,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import DailyAutoRefresh from "@/components/agent/DailyAutoRefresh";
 
+// Les écrans Studio Daily dépendent tous de données métier vivantes.
+// Le segment entier reste dynamique pour éviter tout accès Supabase au pré-rendu statique.
+export const dynamic = "force-dynamic";
+
 export default function DailyStudioLayout({ children }: { children: ReactNode }) {
   return <><DailyAutoRefresh intervalMs={45_000} /><div style={{maxWidth:1180,margin:"14px auto 0",padding:"0 28px",display:"flex",gap:8,flexWrap:"wrap"}}><Link href="/agent/daily" style={linkStyle}>Pilotage Daily</Link><Link href="/agent/daily/planning" style={linkStyle}>Planning</Link><Link href="/agent/daily/organisations" style={linkStyle}>Organismes</Link><Link href="/agent/daily/session-dossiers" style={linkStyle}>Sessions</Link><Link href="/agent/daily/indicateurs" style={linkStyle}>Indicateurs</Link><Link href="/agent/daily/pretraining-documents" style={linkStyle}>Documents avant formation</Link><Link href="/agent/daily/posttraining-documents" style={linkStyle}>Documents après formation</Link><Link href="/agent/daily/communications" style={linkStyle}>Communications</Link><Link href="/agent/daily/preaudit" style={linkStyle}>Pré-audit Qualiopi</Link><Link href="/agent/daily/qualite" style={linkStyle}>Qualité & veilles</Link></div>{children}</>;
 }

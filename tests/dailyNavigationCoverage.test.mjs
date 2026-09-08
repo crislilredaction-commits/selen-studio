@@ -26,6 +26,10 @@ test("la navigation Studio Daily expose les écrans métier déjà disponibles",
   }
 });
 
+test("le segment Studio Daily reste dynamique pour ne jamais lire Supabase au pré-rendu statique", () => {
+  assert.match(layout, /export const dynamic = ["']force-dynamic["']/);
+});
+
 test("le planning est borné au périmètre canonique des organismes Daily actifs", () => {
   assert.match(planningPage, /getActiveDailyOrganisationIds/);
   assert.match(planningPage, /\.from\("daily_session_dossiers"\)[\s\S]*\.in\("organisation_id", organisationIds\)/);
