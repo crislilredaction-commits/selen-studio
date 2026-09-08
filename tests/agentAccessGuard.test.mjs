@@ -4,6 +4,10 @@ import test from "node:test";
 
 const layout = readFileSync("src/app/agent/layout.tsx", "utf8");
 
+test("le segment agent reste dynamique pour ne jamais interroger Supabase au pré-rendu statique", () => {
+  assert.match(layout, /export const dynamic = ["']force-dynamic["']/);
+});
+
 test("le layout agent refuse un utilisateur authentifié sans profil agent actif", () => {
   assert.match(layout, /supabase\.auth\.getUser\(\)/);
   assert.match(layout, /from\("agent_profiles"\)/);
