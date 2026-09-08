@@ -57,22 +57,21 @@ export async function getStudioClientFollowups(staff: FollowupStaff, options?: {
     .limit(100);
   if (error) throw new Error(error.message);
 
-  return ((data ?? []) as ReminderRow[])
-    .map((row): StudioClientFollowup => {
-      const queued = queuedAt(row);
-      const overdueShared = isOverdue(queued);
-      const reason = text(row.metadata?.reason) || row.subject || "Relance à traiter";
-      return {
-        id: row.id,
-        title: row.client_email || "Partie prenante à relancer",
-        detail: reason,
-        href: row.dossier_id ? `/agent/dossiers/${row.dossier_id}` : "/agent/relances",
-        dueAt: row.due_at,
-        assignedAgentProfileId: assignedAgent(row.metadata),
-        overdueShared,
-        reminderType: row.reminder_type,
-        isDaily: dailyReminder(row),
-      };
-    })
-    .filter((row) => (!options?.dailyOnly || row.isDaily) && visible((data ?? []).find((candidate) => candidate.id === row.id) as ReminderRow, staff, row.overdueShared));
+  const rows = (data ?? []) as ReminderRow[];
+  return rows.flatMap((row): StudioClientFollowup[] => {
+    const overdueShared = isOverdue(queuedAt(row));
+    const isDaily = dailyReminder(row);
+    if ((options?.dailyOnly && !isDaily) || !visible(row, staff, overdueShared)) return [];
+    return [{
+      id: row.id,
+      title: row.client_email || "Partie prenante à relancer",
+      detail: text(row.metadata?.reason) || row.subject || "Relance à traiter",
+      href: row.dossier_id ? `/agent/dossiers/${row.dossier_id}` : "/agent/relances",
+      dueAt: row.due_at,
+      assignedAgentProfileId: assignedAgent(row.metadata),
+      overdueShared,
+      reminderType: row.reminder_type,
+      isDaily,
+    }];
+  });
 }
