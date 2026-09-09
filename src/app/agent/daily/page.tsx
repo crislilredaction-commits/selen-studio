@@ -5,6 +5,8 @@ import { getDailyAgentTasks } from "@/lib/server/dailyAgentTasks";
 import { getStudioClientFollowups } from "@/lib/server/studioClientFollowups";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
+export const dynamic = "force-dynamic";
+
 function formatDate(value?:string|null){return value?new Intl.DateTimeFormat("fr-FR",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value)):"Date inconnue"}
 export default async function AgentDailyPage(){
  const auth=await requireSupportAgent();if(!auth.ok)return <main className="daily-page" style={s.page}><p>Accès refusé.</p></main>;
