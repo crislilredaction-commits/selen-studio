@@ -24,6 +24,12 @@ function formatDay(iso: string) {
   return new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" }).format(date);
 }
 
+function formatDateRange(start: string | null, end: string | null) {
+  if (!start) return "Dates à vérifier";
+  if (!end || end === start) return new Date(`${start}T12:00:00Z`).toLocaleDateString("fr-FR");
+  return `${new Date(`${start}T12:00:00Z`).toLocaleDateString("fr-FR")} → ${new Date(`${end}T12:00:00Z`).toLocaleDateString("fr-FR")}`;
+}
+
 function overlaps(day: string, start: string | null, end: string | null) {
   if (!start) return false;
   const last = end || start;
@@ -63,7 +69,7 @@ export default async function DailyPlanningPage() {
   const today = parisDateString();
   const days = Array.from({ length: 21 }, (_, index) => addDays(today, index));
   const horizonEnd = days[days.length - 1];
-  const recentStart = addDays(today, -7);
+  const recentStart = addDays(today, -30);
   const organisationIds = await getActiveDailyOrganisationIds();
 
   const { data: dossiers } = organisationIds.length
@@ -98,13 +104,14 @@ export default async function DailyPlanningPage() {
   const orgMap = new Map((organisations ?? []).map((row) => [row.id, row]));
   const formationMap = new Map((formations ?? []).map((row) => [row.id, row]));
 
-  const rows = (dossiers ?? [])
+  const allRows = (dossiers ?? [])
     .map((dossier) => {
       const session = sessionMap.get(dossier.session_id);
       if (!session) return null;
       const last = session.end_date || session.start_date;
-      if (session.start_date && session.start_date > horizonEnd) return null;
-      if (last && last < recentStart && dossier.status !== "active") return null;
+      const closed = dossier.status === "completed" || dossier.status === "archived";
+      if (!closed && session.start_date && session.start_date > horizonEnd) return null;
+      if (closed && last && last < recentStart) return null;
 
       const checklist = (items ?? []).filter((item) => item.session_id === dossier.session_id);
       const openChecklist = checklist.filter((item) => !["validated", "not_applicable"].includes(item.status)).length;
@@ -120,6 +127,7 @@ export default async function DailyPlanningPage() {
 
       return {
         sessionId: dossier.session_id,
+        dossierStatus: dossier.status,
         organisationName: organisation?.name ?? "Organisme",
         formationTitle: formation?.title ?? "Session Daily",
         reference: session.internal_reference || "Sans référence",
@@ -136,12 +144,17 @@ export default async function DailyPlanningPage() {
       return aStart.localeCompare(bStart) || (a?.organisationName ?? "").localeCompare(b?.organisationName ?? "", "fr");
     });
 
+  const activeRows = allRows.filter((row) => row?.dossierStatus === "active");
+  const historyRows = allRows
+    .filter((row) => row?.dossierStatus === "completed" || row?.dossierStatus === "archived")
+    .sort((a, b) => (b?.end ?? b?.start ?? "").localeCompare(a?.end ?? a?.start ?? ""));
+
   return (
     <main className="daily-planning-page" style={{ maxWidth: 1320, margin: "0 auto", padding: 28 }}>
       <div style={{ marginBottom: 18 }}>
         <h1 style={{ marginBottom: 4 }}>Planning Daily</h1>
         <p style={{ color: "var(--selen-text2)", marginTop: 0 }}>
-          Vue opérationnelle des sessions à venir, en cours et récemment terminées. Chaque ligne ouvre directement le dossier de session.
+          Vue opérationnelle des sessions à venir, en cours et à clôturer. Une session clôturée quitte le planning actif et reste consultable dans l’historique récent.
         </p>
       </div>
 
@@ -149,7 +162,7 @@ export default async function DailyPlanningPage() {
         {["À préparer", "Prête", "En cours", "À clôturer"].map((state) => (
           <SelenCard key={state}>
             <div style={{ fontSize: 12, color: "var(--selen-text3)" }}>{state}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{rows.filter((row) => row?.state === state).length}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{activeRows.filter((row) => row?.state === state).length}</div>
           </SelenCard>
         ))}
       </div>
@@ -168,7 +181,7 @@ export default async function DailyPlanningPage() {
               <div style={{ padding: "10px 8px", fontSize: 11, color: "var(--selen-text3)", borderLeft: "1px solid var(--selen-border)" }}>État</div>
             </div>
 
-            {rows.map((row) => {
+            {activeRows.map((row) => {
               if (!row) return null;
               const style = stateStyle(row.state);
               return (
@@ -196,12 +209,40 @@ export default async function DailyPlanningPage() {
               );
             })}
 
-            {rows.length === 0 ? (
-              <div style={{ padding: 18, color: "var(--selen-text3)", fontSize: 13 }}>Aucune session Daily sur cette période.</div>
+            {activeRows.length === 0 ? (
+              <div style={{ padding: 18, color: "var(--selen-text3)", fontSize: 13 }}>Aucune session Daily active sur cette période.</div>
             ) : null}
           </div>
         </div>
       </SelenCard>
+
+      <section style={{ marginTop: 18 }}>
+        <SelenCard>
+          <SelenCardTitle>Historique récent des sessions clôturées</SelenCardTitle>
+          <p style={{ marginTop: 6, color: "var(--selen-text3)", fontSize: 12 }}>
+            Les dossiers clôturés ou archivés des 30 derniers jours restent accessibles ici sans encombrer le planning opérationnel.
+          </p>
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {historyRows.map((row) => {
+              if (!row) return null;
+              return (
+                <Link key={row.sessionId} href={`/agent/daily/session-dossiers/${row.sessionId}`} style={{ textDecoration: "none", color: "inherit" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 14, alignItems: "center", padding: "10px 12px", border: "1px solid var(--selen-border)", borderRadius: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>{row.organisationName} · {row.formationTitle}</div>
+                      <div style={{ fontSize: 11, color: "var(--selen-text3)", marginTop: 3 }}>{row.reference} · {formatDateRange(row.start, row.end)}</div>
+                    </div>
+                    <span style={{ borderRadius: 999, padding: "5px 8px", fontSize: 10, fontWeight: 700, color: "var(--selen-text3)", background: "var(--selen-bg3)" }}>
+                      {row.dossierStatus === "archived" ? "Archivée" : "Clôturée"}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+            {historyRows.length === 0 ? <div style={{ color: "var(--selen-text3)", fontSize: 13 }}>Aucune session clôturée récemment.</div> : null}
+          </div>
+        </SelenCard>
+      </section>
     </main>
   );
 }
