@@ -93,6 +93,43 @@ button {
     white-space: nowrap;
   }
 
+  /*
+   * La messagerie vit dans le premier groupe de navigation (Tableau de bord).
+   * Sur mobile, le menu devient une rangée horizontale scrollable : laisser le
+   * panneau en position absolue le contraignait à la largeur de cette petite
+   * cellule et le faisait rogner par l'overflow de la navigation.
+   * On conserve le déclencheur dans la rangée, mais le panneau ouvert se place
+   * dans le viewport afin de rester entièrement lisible et tactile.
+   */
+  .agent-sidebar__nav > div:first-of-type {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+  }
+
+  .agent-sidebar__nav > div:first-of-type > div {
+    margin: 0 !important;
+    flex: 0 0 auto;
+  }
+
+  .agent-sidebar__nav > div:first-of-type > div > div {
+    min-width: 150px;
+  }
+
+  .agent-sidebar__nav > div:first-of-type > div > div > div {
+    position: fixed !important;
+    left: 12px !important;
+    right: 12px !important;
+    top: 64px !important;
+    width: auto !important;
+    height: min(70dvh, 520px) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 88px) !important;
+    z-index: 100 !important;
+  }
+
   .agent-content {
     width: 100%;
     min-width: 0;
