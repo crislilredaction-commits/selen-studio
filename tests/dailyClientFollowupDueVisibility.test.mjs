@@ -5,9 +5,9 @@ import test from "node:test";
 const source = await readFile(new URL("../src/lib/server/studioClientFollowups.ts", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/20260909125000_daily_signature_client_reminders.sql", import.meta.url), "utf8");
 
-test("une relance future reste cachée de la file Studio", () => {
-  assert.match(source, /function isDue/);
-  assert.match(source, /if \(!isDue\(row\.due_at\)\) return \[\]/);
+test("seule une relance signature future reste cachée de la file Studio", () => {
+  assert.match(source, /SIGNATURE_REMINDER = "daily_signature_pending_72h"/);
+  assert.match(source, /row\.reminder_type === SIGNATURE_REMINDER && !isDue\(row\.due_at\)/);
 });
 
 test("la règle équipe à 72 h reste basée sur la mise en attente sans réassignation", () => {
