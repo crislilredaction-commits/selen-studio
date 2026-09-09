@@ -138,7 +138,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
             const signature = signatureId ? signatureMap.get(signatureId) : undefined;
             const signatureStatus = signature ? signatureLabels[signature.status] ?? signature.status : null;
             const stakeholder = signature
-              ? stakeholderLabels[text(signature.signatory_type).toLowerCase()] ?? text(signature.signatory_type) || "Autre partie prenante"
+              ? (stakeholderLabels[text(signature.signatory_type).toLowerCase()] ?? text(signature.signatory_type) || "Autre partie prenante")
               : null;
             const followupDueAt = communication.sent_at
               ? new Date(new Date(communication.sent_at).getTime() + 72 * 60 * 60 * 1000)
