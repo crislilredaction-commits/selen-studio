@@ -24,11 +24,17 @@ type ReminderRow = {
 };
 
 const SLA_MS = 72 * 60 * 60 * 1000;
+const SIGNATURE_REMINDER = "daily_signature_pending_72h";
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
 function isOverdue(value: string | null) {
   if (!value) return false;
   const time = new Date(value).getTime();
   return Number.isFinite(time) && Date.now() - time >= SLA_MS;
+}
+function isDue(value: string | null) {
+  if (!value) return true;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && time <= Date.now();
 }
 function assignedAgent(metadata: Record<string, unknown> | null) {
   return text(metadata?.assigned_agent_profile_id || metadata?.agent_profile_id) || null;
@@ -59,6 +65,7 @@ export async function getStudioClientFollowups(staff: FollowupStaff, options?: {
 
   const rows = (data ?? []) as ReminderRow[];
   return rows.flatMap((row): StudioClientFollowup[] => {
+    if (row.reminder_type === SIGNATURE_REMINDER && !isDue(row.due_at)) return [];
     const overdueShared = isOverdue(queuedAt(row));
     const isDaily = dailyReminder(row);
     if ((options?.dailyOnly && !isDaily) || !visible(row, staff, overdueShared)) return [];

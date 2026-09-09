@@ -1,0 +1,1 @@
+Le filtrage par échéance ajouté dans ce lot s'applique uniquement à `daily_signature_pending_72h`. Les autres relances Studio conservent leur visibilité actuelle. La règle équipe à 72 h ne modifie jamais l'assignation de l'organisme.
