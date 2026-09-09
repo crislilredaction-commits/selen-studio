@@ -30,6 +30,11 @@ function isOverdue(value: string | null) {
   const time = new Date(value).getTime();
   return Number.isFinite(time) && Date.now() - time >= SLA_MS;
 }
+function isDue(value: string | null) {
+  if (!value) return true;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && time <= Date.now();
+}
 function assignedAgent(metadata: Record<string, unknown> | null) {
   return text(metadata?.assigned_agent_profile_id || metadata?.agent_profile_id) || null;
 }
@@ -59,6 +64,7 @@ export async function getStudioClientFollowups(staff: FollowupStaff, options?: {
 
   const rows = (data ?? []) as ReminderRow[];
   return rows.flatMap((row): StudioClientFollowup[] => {
+    if (!isDue(row.due_at)) return [];
     const overdueShared = isOverdue(queuedAt(row));
     const isDaily = dailyReminder(row);
     if ((options?.dailyOnly && !isDaily) || !visible(row, staff, overdueShared)) return [];
