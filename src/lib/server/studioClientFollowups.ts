@@ -24,11 +24,17 @@ type ReminderRow = {
 };
 
 const SLA_MS = 72 * 60 * 60 * 1000;
+const SIGNATURE_REMINDER = "daily_signature_pending_72h";
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
 function isOverdue(value: string | null) {
   if (!value) return false;
   const time = new Date(value).getTime();
   return Number.isFinite(time) && Date.now() - time >= SLA_MS;
+}
+function isDue(value: string | null) {
+  if (!value) return true;
+  const time = new Date(value).getTime();
+  return !Number.isFinite(time) || time <= Date.now();
 }
 function assignedAgent(metadata: Record<string, unknown> | null) {
   return text(metadata?.assigned_agent_profile_id || metadata?.agent_profile_id) || null;
@@ -46,6 +52,13 @@ function visible(row: ReminderRow, staff: FollowupStaff, overdueShared: boolean)
   if (!agentId) return true;
   return staff.id === agentId || overdueShared;
 }
+function followupHref(row: ReminderRow) {
+  const sessionId = text(row.metadata?.session_id);
+  if (row.reminder_type === SIGNATURE_REMINDER && sessionId) {
+    return `/agent/daily/communications?session_id=${encodeURIComponent(sessionId)}`;
+  }
+  return row.dossier_id ? `/agent/dossiers/${row.dossier_id}` : "/agent/relances";
+}
 
 export async function getStudioClientFollowups(staff: FollowupStaff, options?: { dailyOnly?: boolean }) {
   const admin = createSupabaseAdminClient();
@@ -59,6 +72,7 @@ export async function getStudioClientFollowups(staff: FollowupStaff, options?: {
 
   const rows = (data ?? []) as ReminderRow[];
   return rows.flatMap((row): StudioClientFollowup[] => {
+    if (row.reminder_type === SIGNATURE_REMINDER && !isDue(row.due_at)) return [];
     const overdueShared = isOverdue(queuedAt(row));
     const isDaily = dailyReminder(row);
     if ((options?.dailyOnly && !isDaily) || !visible(row, staff, overdueShared)) return [];
@@ -66,7 +80,7 @@ export async function getStudioClientFollowups(staff: FollowupStaff, options?: {
       id: row.id,
       title: row.client_email || "Partie prenante à relancer",
       detail: text(row.metadata?.reason) || row.subject || "Relance à traiter",
-      href: row.dossier_id ? `/agent/dossiers/${row.dossier_id}` : "/agent/relances",
+      href: followupHref(row),
       dueAt: row.due_at,
       assignedAgentProfileId: assignedAgent(row.metadata),
       overdueShared,
