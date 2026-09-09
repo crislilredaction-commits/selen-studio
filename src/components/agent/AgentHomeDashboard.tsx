@@ -5,6 +5,7 @@ import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import { isOwnerLil } from "@/lib/ownerLil";
 import { getDailyAgentTasks } from "@/lib/server/dailyAgentTasks";
+import { getStudioClientFollowups } from "@/lib/server/studioClientFollowups";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -13,7 +14,6 @@ type StaffInfo = { id: string | null; user_id: string | null; email: string | nu
 type DashboardItem = { id: string; title: string; subtitle: string; href: string; date?: string | null };
 type DossierRow = { id: string; title: string | null; type: string | null; status: string | null; updated_at: string | null };
 type AuditRow = { id: string; client_email: string; status: string | null; offer: string | null; updated_at: string | null; agent_id: string | null; agent_email: string | null; report_status: string | null };
-type ReminderRow = { id: string; client_email: string | null; dossier_id: string | null; reminder_type: string | null; status: string | null; subject: string | null; due_at: string | null; metadata: Record<string, unknown> | null };
 type TicketRow = { id: string; client_email: string | null; client_name: string | null; subject: string | null; category: string | null; priority: string | null; status: string | null; last_message_at: string | null; updated_at: string | null; created_at: string | null };
 
 const inactiveStatuses = new Set(["completed", "cancelled", "archived", "done", "termine", "terminé"]);
@@ -31,7 +31,6 @@ function formatStatus(status?: string | null) {
   const labels: Record<string, string> = { draft: "Brouillon", waiting_client: "En attente client", assignable: "À attribuer", assigned: "Attribué", in_progress: "En cours", collecting_documents: "Collecte documents", under_review: "Analyse en cours", to_complete: "À compléter", generated: "Généré", compliant: "Conforme", archived: "Archivé", paid: "Paiement validé", booking_pending: "RDV à planifier", partially_booked: "RDV partiel", booked: "RDV réservé", report_ready: "Rapport prêt", completed: "Terminé", cancelled: "Annulé" };
   return status ? labels[status] ?? status : "À vérifier";
 }
-function formatReminderType(type?: string | null) { return type === "preaudit_incomplete_15_days" ? "Préaudit" : type === "audit_blanc_booking_reminder_7_days" ? "Review" : type === "audit_blanc_48h_reminder" ? "Rappel Review" : type === "nda_inactive_9_days" ? "NDA" : "Relance"; }
 function unique(items: DashboardItem[]) { const seen = new Set<string>(); return items.filter((item) => seen.has(item.id) ? false : (seen.add(item.id), true)); }
 function dossierItem(row: DossierRow): DashboardItem { return { id: row.id, title: row.title || `Dossier ${row.id.slice(0, 8)}`, subtitle: `${formatType(row.type)} · ${formatStatus(row.status)}`, href: `/agent/dossiers/${row.id}`, date: row.updated_at }; }
 
@@ -66,7 +65,10 @@ export default async function AgentHomeDashboard() {
   const admin = createSupabaseAdminClient();
   const canAccessGestionLil = isOwnerLil(staff.email);
   const greeting = staff.first_name?.trim() || staff.email?.split("@")[0] || "agent";
-  const sessionDossiers = await dailySessionDossiers(staff);
+  const [sessionDossiers, followups] = await Promise.all([
+    dailySessionDossiers(staff),
+    getStudioClientFollowups({ id: staff.id, role: staff.role }),
+  ]);
 
   const assignedIds = new Set<string>();
   if (staff.id) {
@@ -79,19 +81,12 @@ export default async function AgentHomeDashboard() {
     assigned = ((data ?? []) as DossierRow[]).filter((row) => active(row.status) && row.type !== "daily");
   }
 
-  let unreadQuery = admin.from("messages").select("id,dossier_id,created_at").eq("sender_type", "client").is("read_by_agent_at", null).order("created_at", { ascending: false }).limit(50);
-  if (staff.role !== "admin" && assignedIds.size) unreadQuery = unreadQuery.in("dossier_id", [...assignedIds]);
-  const { data: unreadMessages } = await unreadQuery;
-  const unreadDossierIds = [...new Set((unreadMessages ?? []).map((row) => row.dossier_id).filter(Boolean))] as string[];
-  let unreadDossiers: DossierRow[] = [];
-  if (unreadDossierIds.length) {
-    const { data } = await admin.from("dossiers").select("id,title,type,status,updated_at").in("id", unreadDossierIds);
-    unreadDossiers = ((data ?? []) as DossierRow[]).filter((row) => active(row.status) && row.type !== "daily");
-  }
-  const unreadItems = unreadDossiers.map((row) => ({ ...dossierItem(row), subtitle: `${formatType(row.type)} · message client non lu` }));
-
-  const { data: reminderData } = await admin.from("client_reminders").select("id,client_email,dossier_id,reminder_type,status,subject,due_at,metadata").in("status", ["draft", "ready", "postponed"]).order("due_at", { ascending: true }).limit(12);
-  const reminders = ((reminderData ?? []) as ReminderRow[]).map((row) => ({ id: row.id, title: row.client_email || "Client à relancer", subtitle: `${formatReminderType(row.reminder_type)} · ${typeof row.metadata?.reason === "string" ? row.metadata.reason : row.subject || "Relance client à traiter"}`, href: "/agent/relances", date: row.due_at }));
+  const clientFollowups = followups
+    .filter((row) => row.reminderType !== "preaudit_incomplete_15_days")
+    .map((row) => ({ id: `followup-${row.id}`, title: row.title, subtitle: `${row.detail}${row.overdueShared ? " · 72 h dépassées, ouverte à l'équipe" : ""}`, href: row.href, date: row.dueAt }));
+  const preauditTasks = followups
+    .filter((row) => row.reminderType === "preaudit_incomplete_15_days")
+    .map((row) => ({ id: `preaudit-${row.id}`, title: row.title, subtitle: `Pré-audit · ${row.detail}${row.overdueShared ? " · 72 h dépassées, ouverte à l'équipe" : ""}`, href: row.href, date: row.dueAt }));
 
   const { data: ticketData } = await admin.from("support_tickets").select("id,client_email,client_name,subject,category,priority,status,last_message_at,updated_at,created_at").order("last_message_at", { ascending: false, nullsFirst: false }).limit(20);
   const tickets = ((ticketData ?? []) as TicketRow[]).filter((row) => !["closed", "resolved"].includes(String(row.status))).slice(0, 6).map((row) => ({ id: row.id, title: row.subject || "Ticket support", subtitle: [row.client_name || row.client_email || "Client", row.category || "support", row.priority || "normal"].join(" · "), href: `/agent/support/${row.id}`, date: row.last_message_at || row.updated_at || row.created_at }));
@@ -110,23 +105,26 @@ export default async function AgentHomeDashboard() {
   const { data: candidateData } = await admin.from("dossiers").select("id,title,type,status,updated_at").neq("type", "daily").order("updated_at", { ascending: false }).limit(50);
   const unassigned = ((candidateData ?? []) as DossierRow[]).filter((row) => active(row.status) && !allAssigned.has(row.id)).slice(0, 8).map((row) => ({ ...dossierItem(row), subtitle: `${formatType(row.type)} · sans attribution` }));
 
-  const actionDossiers = unique([...sessionDossiers, ...unreadItems, ...reminders.filter((item) => !((reminderData ?? []) as ReminderRow[]).some((reminder) => reminder.id === item.id && reminder.reminder_type === "preaudit_incomplete_15_days"))]).slice(0, 12);
+  const actionDossiers = unique([
+    ...sessionDossiers,
+    ...assigned.map(dossierItem),
+    ...preauditTasks,
+  ]).slice(0, 20);
   const visibleAdminLinks = adminLinks.filter((item) => item.href === "/agent/gestion" ? canAccessGestionLil : staff.role === "admin");
 
   return <main style={{ padding: "24px 28px", maxWidth: 1180, margin: "0 auto", color: "var(--selen-text)" }}>
     <section style={{ display: "grid", gap: 18, marginBottom: 24 }}>
-      <div><p style={eyebrow}>Selen Studio</p><h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 600, marginTop: 8 }}>Bonjour {greeting} ✨</h1><p style={lead}>Voici ton tableau de bord du jour : les dossiers à suivre et les actions qui demandent réellement ton attention.</p>{staff.email ? <p style={small}>Connecté avec : {staff.email} · rôle : {staff.role}</p> : null}</div>
+      <div><p style={eyebrow}>Selen Studio</p><h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 600, marginTop: 8 }}>Bonjour {greeting} ✨</h1><p style={lead}>Toutes les tâches NDA, Daily et pré-audit qui demandent réellement ton intervention sont réunies ici. Les messages restent dans leur messagerie et ne créent pas artificiellement une tâche.</p>{staff.email ? <p style={small}>Connecté avec : {staff.email} · rôle : {staff.role}</p> : null}</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><Link href="/agent/dossiers/new" style={{ textDecoration: "none" }}><SelenButton variant="primary">Créer un dossier</SelenButton></Link><Link href="/agent/clients/new" style={{ textDecoration: "none" }}><SelenButton variant="ghost">Créer un client</SelenButton></Link><LogoutButton /></div>
     </section>
 
     <section style={grid}>
-      <TaskCard icon="⚡" title="Dossiers à traiter" count={actionDossiers.length} emptyText="Aucune action immédiate détectée." items={actionDossiers} />
+      <TaskCard icon="⚡" title="Tâches à faire" count={actionDossiers.length} emptyText="Aucune action immédiate détectée." items={actionDossiers} />
+      <TaskCard icon="📨" title="Clients à relancer" count={clientFollowups.length} emptyText="Aucune relance client détectée." items={clientFollowups} footerHref="/agent/relances" footerLabel="Ouvrir les relances" />
       <TaskCard icon="🧾" title="Audits blancs Review" count={audits.length} emptyText="Aucun audit blanc Review actif à suivre." items={audits} footerHref="/agent/audits-blancs" footerLabel="Ouvrir les audits blancs" />
-      <TaskCard icon="📨" title="Clients à relancer" count={reminders.length} emptyText="Aucune relance client détectée." items={reminders} footerHref="/agent/relances" footerLabel="Ouvrir les relances" />
       <TaskCard icon="🛟" title="Support à traiter" count={tickets.length} emptyText="Aucun ticket support à traiter." items={tickets} footerHref="/agent/support" footerLabel="Ouvrir le support" />
     </section>
 
-    {assigned.length ? <section style={{ marginBottom: 24 }}><TaskCard icon="📌" title="Mes dossiers attribués" count={assigned.length} emptyText="Aucun dossier attribué." items={assigned.map(dossierItem)} footerHref="/agent/dossiers" footerLabel="Voir les dossiers" /></section> : null}
     {unassigned.length ? <section style={{ marginBottom: 24 }}><TaskCard icon="🧭" title="Dossiers en attente d’un agent" count={unassigned.length} emptyText="Aucun dossier en attente d’attribution." items={unassigned} footerHref="/agent/dossiers" footerLabel="Voir les dossiers" /></section> : null}
 
     {visibleAdminLinks.length ? <section><SelenCard><SelenCardTitle>Accès admin</SelenCardTitle><p style={lead}>Ces raccourcis sont réservés aux comptes administrateurs.</p><div style={{ ...grid, marginBottom: 0 }}>{visibleAdminLinks.map((item) => item.internal ? <Link key={item.href} href={item.href} style={{ textDecoration: "none", color: "inherit" }}><AdminLink item={item} /></Link> : <a key={item.href} href={item.href} target="_blank" rel="noreferrer" style={{ textDecoration: "none", color: "inherit" }}><AdminLink item={item} /></a>)}</div></SelenCard></section> : null}
