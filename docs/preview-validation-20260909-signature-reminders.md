@@ -1,0 +1,1 @@
+Validation finale groupée du lot Studio signatures : rappel Daily masqué avant H+72, visible à l'échéance, sans réassignation d'organisme, puis retiré après résolution. Ce commit sert uniquement à déclencher un unique preview final consolidé avant fusion.
