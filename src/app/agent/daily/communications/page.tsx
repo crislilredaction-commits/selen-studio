@@ -12,14 +12,48 @@ const typeLabels: Record<string, string> = {
   convocation: "Convocation",
   satisfaction_request: "Questionnaire de satisfaction",
   completion_certificate: "Certificat de réalisation",
+  convention_signature: "Invitation de signature",
 };
 
 const statusLabels: Record<string, string> = {
+  queued: "Envoi en cours",
   sent: "Envoyé",
-  delivered: "Livré",
+  delivered: "Délivré",
   failed: "Échec",
   bounced: "Rejeté",
 };
+
+const signatureLabels: Record<string, string> = {
+  pending: "Signature attendue",
+  viewed: "Document consulté · signature attendue",
+  signed: "Signé",
+  cancelled: "Annulé",
+  revoked: "Annulé / révoqué",
+  expired: "Expiré",
+  failed: "Échec",
+  error: "Échec",
+};
+
+const stakeholderLabels: Record<string, string> = {
+  learner: "Apprenant",
+  trainee: "Apprenant",
+  trainer: "Formateur",
+  company: "Entreprise / commanditaire",
+  sponsor: "Entreprise / commanditaire",
+  client: "Entreprise / commanditaire",
+  organisation: "Organisme",
+  other: "Autre partie prenante",
+};
+
+function formatDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString("fr-FR") : null;
+}
+
+function text(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
 
 export default async function DailyCommunicationsPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
@@ -30,7 +64,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
 
   let query = admin
     .from("daily_communications")
-    .select("id,organisation_id,session_id,enrolment_id,communication_type,recipient_email,recipient_name,subject,text_body,provider,provider_message_id,status,sent_at,delivered_at,failed_at,failure_reason,created_at,daily_communication_documents(document_id,document_type,logical_name,document_version,sha256,storage_path)")
+    .select("id,organisation_id,session_id,enrolment_id,communication_type,recipient_email,recipient_name,subject,text_body,provider,provider_message_id,status,sent_at,delivered_at,failed_at,failure_reason,created_at,metadata,daily_communication_documents(document_id,document_type,logical_name,document_version,sha256,storage_path)")
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -41,13 +75,19 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
 
   const sessionIds = [...new Set((communications ?? []).map((item) => item.session_id).filter(Boolean))] as string[];
   const organisationIds = [...new Set((communications ?? []).map((item) => item.organisation_id).filter(Boolean))] as string[];
+  const signatureIds = [...new Set((communications ?? [])
+    .map((item) => text(item.metadata?.signature_id))
+    .filter(Boolean))];
 
-  const [{ data: sessions }, { data: organisations }] = await Promise.all([
+  const [{ data: sessions }, { data: organisations }, { data: signatures }] = await Promise.all([
     sessionIds.length
       ? admin.from("daily_sessions").select("id,internal_reference,formation_id").in("id", sessionIds)
       : Promise.resolve({ data: [] }),
     organisationIds.length
       ? admin.from("organisations").select("id,name").in("id", organisationIds)
+      : Promise.resolve({ data: [] }),
+    signatureIds.length
+      ? admin.from("daily_convention_signatures").select("id,signatory_type,signatory_name,signatory_email,status,viewed_at,signed_at,expires_at,last_error").in("id", signatureIds)
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -59,6 +99,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
   const sessionMap = new Map((sessions ?? []).map((item) => [item.id, item]));
   const organisationMap = new Map((organisations ?? []).map((item) => [item.id, item.name]));
   const formationMap = new Map((formations ?? []).map((item) => [item.id, item.title]));
+  const signatureMap = new Map((signatures ?? []).map((item) => [item.id, item]));
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: "clamp(16px, 4vw, 28px)", minWidth: 0 }}>
@@ -66,7 +107,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
         <div style={{ minWidth: 0, flex: "1 1 260px" }}>
           <h1 style={{ marginBottom: 4, overflowWrap: "anywhere" }}>Communications & preuves</h1>
           <p style={{ marginTop: 0, color: "var(--selen-text2)", overflowWrap: "anywhere" }}>
-            Historique exact des communications Daily conservées comme preuves d’audit.
+            Historique exact des communications Daily et, lorsqu’un document doit être signé, état métier de la signature. Une ouverture ou un clic d’e-mail ne vaut jamais signature.
           </p>
         </div>
         {sessionId ? <Link href="/agent/daily/communications">Voir tout l’historique</Link> : null}
@@ -93,6 +134,22 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
               : communication.daily_communication_documents
                 ? [communication.daily_communication_documents]
                 : [];
+            const signatureId = text(communication.metadata?.signature_id);
+            const signature = signatureId ? signatureMap.get(signatureId) : undefined;
+            const signatureStatus = signature ? signatureLabels[signature.status] ?? signature.status : null;
+            const stakeholder = signature
+              ? stakeholderLabels[text(signature.signatory_type).toLowerCase()] ?? text(signature.signatory_type) || "Autre partie prenante"
+              : null;
+            const followupDueAt = communication.sent_at
+              ? new Date(new Date(communication.sent_at).getTime() + 72 * 60 * 60 * 1000)
+              : null;
+            const followupDue = Boolean(
+              signature
+              && communication.sent_at
+              && followupDueAt
+              && followupDueAt.getTime() <= Date.now()
+              && !["signed", "cancelled", "revoked", "expired"].includes(signature.status),
+            );
 
             return (
               <SelenCard key={communication.id}>
@@ -102,12 +159,30 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
                     {organisationMap.get(communication.organisation_id) ?? "Organisme"}
                     {formationTitle ? ` · ${formationTitle}` : ""}
                     {session?.internal_reference ? ` · ${session.internal_reference}` : ""}
-                    {communication.sent_at ? ` · ${new Date(communication.sent_at).toLocaleString("fr-FR")}` : ""}
+                    {communication.sent_at ? ` · ${formatDate(communication.sent_at)}` : ""}
                   </div>
                   <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Destinataire :</strong> {communication.recipient_name ? `${communication.recipient_name} · ` : ""}{communication.recipient_email}</p>
                   <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Objet :</strong> {communication.subject}</p>
-                  <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Statut :</strong> {statusLabels[communication.status] ?? communication.status}{communication.delivered_at ? ` · livré ${new Date(communication.delivered_at).toLocaleString("fr-FR")}` : ""}</p>
-                  {communication.failed_at || communication.failure_reason ? <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Échec :</strong> {communication.failure_reason ?? new Date(communication.failed_at).toLocaleString("fr-FR")}</p> : null}
+                  <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>E-mail :</strong> {statusLabels[communication.status] ?? communication.status}{communication.delivered_at ? ` · délivré ${formatDate(communication.delivered_at)}` : ""}</p>
+                  {communication.failed_at || communication.failure_reason ? <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Échec :</strong> {communication.failure_reason ?? formatDate(communication.failed_at)}</p> : null}
+
+                  {signature ? (
+                    <div style={{ marginTop: 12, padding: 12, border: "1px solid var(--selen-border)", borderRadius: 10, background: "var(--selen-bg2)" }}>
+                      <strong style={{ fontSize: 13 }}>Document à signer · {stakeholder}</strong>
+                      <p style={{ margin: "6px 0", fontSize: 13 }}><strong>État :</strong> {signatureStatus}{followupDue ? " · Client à relancer" : ""}</p>
+                      <p style={{ margin: "6px 0", fontSize: 13 }}><strong>Signataire :</strong> {signature.signatory_name || signature.signatory_email || "Non renseigné"}</p>
+                      <p style={{ margin: "6px 0", fontSize: 13 }}>
+                        <strong>Chronologie :</strong>{" "}
+                        envoi {formatDate(communication.sent_at) ?? "non tracé"}
+                        {signature.viewed_at ? ` · document consulté ${formatDate(signature.viewed_at)}` : ""}
+                        {signature.signed_at ? ` · signé ${formatDate(signature.signed_at)}` : ""}
+                        {signature.expires_at ? ` · échéance ${formatDate(signature.expires_at)}` : ""}
+                      </p>
+                      {followupDueAt && !signature.signed_at ? <p style={{ margin: "6px 0", fontSize: 12, color: "var(--selen-text2)" }}>Relance H+72 : {formatDate(followupDueAt.toISOString())}{followupDue ? " · échéance atteinte" : ""}</p> : null}
+                      {signature.last_error ? <p style={{ margin: "6px 0", fontSize: 12, color: "var(--selen-danger)" }}>Erreur signature : {signature.last_error}</p> : null}
+                    </div>
+                  ) : null}
+
                   <details style={{ marginTop: 10, minWidth: 0 }}>
                     <summary>Voir le contenu exact envoyé</summary>
                     <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word", maxWidth: "100%", fontFamily: "inherit", fontSize: 13, borderTop: "1px solid var(--selen-border)", paddingTop: 10 }}>{communication.text_body}</pre>
