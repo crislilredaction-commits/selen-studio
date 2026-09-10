@@ -26,6 +26,9 @@ type ReminderRow = {
 
 const AGENT_SHARED_AFTER_BUSINESS_HOURS = 24;
 const SIGNATURE_REMINDER = "daily_signature_pending_72h";
+const SIGNATURE_J3_STAGE = "automatic_email_j3";
+const SIGNATURE_J6_STAGE = "phone_call_j6";
+
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
 function isOverdue(value: string | null) {
   return isOverdueAfterBusinessHours(value, AGENT_SHARED_AFTER_BUSINESS_HOURS);
@@ -38,7 +41,11 @@ function isDue(value: string | null) {
 function assignedAgent(metadata: Record<string, unknown> | null) {
   return text(metadata?.assigned_agent_profile_id || metadata?.agent_profile_id) || null;
 }
+function followupStage(row: ReminderRow) {
+  return text(row.metadata?.followup_stage);
+}
 function queuedAt(row: ReminderRow) {
+  if (row.reminder_type === SIGNATURE_REMINDER && followupStage(row) === SIGNATURE_J6_STAGE) return row.due_at;
   return text(row.metadata?.queued_at || row.metadata?.created_at || row.metadata?.first_due_at) || row.due_at;
 }
 function dailyReminder(row: ReminderRow) {
@@ -64,7 +71,11 @@ export async function getStudioClientFollowups(staff: FollowupStaff, options?: {
 
   const rows = (data ?? []) as ReminderRow[];
   return rows.flatMap((row): StudioClientFollowup[] => {
-    if (row.reminder_type === SIGNATURE_REMINDER && !isDue(row.due_at)) return [];
+    if (row.reminder_type === SIGNATURE_REMINDER) {
+      const stage = followupStage(row);
+      if (stage === SIGNATURE_J3_STAGE) return [];
+      if (!isDue(row.due_at)) return [];
+    }
     const overdueShared = isOverdue(queuedAt(row));
     const isDaily = dailyReminder(row);
     if ((options?.dailyOnly && !isDaily) || !visible(row, staff, overdueShared)) return [];
