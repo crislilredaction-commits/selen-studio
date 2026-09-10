@@ -185,7 +185,7 @@ export default async function DailyPlanningPage() {
               if (!row) return null;
               const style = stateStyle(row.state);
               return (
-                <Link key={row.sessionId} href={`/agent/daily/session-dossiers/${row.sessionId}/timeline`} style={{ textDecoration: "none", color: "inherit" }}>
+                <Link key={row.sessionId} href={`/agent/daily/session-dossiers/${row.sessionId}/full`} style={{ textDecoration: "none", color: "inherit" }}>
                   <div style={{ display: "grid", gridTemplateColumns: `260px repeat(${days.length}, 44px) 140px`, borderBottom: "1px solid var(--selen-border)", minHeight: 58 }}>
                     <div style={{ padding: "9px 12px", position: "sticky", left: 0, zIndex: 1, background: "var(--selen-bg2)" }}>
                       <div style={{ fontSize: 12, fontWeight: 700 }}>{row.organisationName}</div>
@@ -226,7 +226,7 @@ export default async function DailyPlanningPage() {
             {historyRows.map((row) => {
               if (!row) return null;
               return (
-                <Link key={row.sessionId} href={`/agent/daily/session-dossiers/${row.sessionId}/timeline`} style={{ textDecoration: "none", color: "inherit" }}>
+                <Link key={row.sessionId} href={`/agent/daily/session-dossiers/${row.sessionId}/full`} style={{ textDecoration: "none", color: "inherit" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 14, alignItems: "center", padding: "10px 12px", border: "1px solid var(--selen-border)", borderRadius: 10 }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 700 }}>{row.organisationName} · {row.formationTitle}</div>
