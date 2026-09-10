@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "npm run test:agent-access && npm run test:daily-assignment && npm run test:daily-trainer-certifications-ui && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && npm run test:daily-navigation && npm run test:daily-session-tasks && npm run test:daily-watch-cadence && npm run test:daily-corrective-actions-cadence && npm run test:daily-trainer-annual-review && npm run test:daily-internal-procedures && npm run test:daily-stakeholder-feedback && npm run test:daily-session-followup && npm run test:daily-session-followup-pdf && npm run test:daily-client-followups && npm run test:daily-learners-scope && npm run test:daily-document-scope && npm run test:daily-document-publication && npm run test:support-manual-ticket && next build --webpack",
+    "build": "npm run test:agent-access && npm run test:daily-assignment && npm run test:daily-trainer-certifications-ui && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && npm run test:daily-navigation && npm run test:daily-session-tasks && npm run test:daily-pilotage && npm run test:daily-watch-cadence && npm run test:daily-corrective-actions-cadence && npm run test:daily-trainer-annual-review && npm run test:daily-internal-procedures && npm run test:daily-stakeholder-feedback && npm run test:daily-session-followup && npm run test:daily-session-followup-pdf && npm run test:daily-client-followups && npm run test:daily-learners-scope && npm run test:daily-document-scope && npm run test:daily-document-publication && npm run test:support-manual-ticket && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test:agent-access": "node --test tests/agentAccessGuard.test.mjs",
@@ -14,6 +14,7 @@
     "test:daily-satisfaction": "node --test tests/dailySatisfactionPhoneTasks.test.mjs",
     "test:daily-navigation": "node --test tests/dailyNavigationCoverage.test.mjs",
     "test:daily-session-tasks": "node --test tests/dailySessionTaskAggregation.test.mjs",
+    "test:daily-pilotage": "node --test tests/dailyPilotageTransversalVisibility.test.mjs",
     "test:daily-watch-cadence": "node --test tests/dailyWatchCadenceReminder.test.mjs",
     "test:daily-corrective-actions-cadence": "node --test tests/dailyCorrectiveActionQuarterReminder.test.mjs",
     "test:daily-trainer-annual-review": "node --test tests/dailyTrainerAnnualReviewStudio.test.mjs",
