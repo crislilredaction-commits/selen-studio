@@ -3,14 +3,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { QUALIOPI_PREAUDIT_CHECKLIST, QUALIOPI_PREAUDIT_PRINCIPLES } from "@/lib/daily/qualiopiPreauditChecklist";
+import { isOverdueAfterBusinessHours } from "@/lib/franceBusinessTime";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
-const SLA_MS = 72 * 60 * 60 * 1000;
+const AGENT_SHARED_AFTER_BUSINESS_HOURS = 24;
 function isOverdue(value?: string | null) {
-  if (!value) return false;
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) && Date.now() - time >= SLA_MS;
+  return isOverdueAfterBusinessHours(value ?? null, AGENT_SHARED_AFTER_BUSINESS_HOURS);
 }
 function frDate(value?: string | null) {
   return value ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(new Date(`${value}T00:00:00`)) : "Non renseignée";
@@ -103,7 +102,7 @@ export default async function DailyQualiopiPreauditPage({ params }: { params: Pr
       <p style={s.muted}>{organisationName}</p>
     </header>
 
-    {overdueShared ? <p style={s.warning}>Cette tâche dépasse 72 h : elle est maintenant traitable par l’équipe, sans modifier l’assignation de l’organisme.</p> : null}
+    {overdueShared ? <p style={s.warning}>Cette tâche dépasse 24 h ouvrées : elle est maintenant traitable par l’équipe, sans modifier l’assignation de l’organisme.</p> : null}
 
     <section style={s.grid}>
       <SelenCard><SelenCardTitle>Cycle Qualiopi</SelenCardTitle><Info label="Début du cycle" value={frDate(organisation?.qualiopi_valid_from)} /><Info label="Fin du cycle" value={frDate(organisation?.qualiopi_valid_until)} /><Info label="Fenêtre de surveillance" value={`${frDate(organisation?.qualiopi_surveillance_window_start)} → ${frDate(organisation?.qualiopi_surveillance_window_end)}`} /><Info label="Audit planifié" value={frDate(organisation?.qualiopi_surveillance_audit_date)} /></SelenCard>
@@ -133,7 +132,7 @@ export default async function DailyQualiopiPreauditPage({ params }: { params: Pr
 
     <SelenCard style={{ marginTop: 14 }}>
       <SelenCardTitle>Clôturer cette intervention</SelenCardTitle>
-      {canTreat ? <><p style={s.muted}>Marque la tâche comme traitée lorsque le pré-audit a réellement été réalisé et validé par un agent. Elle disparaîtra alors du Pilotage pour tous les agents.</p><form action={completePreaudit}><input type="hidden" name="action_id" value={action.id} /><button type="submit" style={s.primary}>Pré-audit traité</button></form></> : <p style={s.warning}>Cette tâche est encore réservée à l’agent assigné à l’organisme. Elle deviendra partageable après 72 h si elle reste ouverte.</p>}
+      {canTreat ? <><p style={s.muted}>Marque la tâche comme traitée lorsque le pré-audit a réellement été réalisé et validé par un agent. Elle disparaîtra alors du Pilotage pour tous les agents.</p><form action={completePreaudit}><input type="hidden" name="action_id" value={action.id} /><button type="submit" style={s.primary}>Pré-audit traité</button></form></> : <p style={s.warning}>Cette tâche est encore réservée à l’agent assigné à l’organisme. Elle deviendra partageable après 24 h ouvrées, hors week-ends et jours fériés, si elle reste ouverte.</p>}
     </SelenCard>
   </main>;
 }

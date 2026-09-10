@@ -4,6 +4,7 @@ import test from "node:test";
 
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
 const page = await readFile(new URL("../src/app/agent/daily/preaudit/[actionId]/page.tsx", import.meta.url), "utf8");
+const businessTime = await readFile(new URL("../src/lib/franceBusinessTime.ts", import.meta.url), "utf8");
 const checklist = await readFile(new URL("../src/lib/daily/qualiopiPreauditChecklist.ts", import.meta.url), "utf8");
 const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
 const cyclePage = await readFile(new URL("../src/app/agent/daily/organisations/[id]/qualiopi-cycle/page.tsx", import.meta.url), "utf8");
@@ -16,8 +17,12 @@ test("le pré-audit utilise les actions qualité existantes et l'assignation org
   assert.match(tasks, /if \(!organisation \|\| !assignment\) continue/);
 });
 
-test("la règle des 72 h partage la tâche sans changer l'assignation", () => {
-  assert.match(tasks, /const SLA_MS = 72 \* 60 \* 60 \* 1000/);
+test("la règle des 24 h ouvrées partage la tâche sans changer l'assignation", () => {
+  assert.match(tasks, /AGENT_SHARED_AFTER_BUSINESS_HOURS = 24/);
+  assert.match(tasks, /isOverdueAfterBusinessHours/);
+  assert.match(page, /AGENT_SHARED_AFTER_BUSINESS_HOURS = 24/);
+  assert.match(page, /isOverdueAfterBusinessHours/);
+  assert.match(businessTime, /frenchPublicHolidayKeys/);
   assert.match(tasks, /assignedAgentProfileId: assignment\.agent_profile_id/);
   assert.match(tasks, /overdueShared/);
   assert.doesNotMatch(page, /\.from\("daily_organisation_assignments"\)\s*\.update\(/);

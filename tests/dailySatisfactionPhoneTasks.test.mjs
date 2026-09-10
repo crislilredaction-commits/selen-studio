@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
+const businessTime = await readFile(new URL("../src/lib/franceBusinessTime.ts", import.meta.url), "utf8");
 
 test("les relances téléphoniques satisfaction utilisent les actions qualité existantes", () => {
   assert.match(tasks, /\.in\("source_type", \["qualiopi_preaudit", "satisfaction_phone_followup"\]\)/);
@@ -11,10 +12,12 @@ test("les relances téléphoniques satisfaction utilisent les actions qualité e
   assert.match(tasks, /Relance satisfaction à effectuer/);
 });
 
-test("l'assignation reste celle de l'organisme avec partage après 72 h", () => {
+test("l'assignation reste celle de l'organisme avec partage après 24 h ouvrées", () => {
   assert.match(tasks, /const assignment = assignmentByOrg\.get\(action\.organisation_id\)/);
   assert.match(tasks, /assignedAgentProfileId: assignment\.agent_profile_id/);
-  assert.match(tasks, /const SLA_MS = 72 \* 60 \* 60 \* 1000/);
+  assert.match(tasks, /AGENT_SHARED_AFTER_BUSINESS_HOURS = 24/);
+  assert.match(tasks, /isOverdueAfterBusinessHours/);
+  assert.match(businessTime, /frenchPublicHolidayKeys/);
   assert.match(tasks, /overdueShared = isOverdue\(createdAt\)/);
 });
 

@@ -1,3 +1,4 @@
+import { isOverdueAfterBusinessHours } from "@/lib/franceBusinessTime";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 import { getDailySessionPhase, isAvailablePhaseItem } from "@/lib/daily/sessionPhase";
@@ -63,11 +64,9 @@ type QualityAction = {
   created_at: string | null;
 };
 
-const SLA_MS = 72 * 60 * 60 * 1000;
+const AGENT_SHARED_AFTER_BUSINESS_HOURS = 24;
 function isOverdue(value: string | null) {
-  if (!value) return false;
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) && Date.now() - time >= SLA_MS;
+  return isOverdueAfterBusinessHours(value, AGENT_SHARED_AFTER_BUSINESS_HOURS);
 }
 function visibleFor(task: DailyAgentTask, staff: DailyTaskStaff) {
   if (task.kind === "assignment") return true;
@@ -146,7 +145,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       title: action.title || (satisfaction ? "Relance téléphonique satisfaction" : "Pré-audit Qualiopi à préparer"),
       reason: satisfaction ? "Relance satisfaction à effectuer" : "Pré-audit Qualiopi",
       detail: overdueShared
-        ? "Cette tâche dépasse 72 h. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter."
+        ? "Cette tâche dépasse 24 h ouvrées. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter."
         : action.observation || action.proposed_solution || (satisfaction
           ? "Contacte la partie prenante par téléphone après les relances email J+2 et J+4 restées sans réponse."
           : "Prépare le pré-audit avant l'audit de surveillance Qualiopi."),
@@ -181,7 +180,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       title: formation?.title || session.internal_reference || "Dossier de session",
       reason: item.status === "blocked" ? "Tâche de session bloquée" : item.status === "to_review" ? "Tâche de session à vérifier" : "Tâche de session à traiter",
       detail: overdueShared
-        ? `Cette tâche dépasse 72 h : ${item.label}. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter.`
+        ? `Cette tâche dépasse 24 h ouvrées : ${item.label}. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter.`
         : `${item.label}${item.description ? ` · ${item.description}` : ""}`,
       href: `/agent/daily/session-dossiers/${session.id}`,
       createdAt,
@@ -210,7 +209,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
         organisation: orgName,
         title: formation.title || session.internal_reference || "Programme de formation",
         reason: "Programme à valider",
-        detail: overdueShared ? "Cette tâche dépasse 72 h. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter." : "Vérifie le programme puis valide-le ou demande une correction.",
+        detail: overdueShared ? "Cette tâche dépasse 24 h ouvrées. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter." : "Vérifie le programme puis valide-le ou demande une correction.",
         href: `/agent/daily/session-dossiers/${session.id}`,
         createdAt,
         assignedAgentProfileId: assignment.agent_profile_id,
@@ -234,7 +233,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       organisation: orgName,
       title: formation.title || session.internal_reference || "Dossier d'inscription",
       reason: adaptation ? "Adaptation à examiner" : "Dossier d'inscription à traiter",
-      detail: overdueShared ? "Cette tâche dépasse 72 h. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter." : `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Vérifie les besoins, prérequis et positionnements.`,
+      detail: overdueShared ? "Cette tâche dépasse 24 h ouvrées. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter." : `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Vérifie les besoins, prérequis et positionnements.`,
       href: `/agent/daily/sessions/${session.id}`,
       createdAt,
       assignedAgentProfileId: assignment.agent_profile_id,

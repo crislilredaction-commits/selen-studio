@@ -6,6 +6,7 @@ const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", imp
 const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashboard.tsx", import.meta.url), "utf8");
 const registry = await readFile(new URL("../src/app/agent/dossiers/UnifiedDossiersPage.tsx", import.meta.url), "utf8");
 const legacyTasksPage = await readFile(new URL("../src/app/agent/daily/session-dossiers/page.tsx", import.meta.url), "utf8");
+const businessTime = await readFile(new URL("../src/lib/franceBusinessTime.ts", import.meta.url), "utf8");
 const sessionNotificationAssignment = await readFile(
   new URL("../supabase/migrations/20260905084500_daily_session_notifications_use_org_assignment.sql", import.meta.url),
   "utf8",
@@ -41,8 +42,11 @@ test("l’ancienne page Tâches agent délègue au Pilotage Daily canonique", ()
   assert.doesNotMatch(legacyTasksPage, /daily_session_checklist_items/);
 });
 
-test("une tâche précise dépassant 72 h devient partageable sans réassigner l’organisme", () => {
-  assert.match(tasks, /const SLA_MS = 72 \* 60 \* 60 \* 1000/);
+test("une tâche précise dépassant 24 h ouvrées devient partageable sans réassigner l’organisme", () => {
+  assert.match(tasks, /AGENT_SHARED_AFTER_BUSINESS_HOURS = 24/);
+  assert.match(tasks, /isOverdueAfterBusinessHours/);
+  assert.match(businessTime, /weekday === "Sat" \|\| parts\.weekday === "Sun"/);
+  assert.match(businessTime, /frenchPublicHolidayKeys/);
   assert.match(tasks, /return task\.overdueShared/);
   assert.match(tasks, /Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter/);
   assert.doesNotMatch(tasks, /upsert\([^)]*daily_organisation_assignments/s);
