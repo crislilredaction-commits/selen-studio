@@ -40,6 +40,7 @@ type Formation = {
   updated_at: string | null;
 };
 type Response = { id: string; session_id: string; created_at: string | null };
+type RegistrationReview = { session_id: string; validated_at: string | null };
 type SessionChecklistItem = {
   id: string;
   session_id: string;
@@ -75,6 +76,15 @@ function visibleFor(task: DailyAgentTask, staff: DailyTaskStaff) {
   if (staff.id === task.assignedAgentProfileId) return true;
   return task.overdueShared;
 }
+function timestamp(value: string | null | undefined) {
+  const parsed = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function registrationReviewIsCurrent(review: RegistrationReview | undefined, latestResponse: Response | undefined) {
+  const reviewedAt = timestamp(review?.validated_at);
+  const responseAt = timestamp(latestResponse?.created_at);
+  return reviewedAt !== null && responseAt !== null && reviewedAt >= responseAt;
+}
 
 export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAgentTask[]> {
   const admin = createSupabaseAdminClient();
@@ -99,17 +109,20 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
 
   const formationIds = [...new Set(sessions.map((row) => row.formation_id).filter(Boolean))];
   const sessionIds = sessions.map((row) => row.id);
-  const [formationRes, responseRes, checklistRes] = await Promise.all([
+  const [formationRes, responseRes, reviewRes, checklistRes] = await Promise.all([
     formationIds.length ? admin.from("daily_formations").select("id,title,status,agent_review_signaled_at,updated_at").in("id", formationIds).neq("status", "archived") : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_registration_responses").select("id,session_id,created_at").in("session_id", sessionIds).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
+    sessionIds.length ? admin.from("daily_registration_reviews").select("session_id,validated_at").in("session_id", sessionIds) : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_session_checklist_items").select("id,session_id,organisation_id,item_key,phase,responsibility,label,description,status,signaled_at").in("session_id", sessionIds).in("responsibility", ["selen", "shared"]).in("status", ["todo", "in_progress", "to_review", "blocked"]).order("signaled_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
   ]);
-  if (formationRes.error || responseRes.error || checklistRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? checklistRes.error?.message ?? "Erreur Daily");
+  if (formationRes.error || responseRes.error || reviewRes.error || checklistRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? reviewRes.error?.message ?? checklistRes.error?.message ?? "Erreur Daily");
 
   const formations = (formationRes.data ?? []) as Formation[];
   const responses = (responseRes.data ?? []) as Response[];
+  const reviews = (reviewRes.data ?? []) as RegistrationReview[];
   const checklistItems = (checklistRes.data ?? []) as SessionChecklistItem[];
   const formationById = new Map(formations.map((row) => [row.id, row]));
+  const reviewBySession = new Map(reviews.map((row) => [row.session_id, row]));
   const responsesBySession = new Map<string, Response[]>();
   for (const response of responses) responsesBySession.set(response.session_id, [...(responsesBySession.get(response.session_id) ?? []), response]);
 
@@ -222,9 +235,13 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
     if (formation.status !== "validated") continue;
     const registrationResponses = responsesBySession.get(session.id) ?? [];
     if (registrationResponses.length === 0) continue;
-    const needsRegistration = session.adaptation_needed === true || ["to_review", "responses_received", "summary_to_review"].includes(session.registration_status ?? "");
+    const latestRegistrationResponse = registrationResponses[registrationResponses.length - 1];
+    const review = reviewBySession.get(session.id);
+    const reviewIsCurrent = registrationReviewIsCurrent(review, latestRegistrationResponse);
+    const statusNeedsRegistration = ["to_review", "responses_received", "summary_to_review"].includes(session.registration_status ?? "");
+    const needsRegistration = session.adaptation_needed === true || statusNeedsRegistration || !reviewIsCurrent;
     if (!needsRegistration) continue;
-    const createdAt = session.registration_responses_received_at ?? registrationResponses[0]?.created_at ?? session.updated_at;
+    const createdAt = latestRegistrationResponse?.created_at ?? session.registration_responses_received_at ?? session.updated_at;
     const overdueShared = isOverdue(createdAt);
     const adaptation = session.adaptation_needed === true;
     tasks.push({
@@ -232,8 +249,12 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       organisationId: organisation.id,
       organisation: orgName,
       title: formation.title || session.internal_reference || "Dossier d'inscription",
-      reason: adaptation ? "Adaptation à examiner" : "Dossier d'inscription à traiter",
-      detail: overdueShared ? "Cette tâche dépasse 24 h ouvrées. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter." : `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Vérifie les besoins, prérequis et positionnements.`,
+      reason: adaptation ? "Adaptation à examiner" : !reviewIsCurrent && session.registration_status === "summary_validated" ? "Dossier d'inscription mis à jour" : "Dossier d'inscription à traiter",
+      detail: overdueShared
+        ? "Cette tâche dépasse 24 h ouvrées. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter."
+        : !reviewIsCurrent && session.registration_status === "summary_validated"
+          ? `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Une réponse est postérieure à la dernière validation : relis le dossier avant de poursuivre.`
+          : `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Vérifie les besoins, prérequis et positionnements.`,
       href: `/agent/daily/sessions/${session.id}`,
       createdAt,
       assignedAgentProfileId: assignment.agent_profile_id,

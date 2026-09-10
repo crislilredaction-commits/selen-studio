@@ -39,3 +39,18 @@ test("une tâche terminée ne remonte plus et une tâche client n'est pas prése
   assert.doesNotMatch(tasks, /"validated"[^\n]*"not_applicable"[^\n]*daily_session_checklist_items/);
   assert.doesNotMatch(tasks, /\.in\("responsibility", \[[^\]]*"client"/);
 });
+
+test("une validation d'inscription n'est courante que si elle est postérieure à la dernière réponse", () => {
+  assert.match(tasks, /from\("daily_registration_reviews"\)/);
+  assert.match(tasks, /select\("session_id,validated_at"\)/);
+  assert.match(tasks, /registrationReviewIsCurrent\(review, latestRegistrationResponse\)/);
+  assert.match(tasks, /reviewedAt >= responseAt/);
+  assert.match(tasks, /statusNeedsRegistration \|\| !reviewIsCurrent/);
+});
+
+test("une réponse plus récente réouvre le pilotage et redémarre le délai depuis cette réponse", () => {
+  assert.match(tasks, /Dossier d'inscription mis à jour/);
+  assert.match(tasks, /Une réponse est postérieure à la dernière validation/);
+  assert.match(tasks, /const createdAt = latestRegistrationResponse\?\.created_at \?\?/);
+  assert.doesNotMatch(tasks, /registrationResponses\[0\]\?\.created_at/);
+});
