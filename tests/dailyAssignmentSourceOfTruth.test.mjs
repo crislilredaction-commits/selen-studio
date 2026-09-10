@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
+const pilotage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashboard.tsx", import.meta.url), "utf8");
 const registry = await readFile(new URL("../src/app/agent/dossiers/UnifiedDossiersPage.tsx", import.meta.url), "utf8");
 const legacyTasksPage = await readFile(new URL("../src/app/agent/daily/session-dossiers/page.tsx", import.meta.url), "utf8");
@@ -42,13 +43,14 @@ test("l’ancienne page Tâches agent délègue au Pilotage Daily canonique", ()
   assert.doesNotMatch(legacyTasksPage, /daily_session_checklist_items/);
 });
 
-test("une tâche précise dépassant 24 h ouvrées devient partageable sans réassigner l’organisme", () => {
+test("une tâche précise dépassant 24 h ouvrées devient partageable sans réassigner l’organisme ni surcharger Pilotage", () => {
   assert.match(tasks, /AGENT_SHARED_AFTER_BUSINESS_HOURS = 24/);
   assert.match(tasks, /isOverdueAfterBusinessHours/);
   assert.match(businessTime, /weekday === "Sat" \|\| parts\.weekday === "Sun"/);
   assert.match(businessTime, /frenchPublicHolidayKeys/);
   assert.match(tasks, /return task\.overdueShared/);
-  assert.match(tasks, /Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter/);
+  assert.doesNotMatch(tasks, /Cette tâche dépasse 24 h ouvrées/);
+  assert.doesNotMatch(pilotage, /24 h ouvrées · équipe/);
   assert.doesNotMatch(tasks, /upsert\([^)]*daily_organisation_assignments/s);
 });
 
