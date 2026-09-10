@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+const pagePath=new URL("../src/app/agent/daily/session-dossiers/[id]/full/page.tsx",import.meta.url);
+const page=await readFile(pagePath,"utf8");
+test("Studio relit les présences depuis les sources Daily canoniques",()=>{assert.match(page,/daily_attendance_slots/);assert.match(page,/daily_attendance_records/);assert.match(page,/enrolment_id/);assert.match(page,/signed_at/)});
+test("Studio affiche les présences par créneau et par apprenant",()=>{assert.match(page,/Présences par créneau/);assert.match(page,/Présent/);assert.match(page,/À émarger/)});
+test("Studio ne déclare pas absent avant la fin du créneau",()=>{assert.match(page,/attendancePhase/);assert.match(page,/phase==="closed"\?"Absent ou non signé":"À émarger"/)});
+test("les inscriptions inactives restent exclues",()=>{assert.match(page,/declined/);assert.match(page,/cancelled/);assert.match(page,/abandoned/)});
+test("Studio n'expose pas la preuve technique d'émargement",()=>{assert.doesNotMatch(page,/signature_storage_path/);assert.doesNotMatch(page,/ip_address/);assert.doesNotMatch(page,/user_agent/)});
