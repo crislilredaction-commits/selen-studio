@@ -54,7 +54,7 @@ async function dailySessionDossiers(staff: StaffInfo): Promise<DashboardItem[]> 
   return tasks.map((task) => ({
     id: task.id,
     title: task.title,
-    subtitle: `Daily · ${task.reason}${task.overdueShared ? " · 72 h dépassées, ouverte à l'équipe" : ""}`,
+    subtitle: `Daily · ${task.reason}${task.overdueShared ? " · 24 h ouvrées dépassées, ouverte à l'équipe" : ""}`,
     href: task.href,
     date: task.createdAt,
   }));
@@ -83,10 +83,10 @@ export default async function AgentHomeDashboard() {
 
   const clientFollowups = followups
     .filter((row) => row.reminderType !== "preaudit_incomplete_15_days")
-    .map((row) => ({ id: `followup-${row.id}`, title: row.title, subtitle: `${row.detail}${row.overdueShared ? " · 72 h dépassées, ouverte à l'équipe" : ""}`, href: row.href, date: row.dueAt }));
+    .map((row) => ({ id: `followup-${row.id}`, title: row.title, subtitle: `${row.detail}${row.overdueShared ? " · 24 h ouvrées dépassées, ouverte à l'équipe" : ""}`, href: row.href, date: row.dueAt }));
   const preauditTasks = followups
     .filter((row) => row.reminderType === "preaudit_incomplete_15_days")
-    .map((row) => ({ id: `preaudit-${row.id}`, title: row.title, subtitle: `Pré-audit · ${row.detail}${row.overdueShared ? " · 72 h dépassées, ouverte à l'équipe" : ""}`, href: row.href, date: row.dueAt }));
+    .map((row) => ({ id: `preaudit-${row.id}`, title: row.title, subtitle: `Pré-audit · ${row.detail}${row.overdueShared ? " · 24 h ouvrées dépassées, ouverte à l'équipe" : ""}`, href: row.href, date: row.dueAt }));
 
   const { data: ticketData } = await admin.from("support_tickets").select("id,client_email,client_name,subject,category,priority,status,last_message_at,updated_at,created_at").order("last_message_at", { ascending: false, nullsFirst: false }).limit(20);
   const tickets = ((ticketData ?? []) as TicketRow[]).filter((row) => !["closed", "resolved"].includes(String(row.status))).slice(0, 6).map((row) => ({ id: row.id, title: row.subject || "Ticket support", subtitle: [row.client_name || row.client_email || "Client", row.category || "support", row.priority || "normal"].join(" · "), href: `/agent/support/${row.id}`, date: row.last_message_at || row.updated_at || row.created_at }));
