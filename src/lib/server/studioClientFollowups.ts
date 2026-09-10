@@ -1,3 +1,4 @@
+import { isOverdueAfterBusinessHours } from "@/lib/franceBusinessTime";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 export type FollowupStaff = { id: string | null; role: "agent" | "admin" };
@@ -23,13 +24,11 @@ type ReminderRow = {
   metadata: Record<string, unknown> | null;
 };
 
-const SLA_MS = 72 * 60 * 60 * 1000;
+const AGENT_SHARED_AFTER_BUSINESS_HOURS = 24;
 const SIGNATURE_REMINDER = "daily_signature_pending_72h";
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
 function isOverdue(value: string | null) {
-  if (!value) return false;
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) && Date.now() - time >= SLA_MS;
+  return isOverdueAfterBusinessHours(value, AGENT_SHARED_AFTER_BUSINESS_HOURS);
 }
 function isDue(value: string | null) {
   if (!value) return true;
