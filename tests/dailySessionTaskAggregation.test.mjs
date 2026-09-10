@@ -6,6 +6,7 @@ const phases = await readFile(new URL("../src/lib/daily/sessionPhase.ts", import
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashboard.tsx", import.meta.url), "utf8");
 const pilotage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
+const pilotageVisibility = await readFile(new URL("../src/lib/server/dailyPilotageVisibility.ts", import.meta.url), "utf8");
 
 test("les phases de session sont cumulatives", () => {
   assert.match(phases, /phaseRank\[itemPhase\] <= phaseRank\[currentPhase\]/);
@@ -21,15 +22,17 @@ test("la source commune agrège les tâches de session ouvertes attribuées à S
   assert.match(tasks, /kind: "session"/);
 });
 
-test("dashboard et Pilotage Daily utilisent la même agrégation", () => {
-  assert.match(dashboard, /getDailyAgentTasks/);
-  assert.match(pilotage, /getDailyAgentTasks/);
+test("dashboard personnel et Pilotage Daily partagent l'agrégation mais pas le filtre de visibilité", () => {
+  assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}\)/);
+  assert.match(pilotage, /getDailyPilotageTasks\(\)/);
+  assert.match(pilotageVisibility, /getDailyAgentTasks\(\{ id: null, role: "admin" \}\)/);
 });
 
-test("un admin supervise immédiatement toutes les tâches, les agents conservent la règle des 72 h", () => {
+test("un admin supervise immédiatement toutes les tâches, les agents conservent la règle des 24 h ouvrées", () => {
   assert.match(tasks, /if \(staff\.role === "admin"\) return true/);
   assert.match(tasks, /if \(staff\.id === task\.assignedAgentProfileId\) return true/);
   assert.match(tasks, /return task\.overdueShared/);
+  assert.match(pilotageVisibility, /task\.assignedAgentProfileId === staff\.id \|\| task\.overdueShared/);
 });
 
 test("une tâche terminée ne remonte plus et une tâche client n'est pas présentée comme tâche agent", () => {
