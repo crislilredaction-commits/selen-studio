@@ -9,14 +9,23 @@ const page = await readFile(new URL("../src/app/agent/daily/page.tsx", import.me
 const migration = await readFile(new URL("../supabase/migrations/20260909125000_daily_signature_client_reminders.sql", import.meta.url), "utf8");
 
 // Cette garde est volontairement branchée au build pour valider le lot complet avant fusion.
-test("seule une relance signature future reste cachée de la file Studio", () => {
-  assert.match(source, /SIGNATURE_REMINDER = "daily_signature_pending_72h"/);
-  assert.match(source, /row\.reminder_type === SIGNATURE_REMINDER && !isDue\(row\.due_at\)/);
+test("la relance signature J+3 automatique reste cachée de Studio", () => {
+  assert.match(source, /SIGNATURE_J3_STAGE = "automatic_email_j3"/);
+  assert.match(source, /if \(stage === SIGNATURE_J3_STAGE\) return \[\]/);
+});
+
+test("l'alerte d'appel J+6 n'apparaît qu'à son échéance", () => {
+  assert.match(source, /SIGNATURE_J6_STAGE = "phone_call_j6"/);
+  assert.match(source, /if \(!isDue\(row\.due_at\)\) return \[\]/);
+});
+
+test("les 24 h ouvrées de l'alerte J+6 partent de J+6 et non de l'envoi initial", () => {
+  assert.match(source, /followupStage\(row\) === SIGNATURE_J6_STAGE\) return row\.due_at/);
+  assert.match(source, /AGENT_SHARED_AFTER_BUSINESS_HOURS = 24/);
+  assert.match(source, /isOverdueAfterBusinessHours/);
 });
 
 test("la règle équipe passe à 24 h ouvrées sans réassignation", () => {
-  assert.match(source, /AGENT_SHARED_AFTER_BUSINESS_HOURS = 24/);
-  assert.match(source, /isOverdueAfterBusinessHours/);
   assert.match(tasks, /AGENT_SHARED_AFTER_BUSINESS_HOURS = 24/);
   assert.match(tasks, /isOverdueAfterBusinessHours/);
   assert.match(page, /24 h ouvrées/);
