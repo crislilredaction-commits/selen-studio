@@ -31,8 +31,8 @@ test("les tâches de session ouvrent directement leur écran métier", () => {
   assert.match(tasks, /case "quality_analysis_review"[\s\S]*`\/agent\/daily\/session-dossiers\/\$\{encodedSessionId\}\/followup`/);
   assert.match(tasks, /case "selen_closure_review"[\s\S]*`\/agent\/daily\/session-dossiers\/\$\{encodedSessionId\}\/closure`/);
   assert.match(tasks, /href: getDailySessionTaskHref\(item\.item_key, session\.id\)/);
-  assert.match(tasks, /kind: "program"[\s\S]*href: `\/agent\/daily\/session-dossiers\/\$\{session\.id\}`/);
-  assert.match(tasks, /kind: adaptation \? "adaptation" : "registration"[\s\S]*href: `\/agent\/daily\/sessions\/\$\{session\.id\}`/);
+  assert.match(tasks, /href: `\/agent\/daily\/session-dossiers\/\$\{session\.id\}`,[\s\S]*kind: "program"/);
+  assert.match(tasks, /href: `\/agent\/daily\/sessions\/\$\{session\.id\}`,[\s\S]*kind: adaptation \? "adaptation" : "registration"/);
   assert.match(pilotage, /<Link href=\{item\.href\} style=\{s\.titleLink\}><SelenCardTitle>\{item\.title\}<\/SelenCardTitle><\/Link>/);
 });
 
