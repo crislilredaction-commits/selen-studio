@@ -219,7 +219,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
         title: formation.title || session.internal_reference || "Programme de formation",
         reason: "Programme à valider",
         detail: "Vérifie le programme puis valide-le ou demande une correction.",
-        href: `/agent/daily/session-dossiers/${session.id}/full`,
+        href: `/agent/daily/session-dossiers/${session.id}`,
         createdAt,
         assignedAgentProfileId: assignment.agent_profile_id,
         overdueShared,
@@ -249,7 +249,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       detail: !reviewIsCurrent && session.registration_status === "summary_validated"
         ? `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Une réponse est postérieure à la dernière validation : relis le dossier avant de poursuivre.`
         : `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Vérifie les besoins, prérequis et positionnements.`,
-      href: `/agent/daily/session-dossiers/${session.id}/full`,
+      href: `/agent/daily/sessions/${session.id}`,
       createdAt,
       assignedAgentProfileId: assignment.agent_profile_id,
       overdueShared,
