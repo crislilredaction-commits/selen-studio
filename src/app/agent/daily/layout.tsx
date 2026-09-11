@@ -1,8 +1,16 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import DailyAutoRefresh from "@/components/agent/DailyAutoRefresh";
+import { createClient } from "@/lib/supabase/server";
+import { isOwnerLil } from "@/lib/ownerLil";
 
-export default function DailyStudioLayout({ children }: { children: ReactNode }) {
+export default async function DailyStudioLayout({ children }: { children: ReactNode }) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const owner = isOwnerLil(user?.email);
+
   return (
     <>
       <DailyAutoRefresh intervalMs={45_000} />
@@ -36,6 +44,11 @@ export default function DailyStudioLayout({ children }: { children: ReactNode })
         <Link href="/agent/daily/qualite" style={linkStyle}>
           Veille & Qualité
         </Link>
+        {owner ? (
+          <Link href="/agent/daily/generateur-formation" style={linkStyle}>
+            Générateur formation
+          </Link>
+        ) : null}
       </nav>
       <div className="daily-content">{children}</div>
     </>
