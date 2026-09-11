@@ -54,3 +54,8 @@ test("une réponse plus récente réouvre le pilotage et redémarre le délai de
   assert.match(tasks, /const createdAt = latestRegistrationResponse\?\.created_at \?\?/);
   assert.doesNotMatch(tasks, /registrationResponses\[0\]\?\.created_at/);
 });
+
+test("les tâches programme et inscription ouvrent directement le workflow métier concerné", () => {
+  assert.match(tasks, /href: `\/agent\/daily\/session-dossiers\/\$\{session\.id\}`,[\s\S]*?kind: "program"/);
+  assert.match(tasks, /href: `\/agent\/daily\/sessions\/\$\{session\.id\}`,[\s\S]*?kind: adaptation \? "adaptation" : "registration"/);
+});
