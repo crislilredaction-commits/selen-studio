@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const layout = await readFile(new URL("../src/app/agent/daily/layout.tsx", import.meta.url), "utf8");
+const generatorPage = await readFile(new URL("../src/app/agent/daily/generateur-formation/page.tsx", import.meta.url), "utf8");
 const dailyPage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
 const planningPage = await readFile(new URL("../src/app/agent/daily/planning/page.tsx", import.meta.url), "utf8");
 const indicatorsPage = await readFile(new URL("../src/app/agent/daily/indicateurs/page.tsx", import.meta.url), "utf8");
 const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
 const globalCss = await readFile(new URL("../src/app/globals.css", import.meta.url), "utf8");
 
-test("la navigation Studio Daily reste concentrée sur les cinq entrées métier V1", () => {
+test("la navigation Studio Daily reste concentrée sur les entrées métier V1", () => {
   const expectedRoutes = [
     "/agent/daily",
     "/agent/daily/planning",
@@ -30,6 +31,13 @@ test("la navigation Studio Daily reste concentrée sur les cinq entrées métier
   ]) {
     assert.doesNotMatch(layout, new RegExp(`href=\\"${hiddenRoute.replaceAll("/", "\\/")}\\"`));
   }
+});
+
+test("E1a place le générateur de formation dans les onglets Daily sans dupliquer sa logique", () => {
+  assert.match(layout, /href="\/agent\/daily\/generateur-formation"/);
+  assert.match(layout, /Générateur formation/);
+  assert.match(layout, /isOwnerLil\(user\?\.email\)/);
+  assert.match(generatorPage, /export \{ default \} from "\.\.\/\.\.\/generateur-dossiers-formation\/page"/);
 });
 
 test("la navigation et le planning Daily ont un comportement mobile explicite", () => {
