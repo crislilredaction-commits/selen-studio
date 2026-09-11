@@ -24,6 +24,11 @@ const rating = (value: number | null) => value == null ? "–" : `${value}/5`;
 function learnerOf(enrolment: Enrolment) { return Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners; }
 function learnerName(enrolment: Enrolment) { const learner = learnerOf(enrolment); return [learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant"; }
 
+function qualityHref(sessionId: string, organisationId: string) {
+  const params = new URLSearchParams({ source: "satisfaction", session_id: sessionId, organisation_id: organisationId });
+  return `/agent/daily/qualite?${params.toString()}`;
+}
+
 export default async function StakeholderSatisfactionPage({ params }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={{ padding: 28 }}>Accès refusé.</main>;
@@ -59,11 +64,21 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
   const clientCount = stakeholders.filter((item) => item.stakeholder_type === "client").length;
   const learnerDone = learnerFeedback.length;
   const learnerAssessmentDone = enrolments.filter((row) => assessmentByEnrolment.has(row.id) || responseByEnrolment.has(row.id)).length;
+  const qualityLink = qualityHref(id, session.organisation_id);
 
   return <main style={{ maxWidth: 1080, margin: "0 auto", padding: 28 }}>
     <Link href={`/agent/daily/session-dossiers/${id}`} style={{ color: "var(--selen-text2)" }}>← Retour au dossier de session</Link>
     <h1 style={{ marginBottom: 4 }}>Évaluation et satisfaction de fin de formation</h1>
     <p style={{ marginTop: 0, color: "var(--selen-text2)" }}>{formation?.title ?? "Formation"} · {organisation?.name ?? "Organisme"} · {session.internal_reference || "Sans référence"}</p>
+
+    <SelenCard>
+      <SelenCardTitle>Passer du constat au suivi qualité</SelenCardTitle>
+      <p style={{ marginTop: 0, color: "var(--selen-text2)", fontSize: 13 }}>Les réponses ci-dessous restent les sources canoniques. Studio ne crée aucune réclamation ni action corrective automatiquement : l’agent qualifie d’abord le constat, puis décide s’il relève d’une amélioration, d’une action corrective ou du suivi des réclamations.</p>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Link href={qualityLink} style={{ display: "inline-flex", minHeight: 36, alignItems: "center", padding: "0 11px", borderRadius: 9, border: "1px solid var(--selen-gold2)", color: "var(--selen-text)", textDecoration: "none", fontWeight: 700, fontSize: 12 }}>Analyser dans Qualité & veilles</Link>
+        <Link href="/agent/daily/reclamations" style={{ display: "inline-flex", minHeight: 36, alignItems: "center", padding: "0 11px", borderRadius: 9, border: "1px solid var(--selen-border)", color: "var(--selen-text)", textDecoration: "none", fontWeight: 700, fontSize: 12 }}>Voir Réclamations & suggestions</Link>
+      </div>
+    </SelenCard>
 
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, margin: "18px 0" }}>
       <SelenCard><SelenCardTitle>Apprenants</SelenCardTitle><strong style={{ fontSize: 26 }}>{enrolments.length}</strong></SelenCard>
