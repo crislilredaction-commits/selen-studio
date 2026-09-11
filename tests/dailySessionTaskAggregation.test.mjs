@@ -22,6 +22,20 @@ test("la source commune agrège les tâches de session ouvertes attribuées à S
   assert.match(tasks, /kind: "session"/);
 });
 
+test("les tâches de session ouvrent directement leur écran métier", () => {
+  assert.match(tasks, /case "pretraining_documents"[\s\S]*return "\/agent\/daily\/pretraining-documents"/);
+  assert.match(tasks, /case "trainer_assignment"[\s\S]*`\/agent\/daily\/sessions\/\$\{encodedSessionId\}`/);
+  assert.match(tasks, /case "training_ready"[\s\S]*`\/agent\/daily\/session-dossiers\/\$\{encodedSessionId\}`/);
+  assert.match(tasks, /case "attendance_followup"[\s\S]*`\/agent\/daily\/sessions\/\$\{encodedSessionId\}`/);
+  assert.match(tasks, /case "posttraining_documents"[\s\S]*return "\/agent\/daily\/posttraining-documents"/);
+  assert.match(tasks, /case "quality_analysis_review"[\s\S]*`\/agent\/daily\/session-dossiers\/\$\{encodedSessionId\}\/followup`/);
+  assert.match(tasks, /case "selen_closure_review"[\s\S]*`\/agent\/daily\/session-dossiers\/\$\{encodedSessionId\}\/closure`/);
+  assert.match(tasks, /href: getDailySessionTaskHref\(item\.item_key, session\.id\)/);
+  assert.match(tasks, /href: `\/agent\/daily\/session-dossiers\/\$\{session\.id\}`,[\s\S]*kind: "program"/);
+  assert.match(tasks, /href: `\/agent\/daily\/sessions\/\$\{session\.id\}`,[\s\S]*kind: adaptation \? "adaptation" : "registration"/);
+  assert.match(pilotage, /<Link href=\{item\.href\} style=\{s\.titleLink\}><SelenCardTitle>\{item\.title\}<\/SelenCardTitle><\/Link>/);
+});
+
 test("dashboard personnel et Pilotage Daily partagent l'agrégation mais pas le filtre de visibilité", () => {
   assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}\)/);
   assert.match(pilotage, /getDailyPilotageTasks\(\)/);

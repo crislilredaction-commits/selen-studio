@@ -86,6 +86,28 @@ function registrationReviewIsCurrent(review: RegistrationReview | undefined, lat
   return reviewedAt !== null && responseAt !== null && reviewedAt >= responseAt;
 }
 
+export function getDailySessionTaskHref(itemKey: string, sessionId: string) {
+  const encodedSessionId = encodeURIComponent(sessionId);
+  switch (itemKey) {
+    case "pretraining_documents":
+      return "/agent/daily/pretraining-documents";
+    case "trainer_assignment":
+      return `/agent/daily/sessions/${encodedSessionId}`;
+    case "training_ready":
+      return `/agent/daily/session-dossiers/${encodedSessionId}`;
+    case "attendance_followup":
+      return `/agent/daily/sessions/${encodedSessionId}`;
+    case "posttraining_documents":
+      return "/agent/daily/posttraining-documents";
+    case "quality_analysis_review":
+      return `/agent/daily/session-dossiers/${encodedSessionId}/followup`;
+    case "selen_closure_review":
+      return `/agent/daily/session-dossiers/${encodedSessionId}/closure`;
+    default:
+      return `/agent/daily/session-dossiers/${encodedSessionId}/full`;
+  }
+}
+
 export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAgentTask[]> {
   const admin = createSupabaseAdminClient();
   const organisationIds = await getActiveDailyOrganisationIds();
@@ -191,7 +213,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       title: formation?.title || session.internal_reference || "Dossier de session",
       reason: item.status === "blocked" ? "Tâche de session bloquée" : item.status === "to_review" ? "Tâche de session à vérifier" : "Tâche de session à traiter",
       detail: `${item.label}${item.description ? ` · ${item.description}` : ""}`,
-      href: `/agent/daily/session-dossiers/${session.id}/full`,
+      href: getDailySessionTaskHref(item.item_key, session.id),
       createdAt,
       assignedAgentProfileId: assignment.agent_profile_id,
       overdueShared,
@@ -219,7 +241,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
         title: formation.title || session.internal_reference || "Programme de formation",
         reason: "Programme à valider",
         detail: "Vérifie le programme puis valide-le ou demande une correction.",
-        href: `/agent/daily/session-dossiers/${session.id}/full`,
+        href: `/agent/daily/session-dossiers/${session.id}`,
         createdAt,
         assignedAgentProfileId: assignment.agent_profile_id,
         overdueShared,
@@ -249,7 +271,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       detail: !reviewIsCurrent && session.registration_status === "summary_validated"
         ? `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Une réponse est postérieure à la dernière validation : relis le dossier avant de poursuivre.`
         : `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Vérifie les besoins, prérequis et positionnements.`,
-      href: `/agent/daily/session-dossiers/${session.id}/full`,
+      href: `/agent/daily/sessions/${session.id}`,
       createdAt,
       assignedAgentProfileId: assignment.agent_profile_id,
       overdueShared,
