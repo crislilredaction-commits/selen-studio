@@ -60,7 +60,8 @@ export function isStudioReminderVisible(row: StudioReminderVisibilityRow, staff:
   if (staff.role === "admin") return true;
   const agentId = assignedAgent(row.metadata);
   if (!agentId) return true;
-  return staff.id === agentId || isOverdue(queuedAt(row));
+  const overdueShared = isOverdue(queuedAt(row));
+  return staff.id === agentId || overdueShared;
 }
 
 export async function resolveStudioReminderStaff(email: string): Promise<FollowupStaff> {
