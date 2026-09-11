@@ -9,7 +9,7 @@ const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashb
 test("Pilotage Daily demande la collection transversale", () => {
   assert.match(page, /getDailyPilotageTasks\(\)/);
   assert.match(helper, /getDailyAgentTasks\(\{ id: null, role: "admin" \}\)/);
-  assert.match(page, /Vue transversale de toutes les tâches humaines Daily/);
+  assert.match(page, /Les actions qui nécessitent une intervention humaine sont regroupées ici, tous organismes confondus/);
 });
 
 test("le tableau de bord personnel conserve le filtre du vrai agent", () => {
@@ -20,7 +20,8 @@ test("le tableau de bord personnel conserve le filtre du vrai agent", () => {
 test("voir une tâche transversale ne donne pas automatiquement le droit de la traiter", () => {
   assert.match(helper, /task\.assignedAgentProfileId === staff\.id \|\| task\.overdueShared/);
   assert.match(page, /canTreatDailyPilotageTask\(item,staff\)/);
-  assert.match(page, /traitement réservé à l’agent assigné jusqu’au partage équipe/);
+  assert.match(page, /Traitement réservé à l’agent assigné/);
+  assert.doesNotMatch(page, /24 h ouvrées · équipe/);
 });
 
 test("la visibilité transversale ne modifie aucune assignation", () => {

@@ -25,10 +25,10 @@ test("les 24 h ouvrées de l'alerte J+6 partent de J+6 et non de l'envoi initial
   assert.match(source, /isOverdueAfterBusinessHours/);
 });
 
-test("la règle équipe passe à 24 h ouvrées sans réassignation", () => {
+test("la règle équipe passe à 24 h ouvrées sans réassignation et reste hors du libellé opérationnel", () => {
   assert.match(tasks, /AGENT_SHARED_AFTER_BUSINESS_HOURS = 24/);
   assert.match(tasks, /isOverdueAfterBusinessHours/);
-  assert.match(page, /24 h ouvrées/);
+  assert.doesNotMatch(page, /24 h ouvrées · équipe/);
   assert.doesNotMatch(page, />72 h · équipe</);
   assert.match(source, /assigned_agent_profile_id/);
   assert.match(source, /staff\.id === agentId \|\| overdueShared/);

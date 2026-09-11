@@ -157,11 +157,9 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       organisation: organisation.legal_name || organisation.name || "Organisme Daily",
       title: action.title || (satisfaction ? "Relance téléphonique satisfaction" : "Pré-audit Qualiopi à préparer"),
       reason: satisfaction ? "Relance satisfaction à effectuer" : "Pré-audit Qualiopi",
-      detail: overdueShared
-        ? "Cette tâche dépasse 24 h ouvrées. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter."
-        : action.observation || action.proposed_solution || (satisfaction
-          ? "Contacte la partie prenante par téléphone après les relances email J+2 et J+4 restées sans réponse."
-          : "Prépare le pré-audit avant l'audit de surveillance Qualiopi."),
+      detail: action.observation || action.proposed_solution || (satisfaction
+        ? "Contacte la partie prenante par téléphone après les relances email J+2 et J+4 restées sans réponse."
+        : "Prépare le pré-audit avant l'audit de surveillance Qualiopi."),
       href: satisfaction && action.session_id
         ? `/agent/daily/session-dossiers/${action.session_id}/satisfaction`
         : `/agent/daily/preaudit/${action.id}`,
@@ -192,10 +190,8 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       organisation: organisation.legal_name || organisation.name || "Organisme Daily",
       title: formation?.title || session.internal_reference || "Dossier de session",
       reason: item.status === "blocked" ? "Tâche de session bloquée" : item.status === "to_review" ? "Tâche de session à vérifier" : "Tâche de session à traiter",
-      detail: overdueShared
-        ? `Cette tâche dépasse 24 h ouvrées : ${item.label}. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter.`
-        : `${item.label}${item.description ? ` · ${item.description}` : ""}`,
-      href: `/agent/daily/session-dossiers/${session.id}`,
+      detail: `${item.label}${item.description ? ` · ${item.description}` : ""}`,
+      href: `/agent/daily/session-dossiers/${session.id}/full`,
       createdAt,
       assignedAgentProfileId: assignment.agent_profile_id,
       overdueShared,
@@ -222,8 +218,8 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
         organisation: orgName,
         title: formation.title || session.internal_reference || "Programme de formation",
         reason: "Programme à valider",
-        detail: overdueShared ? "Cette tâche dépasse 24 h ouvrées. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter." : "Vérifie le programme puis valide-le ou demande une correction.",
-        href: `/agent/daily/session-dossiers/${session.id}`,
+        detail: "Vérifie le programme puis valide-le ou demande une correction.",
+        href: `/agent/daily/session-dossiers/${session.id}/full`,
         createdAt,
         assignedAgentProfileId: assignment.agent_profile_id,
         overdueShared,
@@ -250,12 +246,10 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
       organisation: orgName,
       title: formation.title || session.internal_reference || "Dossier d'inscription",
       reason: adaptation ? "Adaptation à examiner" : !reviewIsCurrent && session.registration_status === "summary_validated" ? "Dossier d'inscription mis à jour" : "Dossier d'inscription à traiter",
-      detail: overdueShared
-        ? "Cette tâche dépasse 24 h ouvrées. Le dossier reste assigné à son agent, mais toute l'équipe peut maintenant la traiter."
-        : !reviewIsCurrent && session.registration_status === "summary_validated"
-          ? `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Une réponse est postérieure à la dernière validation : relis le dossier avant de poursuivre.`
-          : `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Vérifie les besoins, prérequis et positionnements.`,
-      href: `/agent/daily/sessions/${session.id}`,
+      detail: !reviewIsCurrent && session.registration_status === "summary_validated"
+        ? `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Une réponse est postérieure à la dernière validation : relis le dossier avant de poursuivre.`
+        : `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Vérifie les besoins, prérequis et positionnements.`,
+      href: `/agent/daily/session-dossiers/${session.id}/full`,
       createdAt,
       assignedAgentProfileId: assignment.agent_profile_id,
       overdueShared,
