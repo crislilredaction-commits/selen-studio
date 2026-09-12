@@ -8,6 +8,7 @@ const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashb
 const pilotage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
 const pilotageVisibility = await readFile(new URL("../src/lib/server/dailyPilotageVisibility.ts", import.meta.url), "utf8");
 const notificationCadenceMigration = await readFile(new URL("../supabase/migrations/20260912211500_daily_notification_escalation_24h.sql", import.meta.url), "utf8");
+const notificationVisibilityMigration = await readFile(new URL("../supabase/migrations/20260912222000_daily_session_notification_phase_visibility.sql", import.meta.url), "utf8");
 
 test("les phases de session sont cumulatives", () => {
   assert.match(phases, /phaseRank\[itemPhase\] <= phaseRank\[currentPhase\]/);
@@ -58,6 +59,17 @@ test("les notifications checklist escaladent elles aussi après 24 h et jamais 7
   assert.match(notificationCadenceMigration, /daily_sync_session_checklist_notification/);
   assert.match(notificationCadenceMigration, /perform public\.daily_sync_checklist_notification\(checklist_id\)/);
   assert.match(notificationCadenceMigration, /perform public\.daily_sync_session_checklist_notification\(checklist_id\)/);
+});
+
+test("les notifications de session respectent les responsabilités et les phases cumulatives", () => {
+  assert.match(notificationVisibilityMigration, /item\.responsibility in \('selen', 'shared'\)/);
+  assert.match(notificationVisibilityMigration, /when 'before' then item\.phase = 'before'/);
+  assert.match(notificationVisibilityMigration, /when 'during' then item\.phase in \('before', 'during'\)/);
+  assert.match(notificationVisibilityMigration, /when 'after' then item\.phase in \('before', 'during', 'after'\)/);
+  assert.match(notificationVisibilityMigration, /now\(\) at time zone 'Europe\/Paris'/);
+  assert.match(notificationVisibilityMigration, /join public\.notifications n/);
+  assert.match(notificationVisibilityMigration, /n\.dismissed_at is null/);
+  assert.doesNotMatch(notificationVisibilityMigration, /select id from public\.daily_session_checklist_items where status/);
 });
 
 test("une tâche terminée ne remonte plus et une tâche client n'est pas présentée comme tâche agent", () => {
