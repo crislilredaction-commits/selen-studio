@@ -7,6 +7,7 @@ const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", imp
 const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashboard.tsx", import.meta.url), "utf8");
 const pilotage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
 const pilotageVisibility = await readFile(new URL("../src/lib/server/dailyPilotageVisibility.ts", import.meta.url), "utf8");
+const notificationCadenceMigration = await readFile(new URL("../supabase/migrations/20260912211500_daily_notification_escalation_24h.sql", import.meta.url), "utf8");
 
 test("les phases de session sont cumulatives", () => {
   assert.match(phases, /phaseRank\[itemPhase\] <= phaseRank\[currentPhase\]/);
@@ -47,6 +48,16 @@ test("un admin supervise immédiatement toutes les tâches, les agents conserven
   assert.match(tasks, /if \(staff\.id === task\.assignedAgentProfileId\) return true/);
   assert.match(tasks, /return task\.overdueShared/);
   assert.match(pilotageVisibility, /task\.assignedAgentProfileId === staff\.id \|\| task\.overdueShared/);
+});
+
+test("les notifications checklist escaladent elles aussi après 24 h et jamais 72 h", () => {
+  const matches24h = notificationCadenceMigration.match(/interval '24 hours'/g) ?? [];
+  assert.equal(matches24h.length, 2);
+  assert.doesNotMatch(notificationCadenceMigration, /interval '72 hours'/);
+  assert.match(notificationCadenceMigration, /daily_sync_checklist_notification/);
+  assert.match(notificationCadenceMigration, /daily_sync_session_checklist_notification/);
+  assert.match(notificationCadenceMigration, /perform public\.daily_sync_checklist_notification\(checklist_id\)/);
+  assert.match(notificationCadenceMigration, /perform public\.daily_sync_session_checklist_notification\(checklist_id\)/);
 });
 
 test("une tâche terminée ne remonte plus et une tâche client n'est pas présentée comme tâche agent", () => {
