@@ -1,0 +1,67 @@
+.scope {
+  display: contents;
+}
+
+@media (max-width: 720px) {
+  .scope > main {
+    padding: 20px 16px 48px !important;
+    min-width: 0;
+  }
+
+  .scope > main > div:first-child {
+    flex-wrap: wrap;
+    gap: 8px 12px !important;
+  }
+
+  .scope > main > header {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .scope > main > header > div {
+    min-width: 0;
+  }
+
+  .scope > main > header > span {
+    align-self: flex-start;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .scope > main > section:first-of-type {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 14px !important;
+    padding: 16px !important;
+  }
+
+  .scope > main > section:first-of-type > a {
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: center;
+    text-align: center;
+    white-space: normal !important;
+  }
+
+  .scope > main details > div,
+  .scope > main details > div > div,
+  .scope > main details > div > div > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .scope > main > div:last-child {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .scope > main > div:last-child > a {
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+  }
+}
