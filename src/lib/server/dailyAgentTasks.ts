@@ -206,13 +206,14 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
 
     const createdAt = item.signaled_at ?? session.updated_at;
     const overdueShared = isOverdue(createdAt);
+    const sessionLabel = formation?.title || session.internal_reference || "Dossier de session";
     tasks.push({
       id: `daily-session-checklist-${item.id}`,
       organisationId: organisation.id,
       organisation: organisation.legal_name || organisation.name || "Organisme Daily",
-      title: formation?.title || session.internal_reference || "Dossier de session",
+      title: item.label,
       reason: item.status === "blocked" ? "Tâche de session bloquée" : item.status === "to_review" ? "Tâche de session à vérifier" : "Tâche de session à traiter",
-      detail: `${item.label}${item.description ? ` · ${item.description}` : ""}`,
+      detail: `${sessionLabel}${item.description ? ` · ${item.description}` : ""}`,
       href: getDailySessionTaskHref(item.item_key, session.id),
       createdAt,
       assignedAgentProfileId: assignment.agent_profile_id,
