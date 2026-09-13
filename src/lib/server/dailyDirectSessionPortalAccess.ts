@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { renderSelenEmailFromText } from "@/lib/server/selenEmailLayout";
 import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
+import { buildDailyPortalAuthEntryUrl } from "@/lib/server/dailyPortalAuthEntry";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -108,17 +109,12 @@ function isActiveAccess(access: ExistingPortalAccess | undefined, now = Date.now
   return Number.isFinite(expiresAt) && expiresAt > now;
 }
 
-function publicPortalUrl(type: "learner" | "enterprise", token: string) {
-  const role = type === "learner" ? "apprenant" : "entreprise";
-  const base = String(process.env.NEXT_PUBLIC_VITRINE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://selen-editions.fr")
-    .trim()
-    .replace(/\/$/, "");
-  return `${base}/daily/portail/${role}/${token}`;
-}
-
-function portalEmail(definition: DirectSessionPortalDefinition, token: string, formationTitle?: string | null) {
+function portalEmail(
+  definition: DirectSessionPortalDefinition,
+  authUrl: string,
+  formationTitle?: string | null,
+) {
   const isEnterprise = definition.portal_type === "enterprise";
-  const url = publicPortalUrl(definition.portal_type, token);
   const title = isEnterprise ? "Votre espace entreprise Selen Daily" : "Votre espace apprenant Selen Daily";
   const bodyText = [
     `Bonjour${definition.entity_name ? ` ${definition.entity_name}` : ""},`,
@@ -128,8 +124,8 @@ function portalEmail(definition: DirectSessionPortalDefinition, token: string, f
       : "Votre accès apprenant Selen Daily est disponible. Vous pourrez y retrouver les éléments utiles à votre parcours et les actions qui vous concernent.",
     formationTitle ? `Formation : ${formationTitle}` : "",
     "",
-    "Accéder à votre espace :",
-    url,
+    "Pour activer votre accès ou vous connecter :",
+    authUrl,
     "",
     "Merci,",
     "L'équipe Selen",
@@ -141,7 +137,7 @@ function portalEmail(definition: DirectSessionPortalDefinition, token: string, f
       title,
       bodyText,
       ctaLabel: isEnterprise ? "Accéder à l'espace entreprise" : "Accéder à mon espace",
-      ctaUrl: url,
+      ctaUrl: authUrl,
     }),
   };
 }
@@ -228,12 +224,32 @@ export async function provisionDirectSessionPortalAccesses(input: ProvisionInput
       continue;
     }
 
-    if (metadata.email_sent === true) {
+    if (metadata.email_sent === true && metadata.auth_protected === true) {
       skipped += 1;
       continue;
     }
 
-    const message = portalEmail(definition, access.token, input.formationTitle);
+    let authUrl: string;
+    try {
+      authUrl = await buildDailyPortalAuthEntryUrl({
+        email,
+        portalType: definition.portal_type,
+        token: access.token,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Préparation Auth impossible.";
+      await persistMetadata(input.supabase, access, {
+        ...metadata,
+        email_sent: false,
+        email_paused: false,
+        email_skipped: false,
+        email_error: message,
+      });
+      failures.push(`${definition.entity_name || email}: ${message}`);
+      continue;
+    }
+
+    const message = portalEmail(definition, authUrl, input.formationTitle);
     const result = await sendClientEmailWithSilence({
       supabase: input.supabase,
       email,
@@ -251,6 +267,7 @@ export async function provisionDirectSessionPortalAccesses(input: ProvisionInput
         email_paused: false,
         email_skipped: false,
         email_error: null,
+        auth_protected: true,
       });
       sent += 1;
       continue;
