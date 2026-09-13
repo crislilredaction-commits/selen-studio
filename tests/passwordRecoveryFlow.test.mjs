@@ -18,6 +18,8 @@ test("Studio demande le reset via Supabase sans révéler l'existence du compte"
 });
 
 test("Studio change le mot de passe seulement depuis une session de récupération", () => {
+  assert.match(update, /exchangeCodeForSession\(code\)/);
+  assert.match(update, /setSession\(\{/);
   assert.match(update, /getSession\(\)/);
   assert.match(update, /PASSWORD_RECOVERY/);
   assert.match(update, /updateUser\(\{ password \}\)/);
