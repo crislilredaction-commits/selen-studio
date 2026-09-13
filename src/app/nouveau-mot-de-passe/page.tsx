@@ -15,7 +15,38 @@ export default function UpdatePasswordPage() {
 
   useEffect(() => {
     let active = true;
-    void supabase.auth.getSession().then(({ data }) => {
+
+    async function prepareRecoverySession() {
+      const currentUrl = new URL(window.location.href);
+      const code = currentUrl.searchParams.get("code");
+      const hashParams = new URLSearchParams(currentUrl.hash.slice(1));
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!active) return;
+        if (error) {
+          setMessage("Ce lien est invalide ou a expiré. Demande un nouveau lien.");
+          return;
+        }
+      } else if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (!active) return;
+        if (error) {
+          setMessage("Ce lien est invalide ou a expiré. Demande un nouveau lien.");
+          return;
+        }
+      }
+
+      if (code || (accessToken && refreshToken)) {
+        window.history.replaceState({}, document.title, currentUrl.pathname);
+      }
+
+      const { data } = await supabase.auth.getSession();
       if (!active) return;
       if (data.session) {
         setSessionReady(true);
@@ -23,7 +54,10 @@ export default function UpdatePasswordPage() {
       } else {
         setMessage("Ce lien est invalide ou a expiré. Demande un nouveau lien.");
       }
-    });
+    }
+
+    void prepareRecoverySession();
+
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       if ((event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") && session) {
