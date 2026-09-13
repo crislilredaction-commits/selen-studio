@@ -5,7 +5,10 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function UpdatePasswordPage() {
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = useMemo(
+    () => createClient({ detectSessionInUrl: false, isSingleton: false }),
+    [],
+  );
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
