@@ -224,7 +224,7 @@ export async function provisionDirectSessionPortalAccesses(input: ProvisionInput
       continue;
     }
 
-    if (metadata.email_sent === true) {
+    if (metadata.email_sent === true && metadata.auth_protected === true) {
       skipped += 1;
       continue;
     }
