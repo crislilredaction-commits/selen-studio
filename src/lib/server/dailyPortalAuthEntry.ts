@@ -59,7 +59,8 @@ export async function buildDailyPortalAuthEntryUrl(input: BuildDailyPortalAuthEn
   const nextPath = portalPath(input.portalType, input.token);
   const { admin, user } = await findAuthUserByEmail(email);
 
-  if (user?.last_sign_in_at) {
+  const passwordConfigured = user?.user_metadata?.selen_password_configured === true;
+  if (passwordConfigured) {
     return `${base}/client/login?next=${encodeURIComponent(nextPath)}`;
   }
 
