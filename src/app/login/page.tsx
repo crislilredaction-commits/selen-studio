@@ -1,75 +1,46 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-type AuthErrorLike = {
-  code?: string;
-  message?: string;
-  name?: string;
-  status?: number;
-};
-
-function asAuthError(error: unknown): AuthErrorLike {
-  return error && typeof error === "object" ? (error as AuthErrorLike) : {};
-}
-
-function isInvalidCredentials(error: unknown) {
-  const authError = asAuthError(error);
-  return authError.code === "invalid_credentials" || /invalid login credentials/i.test(authError.message ?? "");
-}
-
+type AuthErrorLike = { code?: string; message?: string; name?: string; status?: number };
+function asAuthError(error: unknown): AuthErrorLike { return error && typeof error === "object" ? (error as AuthErrorLike) : {}; }
+function isInvalidCredentials(error: unknown) { const authError = asAuthError(error); return authError.code === "invalid_credentials" || /invalid login credentials/i.test(authError.message ?? ""); }
 function isTransientAuthError(error: unknown) {
   if (!error || isInvalidCredentials(error)) return false;
-
   const authError = asAuthError(error);
   if (authError.name === "AuthUnknownError") return true;
   if (typeof authError.status === "number" && authError.status >= 500) return true;
-
   return /unexpected token|not valid json|fetch|network|timeout|temporar/i.test(authError.message ?? "");
 }
-
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export default function StudioLoginPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   async function signIn() {
-    try {
-      return await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    } catch (error) {
-      return { error };
-    }
+    try { return await supabase.auth.signInWithPassword({ email: email.trim(), password }); }
+    catch (error) { return { error }; }
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setErrorMessage("");
-
     let result = await signIn();
-    if (isTransientAuthError(result.error)) {
-      await wait(650);
-      result = await signIn();
-    }
-
+    if (isTransientAuthError(result.error)) { await wait(650); result = await signIn(); }
     if (result.error) {
-      setErrorMessage(
-        isInvalidCredentials(result.error)
-          ? "Email ou mot de passe incorrect."
-          : "Le service de connexion Selen est momentanément indisponible. Réessaie dans quelques instants.",
-      );
+      setErrorMessage(isInvalidCredentials(result.error) ? "Email ou mot de passe incorrect." : "Le service de connexion Selen est momentanément indisponible. Réessaie dans quelques instants.");
       setLoading(false);
       return;
     }
-
     router.push("/agent");
     router.refresh();
   }
@@ -83,6 +54,7 @@ export default function StudioLoginPage() {
         <form onSubmit={handleLogin} style={{display:"grid",gap:14}}>
           <label style={{display:"grid",gap:7}}><span style={{fontSize:13,color:"var(--selen-text2)"}}>Email</span><input type="email" value={email} autoComplete="email" onChange={(event)=>setEmail(event.target.value)} required style={{width:"100%",borderRadius:14,border:"1px solid var(--selen-border)",background:"var(--selen-bg3)",color:"var(--selen-text)",padding:"12px 14px",outline:"none"}}/></label>
           <label style={{display:"grid",gap:7}}><span style={{fontSize:13,color:"var(--selen-text2)"}}>Mot de passe</span><input type="password" value={password} autoComplete="current-password" onChange={(event)=>setPassword(event.target.value)} required style={{width:"100%",borderRadius:14,border:"1px solid var(--selen-border)",background:"var(--selen-bg3)",color:"var(--selen-text)",padding:"12px 14px",outline:"none"}}/></label>
+          <div style={{textAlign:"right",marginTop:-4}}><Link href="/mot-de-passe-oublie" style={{color:"var(--selen-gold)",fontSize:13,fontWeight:700,textDecoration:"none"}}>Mot de passe oublié ?</Link></div>
           {errorMessage?<div style={{border:"1px solid rgba(210,80,70,0.45)",borderRadius:14,padding:12,color:"#ffb5ad",background:"rgba(210,80,70,0.08)",fontSize:13,lineHeight:1.5}}>{errorMessage}</div>:null}
           <button type="submit" disabled={loading} style={{marginTop:6,border:"none",borderRadius:14,padding:"13px 16px",cursor:loading?"not-allowed":"pointer",background:"var(--selen-gold)",color:"#21170f",fontWeight:800,opacity:loading?0.7:1}}>{loading?"Connexion…":"Se connecter"}</button>
         </form>
