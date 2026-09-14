@@ -7,13 +7,10 @@ type SessionDates = {
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-const automaticallyManagedChecklistItems = new Set([
-  "schedule_location",
-  "trainer_assignment",
-  "pretraining_documents",
-  "attendance_followup",
-  "end_evaluations",
-  "posttraining_documents",
+const manuallyCompletableChecklistItems = new Set([
+  "training_ready",
+  "participants_ready",
+  "selen_closure_review",
 ]);
 
 export function toParisDateKey(date: Date = new Date()): string {
@@ -64,5 +61,5 @@ export function isAvailablePhaseItem(itemPhase: string | null | undefined, curre
 
 export function isManuallyCompletableChecklistItem(itemKey: string | null | undefined): boolean {
   if (!itemKey) return false;
-  return !automaticallyManagedChecklistItems.has(itemKey);
+  return manuallyCompletableChecklistItems.has(itemKey);
 }
