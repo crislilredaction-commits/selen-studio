@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test:agent-access": "node --test tests/agentAccessGuard.test.mjs",
     "test:agent-sidebar-navigation": "node --test tests/agentSidebarNavigation.test.mjs",
-    "test:daily-assignment": "node --test tests/dailyOrganisationAssignmentRules.test.mjs tests/dailyAssignmentSourceOfTruth.test.mjs tests/dailyOrganisationAttentionCounter.test.mjs",
+    "test:daily-assignment": "node --test tests/dailyOrganisationAssignmentRules.test.mjs tests/dailyAssignmentSourceOfTruth.test.mjs tests/dailyOrganisationAttentionCounter.test.mjs tests/dailyDocumentAssignmentScope.test.mjs",
     "test:daily-trainer-certifications-ui": "node --test tests/dailyTrainerCertificationReadonlyUi.test.mjs",
     "test:daily-qualiopi-preaudit": "node --test tests/dailyQualiopiPreauditTask.test.mjs tests/dailyQualiopiNov2026Readiness.test.mjs",
     "test:daily-satisfaction": "node --test tests/dailySatisfactionPhoneTasks.test.mjs",
