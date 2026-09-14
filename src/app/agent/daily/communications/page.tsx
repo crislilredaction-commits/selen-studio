@@ -2,6 +2,10 @@ import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import {
+  DAILY_SIGNATURE_REMINDER_TYPE,
+  signatureReminderDueAt,
+} from "@/lib/daily/signatureReminder24h";
 
 type Props = {
   searchParams: Promise<{ session_id?: string }>;
@@ -64,7 +68,7 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 function dateLabel(value: string | null | undefined) {
-  return value ? new Date(value).toLocaleString("fr-FR") : "—";
+  return value ? new Date(value).toLocaleString("fr-FR", { timeZone: "Europe/Paris" }) : "—";
 }
 function partyLabel(value: string | null) {
   const normalized = text(value).toLowerCase();
@@ -100,7 +104,9 @@ function reminderLabel(reminder: ReminderRow | undefined) {
   if (reminder.status === "resolved") return "Relance clôturée";
   if (!activeReminderStatuses.has(String(reminder.status ?? ""))) return `Relance ${reminder.status ?? "—"}`;
   if (!reminder.due_at) return "Relance active";
-  return new Date(reminder.due_at).getTime() <= Date.now() ? "Relance nécessaire" : "Relance prévue à H+72";
+  return new Date(reminder.due_at).getTime() <= Date.now()
+    ? "Relance nécessaire"
+    : "Relance prévue après 24 h ouvrées";
 }
 
 export default async function DailyCommunicationsPage({ searchParams }: Props) {
@@ -150,7 +156,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
     ? await admin
       .from("client_reminders")
       .select("id,prestation_id,status,due_at,metadata")
-      .eq("reminder_type", "daily_signature_pending_72h")
+      .eq("reminder_type", DAILY_SIGNATURE_REMINDER_TYPE)
       .in("prestation_id", signatureIds)
       .order("due_at", { ascending: false })
     : { data: [] as ReminderRow[], error: null };
@@ -200,7 +206,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
               const reminder = reminderForSignature(reminderRows, signature.id);
               const deadline = reminder?.due_at || (
                 initial?.sent_at
-                  ? new Date(new Date(initial.sent_at).getTime() + 72 * 60 * 60 * 1000).toISOString()
+                  ? signatureReminderDueAt(new Date(initial.sent_at)).toISOString()
                   : null
               );
               const businessState = signatureBusinessLabel(signature, initial);
@@ -222,7 +228,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
                     </p>
                     <p style={{ margin: "4px 0", fontSize: 13 }}>
                       <strong>Consultation du document :</strong> {signature.viewed_at ? dateLabel(signature.viewed_at) : "Non tracée"}
-                      {" · "}<strong>Échéance H+72 :</strong> {dateLabel(deadline)}
+                      {" · "}<strong>Échéance 24 h ouvrées :</strong> {dateLabel(deadline)}
                     </p>
                     <p style={{ margin: "4px 0", fontSize: 13 }}>
                       <strong>Signature :</strong> {signature.signed_at ? dateLabel(signature.signed_at) : "En attente"}
