@@ -6,6 +6,7 @@ const phases = await readFile(new URL("../src/lib/daily/sessionPhase.ts", import
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashboard.tsx", import.meta.url), "utf8");
 const pilotage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
+const sessionTimeline = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/timeline/page.tsx", import.meta.url), "utf8");
 const pilotageVisibility = await readFile(new URL("../src/lib/server/dailyPilotageVisibility.ts", import.meta.url), "utf8");
 const notificationCadenceMigration = await readFile(new URL("../supabase/migrations/20260912211500_daily_notification_escalation_24h.sql", import.meta.url), "utf8");
 const notificationVisibilityMigration = await readFile(new URL("../supabase/migrations/20260912222000_daily_session_notification_phase_visibility.sql", import.meta.url), "utf8");
@@ -75,6 +76,17 @@ test("les notifications de session respectent les responsabilités et les phases
 test("une tâche terminée ne remonte plus et une tâche client n'est pas présentée comme tâche agent", () => {
   assert.doesNotMatch(tasks, /"validated"[^\n]*"not_applicable"[^\n]*daily_session_checklist_items/);
   assert.doesNotMatch(tasks, /\.in\("responsibility", \[[^\]]*"client"/);
+});
+
+test("la checklist Studio est une liste simple de tâches à terminer", () => {
+  assert.match(sessionTimeline, /Tâches restant à faire/);
+  assert.match(sessionTimeline, /<form action=\{completeChecklistItemAction\}>/);
+  assert.match(sessionTimeline, /\.update\(\{ status: "validated", validated_by: auth\.userId \}\)/);
+  assert.match(sessionTimeline, /\.eq\("id", itemId\)[\s\S]*\.eq\("session_id", sessionId\)/);
+  assert.match(sessionTimeline, /isAvailablePhaseItem\(item\.phase, phase\)/);
+  assert.match(sessionTimeline, /completed_at/);
+  assert.doesNotMatch(sessionTimeline, /value="not_applicable"/);
+  assert.doesNotMatch(sessionTimeline, /\? `Échéance \$\{formatDateTime\(task\.due_at\)\}` : task\.status/);
 });
 
 test("une validation d'inscription n'est courante que si elle est postérieure à la dernière réponse", () => {

@@ -1,13 +1,17 @@
+import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { isAvailablePhaseItem } from "@/lib/daily/sessionPhase";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
 type Props = { params: Promise<{ id: string }> };
 type Phase = "before" | "during" | "after";
 
-const doneChecklistStatuses = new Set(["validated", "completed", "done", "not_applicable"]);
+// Compatibilité historique uniquement : Studio n'expose plus de parcours de statuts
+// ni d'action « non applicable ». Une nouvelle tâche terminée est toujours validée.
+const historicalDoneChecklistStatuses = new Set(["validated", "completed", "done", "not_applicable"]);
 const failedCommunicationStatuses = new Set(["failed", "bounced", "complained"]);
 const terminalSignatureStatuses = new Set(["signed", "expired", "cancelled", "revoked", "refused", "error"]);
 
@@ -75,6 +79,34 @@ function signatureParty(value?: string | null) {
   return "Partie prenante";
 }
 
+async function completeChecklistItemAction(formData: FormData) {
+  "use server";
+
+  const auth = await requireSupportAgent();
+  if (!auth.ok) throw new Error(auth.error);
+
+  const sessionId = String(formData.get("sessionId") ?? "").trim();
+  const itemId = String(formData.get("itemId") ?? "").trim();
+  if (!sessionId || !itemId) throw new Error("Tâche de session introuvable.");
+
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("daily_session_checklist_items")
+    .update({ status: "validated", validated_by: auth.userId })
+    .eq("id", itemId)
+    .eq("session_id", sessionId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Tâche de session introuvable.");
+
+  revalidatePath(`/agent/daily/session-dossiers/${sessionId}/timeline`);
+  revalidatePath(`/agent/daily/session-dossiers/${sessionId}/full`);
+  revalidatePath("/agent/daily");
+  revalidatePath("/agent/daily/planning");
+}
+
 export default async function DailySessionTimelinePage({ params }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}>Accès refusé.</main>;
@@ -94,7 +126,7 @@ export default async function DailySessionTimelinePage({ params }: Props) {
     admin.from("organisations").select("name,legal_name").eq("id", session.organisation_id).maybeSingle(),
     admin.from("daily_formations").select("title,status").eq("id", session.formation_id).maybeSingle(),
     admin.from("daily_session_dossiers").select("status,completed_at").eq("session_id", id).maybeSingle(),
-    admin.from("daily_session_checklist_items").select("id,phase,label,description,status,due_at,note,updated_at").eq("session_id", id).order("position", { ascending: true }),
+    admin.from("daily_session_checklist_items").select("id,phase,label,description,status,due_at,note,completed_at,updated_at").eq("session_id", id).order("position", { ascending: true }),
     admin.from("daily_session_enrolments").select("id,status").eq("session_id", id),
     admin.from("daily_documents").select("id,document_type,logical_name,status,is_current,published_at,signed_at,updated_at").eq("session_id", id).order("updated_at", { ascending: false }),
     admin.from("daily_communications").select("id,communication_type,recipient_name,recipient_email,status,sent_at,delivered_at,failed_at,failure_reason,created_at").eq("session_id", id).order("created_at", { ascending: false }),
@@ -112,7 +144,9 @@ export default async function DailySessionTimelinePage({ params }: Props) {
   const organisation = organisationRes.data?.legal_name || organisationRes.data?.name || "Organisme de formation";
   const formation = formationRes.data;
   const checklist = checklistRes.data ?? [];
-  const openTasks = checklist.filter((item) => !doneChecklistStatuses.has(String(item.status ?? "").toLowerCase()));
+  const openTasks = checklist
+    .filter((item) => !historicalDoneChecklistStatuses.has(String(item.status ?? "").toLowerCase()))
+    .filter((item) => isAvailablePhaseItem(item.phase, phase));
   const notes = checklist.filter((item) => String(item.note ?? "").trim());
   const enrolments = (enrolmentsRes.data ?? []).filter((item) => !["declined", "cancelled"].includes(String(item.status ?? "").toLowerCase()));
   const documents = (documentsRes.data ?? []).filter((item) => item.is_current !== false);
@@ -189,15 +223,23 @@ export default async function DailySessionTimelinePage({ params }: Props) {
                 ) : null}
 
                 <div style={s.taskList}>
-                  <strong style={s.subhead}>Actions restantes</strong>
-                  {tasks.length === 0 ? <p style={s.empty}>Aucune tâche restante enregistrée pour cette phase.</p> : tasks.map((task) => (
+                  <strong style={s.subhead}>Tâches restant à faire</strong>
+                  {tasks.length === 0 ? <p style={s.empty}>Aucune tâche restante pour cette phase.</p> : tasks.map((task) => (
                     <div key={task.id} style={s.row}>
-                      <div style={{ minWidth: 0 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
                         <strong>{task.label}</strong>
                         {task.description ? <div style={s.small}>{task.description}</div> : null}
                         {task.note ? <div style={s.note}>Note : {task.note}</div> : null}
+                        {task.due_at ? <div style={s.rowMetaInline}>Échéance {formatDateTime(task.due_at)}</div> : null}
                       </div>
-                      <div style={s.rowMeta}>{task.due_at ? `Échéance ${formatDateTime(task.due_at)}` : task.status}</div>
+                      <form action={completeChecklistItemAction}>
+                        <input type="hidden" name="sessionId" value={id} />
+                        <input type="hidden" name="itemId" value={task.id} />
+                        <button type="submit" style={s.completeButton} aria-label={`Terminer la tâche ${task.label}`}>
+                          <span aria-hidden="true" style={s.checkBox}>✓</span>
+                          Terminer
+                        </button>
+                      </form>
                     </div>
                   ))}
                 </div>
@@ -296,8 +338,11 @@ const s = {
   infoValue: { fontSize: 12 },
   taskList: { display: "grid", gap: 7 },
   subhead: { fontSize: 12, color: "var(--selen-text2)" },
-  row: { display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", padding: 10, border: "1px solid var(--selen-border)", borderRadius: 9, minWidth: 0 },
+  row: { display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", padding: 10, border: "1px solid var(--selen-border)", borderRadius: 9, minWidth: 0, flexWrap: "wrap" },
   rowMeta: { color: "var(--selen-text3)", fontSize: 10, textAlign: "right", flexShrink: 0 },
+  rowMetaInline: { color: "var(--selen-text3)", fontSize: 10, marginTop: 6 },
+  completeButton: { display: "inline-flex", alignItems: "center", gap: 7, border: "1px solid var(--selen-border2)", borderRadius: 8, padding: "7px 10px", background: "var(--selen-bg3)", color: "var(--selen-text)", fontWeight: 800, fontSize: 11, cursor: "pointer" },
+  checkBox: { display: "inline-grid", placeItems: "center", width: 17, height: 17, border: "1px solid var(--selen-gold2)", borderRadius: 4, color: "var(--selen-gold2)", fontSize: 11, lineHeight: 1 },
   small: { color: "var(--selen-text2)", fontSize: 11, marginTop: 3, overflowWrap: "anywhere" },
   note: { color: "var(--selen-gold2)", fontSize: 11, marginTop: 5, overflowWrap: "anywhere" },
   error: { color: "#f0a0a0", fontSize: 11, marginTop: 3, overflowWrap: "anywhere" },
