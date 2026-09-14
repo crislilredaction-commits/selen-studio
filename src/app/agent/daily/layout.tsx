@@ -15,6 +15,7 @@ export default async function DailyStudioLayout({ children }: { children: ReactN
       <Link href="/agent/daily" style={linkStyle}>Pilotage Daily</Link>
       <Link href="/agent/daily/planning" style={linkStyle}>Planning sessions</Link>
       <Link href="/agent/daily/organisations" style={linkStyle}>Organismes</Link>
+      <Link href="/agent/daily/satisfaction" style={linkStyle}>Satisfaction</Link>
       <Link href="/agent/daily/preaudit" style={linkStyle}>Pré-audit</Link>
       <Link href="/agent/daily/escalations" style={priorityLinkStyle}>Escalades admin</Link>
       <Link href="/agent/daily/veille-proposee" style={priorityLinkStyle}>Propositions de veille</Link>
