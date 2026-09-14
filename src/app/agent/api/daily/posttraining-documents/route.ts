@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
-import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { publishDailyDocumentAndNotify } from "@/lib/server/dailyDocumentPublication";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
@@ -56,7 +56,7 @@ async function syncChecklist(admin:ReturnType<typeof createSupabaseAdminClient>,
 export async function GET(){
   const auth=await requireSupportAgent();
   if(!auth.ok)return NextResponse.json({error:auth.error},{status:auth.status});
-  const organisationIds=await getActiveDailyOrganisationIds();
+  const organisationIds=await getDailyOrganisationIdsForAgent(auth.email);
   if(organisationIds.length===0)return NextResponse.json({documents:[]});
   const admin=createSupabaseAdminClient();
   const {data,error}=await admin
@@ -82,7 +82,7 @@ export async function PATCH(req:Request){
   const {data:userData}=await supabase.auth.getUser();
   const userId=userData.user?.id;
   if(!userId)return NextResponse.json({error:"Utilisateur introuvable."},{status:401});
-  const organisationIds=await getActiveDailyOrganisationIds();
+  const organisationIds=await getDailyOrganisationIdsForAgent(auth.email);
   if(organisationIds.length===0)return NextResponse.json({error:"Document introuvable."},{status:404});
   const admin=createSupabaseAdminClient();
   const {data:current,error:readError}=await admin
@@ -106,7 +106,7 @@ export async function PATCH(req:Request){
   if(["published","signed","archived"].includes(current.status))return NextResponse.json({error:"Ce document n’est plus modifiable dans ce circuit de revue."},{status:400});
   const metadata={...(current.metadata??{}),review_note:note||null,reviewed_at:new Date().toISOString(),reviewed_by_email:auth.email};
   const updates=action==="validate"?{status:"validated",validated_by:userId,validated_at:new Date().toISOString(),updated_by:userId,metadata}:{status:"correction_requested",validated_by:null,validated_at:null,updated_by:userId,metadata};
-  const {data,error}=await admin.from("daily_documents").update(updates).eq("id",id).select("*").single();
+  const {data,error}=await admin.from("daily_documents").update(updates).eq("id",id).in("organisation_id",organisationIds).select("*").single();
   if(error)return NextResponse.json({error:error.message},{status:400});
   const sessionId=typeof metadata.session_id==="string"?metadata.session_id:"";
   if(sessionId)await syncChecklist(admin,sessionId);
