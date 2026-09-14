@@ -239,7 +239,7 @@ export async function sendManualDailySignatureReminder({
   if (signatureError) throw signatureError;
   if (!signature) throw new Error("Demande de signature introuvable.");
   if (isSignatureTerminal(signature.status, signature.signed_at)) {
-    return { sent: false, duplicate: false, terminal: true };
+    return { sent: false, duplicate: false, terminal: true, error: null as string | null };
   }
 
   const { data: session, error: sessionError } = await admin
@@ -280,7 +280,7 @@ export async function sendManualDailySignatureReminder({
     .maybeSingle();
   if (previousError) throw previousError;
   if (previous?.status === "sent") {
-    return { sent: false, duplicate: true, terminal: false };
+    return { sent: false, duplicate: true, terminal: false, error: null as string | null };
   }
 
   const signatoryName = text(signature.signatory_name);
@@ -293,6 +293,16 @@ export async function sendManualDailySignatureReminder({
   const subject = "Rappel : votre signature est attendue";
   const rendered = renderSelenEmailFromText({ title: subject, bodyText });
   const now = new Date().toISOString();
+  const reminderMetadata = {
+    generated_by: "studio_manual_signature_followup",
+    signature_id: signature.id,
+    convention_id: signature.convention_id,
+    session_id: signature.session_id,
+    organisation_id: session.organisation_id,
+    communication_id: initial.id,
+    initial_sent_at: initial.sent_at,
+    signatory_type: signature.signatory_type,
+  };
 
   let reminderId = previous?.id ?? null;
   if (!reminderId) {
@@ -312,16 +322,7 @@ export async function sendManualDailySignatureReminder({
       prestation_id: signature.id,
       stage_label: "relance manuelle de signature",
       expected_action: "signer la convention déjà transmise",
-      metadata: {
-        generated_by: "studio_manual_signature_followup",
-        signature_id: signature.id,
-        convention_id: signature.convention_id,
-        session_id: signature.session_id,
-        organisation_id: session.organisation_id,
-        communication_id: initial.id,
-        initial_sent_at: initial.sent_at,
-        signatory_type: signature.signatory_type,
-      },
+      metadata: reminderMetadata,
     };
     const { data: inserted, error: insertError } = await admin
       .from("client_reminders")
@@ -337,7 +338,9 @@ export async function sendManualDailySignatureReminder({
         .limit(1)
         .maybeSingle();
       if (!raced) throw insertError;
-      if (raced.status === "sent") return { sent: false, duplicate: true, terminal: false };
+      if (raced.status === "sent") {
+        return { sent: false, duplicate: true, terminal: false, error: null as string | null };
+      }
       reminderId = raced.id;
     } else {
       reminderId = inserted.id;
@@ -360,7 +363,9 @@ export async function sendManualDailySignatureReminder({
     .select("id")
     .maybeSingle();
   if (claimError) throw claimError;
-  if (!claimed) return { sent: false, duplicate: true, terminal: false };
+  if (!claimed) {
+    return { sent: false, duplicate: true, terminal: false, error: null as string | null };
+  }
 
   const emailResult = await sendClientEmailWithSilence({
     supabase: admin,
@@ -379,7 +384,7 @@ export async function sendManualDailySignatureReminder({
         status: "draft",
         updated_at: new Date().toISOString(),
         metadata: {
-          ...(previous?.metadata ?? {}),
+          ...reminderMetadata,
           last_send_error: emailResult.error ?? null,
         },
       })
@@ -400,6 +405,7 @@ export async function sendManualDailySignatureReminder({
     body_text: rendered.text,
     metadata: { signature_id: signature.id, manual: true, sent_by: agentEmail },
   });
+  const providerMessageId = "resendId" in emailResult ? emailResult.resendId ?? null : null;
   const { error: communicationError } = await admin.from("daily_communications").insert({
     organisation_id: session.organisation_id,
     session_id: signature.session_id,
@@ -411,7 +417,7 @@ export async function sendManualDailySignatureReminder({
     text_body: rendered.text,
     html_body: rendered.html,
     provider: "resend",
-    provider_message_id: emailResult.resendId ?? null,
+    provider_message_id: providerMessageId,
     status: "sent",
     sent_at: sentAt,
     created_by: agentUserId,
@@ -426,5 +432,5 @@ export async function sendManualDailySignatureReminder({
   });
   if (communicationError) throw communicationError;
 
-  return { sent: true, duplicate: false, terminal: false };
+  return { sent: true, duplicate: false, terminal: false, error: null as string | null };
 }
