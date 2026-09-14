@@ -1,0 +1,24 @@
+name: Daily signature reminders
+
+# Réutilise les secrets déjà employés par les autres jobs Selen :
+# - CRON_SECRET
+# - SELEN_STUDIO_BASE_URL
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+jobs:
+  daily-signature-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Generate 24h working-day signature reminders
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SELEN_STUDIO_BASE_URL: ${{ secrets.SELEN_STUDIO_BASE_URL }}
+        run: |
+          test -n "$CRON_SECRET"
+          test -n "$SELEN_STUDIO_BASE_URL"
+          curl -fsS -X POST "$SELEN_STUDIO_BASE_URL/agent/api/jobs/daily-signature-reminders" \
+            -H "Authorization: Bearer $CRON_SECRET"
