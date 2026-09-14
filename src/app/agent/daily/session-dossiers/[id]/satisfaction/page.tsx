@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
 type Props = { params: Promise<{ id: string }> };
@@ -34,16 +35,24 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
   if (!auth.ok) return <main style={{ padding: 28 }}>Accès refusé.</main>;
   const { id } = await params;
   const admin = createSupabaseAdminClient();
-  const [sessionRes, stakeholderRes, enrolmentRes, learnerFeedbackRes, assessmentRes, responseRes] = await Promise.all([
-    admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,start_date,end_date").eq("id", id).maybeSingle(),
+  const { data: session, error: sessionError } = await admin
+    .from("daily_sessions")
+    .select("id,organisation_id,formation_id,internal_reference,start_date,end_date")
+    .eq("id", id)
+    .maybeSingle();
+  if (sessionError) throw new Error(sessionError.message);
+  if (!session?.organisation_id) return <main style={{ padding: 28 }}>Session introuvable.</main>;
+  if (!(await isDailyOrganisationInAgentScope(auth.email, session.organisation_id))) {
+    return <main style={{ padding: 28 }}>Accès refusé.</main>;
+  }
+
+  const [stakeholderRes, enrolmentRes, learnerFeedbackRes, assessmentRes, responseRes] = await Promise.all([
     admin.from("daily_stakeholder_satisfaction_responses").select("id,stakeholder_type,entity_name,entity_email,overall_rating,objectives_rating,trainer_rating,organisation_rating,would_recommend,strengths,improvements,free_comment,submitted_at").eq("session_id", id).order("submitted_at", { ascending: false }),
     admin.from("daily_session_enrolments").select("id,daily_learners(id,email,first_name,last_name)").eq("session_id", id).not("status", "in", "(declined,cancelled,abandoned)"),
     admin.from("daily_learner_feedback_responses").select("enrolment_id,overall_rating,objectives_rating,trainer_rating,organisation_rating,content_rating,pace_rating,would_recommend,strengths,improvements,adaptation_feedback,free_comment,submitted_at").eq("session_id", id),
     admin.from("daily_learning_assessments").select("enrolment_id,outcome,method,assessed_at").eq("session_id", id),
     admin.from("daily_learning_assessment_responses").select("enrolment_id,submitted_at").eq("session_id", id),
   ]);
-  const session = sessionRes.data;
-  if (!session) return <main style={{ padding: 28 }}>Session introuvable.</main>;
   const error = stakeholderRes.error ?? enrolmentRes.error ?? learnerFeedbackRes.error ?? assessmentRes.error ?? responseRes.error;
   if (error) throw new Error(error.message);
   const [{ data: organisation }, { data: formation }] = await Promise.all([
@@ -114,9 +123,7 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
             <SelenCardTitle>{stakeholderLabels[item.stakeholder_type] ?? item.stakeholder_type} · {item.entity_name || item.entity_email || (isClient ? organisation?.name : "Répondant")}</SelenCardTitle>
             <p style={{ fontSize: 12, color: "var(--selen-text2)" }}>Reçue le {new Date(item.submitted_at).toLocaleString("fr-FR")} {item.entity_email ? `· ${item.entity_email}` : ""}</p>
             {isClient ? <p style={{ fontSize: 13 }}><strong>Note plateforme :</strong> {rating(item.overall_rating)}</p> : <p style={{ fontSize: 13 }}><strong>Global :</strong> {rating(item.overall_rating)} · <strong>Objectifs :</strong> {rating(item.objectives_rating)} · <strong>Organisation :</strong> {rating(item.organisation_rating)}{item.stakeholder_type !== "trainer" ? <> · <strong>Formateur :</strong> {rating(item.trainer_rating)}</> : null}</p>}
-            {item.strengths ? <p style={{ fontSize: 13 }}><strong>{isClient ? "Apprécié" : "Points forts"} :</strong> {item.strengths}</p> : null}
-            {item.improvements ? <p style={{ fontSize: 13 }}><strong>{isClient ? "Moins bien" : "Améliorations"} :</strong> {item.improvements}</p> : null}
-            {item.free_comment ? <p style={{ fontSize: 13 }}><strong>{isClient ? "Suggestions" : "Commentaire"} :</strong> {item.free_comment}</p> : null}
+            {item.strengths ? <p style={{ fontSize: 13 }}><strong>{isClient ? "Apprécié" : "Points forts"} :</strong> {item.strengths}</p> : null}{item.improvements ? <p style={{ fontSize: 13 }}><strong>{isClient ? "Moins bien" : "Améliorations"} :</strong> {item.improvements}</p> : null}{item.free_comment ? <p style={{ fontSize: 13 }}><strong>{isClient ? "Suggestions" : "Commentaire"} :</strong> {item.free_comment}</p> : null}
           </SelenCard>;
         })}
       </div>}
