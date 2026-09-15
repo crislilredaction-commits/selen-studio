@@ -20,8 +20,24 @@ test("la publication est réservée aux documents déjà validés", () => {
 test("la publication utilise le canal email client Daily et respecte le mode silencieux", () => {
   assert.match(publication, /sendClientEmailWithSilence/);
   assert.match(publication, /organisationId: document\.organisation_id/);
-  assert.match(publication, /client\/daily\/documents/);
   assert.match(publication, /if \(!notification\.sent\)/);
+});
+
+test("l'email ouvre directement le document publié dans l'espace Daily", () => {
+  assert.match(publication, /new URLSearchParams\(\{ document: documentId \}\)/);
+  assert.match(publication, /client\/daily\/documents\?\$\{query\.toString\(\)\}/);
+  assert.match(publication, /ctaLabel: "Ouvrir le document"/);
+  assert.match(publication, /ctaUrl: clientDocumentsUrl/);
+});
+
+test("la publication trace document version valideur destinataire et espace cible", () => {
+  assert.match(publication, /publication_document_id: document\.id/);
+  assert.match(publication, /publication_document_version: document\.version \?\? null/);
+  assert.match(publication, /published_by_email: publishedByEmail \?\? null/);
+  assert.match(publication, /publication_recipient_email: recipient/);
+  assert.match(publication, /publication_target: DAILY_CLIENT_DOCUMENTS_TARGET/);
+  assert.match(publication, /publication_target_url: clientDocumentsUrl/);
+  assert.match(publication, /published_at: publishedAt/);
 });
 
 test("le document n'est marqué publié qu'après un email envoyé", () => {
@@ -29,7 +45,6 @@ test("le document n'est marqué publié qu'après un email envoyé", () => {
   const sentGuardPosition = publication.indexOf("if (!notification.sent)");
   const publishPosition = publication.indexOf('status: "published"');
   assert.ok(sendPosition >= 0 && sentGuardPosition > sendPosition && publishPosition > sentGuardPosition);
-  assert.match(publication, /published_at: publishedAt/);
   assert.match(publication, /publication_notification_sent_at/);
 });
 
