@@ -22,8 +22,15 @@ const DOCUMENT_LABELS: Record<string, string> = {
   completion_certificate: "Certificat de réalisation",
 };
 
+const DAILY_CLIENT_DOCUMENTS_TARGET = "client_daily_documents";
+
 function labelFor(document: DailyDocumentForPublication) {
   return DOCUMENT_LABELS[document.document_type] || document.logical_name || "Document";
+}
+
+function clientDocumentUrl(documentId: string) {
+  const query = new URLSearchParams({ document: documentId });
+  return `${getVitrineBaseUrl()}/client/daily/documents?${query.toString()}`;
 }
 
 export async function publishDailyDocumentAndNotify(params: {
@@ -46,24 +53,24 @@ export async function publishDailyDocumentAndNotify(params: {
     return { ok: false as const, status: 500, error: organisationError.message };
   }
 
-  const recipient = String(organisation?.email ?? "").trim();
+  const recipient = String(organisation?.email ?? "").trim().toLowerCase();
   if (!recipient) {
     return { ok: false as const, status: 409, error: "Aucun email client n’est renseigné pour cet organisme." };
   }
 
   const documentLabel = labelFor(document);
   const organisationName = String(organisation?.legal_name || organisation?.name || "votre organisme").trim();
-  const clientDocumentsUrl = `${getVitrineBaseUrl()}/client/daily/documents`;
+  const clientDocumentsUrl = clientDocumentUrl(document.id);
   const subject = `Nouveau document disponible dans Selen Daily : ${documentLabel}`;
   const bodyText = [
-    `Bonjour,`,
+    "Bonjour,",
     `Un nouveau document vient d’être publié pour ${organisationName} : ${documentLabel}${document.version ? ` (version ${document.version})` : ""}.`,
-    "Vous pouvez le retrouver dès maintenant dans votre espace Selen Daily.",
+    "Vous pouvez l’ouvrir directement depuis votre espace Selen Daily avec le bouton ci-dessous.",
   ].join("\n\n");
   const rendered = renderSelenEmailFromText({
     title: "Un nouveau document est disponible",
     bodyText,
-    ctaLabel: "Ouvrir mes documents",
+    ctaLabel: "Ouvrir le document",
     ctaUrl: clientDocumentsUrl,
   });
 
@@ -87,7 +94,12 @@ export async function publishDailyDocumentAndNotify(params: {
   const publishedAt = new Date().toISOString();
   const metadata = {
     ...(document.metadata ?? {}),
+    publication_document_id: document.id,
+    publication_document_version: document.version ?? null,
     published_by_email: publishedByEmail ?? null,
+    publication_recipient_email: recipient,
+    publication_target: DAILY_CLIENT_DOCUMENTS_TARGET,
+    publication_target_url: clientDocumentsUrl,
     publication_notification_sent_at: publishedAt,
     publication_notification_resend_id: "resendId" in notification ? notification.resendId ?? null : null,
   };
