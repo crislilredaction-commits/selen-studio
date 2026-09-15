@@ -46,7 +46,7 @@ begin
       end if;
       v_entity_org := new.organisation_id;
     when 'trainer' then
-      select t.organisation_id into v_entity_org from public.daily_trainers t where t.id = new.entity_id;
+      select t.organisation_id into v_entity_org from public.daily_trainer_profiles t where t.id = new.entity_id;
     when 'learner' then
       select l.organisation_id into v_entity_org from public.daily_learners l where l.id = new.entity_id;
     when 'formation' then
@@ -54,7 +54,7 @@ begin
     when 'session' then
       select s.organisation_id into v_entity_org from public.daily_sessions s where s.id = new.entity_id;
     when 'enrolment' then
-      select e.organisation_id into v_entity_org from public.daily_enrolments e where e.id = new.entity_id;
+      select e.organisation_id into v_entity_org from public.daily_session_enrolments e where e.id = new.entity_id;
     else
       raise exception 'daily_document_links: unsupported entity type';
   end case;
