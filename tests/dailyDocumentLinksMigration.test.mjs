@@ -17,3 +17,10 @@ test("les rattachements sont bornés à un organisme et tracent l'agent", () => 
   assert.match(migration, /created_by_agent_profile_id uuid null references public\.agent_profiles\(id\)/);
   assert.match(migration, /enable row level security/);
 });
+
+test("la validation de rattachement utilise les tables canoniques du schéma Daily", () => {
+  assert.match(migration, /from public\.daily_trainer_profiles t where t\.id = new\.entity_id/);
+  assert.match(migration, /from public\.daily_session_enrolments e where e\.id = new\.entity_id/);
+  assert.doesNotMatch(migration, /from public\.daily_trainers t where t\.id = new\.entity_id/);
+  assert.doesNotMatch(migration, /from public\.daily_enrolments e where e\.id = new\.entity_id/);
+});
