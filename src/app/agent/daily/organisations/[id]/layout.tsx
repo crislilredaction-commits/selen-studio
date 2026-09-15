@@ -22,8 +22,8 @@ export default async function DailyOrganisationLayout({ children, params }: Dail
     admin.from("agent_profiles").select("id,role,is_active").eq("email",auth.email).eq("is_active",true).maybeSingle(),
     admin.from("selen_admin_users").select("role,is_active").eq("email",auth.email).eq("is_active",true).maybeSingle(),
   ]);
-  const isAdmin=adminUserRes.data?.role==="admin"||profileRes.data?.role==="admin";
-  const canSelfAssign=!isAdmin&&profileRes.data?.role==="agent"&&Boolean(profileRes.data?.id)&&!assignmentRes.data;
+  const isAdmin = adminUserRes.data?.role === "admin" || profileRes.data?.role === "admin";
+  const canSelfAssign = !isAdmin && profileRes.data?.role === "agent" && Boolean(profileRes.data?.id) && !assignmentRes.data;
   return <>
     <div style={{maxWidth:1220,margin:"18px auto 0",padding:"0 24px",display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
       <Link href={`/agent/daily/organisations/${id}/onboarding-documents`} style={{textDecoration:"none"}}><SelenButton size="sm" variant="secondary">Pièces client</SelenButton></Link>
