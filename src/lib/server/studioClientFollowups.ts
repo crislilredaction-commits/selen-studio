@@ -58,6 +58,24 @@ function visible(row: ReminderRow, staff: FollowupStaff, overdueShared: boolean)
   if (!agentId) return true;
   return staff.id === agentId || overdueShared;
 }
+function followupHref(row: ReminderRow, isDaily: boolean) {
+  const sessionId = text(row.metadata?.session_id);
+  if (isDaily && sessionId) {
+    const encoded = encodeURIComponent(sessionId);
+    const stage = followupStage(row);
+    if (row.reminder_type === SIGNATURE_REMINDER || stage === SIGNATURE_J6_STAGE) {
+      return `/agent/daily/session-dossiers/${encoded}/full#signatures`;
+    }
+    if (String(row.reminder_type ?? "").includes("satisfaction")) {
+      return `/agent/daily/session-dossiers/${encoded}/satisfaction`;
+    }
+    if (String(row.reminder_type ?? "").includes("registration")) {
+      return `/agent/daily/sessions/${encoded}`;
+    }
+    return `/agent/daily/session-dossiers/${encoded}/full`;
+  }
+  return row.dossier_id ? `/agent/dossiers/${row.dossier_id}` : "/agent/relances";
+}
 
 export async function getStudioClientFollowups(staff: FollowupStaff, options?: { dailyOnly?: boolean }) {
   const admin = createSupabaseAdminClient();
@@ -83,7 +101,7 @@ export async function getStudioClientFollowups(staff: FollowupStaff, options?: {
       id: row.id,
       title: row.client_email || "Partie prenante à relancer",
       detail: text(row.metadata?.reason) || row.subject || "Relance à traiter",
-      href: row.dossier_id ? `/agent/dossiers/${row.dossier_id}` : "/agent/relances",
+      href: followupHref(row, isDaily),
       dueAt: row.due_at,
       assignedAgentProfileId: assignedAgent(row.metadata),
       overdueShared,
