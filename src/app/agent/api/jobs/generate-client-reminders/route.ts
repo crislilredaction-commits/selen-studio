@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateClientReminders } from "@/lib/server/clientReminders";
+import { dispatchDueClientReminders } from "@/lib/server/dailyTaskReminderDispatch";
 
 function isAuthorized(req: Request) {
   const secret = process.env.CRON_SECRET?.trim();
@@ -17,10 +18,11 @@ async function run(req: Request) {
   }
 
   try {
-    const result = await generateClientReminders();
-    return NextResponse.json({ ok: true, result });
+    const generated = await generateClientReminders();
+    const dispatched = await dispatchDueClientReminders();
+    return NextResponse.json({ ok: true, result: { generated, dispatched } });
   } catch (error) {
-    console.error("Job quotidien relances clients échoué.", error);
+    console.error("Job relances clients échoué.", error);
     return NextResponse.json(
       {
         error:
@@ -40,4 +42,3 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return run(req);
 }
-
