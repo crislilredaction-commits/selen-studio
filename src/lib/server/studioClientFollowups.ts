@@ -16,12 +16,20 @@ function followupStage(row:ReminderRow){return text(row.metadata?.followup_stage
 function queuedAt(row:ReminderRow){if(row.reminder_type===SIGNATURE_REMINDER&&followupStage(row)===SIGNATURE_J6_STAGE)return row.due_at;return text(row.metadata?.queued_at||row.metadata?.created_at||row.metadata?.first_due_at)||row.due_at}
 function dailyReminder(row:ReminderRow){const source=text(row.metadata?.source||row.metadata?.domain||row.metadata?.product||row.metadata?.scope).toLowerCase();return source.includes("daily")||String(row.reminder_type??"").toLowerCase().startsWith("daily_")}
 function visible(row:ReminderRow,staff:FollowupStaff,overdueShared:boolean){if(staff.role==="admin")return true;const agentId=assignedAgent(row.metadata);if(!agentId)return true;return staff.id===agentId||overdueShared}
+function exactMetadataHref(row:ReminderRow){
+ const href=text(row.metadata?.action_href||row.metadata?.target_href||row.metadata?.studio_href);
+ return href.startsWith("/agent/")?href:null;
+}
 function followupHref(row:ReminderRow,isDaily:boolean){
+ const exactHref=exactMetadataHref(row);
+ if(exactHref)return exactHref;
  const sessionId=text(row.metadata?.session_id);
  if(isDaily&&sessionId){
-  const encoded=encodeURIComponent(sessionId),type=String(row.reminder_type??"");
+  const encoded=encodeURIComponent(sessionId),type=String(row.reminder_type??"").toLowerCase();
   if(type.includes("satisfaction"))return `/agent/daily/session-dossiers/${encoded}/satisfaction`;
-  if(type.includes("registration"))return `/agent/daily/sessions/${encoded}`;
+  if(type.includes("registration")||type.includes("inscription"))return `/agent/daily/sessions/${encoded}`;
+  if(type.includes("attendance")||type.includes("emarg")||type.includes("signature"))return `/agent/daily/session-dossiers/${encoded}/attendance`;
+  if(type.includes("document")||type.includes("piece"))return `/agent/daily/session-dossiers/${encoded}/documents`;
   return `/agent/daily/session-dossiers/${encoded}/full`;
  }
  return row.dossier_id?`/agent/dossiers/${row.dossier_id}`:"/agent/relances";
