@@ -40,12 +40,22 @@ test("la publication trace document version valideur destinataire et espace cibl
   assert.match(publication, /published_at: publishedAt/);
 });
 
-test("le document n'est marqué publié qu'après un email envoyé", () => {
-  const sendPosition = publication.indexOf("sendClientEmailWithSilence");
-  const sentGuardPosition = publication.indexOf("if (!notification.sent)");
-  const publishPosition = publication.indexOf('status: "published"');
-  assert.ok(sendPosition >= 0 && sentGuardPosition > sendPosition && publishPosition > sentGuardPosition);
-  assert.match(publication, /publication_notification_sent_at/);
+test("la publication relit l'état canonique et ne renvoie pas un email déjà publié", () => {
+  assert.match(publication, /select\("id,organisation_id,status,metadata,is_current"\)/);
+  assert.match(publication, /current\.status === "published"/);
+  assert.match(publication, /deduplicated: true/);
+  const canonicalRead = publication.indexOf('.from("daily_documents")');
+  const sendPosition = publication.indexOf("sendClientEmailWithSilence({");
+  assert.ok(canonicalRead >= 0 && sendPosition > canonicalRead);
+});
+
+test("la preuve d'envoi est persistée avant le passage published pour rendre un retry idempotent", () => {
+  assert.match(publication, /hasPublicationNotification\(currentMetadata\)/);
+  assert.match(publication, /publication_notification_sent_at: publishedAt/);
+  const proofComment = publication.indexOf("Persiste d'abord la preuve d'envoi");
+  const publishPosition = publication.lastIndexOf('status: "published"');
+  assert.ok(proofComment >= 0 && publishPosition > proofComment);
+  assert.match(publication, /notificationAlreadySent/);
 });
 
 test("Studio expose explicitement l'action Publier et notifier après validation", () => {
