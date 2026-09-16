@@ -40,7 +40,8 @@ export async function getStudioClientFollowups(staff:FollowupStaff,options?:{dai
  if(error)throw new Error(error.message);
  const rows=(data??[]) as ReminderRow[];
  return rows.flatMap((row):StudioClientFollowup[]=>{
-  if(row.reminder_type===SIGNATURE_REMINDER){const stage=followupStage(row);if(stage===SIGNATURE_J3_STAGE)return[];if(!isDue(row.due_at))return[]}
+  if(row.reminder_type===SIGNATURE_REMINDER&&followupStage(row)===SIGNATURE_J3_STAGE)return[];
+  if(!isDue(row.due_at))return[];
   const overdueShared=isOverdue(queuedAt(row)),isDaily=dailyReminder(row);
   if((options?.dailyOnly&&!isDaily)||!visible(row,staff,overdueShared))return[];
   return[{id:row.id,title:row.client_email||"Partie prenante à relancer",detail:text(row.metadata?.reason)||row.subject||"Relance à traiter",href:followupHref(row,isDaily),dueAt:row.due_at,assignedAgentProfileId:assignedAgent(row.metadata),overdueShared,reminderType:row.reminder_type,isDaily}];
