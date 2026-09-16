@@ -5,7 +5,14 @@ import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationS
 import { publishDailyDocumentAndNotify } from "@/lib/server/dailyDocumentPublication";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
-const types = ["training_program","training_agreement","convocation","registration_positioning"];
+const types = [
+  "training_program",
+  "training_agreement",
+  "convocation",
+  "registration_positioning",
+  "welcome_booklet",
+  "internal_regulations",
+];
 
 export async function GET() {
   const auth = await requireSupportAgent();
