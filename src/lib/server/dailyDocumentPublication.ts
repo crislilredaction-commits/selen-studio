@@ -33,6 +33,10 @@ function clientDocumentUrl(documentId: string) {
   return `${getVitrineBaseUrl()}/client/daily/documents?${query.toString()}`;
 }
 
+function hasPublicationNotification(metadata?: Record<string, unknown> | null) {
+  return Boolean(metadata?.publication_notification_sent_at);
+}
+
 export async function publishDailyDocumentAndNotify(params: {
   admin: SupabaseClient;
   document: DailyDocumentForPublication;
@@ -43,6 +47,32 @@ export async function publishDailyDocumentAndNotify(params: {
   if (document.status !== "validated") {
     return { ok: false as const, status: 409, error: "Seul un document validé peut être publié." };
   }
+
+  // Relecture canonique avant tout envoi : l'objet reçu par l'UI peut être périmé
+  // (double clic, retry réseau, second onglet). Un document déjà publié ne doit
+  // jamais déclencher un second email.
+  const { data: current, error: currentError } = await admin
+    .from("daily_documents")
+    .select("id,organisation_id,status,metadata,is_current")
+    .eq("id", document.id)
+    .eq("organisation_id", document.organisation_id)
+    .eq("is_current", true)
+    .maybeSingle();
+  if (currentError) {
+    return { ok: false as const, status: 500, error: currentError.message };
+  }
+  if (!current) {
+    return { ok: false as const, status: 404, error: "Document introuvable." };
+  }
+  if (current.status === "published") {
+    return { ok: true as const, document: current, notification: { sent: false, deduplicated: true } };
+  }
+  if (current.status !== "validated") {
+    return { ok: false as const, status: 409, error: "Le document n’est plus dans un état publiable." };
+  }
+
+  const currentMetadata = (current.metadata ?? {}) as Record<string, unknown>;
+  const notificationAlreadySent = hasPublicationNotification(currentMetadata);
 
   const { data: organisation, error: organisationError } = await admin
     .from("organisations")
@@ -74,35 +104,62 @@ export async function publishDailyDocumentAndNotify(params: {
     ctaUrl: clientDocumentsUrl,
   });
 
-  const notification = await sendClientEmailWithSilence({
-    supabase: admin,
-    organisationId: document.organisation_id,
-    email: recipient,
-    to: recipient,
-    subject,
-    html: rendered.html,
-    text: rendered.text,
-  });
-  if (!notification.sent) {
-    return {
-      ok: false as const,
-      status: notification.paused ? 409 : 502,
-      error: notification.error || "La notification email n’a pas pu être envoyée.",
+  let notification: Awaited<ReturnType<typeof sendClientEmailWithSilence>> | { sent: false; deduplicated: true };
+  let publishedAt = String(currentMetadata.publication_notification_sent_at ?? "") || new Date().toISOString();
+  let metadata = currentMetadata;
+
+  if (notificationAlreadySent) {
+    notification = { sent: false, deduplicated: true };
+  } else {
+    notification = await sendClientEmailWithSilence({
+      supabase: admin,
+      organisationId: document.organisation_id,
+      email: recipient,
+      to: recipient,
+      subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+    if (!notification.sent) {
+      return {
+        ok: false as const,
+        status: "paused" in notification && notification.paused ? 409 : 502,
+        error: "error" in notification && notification.error ? notification.error : "La notification email n’a pas pu être envoyée.",
+      };
+    }
+
+    publishedAt = new Date().toISOString();
+    metadata = {
+      ...currentMetadata,
+      publication_document_id: document.id,
+      publication_document_version: document.version ?? null,
+      published_by_email: publishedByEmail ?? null,
+      publication_recipient_email: recipient,
+      publication_target: DAILY_CLIENT_DOCUMENTS_TARGET,
+      publication_target_url: clientDocumentsUrl,
+      publication_notification_sent_at: publishedAt,
+      publication_notification_resend_id: "resendId" in notification ? notification.resendId ?? null : null,
     };
+
+    // Persiste d'abord la preuve d'envoi tout en gardant l'état validated. Ainsi,
+    // si la finalisation échoue ensuite, un retry termine la publication sans
+    // renvoyer l'email déjà parti.
+    const { error: proofError } = await admin
+      .from("daily_documents")
+      .update({ metadata, updated_by: publishedBy })
+      .eq("id", document.id)
+      .eq("organisation_id", document.organisation_id)
+      .eq("status", "validated")
+      .eq("is_current", true);
+    if (proofError) {
+      return {
+        ok: false as const,
+        status: 500,
+        error: `L’email a été envoyé mais sa preuve n’a pas pu être enregistrée : ${proofError.message}`,
+      };
+    }
   }
 
-  const publishedAt = new Date().toISOString();
-  const metadata = {
-    ...(document.metadata ?? {}),
-    publication_document_id: document.id,
-    publication_document_version: document.version ?? null,
-    published_by_email: publishedByEmail ?? null,
-    publication_recipient_email: recipient,
-    publication_target: DAILY_CLIENT_DOCUMENTS_TARGET,
-    publication_target_url: clientDocumentsUrl,
-    publication_notification_sent_at: publishedAt,
-    publication_notification_resend_id: "resendId" in notification ? notification.resendId ?? null : null,
-  };
   const { data: updated, error: updateError } = await admin
     .from("daily_documents")
     .update({
@@ -122,7 +179,7 @@ export async function publishDailyDocumentAndNotify(params: {
     return {
       ok: false as const,
       status: 500,
-      error: `L’email a été envoyé mais la publication n’a pas pu être finalisée : ${updateError.message}`,
+      error: `La notification est enregistrée mais la publication n’a pas pu être finalisée : ${updateError.message}`,
     };
   }
 
