@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireLilOwner } from "@/app/agent/api/support/_utils";
 import type { ExternalAuditRow } from "@/lib/server/externalAudits";
-import { sendExternalAuditConfirmation } from "@/lib/server/externalAuditEmails";
+import {
+  buildExternalAuditConfirmationEmail,
+  sendExternalAuditConfirmation,
+} from "@/lib/server/externalAuditEmails";
 
 type Metadata = Record<string, unknown>;
 
@@ -103,7 +106,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: updateError.message }, { status: 500 });
       }
 
-      return NextResponse.json({ ok: true, audit: data });
+      const freshModel = buildExternalAuditConfirmationEmail(data as ExternalAuditRow);
+      return NextResponse.json({
+        ok: true,
+        audit: data,
+        modelSubject: freshModel.subject,
+        modelBodyText: freshModel.bodyText,
+      });
     }
 
     const finalSubject =
