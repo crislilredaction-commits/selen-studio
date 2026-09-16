@@ -12,6 +12,13 @@ test("la lecture agent synchronise les deux marqueurs de lecture", () => {
   assert.match(route, /\.is\("read_by_agent_at",\s*null\)/);
 });
 
+test("le propriétaire Selen conserve le marquage lu sans ouvrir le garde aux autres comptes", () => {
+  assert.match(route, /isOwnerLil\(email\)/);
+  assert.match(route, /if\s*\(!isOwnerLil\(email\)\)\s*\{[\s\S]*requireSupportAgent\(\)/);
+  assert.match(route, /supabase\.auth\.getUser\(\)/);
+  assert.match(route, /status:\s*401/);
+});
+
 test("le tiroir ne masque le non-lu qu'après une réponse serveur réussie", () => {
   assert.match(drawer, /if\s*\(!response\.ok\)\s*return/);
   assert.match(drawer, /setLocalHasUnread\(false\)/);
