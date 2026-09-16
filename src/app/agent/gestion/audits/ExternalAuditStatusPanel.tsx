@@ -87,8 +87,8 @@ export default function ExternalAuditStatusPanel({
     if (!result) return;
     setNotice(
       result.email?.sent
-        ? "Email de confirmation envoye."
-        : result.email?.error ?? "Email non envoye.",
+        ? "Email de confirmation envoyé."
+        : result.email?.error ?? "Email non envoyé.",
     );
     router.refresh();
   }
@@ -101,7 +101,7 @@ export default function ExternalAuditStatusPanel({
     );
     if (!result) return;
     setHasDraft(true);
-    setNotice("Brouillon de confirmation enregistre.");
+    setNotice("Brouillon de confirmation enregistré.");
     router.refresh();
   }
 
@@ -112,10 +112,10 @@ export default function ExternalAuditStatusPanel({
       "reset",
     );
     if (!result) return;
-    setSubject(confirmationEmail.modelSubject);
-    setBodyText(confirmationEmail.modelBodyText);
+    setSubject(result.modelSubject ?? confirmationEmail.modelSubject);
+    setBodyText(result.modelBodyText ?? confirmationEmail.modelBodyText);
     setHasDraft(false);
-    setNotice("Modele de confirmation restaure.");
+    setNotice("Modèle de confirmation restauré.");
     router.refresh();
   }
 
@@ -128,10 +128,10 @@ export default function ExternalAuditStatusPanel({
     if (!result) return;
     setNotice(
       result.warning === "email_sent_but_status_update_failed"
-        ? "Rappel Lil envoye, mais le statut Studio n'a pas pu etre mis a jour."
+        ? "Rappel Lil envoyé, mais le statut Studio n'a pas pu être mis à jour."
         : result.email?.sent
-        ? "Rappel Lil envoye."
-        : result.email?.error ?? "Rappel non envoye.",
+        ? "Rappel Lil envoyé."
+        : result.email?.error ?? "Rappel non envoyé.",
     );
     router.refresh();
   }
@@ -146,10 +146,10 @@ export default function ExternalAuditStatusPanel({
     setNotice(
       result.conflictWarning ||
         (result.calendar?.alreadyExists
-          ? "Evenement deja cree."
+          ? "Événement déjà créé."
           : result.calendar?.created
-            ? "Evenement Google Calendar cree."
-            : result.calendar?.error ?? "Evenement non cree."),
+            ? "Événement Google Calendar créé."
+            : result.calendar?.error ?? "Événement non créé."),
     );
     router.refresh();
   }
@@ -160,9 +160,9 @@ export default function ExternalAuditStatusPanel({
         <SelenCardTitle>Mail de confirmation audit</SelenCardTitle>
         <div style={s.grid}>
           <Info label="Destinataire" value={confirmationEmail.to || "-"} />
-          <Info label="Statut" value={audit.confirmation_email_sent_at ? "Envoye" : "Non envoye"} />
+          <Info label="Statut" value={audit.confirmation_email_sent_at ? "Envoyé" : "Non envoyé"} />
           <Info label="Date d'envoi" value={formatDate(audit.confirmation_email_sent_at)} />
-          <Info label="Brouillon" value={hasDraft ? "Personnalise" : "Modele dynamique"} />
+          <Info label="Brouillon" value={hasDraft ? "Personnalisé" : "Modèle dynamique"} />
         </div>
         <label style={s.field}>
           <span>Objet</span>
@@ -195,7 +195,7 @@ export default function ExternalAuditStatusPanel({
             disabled={busy === "reset"}
             onClick={() => void resetDraft()}
           >
-            Reinitialiser modele
+            Réinitialiser modèle
           </SelenButton>
           <SelenButton
             type="button"
@@ -223,8 +223,8 @@ export default function ExternalAuditStatusPanel({
             label="Client J-1 09h"
             value={
               audit.client_reminder_sent_at || metadataText(audit, "client_reminder_sent_at")
-                ? "Envoye"
-                : "Non envoye"
+                ? "Envoyé"
+                : "Non envoyé"
             }
           />
           <Info
@@ -239,8 +239,8 @@ export default function ExternalAuditStatusPanel({
               audit.lil_reminder_sent_at ||
               audit.reminder_email_sent_at ||
               metadataText(audit, "lil_reminder_sent_at")
-                ? "Envoye"
-                : "Non envoye"
+                ? "Envoyé"
+                : "Non envoyé"
             }
           />
           <Info
@@ -253,7 +253,7 @@ export default function ExternalAuditStatusPanel({
           />
         </div>
         <p style={s.muted}>
-          Le rappel client part a J-1 09h Europe/Paris. Le rappel Lil part a
+          Le rappel client part à J-1 09h Europe/Paris. Le rappel Lil part à
           J-1 20h Europe/Paris. Le bouton manuel ci-dessous envoie uniquement
           le rappel Lil.
         </p>
@@ -278,7 +278,7 @@ export default function ExternalAuditStatusPanel({
       {!audit.google_calendar_event_id ? (
         <div style={s.discreetActions}>
           {!googleStatus.configured ? (
-            <span style={s.warning}>Configuration Google Calendar incomplete.</span>
+            <span style={s.warning}>Configuration Google Calendar incomplète.</span>
           ) : null}
           <SelenButton
             type="button"
@@ -286,7 +286,7 @@ export default function ExternalAuditStatusPanel({
             disabled={busy === "calendar"}
             onClick={() => void createCalendar()}
           >
-            Creer l&apos;evenement Google Calendar
+            Créer l&apos;événement Google Calendar
           </SelenButton>
           <ActionMessage
             action={messageAction}
