@@ -90,10 +90,11 @@ export default async function AgentDailySessionPage(props: PageProps) {
   if (!auth.ok) return <main style={{ padding: 28 }}>Accès refusé.</main>;
 
   const admin = createSupabaseAdminClient();
-  const [{ data: sessionData }, { count: responseCount }, { data: reviewData }] = await Promise.all([
+  const [{ data: sessionData }, { count: responseCount }, { data: reviewData }, { count: documentCount }] = await Promise.all([
     admin.from("daily_sessions").select("id,organisation_id,registration_status,daily_formations(title)").eq("id", id).maybeSingle(),
     admin.from("daily_registration_responses").select("id", { count: "exact", head: true }).eq("session_id", id),
     admin.from("daily_registration_reviews").select("prerequisites_validated,prerequisites_comment,positioning_result,adaptation_required,adaptation_details,decision,justification,evaluator_name,validated_at").eq("session_id", id).maybeSingle(),
+    admin.from("daily_documents").select("id", { count: "exact", head: true }).eq("session_id", id).eq("is_current", true),
   ]);
   const session = sessionData as unknown as SessionRow | null;
   const review = reviewData as RegistrationReviewRow | null;
@@ -105,6 +106,7 @@ export default async function AgentDailySessionPage(props: PageProps) {
   const step = statusStep(session?.registration_status);
   const steps = ["Dossier reçu", "Pièces", "Prérequis", "Analyse", "Décision"];
   const responses = responseCount ?? 0;
+  const documents = documentCount ?? 0;
   const signal = treatmentSignal(session?.registration_status, responses);
   const legacy = await LegacyAgentDailySessionPage(props);
 
@@ -131,6 +133,13 @@ export default async function AgentDailySessionPage(props: PageProps) {
             <strong style={{ display: "block" }}>{signal.title}</strong>
             <span style={{ display: "block", marginTop: 4, fontSize: 13, color: "var(--selen-text2)" }}>{signal.detail}</span>
             <a href="#traitement-canonique" style={{ display: "inline-block", marginTop: 9, fontSize: 13, fontWeight: 800, color: "var(--selen-gold2)" }}>Aller aux actions du dossier ↓</a>
+          </div>
+          <div aria-label="Pièces et contrôles documentaires" style={{ marginTop: 14, borderRadius: 12, border: "1px solid var(--selen-border)", background: "var(--selen-bg)", padding: "14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <div><strong>Pièces du dossier</strong><div style={{ marginTop: 4, fontSize: 13, color: "var(--selen-text2)" }}>{documents} document(s) courant(s) rattaché(s) à cette session.</div></div>
+              <a href={`/agent/daily/pretraining-documents?session=${encodeURIComponent(id)}`} style={{ fontSize: 13, fontWeight: 800, color: "var(--selen-gold2)" }}>Ouvrir et contrôler les pièces →</a>
+            </div>
+            <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--selen-text2)" }}>Le dépôt d’une pièce ne vaut pas validation. Le contrôle reste effectué dans le circuit documentaire canonique Daily.</p>
           </div>
           <div aria-label="Analyse humaine du dossier" style={{ marginTop: 14, borderRadius: 12, border: "1px solid var(--selen-border)", background: "var(--selen-bg)", padding: "14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
