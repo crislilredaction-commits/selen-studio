@@ -22,6 +22,18 @@ test("P0-B met en avant l'action utile et les incohérences sans inventer de sta
   assert.match(source, /Aller aux actions du dossier/);
 });
 
+test("P0-B expose l'analyse humaine depuis la source canonique avec auteur et horodatage", () => {
+  assert.match(source, /daily_registration_reviews/);
+  assert.match(source, /prerequisites_validated/);
+  assert.match(source, /positioning_result/);
+  assert.match(source, /adaptation_required/);
+  assert.match(source, /decision/);
+  assert.match(source, /evaluator_name/);
+  assert.match(source, /validated_at/);
+  assert.match(source, /Analyse humaine/);
+  assert.match(source, /Ouvrir l’analyse et les contrôles/);
+});
+
 test("P0-B conserve le contrôle agent côté serveur", () => {
   assert.match(source, /requireSupportAgent\(\)/);
   assert.match(source, /Accès refusé/);
