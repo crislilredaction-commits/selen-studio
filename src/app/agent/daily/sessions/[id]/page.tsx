@@ -58,6 +58,15 @@ function statusStep(status?: string | null) {
   return 1;
 }
 
+function treatmentSignal(status: string | null | undefined, responseCount: number) {
+  if (status === "summary_validated") return { tone: "ok", title: "Dossier traité", detail: "La synthèse a été validée. Consulte les éléments ci-dessous uniquement si un contrôle complémentaire est nécessaire." };
+  if (status === "summary_to_review") return { tone: "action", title: "Analyse à relire", detail: "La synthèse est prête : relis l’analyse humaine et statue depuis le traitement canonique ci-dessous." };
+  if (status === "responses_received" && responseCount > 0) return { tone: "action", title: "Contrôles à effectuer", detail: `${responseCount} réponse(s) reçue(s). Vérifie les pièces, les prérequis et l’analyse avant toute validation.` };
+  if (status === "responses_received") return { tone: "warning", title: "Incohérence à contrôler", detail: "Le dossier est marqué comme reçu mais aucune réponse n’est retrouvée. Ne valide pas avant d’avoir contrôlé le dossier source." };
+  if (status === "sent") return { tone: "waiting", title: "En attente du dossier", detail: "Le dossier a été envoyé. Les actions d’analyse ne deviennent pertinentes qu’après réception des réponses." };
+  return { tone: "warning", title: "Dossier à préparer", detail: "Le dossier n’est pas encore dans une phase de contrôle. Utilise les actions canoniques ci-dessous pour poursuivre le parcours." };
+}
+
 export default async function AgentDailySessionPage(props: PageProps) {
   const { id } = await props.params;
   const auth = await requireSupportAgent();
@@ -76,6 +85,8 @@ export default async function AgentDailySessionPage(props: PageProps) {
 
   const step = statusStep(session?.registration_status);
   const steps = ["Dossier reçu", "Pièces", "Prérequis", "Analyse", "Décision"];
+  const responses = responseCount ?? 0;
+  const signal = treatmentSignal(session?.registration_status, responses);
   const legacy = await LegacyAgentDailySessionPage(props);
 
   return (
@@ -86,7 +97,7 @@ export default async function AgentDailySessionPage(props: PageProps) {
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
             <div>
               <h1 style={{ margin: 0, fontSize: 24 }}>{session?.daily_formations?.title || "Formation"}</h1>
-              <p style={{ margin: "5px 0 0", color: "var(--selen-text2)" }}>{organisation?.legal_name || organisation?.name || "Organisme"} · {responseCount ?? 0} réponse(s) reçue(s)</p>
+              <p style={{ margin: "5px 0 0", color: "var(--selen-text2)" }}>{organisation?.legal_name || organisation?.name || "Organisme"} · {responses} réponse(s) reçue(s)</p>
             </div>
             <span style={{ alignSelf: "flex-start", borderRadius: 999, padding: "7px 11px", background: "var(--selen-bg)", border: "1px solid var(--selen-border)", fontWeight: 700 }}>{session?.registration_status || "à préparer"}</span>
           </div>
@@ -97,10 +108,15 @@ export default async function AgentDailySessionPage(props: PageProps) {
               return <div key={label} style={{ borderRadius: 10, padding: "10px 12px", border: `1px solid ${current ? "var(--selen-gold2)" : "var(--selen-border)"}`, background: done ? "var(--selen-bg)" : "transparent", fontWeight: current ? 800 : 600, opacity: index + 1 > step ? .58 : 1 }}>{done ? "✓ " : current ? "→ " : ""}{label}</div>;
             })}
           </div>
+          <div data-treatment-tone={signal.tone} style={{ marginTop: 14, borderRadius: 12, border: "1px solid var(--selen-border)", background: "var(--selen-bg)", padding: "12px 14px" }}>
+            <strong style={{ display: "block" }}>{signal.title}</strong>
+            <span style={{ display: "block", marginTop: 4, fontSize: 13, color: "var(--selen-text2)" }}>{signal.detail}</span>
+            <a href="#traitement-canonique" style={{ display: "inline-block", marginTop: 9, fontSize: 13, fontWeight: 800, color: "var(--selen-gold2)" }}>Aller aux actions du dossier ↓</a>
+          </div>
           <p style={{ margin: "14px 0 0", fontSize: 13, color: "var(--selen-text2)" }}>Les blocs ci-dessous restent les actions canoniques existantes. Cette synthèse n’ajoute aucun statut ni moteur parallèle : elle rend simplement le traitement lisible avant d’agir.</p>
         </div>
       </section>
-      {patchSummaryValidationAction(legacy)}
+      <div id="traitement-canonique">{patchSummaryValidationAction(legacy)}</div>
     </>
   );
 }
