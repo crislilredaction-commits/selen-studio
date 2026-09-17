@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-type DocumentRow = { id:string; organisation_id:string; document_type:string; status:string; version:number; logical_name:string; created_at:string; metadata?:Record<string,unknown>|null; organisations?:{name?:string|null}|null };
+type DocumentRow = { id:string; organisation_id:string; session_id?:string|null; document_type:string; status:string; version:number; logical_name:string; created_at:string; metadata?:Record<string,unknown>|null; organisations?:{name?:string|null}|null };
 const labels:Record<string,string>={training_program:"Programme",training_agreement:"Convention",convocation:"Convocation",registration_positioning:"Inscription & positionnement",welcome_booklet:"Livret d’accueil",internal_regulations:"Règlement intérieur"};
 const statusLabels:Record<string,string>={to_check:"À vérifier",to_validate:"À valider",validated:"Validé",correction_requested:"Correction demandée",published:"Publié",signed:"Signé",draft:"Brouillon",active:"Actif",archived:"Archivé"};
 function metaText(doc:DocumentRow,...keys:string[]){for(const key of keys){const value=doc.metadata?.[key];if(typeof value==="string"&&value.trim())return value.trim();}return""}
 function learnerKey(doc:DocumentRow){return metaText(doc,"learner_id","learner_email","learner_name")}
 function learnerLabel(doc:DocumentRow){return metaText(doc,"learner_name","learner_email","learner_id")||"Sans apprenant"}
-function sessionKey(doc:DocumentRow){return metaText(doc,"session_id","session_name","session_title")}
-function sessionLabel(doc:DocumentRow){return metaText(doc,"session_name","session_title","session_id")||"Sans session"}
+function sessionKey(doc:DocumentRow){return doc.session_id?.trim()||metaText(doc,"session_id","session_name","session_title")}
+function sessionLabel(doc:DocumentRow){return metaText(doc,"session_name","session_title")||doc.session_id?.trim()||metaText(doc,"session_id")||"Sans session"}
 
 export default function DailyPretrainingReviewPage(){
   const searchParams=useSearchParams(); const requestedSession=searchParams.get("session")?.trim()||"all";
