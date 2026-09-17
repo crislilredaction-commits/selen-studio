@@ -61,6 +61,13 @@ test("P0-B bloque côté serveur une validation incomplète et reflète le bloca
   assert.match(source, /Validation bloquée/);
 });
 
+test("P0-B conserve un layout responsive pour le poste de traitement", () => {
+  assert.match(source, /maxWidth: 1180/);
+  assert.match(source, /flexWrap: "wrap"/);
+  assert.match(source, /repeat\(auto-fit,minmax\(130px,1fr\)\)/);
+  assert.match(source, /repeat\(auto-fit,minmax\(210px,1fr\)\)/);
+});
+
 test("P0-B conserve le contrôle agent côté serveur", () => {
   assert.match(source, /requireSupportAgent\(\)/);
   assert.match(source, /Accès refusé/);
