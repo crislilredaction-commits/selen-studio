@@ -1,20 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
-type DocumentRow = { id:string; organisation_id:string; document_type:string; status:string; version:number; logical_name:string; created_at:string; metadata?:Record<string,unknown>|null; organisations?:{name?:string|null}|null };
+type DocumentRow = { id:string; organisation_id:string; session_id?:string|null; document_type:string; status:string; version:number; logical_name:string; created_at:string; metadata?:Record<string,unknown>|null; organisations?:{name?:string|null}|null };
 const labels:Record<string,string>={training_program:"Programme",training_agreement:"Convention",convocation:"Convocation",registration_positioning:"Inscription & positionnement",welcome_booklet:"Livret d’accueil",internal_regulations:"Règlement intérieur"};
 const statusLabels:Record<string,string>={to_check:"À vérifier",to_validate:"À valider",validated:"Validé",correction_requested:"Correction demandée",published:"Publié",signed:"Signé",draft:"Brouillon",active:"Actif",archived:"Archivé"};
 function metaText(doc:DocumentRow,...keys:string[]){for(const key of keys){const value=doc.metadata?.[key];if(typeof value==="string"&&value.trim())return value.trim();}return""}
 function learnerKey(doc:DocumentRow){return metaText(doc,"learner_id","learner_email","learner_name")}
 function learnerLabel(doc:DocumentRow){return metaText(doc,"learner_name","learner_email","learner_id")||"Sans apprenant"}
-function sessionKey(doc:DocumentRow){return metaText(doc,"session_id","session_name","session_title")}
-function sessionLabel(doc:DocumentRow){return metaText(doc,"session_name","session_title","session_id")||"Sans session"}
+function sessionKey(doc:DocumentRow){return doc.session_id?.trim()||metaText(doc,"session_id","session_name","session_title")}
+function sessionLabel(doc:DocumentRow){return metaText(doc,"session_name","session_title")||doc.session_id?.trim()||metaText(doc,"session_id")||"Sans session"}
 
 export default function DailyPretrainingReviewPage(){
-  const [documents,setDocuments]=useState<DocumentRow[]>([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(""); const [message,setMessage]=useState(""); const [filter,setFilter]=useState("attention"); const [learnerFilter,setLearnerFilter]=useState("all"); const [sessionFilter,setSessionFilter]=useState("all");
+  const searchParams=useSearchParams(); const requestedSession=searchParams.get("session")?.trim()||"all";
+  const [documents,setDocuments]=useState<DocumentRow[]>([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(""); const [message,setMessage]=useState(""); const [filter,setFilter]=useState("attention"); const [learnerFilter,setLearnerFilter]=useState("all"); const [sessionFilter,setSessionFilter]=useState(requestedSession);
   const load=useCallback(async()=>{setLoading(true);setError("");try{const r=await fetch("/agent/api/daily/pretraining-documents",{cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error??"Chargement impossible.");setDocuments(d.documents??[]);}catch(c){setError(c instanceof Error?c.message:"Chargement impossible.");}finally{setLoading(false);}},[]);
   useEffect(()=>{void load();},[load]);
+  useEffect(()=>{setSessionFilter(requestedSession);},[requestedSession]);
   const learners=useMemo(()=>{const map=new Map<string,string>();for(const doc of documents){const key=learnerKey(doc);if(key)map.set(key,learnerLabel(doc));}return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1],"fr"));},[documents]);
   const sessions=useMemo(()=>{const map=new Map<string,string>();for(const doc of documents){const key=sessionKey(doc);if(key)map.set(key,sessionLabel(doc));}return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1],"fr"));},[documents]);
   const visible=useMemo(()=>documents.filter((d)=>(filter==="all"||["to_check","to_validate","correction_requested","validated"].includes(d.status))&&(learnerFilter==="all"||learnerKey(d)===learnerFilter)&&(sessionFilter==="all"||sessionKey(d)===sessionFilter)),[documents,filter,learnerFilter,sessionFilter]);

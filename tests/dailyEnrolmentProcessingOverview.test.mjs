@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 const source = fs.readFileSync("src/app/agent/daily/sessions/[id]/page.tsx", "utf8");
+const documentReviewSource = fs.readFileSync("src/app/agent/daily/pretraining-documents/page.tsx", "utf8");
 
 test("P0-B affiche une synthèse de traitement sans moteur parallèle", () => {
   for (const label of ["Dossier reçu", "Pièces", "Prérequis", "Analyse", "Décision"]) assert.match(source, new RegExp(label));
@@ -20,6 +21,19 @@ test("P0-B met en avant l'action utile et les incohérences sans inventer de sta
   assert.match(source, /En attente du dossier/);
   assert.match(source, /traitement-canonique/);
   assert.match(source, /Aller aux actions du dossier/);
+});
+
+test("P0-B expose les pièces via le circuit documentaire canonique de la session", () => {
+  assert.match(source, /daily_documents/);
+  assert.match(source, /\.eq\("session_id", id\)/);
+  assert.match(source, /\.eq\("is_current", true\)/);
+  assert.match(source, /Pièces du dossier/);
+  assert.match(source, /pretraining-documents\?session=/);
+  assert.match(source, /Le dépôt d’une pièce ne vaut pas validation/);
+  assert.match(documentReviewSource, /useSearchParams/);
+  assert.match(documentReviewSource, /searchParams\.get\("session"\)/);
+  assert.match(documentReviewSource, /doc\.session_id/);
+  assert.match(documentReviewSource, /sessionKey\(d\)===sessionFilter/);
 });
 
 test("P0-B expose l'analyse humaine depuis la source canonique avec auteur et horodatage", () => {
