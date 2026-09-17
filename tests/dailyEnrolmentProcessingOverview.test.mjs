@@ -22,6 +22,15 @@ test("P0-B met en avant l'action utile et les incohérences sans inventer de sta
   assert.match(source, /Aller aux actions du dossier/);
 });
 
+test("P0-B expose les pièces via le circuit documentaire canonique de la session", () => {
+  assert.match(source, /daily_documents/);
+  assert.match(source, /\.eq\("session_id", id\)/);
+  assert.match(source, /\.eq\("is_current", true\)/);
+  assert.match(source, /Pièces du dossier/);
+  assert.match(source, /pretraining-documents\?session=/);
+  assert.match(source, /Le dépôt d’une pièce ne vaut pas validation/);
+});
+
 test("P0-B expose l'analyse humaine depuis la source canonique avec auteur et horodatage", () => {
   assert.match(source, /daily_registration_reviews/);
   assert.match(source, /prerequisites_validated/);
