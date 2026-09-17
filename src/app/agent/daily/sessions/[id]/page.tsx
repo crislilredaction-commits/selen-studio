@@ -27,6 +27,16 @@ type RegistrationReviewRow = {
   validated_at?: string | null;
 };
 
+function validationBlockReason(status: string | null | undefined, responseCount: number, review: RegistrationReviewRow | null) {
+  if (status === "summary_validated") return null;
+  if (status !== "summary_to_review") return "Le dossier doit être en synthèse à relire avant validation.";
+  if (responseCount < 1) return "Aucune réponse de candidature n’est disponible pour ce dossier.";
+  if (!review?.validated_at || !review.evaluator_name?.trim()) return "L’analyse humaine doit être enregistrée avec son auteur avant validation.";
+  if (review.prerequisites_validated !== true) return "Les prérequis doivent être explicitement vérifiés avant validation.";
+  if (!review.decision) return "Une décision d’analyse doit être enregistrée avant validation.";
+  return null;
+}
+
 async function summaryValidatedAction(formData: FormData) {
   "use server";
   const auth = await requireSupportAgent();
@@ -34,29 +44,35 @@ async function summaryValidatedAction(formData: FormData) {
   const id = String(formData.get("id") ?? "").trim();
   if (!id) throw new Error("Session Daily introuvable.");
   const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
-    .from("daily_sessions")
-    .select("id,user_id,individual_beneficiaries,beneficiaries,companies,daily_formations(title)")
-    .eq("id", id)
-    .maybeSingle();
+  const [{ data, error }, { count: responseCount, error: responseError }, { data: reviewData, error: reviewError }] = await Promise.all([
+    admin.from("daily_sessions").select("id,user_id,individual_beneficiaries,beneficiaries,companies,registration_status,daily_formations(title)").eq("id", id).maybeSingle(),
+    admin.from("daily_registration_responses").select("id", { count: "exact", head: true }).eq("session_id", id),
+    admin.from("daily_registration_reviews").select("prerequisites_validated,decision,evaluator_name,validated_at").eq("session_id", id).maybeSingle(),
+  ]);
   if (error) throw new Error(error.message);
+  if (responseError) throw new Error(responseError.message);
+  if (reviewError) throw new Error(reviewError.message);
   const session = data as unknown as SessionRow | null;
+  const review = reviewData as RegistrationReviewRow | null;
   if (!session) throw new Error("Session Daily introuvable.");
+  const blocked = validationBlockReason(session.registration_status, responseCount ?? 0, review);
+  if (blocked) throw new Error(blocked);
+  if (session.registration_status === "summary_validated") return;
   const definitions = buildDirectSessionPortalDefinitions(session);
   await provisionDirectSessionPortalAccesses({ supabase: admin, sessionId: session.id, formationTitle: session.daily_formations?.title ?? null, definitions });
   const now = new Date().toISOString();
-  const { error: updateError } = await admin.from("daily_sessions").update({ registration_status: "summary_validated", registration_summary_validated_at: now }).eq("id", session.id);
+  const { error: updateError } = await admin.from("daily_sessions").update({ registration_status: "summary_validated", registration_summary_validated_at: now }).eq("id", session.id).eq("registration_status", "summary_to_review");
   if (updateError) throw new Error(updateError.message);
   revalidatePath(`/agent/daily/sessions/${session.id}`);
   revalidatePath("/agent/daily");
 }
 
-function patchSummaryValidationAction(node: ReactNode): ReactNode {
+function patchSummaryValidationAction(node: ReactNode, blockedReason: string | null): ReactNode {
   if (!isValidElement(node)) return node;
   const element = node as ReactElement<Record<string, unknown> & { children?: ReactNode }>;
-  const patchedChildren = Children.map(element.props.children, patchSummaryValidationAction);
+  const patchedChildren = Children.map(element.props.children, (child) => patchSummaryValidationAction(child, blockedReason));
   if (element.type === "button" && element.props.name === "action" && element.props.value === "summary_validated") {
-    return cloneElement(element, { formAction: summaryValidatedAction }, patchedChildren);
+    return cloneElement(element, { formAction: summaryValidatedAction, disabled: Boolean(blockedReason), title: blockedReason ?? "Valider le dossier" }, patchedChildren);
   }
   return cloneElement(element, {}, patchedChildren);
 }
@@ -108,6 +124,7 @@ export default async function AgentDailySessionPage(props: PageProps) {
   const responses = responseCount ?? 0;
   const documents = documentCount ?? 0;
   const signal = treatmentSignal(session?.registration_status, responses);
+  const blockedReason = validationBlockReason(session?.registration_status, responses, review);
   const legacy = await LegacyAgentDailySessionPage(props);
 
   return (
@@ -154,12 +171,13 @@ export default async function AgentDailySessionPage(props: PageProps) {
                 <div><b>Décision</b><br />{review.decision || "À prendre"}{review.justification ? ` · ${review.justification}` : ""}</div>
               </div>
             ) : <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--selen-text2)" }}>Aucune analyse enregistrée. Utilise le formulaire canonique ci-dessous pour effectuer le contrôle.</p>}
+            {blockedReason ? <p role="status" style={{ margin: "10px 0 0", fontSize: 12, fontWeight: 700, color: "var(--selen-text2)" }}>Validation bloquée : {blockedReason}</p> : <p role="status" style={{ margin: "10px 0 0", fontSize: 12, fontWeight: 700 }}>Dossier prêt pour validation agent.</p>}
             <a href="#traitement-canonique" style={{ display: "inline-block", marginTop: 10, fontSize: 13, fontWeight: 800, color: "var(--selen-gold2)" }}>Ouvrir l’analyse et les contrôles ↓</a>
           </div>
           <p style={{ margin: "14px 0 0", fontSize: 13, color: "var(--selen-text2)" }}>Les blocs ci-dessous restent les actions canoniques existantes. Cette synthèse n’ajoute aucun statut ni moteur parallèle : elle rend simplement le traitement lisible avant d’agir.</p>
         </div>
       </section>
-      <div id="traitement-canonique">{patchSummaryValidationAction(legacy)}</div>
+      <div id="traitement-canonique">{patchSummaryValidationAction(legacy, blockedReason)}</div>
     </>
   );
 }

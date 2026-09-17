@@ -48,6 +48,19 @@ test("P0-B expose l'analyse humaine depuis la source canonique avec auteur et ho
   assert.match(source, /Ouvrir l’analyse et les contrôles/);
 });
 
+test("P0-B bloque côté serveur une validation incomplète et reflète le blocage dans l'UI", () => {
+  assert.match(source, /function validationBlockReason/);
+  assert.match(source, /status !== "summary_to_review"/);
+  assert.match(source, /responseCount < 1/);
+  assert.match(source, /review\.prerequisites_validated !== true/);
+  assert.match(source, /!review\.decision/);
+  assert.match(source, /!review\?\.validated_at/);
+  assert.match(source, /if \(blocked\) throw new Error\(blocked\)/);
+  assert.match(source, /\.eq\("registration_status", "summary_to_review"\)/);
+  assert.match(source, /disabled: Boolean\(blockedReason\)/);
+  assert.match(source, /Validation bloquée/);
+});
+
 test("P0-B conserve le contrôle agent côté serveur", () => {
   assert.match(source, /requireSupportAgent\(\)/);
   assert.match(source, /Accès refusé/);
