@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import type { CSSProperties } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
@@ -7,6 +9,7 @@ import { requireSupportAgent, requireSupportAdmin } from "@/app/agent/api/suppor
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
+import { createAgentAssistanceToken } from "@/lib/server/agentAssistanceTokens";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -44,6 +47,25 @@ async function currentUserId() {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   return data.user?.id ?? null;
+}
+
+async function openAssistanceMode(formData: FormData) {
+  "use server";
+  const auth = await requireSupportAgent();
+  if (!auth.ok) throw new Error(auth.error);
+  const organisationId = String(formData.get("organisation_id") ?? "").trim();
+  if (!organisationId) throw new Error("Organisme manquant pour le mode assistance.");
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const result = await createAgentAssistanceToken({
+    agentUserId: user?.id ?? null,
+    agentEmail: user?.email ?? auth.email ?? null,
+    organisationId,
+    dossierId: null,
+    headersList: await headers(),
+  });
+  redirect(result.url);
 }
 
 async function assignAgent(formData: FormData) {
@@ -265,7 +287,12 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
           <h1 style={s.title}>{organisation.legal_name || organisation.name}</h1>
           <p style={s.subtitle}>{organisation.siret || "SIRET à renseigner"} · NDA {organisation.nda_number || "à vérifier"}</p>
         </div>
-        {isAdmin ? (
+        <div style={s.headerActions}>
+          <form action={openAssistanceMode}>
+            <input type="hidden" name="organisation_id" value={id} />
+            <SelenButton type="submit" variant="primary">Agir pour cet OF</SelenButton>
+          </form>
+          {isAdmin ? (
           <form action={assignAgent} style={s.assignmentForm}>
             <input type="hidden" name="organisation_id" value={id} />
             <label style={s.smallLabel}>Agent assigné</label>
@@ -275,7 +302,8 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
             </select>
             <SelenButton type="submit" size="sm">Attribuer</SelenButton>
           </form>
-        ) : null}
+          ) : null}
+        </div>
       </header>
 
       <section style={s.stats}>
@@ -340,6 +368,7 @@ const s: Record<string, CSSProperties> = {
   back: { color: "var(--selen-text3)", fontSize: 12, textDecoration: "none" },
   eyebrow: { marginTop: 10, fontSize: 9, letterSpacing: ".28em", textTransform: "uppercase", color: "var(--selen-gold)" },
   title: { fontFamily: "var(--font-display)", fontSize: 30, margin: "5px 0" }, subtitle: { fontSize: 13, color: "var(--selen-text2)" },
+  headerActions: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", justifyContent: "flex-end" },
   assignmentForm: { display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }, smallLabel: { fontSize: 10, color: "var(--selen-text3)" },
   select: { background: "var(--selen-bg3)", color: "var(--selen-text)", border: "1px solid var(--selen-border)", borderRadius: 10, padding: "9px 10px", minHeight: 38 },
   input: { background: "var(--selen-bg3)", color: "var(--selen-text)", border: "1px solid var(--selen-border)", borderRadius: 10, padding: "9px 10px", minWidth: 150 },
