@@ -121,6 +121,17 @@ export async function createAgentAssistanceToken({
     : "/client";
   const url = new URL(targetPath, getVitrineBaseUrl());
   url.searchParams.set("assistanceToken", token);
+  const returnTo = headersList?.get("referer")?.trim();
+  if (returnTo) {
+    try {
+      const returnUrl = new URL(returnTo);
+      if (returnUrl.protocol === "https:" || returnUrl.hostname === "localhost") {
+        url.searchParams.set("assistanceReturnTo", returnUrl.toString());
+      }
+    } catch {
+      // Ignore an invalid Referer rather than weakening assistance access.
+    }
+  }
 
   return {
     tokenId: data.id as string,
