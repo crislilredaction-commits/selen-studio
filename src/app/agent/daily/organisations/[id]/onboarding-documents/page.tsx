@@ -7,7 +7,7 @@ type PageProps = { params: Promise<{ id: string }> };
 
 type Piece = { key: string; label: string; url: string | null; pending: boolean };
 
-function storageObjectPath(value: unknown) {
+function storageObjectPath(value: unknown, organisationId: string) {
   if (typeof value !== "string" || !value.trim()) return null;
   try {
     const url = new URL(value);
@@ -17,12 +17,14 @@ function storageObjectPath(value: unknown) {
     const tail = url.pathname.slice(index + marker.length).replace(/^public\//, "").replace(/^sign\//, "");
     const [bucket, ...parts] = tail.split("/");
     if (bucket !== "documents" || parts.length === 0) return null;
-    return decodeURIComponent(parts.join("/"));
+    const path = decodeURIComponent(parts.join("/"));
+    if (!path.startsWith(`daily/${organisationId}/organisation/`)) return null;
+    return path;
   } catch { return null; }
 }
 
-async function signedDocumentUrl(admin: ReturnType<typeof createSupabaseAdminClient>, value: unknown) {
-  const path = storageObjectPath(value);
+async function signedDocumentUrl(admin: ReturnType<typeof createSupabaseAdminClient>, value: unknown, organisationId: string) {
+  const path = storageObjectPath(value, organisationId);
   if (!path) return null;
   const { data, error } = await admin.storage.from("documents").createSignedUrl(path, 300);
   if (error || !data?.signedUrl) return null;
@@ -55,9 +57,9 @@ export default async function OnboardingDocumentsPage({ params }: PageProps) {
   if (error) return <main style={{ padding: 28 }}><p>Chargement des pièces impossible.</p></main>;
 
   const pieces: Piece[] = onboarding ? [
-    { key: "insee", label: "Avis de situation INSEE / justificatif d’immatriculation", url: await signedDocumentUrl(admin, onboarding.insee_document_url), pending: Boolean(onboarding.insee_document_pending) },
-    { key: "qualiopi", label: "Certificat Qualiopi", url: await signedDocumentUrl(admin, onboarding.qualiopi_certificate_url), pending: Boolean(onboarding.qualiopi_certificate_pending) },
-    { key: "nda_bpf", label: "NDA / BPF", url: await signedDocumentUrl(admin, onboarding.nda_or_bpf_document_url), pending: Boolean(onboarding.nda_or_bpf_document_pending) },
+    { key: "insee", label: "Avis de situation INSEE / justificatif d’immatriculation", url: await signedDocumentUrl(admin, onboarding.insee_document_url, id), pending: Boolean(onboarding.insee_document_pending) },
+    { key: "qualiopi", label: "Certificat Qualiopi", url: await signedDocumentUrl(admin, onboarding.qualiopi_certificate_url, id), pending: Boolean(onboarding.qualiopi_certificate_pending) },
+    { key: "nda_bpf", label: "NDA / BPF", url: await signedDocumentUrl(admin, onboarding.nda_or_bpf_document_url, id), pending: Boolean(onboarding.nda_or_bpf_document_pending) },
   ] : [];
 
   return <main style={{ maxWidth: 1000, margin: "0 auto", padding: 28 }}>
