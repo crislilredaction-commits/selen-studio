@@ -29,17 +29,6 @@ async function signedDocumentUrl(admin: ReturnType<typeof createSupabaseAdminCli
   return data.signedUrl;
 }
 
-function safeDocumentUrl(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:") return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
 export default async function OnboardingDocumentsPage({ params }: PageProps) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={{ padding: 28 }}><p>{auth.error}</p></main>;
