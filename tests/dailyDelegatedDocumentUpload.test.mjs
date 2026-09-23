@@ -30,6 +30,12 @@ test("delegated import offers organisation-scoped business choices instead of UU
   for (const table of ["daily_trainer_profiles", "daily_learners", "daily_formations", "daily_sessions", "daily_session_enrolments"]) {
     assert.match(page, new RegExp(`from\\(\\"${table}\\"\\).*eq\\(\\"organisation_id\\", id\\)`));
   }
+  assert.match(page, /first_name, last_name, email/);
+  assert.match(page, /internal_reference/);
+  assert.match(page, /learner_id, session_id, status/);
+  assert.match(page, /learnerById/);
+  assert.match(page, /sessionById/);
+  assert.match(page, /Ajouter un document pour cet OF/);
   assert.match(form, /<EntitySelect name="trainer_id"/);
   assert.match(form, /<EntitySelect name="learner_id"/);
   assert.match(form, /<EntitySelect name="formation_id"/);
