@@ -21,9 +21,9 @@ export default function SelenButton({
       boxShadow: "0 10px 24px rgba(201, 148, 58, 0.18)",
     },
     secondary: {
-      background: "rgba(168, 95, 56, 0.14)",
-      color: "var(--selen-gold2)",
-      border: "1px solid rgba(201, 148, 58, 0.28)",
+      background: "rgba(201, 148, 58, 0.22)",
+      color: "var(--selen-text)",
+      border: "1px solid rgba(201, 148, 58, 0.55)",
     },
     ghost: {
       background: "rgba(247, 239, 224, 0.06)",
@@ -45,8 +45,9 @@ export default function SelenButton({
         borderRadius: "var(--radius-sm)",
         fontSize: 13,
         fontWeight: 500,
-        cursor: "pointer",
-        transition: "0.2s",
+        cursor: props.disabled ? "not-allowed" : "pointer",
+        opacity: props.disabled ? 0.58 : 1,
+        transition: "background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, opacity 0.2s",
         ...styles[variant],
         ...props.style,
       }}
