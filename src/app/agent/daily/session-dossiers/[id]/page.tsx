@@ -224,8 +224,7 @@ export default async function SessionPreparationPage({ params }: Props) {
             <Field label="Moyens et ressources pédagogiques" wide><textarea name="pedagogical_resources" defaultValue={formation.pedagogical_resources ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
             <Field label="Modalités d'évaluation" wide><textarea name="evaluation_methods" defaultValue={formation.evaluation_methods ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
             <Field label="Accessibilité" wide><textarea name="accessibility" defaultValue={formation.accessibility ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
-          </div>
-                    <Field label="Référent handicap"><input name="disability_referent" defaultValue={formation.disability_referent ?? ""} disabled={!editable} style={s.input} /></Field>
+            <Field label="Référent handicap"><input name="disability_referent" defaultValue={formation.disability_referent ?? ""} disabled={!editable} style={s.input} /></Field>
           </div>
         </details>
 
