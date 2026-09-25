@@ -202,6 +202,12 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAg
     if (!isAvailablePhaseItem(item.phase, currentPhase)) continue;
 
     const formation = formationById.get(session.formation_id);
+    if (item.item_key === "pretraining_documents") {
+      const registrationResponses = responsesBySession.get(session.id) ?? [];
+      const latestRegistrationResponse = registrationResponses[registrationResponses.length - 1];
+      const review = reviewBySession.get(session.id);
+      if (!registrationReviewIsCurrent(review, latestRegistrationResponse)) continue;
+    }
     if (item.item_key === "training_ready" && formation?.status === "review") continue;
 
     const createdAt = item.signaled_at ?? session.updated_at;
