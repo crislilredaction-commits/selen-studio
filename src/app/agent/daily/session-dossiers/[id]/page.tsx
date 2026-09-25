@@ -68,6 +68,7 @@ async function persistProgram(formData: FormData, validate: boolean) {
     global_objective: value(formData, "global_objective"),
     learning_objectives: learningObjectives,
     target_audience: value(formData, "target_audience"),
+    detailed_program: value(formData, "detailed_program"),
     prerequisites: value(formData, "prerequisites"),
     duration_hours: durationHours,
     duration_days: durationDays,
@@ -196,6 +197,7 @@ export default async function SessionPreparationPage({ params }: Props) {
             <Field label="Intitulé" wide><input name="title" defaultValue={formation.title ?? ""} disabled={!editable} required style={s.input} /></Field>
             <Field label="Objectif principal" wide><textarea name="global_objective" defaultValue={formation.global_objective ?? ""} disabled={!editable} required rows={3} style={s.textarea} /></Field>
             <Field label="Objectifs pédagogiques" help="Un objectif par ligne." wide><textarea name="learning_objectives" defaultValue={objectiveLines} disabled={!editable} required rows={4} style={s.textarea} /></Field>
+            <Field label="Contenu détaillé de la formation" wide><textarea name="detailed_program" defaultValue={formation.detailed_program ?? ""} disabled={!editable} rows={10} style={s.textarea} /></Field>
             <Field label="Public visé"><textarea name="target_audience" defaultValue={formation.target_audience ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
             <Field label="Prérequis"><textarea name="prerequisites" defaultValue={formation.prerequisites ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
           </div>
