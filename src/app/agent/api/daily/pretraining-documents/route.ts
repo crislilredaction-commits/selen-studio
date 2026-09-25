@@ -70,7 +70,8 @@ export async function PATCH(req: Request) {
     if (!publication.ok) {
       return NextResponse.json({ error: publication.error }, { status: publication.status });
     }
-    return NextResponse.json({ document: publication.document, notification: { sent: true } });
+    const meta=(publication.document.metadata??{}) as Record<string,unknown>;
+    return NextResponse.json({ document: publication.document, notification: { sent: true, recipient: meta.publication_recipient_email??null, sentAt: meta.publication_notification_sent_at??null, providerMessageId: meta.publication_notification_resend_id??null, deduplicated: "deduplicated" in publication.notification ? publication.notification.deduplicated : false } });
   }
 
   if (["published", "signed", "archived"].includes(current.status)) {

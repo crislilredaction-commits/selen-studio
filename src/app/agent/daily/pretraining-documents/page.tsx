@@ -23,12 +23,12 @@ export default function DailyPretrainingReviewPage(){
   const visible=useMemo(()=>documents.filter((d)=>(filter==="all"||["to_check","to_validate","correction_requested","validated"].includes(d.status))&&(learnerFilter==="all"||learnerKey(d)===learnerFilter)&&(sessionFilter==="all"||sessionKey(d)===sessionFilter)),[documents,filter,learnerFilter,sessionFilter]);
   async function review(id:string,action:"validate"|"request_correction"|"publish"){
     const note=action==="request_correction"?window.prompt("Motif ou correction demandée :","")??"":"";
-    if(action==="publish"&&!window.confirm("Publier ce document dans Selen Daily et envoyer l’email au client ?"))return;
+    if(action==="publish"&&!window.confirm("Confirmez-vous avoir relu cette pièce ? Elle sera publiée et l’email sera envoyé au destinataire prévu."))return;
     setError("");setMessage("");
     const r=await fetch("/agent/api/daily/pretraining-documents",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,action,note})});
     const d=await r.json().catch(()=>({}));
     if(!r.ok){setError(d.error??"Action impossible.");return;}
-    setMessage(action==="validate"?"Document validé. Vous pouvez maintenant le publier.":action==="publish"?"Document publié et client notifié par email.":"Correction demandée.");
+    const notification=d.notification??{}; const proof=action==="publish"&&notification.sent?` Email envoyé à ${notification.recipient??"destinataire"}${notification.sentAt?` le ${new Date(notification.sentAt).toLocaleString("fr-FR")}`:""}${notification.providerMessageId?` · preuve ${notification.providerMessageId}`:""}.`:""; setMessage(action==="validate"?"Document validé. Vous pouvez maintenant le publier.":action==="publish"?`Document publié.${proof}`:"Correction demandée.");
     await load();
   }
   return <main style={{maxWidth:1180,margin:"0 auto",padding:28}}><p style={{fontSize:12,fontWeight:700,color:"var(--selen-text2)"}}>SELEN DAILY</p><h1>Documents préformation</h1><p style={{color:"var(--selen-text2)",maxWidth:760}}>Contrôle des programmes, conventions, convocations, livrets d’accueil, règlements intérieurs et documents d’inscription/positionnement générés depuis les dossiers Daily. Ouvrez la pièce dans Studio avant toute validation ou demande de correction. Filtrez par apprenant et par session pour travailler sur le bon dossier sans mélanger les pièces.</p>
