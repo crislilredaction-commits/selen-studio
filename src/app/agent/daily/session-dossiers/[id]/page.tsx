@@ -98,6 +98,9 @@ async function persistProgram(formData: FormData, validate: boolean) {
     if (validationError) throw new Error(validationError.message);
     const validatedRow = Array.isArray(validated) ? validated[0] : validated;
     const validatedId = validatedRow?.id ?? formationId;
+    const { data: validatedFormation, error: validatedStatusError } = await admin.from("daily_formations").select("id,status").eq("id", validatedId).maybeSingle();
+    if (validatedStatusError) throw new Error(validatedStatusError.message);
+    if (!validatedFormation || validatedFormation.status !== "validated") throw new Error("La validation n’a pas confirmé le statut validé du programme.");
     const { error: taskError } = await admin
       .from("daily_formations")
       .update({ spontaneous_registration_task_status: "to_attach" })
@@ -108,6 +111,7 @@ async function persistProgram(formData: FormData, validate: boolean) {
   revalidatePath(`/agent/daily/session-dossiers/${sessionId}`);
   revalidatePath("/agent/daily/session-dossiers");
   revalidatePath("/agent/daily");
+  revalidatePath("/agent");
   redirect(`/agent/daily/session-dossiers/${sessionId}?saved=${validate ? "validated" : "draft"}`);
 }
 
