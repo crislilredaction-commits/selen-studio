@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 type Props={params:Promise<{id:string}>};
 function text(fd:FormData,key:string){return String(fd.get(key)??"").trim();}
 async function saveAnalysis(formData:FormData){
@@ -10,7 +11,7 @@ async function saveAnalysis(formData:FormData){
   const auth=await requireSupportAgent(); if(!auth.ok) throw new Error(auth.error);
   const id=text(formData,"id"); if(!id) throw new Error("Candidature introuvable.");
   const admin=createSupabaseAdminClient();
-  const {data:req,error:reqError}=await admin.from("daily_formation_registration_requests").select("id,formation_id,decision_status,daily_formations(prerequisite_mode)").eq("id",id).maybeSingle();
+  const {data:req,error:reqError}=await admin.from("daily_formation_registration_requests").select("id,formation_id,decision_status,daily_formations(prerequisite_mode,organisation_id,title)").eq("id",id).maybeSingle();
   if(reqError||!req) throw new Error(reqError?.message??"Candidature introuvable.");
   if(req.decision_status!=="pending"&&req.decision_status!=="ready_for_of") throw new Error("Cette candidature a déjà reçu une décision finale.");
   const prerequisiteMode=(req.daily_formations as any)?.prerequisite_mode??"none";
@@ -24,6 +25,21 @@ async function saveAnalysis(formData:FormData){
   const now=new Date().toISOString();
   const {error}=await admin.from("daily_formation_registration_requests").update({agent_analysis_summary:summary,agent_analysis_completed_at:now,agent_analysis_completed_by:auth.userId,prerequisites_validated:true,decision_status:"ready_for_of",updated_at:now}).eq("id",id).in("decision_status",["pending","ready_for_of"]);
   if(error) throw new Error(error.message);
+  const formation=(req.daily_formations as any);
+  const organisationId=String(formation?.organisation_id??"").trim();
+  if(organisationId){
+    const {data:organisation}=await admin.from("organisations").select("email,name,legal_name").eq("id",organisationId).maybeSingle();
+    const recipient=String(organisation?.email??"").trim().toLowerCase();
+    if(recipient){
+      const organisationName=String(organisation?.legal_name||organisation?.name||"votre organisme");
+      const formationTitle=String(formation?.title||"la formation");
+      const subject=`Selen Daily · synthèse de candidature prête pour ${formationTitle}`;
+      const bodyText=`Bonjour,\n\nL’analyse Selen du dossier de candidature pour ${formationTitle} est terminée.\n\nLa synthèse est disponible dans votre espace Selen Daily. Vous pouvez la consulter avec le dossier de candidature puis accepter ou refuser l’inscription.\n\nAucune préparation préformation ne démarre tant que vous n’avez pas validé l’inscription.\n\nSelen Editions`;
+      const html=`<div style="font-family:Arial,sans-serif;line-height:1.6"><p>Bonjour,</p><p>L’analyse Selen du dossier de candidature pour <strong>${formationTitle}</strong> est terminée.</p><p>La synthèse est disponible dans votre espace Selen Daily. Vous pouvez la consulter avec le dossier de candidature puis <strong>accepter ou refuser l’inscription</strong>.</p><p>Aucune préparation préformation ne démarre tant que vous n’avez pas validé l’inscription.</p><p>Selen Editions</p></div>`;
+      const notification=await sendClientEmailWithSilence({supabase:admin,organisationId,email:recipient,to:recipient,subject,html,text:bodyText});
+      if(!notification.sent) console.warn("Daily candidature : synthèse enregistrée mais notification OF non envoyée.",notification.error);
+    }
+  }
   revalidatePath(`/agent/daily/candidatures/${id}`); revalidatePath("/agent/daily/candidatures"); revalidatePath("/agent/daily");
 }
 export default async function DailyCandidatureAnalysisPage({params}:Props){
