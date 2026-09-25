@@ -120,3 +120,10 @@ test("le Studio expose les champs métier du programme client modifiables avant 
   assert.match(programReview, /detailed_program: value\(formData, "detailed_program"\)/);
   assert.match(programReview, /registration_methods: value\(formData, "registration_methods"\)/);
 });
+
+
+test("la préparation préformation n'apparaît qu'après validation courante de l'inscription", () => {
+  assert.match(tasks, /item\.item_key === "pretraining_documents"/);
+  assert.match(tasks, /const registrationResponses = responsesBySession\.get\(session\.id\) \?\? \[\]/);
+  assert.match(tasks, /if \(!registrationReviewIsCurrent\(review, latestRegistrationResponse\)\) continue/);
+});
