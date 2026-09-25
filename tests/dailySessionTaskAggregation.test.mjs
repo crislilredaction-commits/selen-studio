@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const phases = await readFile(new URL("../src/lib/daily/sessionPhase.ts", import.meta.url), "utf8");
+const programReview = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/page.tsx", import.meta.url), "utf8");
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashboard.tsx", import.meta.url), "utf8");
 const pilotage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
@@ -102,4 +103,20 @@ test("une réponse plus récente réouvre le pilotage et redémarre le délai de
   assert.match(tasks, /Une réponse est postérieure à la dernière validation/);
   assert.match(tasks, /const createdAt = latestRegistrationResponse\?\.created_at \?\?/);
   assert.doesNotMatch(tasks, /registrationResponses\[0\]\?\.created_at/);
+});
+
+test("la validation programme confirme le statut et rafraîchit pilotage et tableau de bord", () => {
+  assert.match(programReview, /daily_validate_formation_version/);
+  assert.match(programReview, /validatedFormation\.status !== "validated"/);
+  assert.match(programReview, /revalidatePath\("\/agent\/daily"\)/);
+  assert.match(programReview, /revalidatePath\("\/agent"\)/);
+  assert.match(tasks, /formation\.status === "review"/);
+});
+
+test("le Studio expose les champs métier du programme client modifiables avant validation", () => {
+  assert.match(programReview, /name="detailed_program"/);
+  assert.match(programReview, /name="registration_methods"/);
+  assert.match(programReview, /name="disability_referent"/);
+  assert.match(programReview, /detailed_program: value\(formData, "detailed_program"\)/);
+  assert.match(programReview, /registration_methods: value\(formData, "registration_methods"\)/);
 });
