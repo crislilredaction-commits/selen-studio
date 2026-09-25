@@ -8,7 +8,7 @@ const businessTime = await readFile(new URL("../src/lib/franceBusinessTime.ts", 
 const page = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/20260909125000_daily_signature_client_reminders.sql", import.meta.url), "utf8");
 
-test("la relance signature J+3 automatique reste cachée de Studio",()=>{assert.match(source,/SIGNATURE_J3_STAGE="automatic_email_j3"/);assert.match(source,/followupStage\(row\)===SIGNATURE_J3_STAGE\)return\[\]/)});
+test("la relance signature J+3 est visible dans Studio à échéance",()=>{assert.match(source,/SIGNATURE_J3_STAGE="agent_email_j3"/);assert.doesNotMatch(source,/SIGNATURE_J3_STAGE="automatic_email_j3"/)});
 test("aucune relance client n'apparaît dans le Pilotage avant son échéance",()=>{assert.match(source,/if\(!isDue\(row\.due_at\)\)return\[\]/);assert.match(source,/function isDue\(value:string\|null\)/)});
 test("l'alerte d'appel J+6 utilise la même garde d'échéance canonique",()=>{assert.match(source,/SIGNATURE_J6_STAGE="phone_call_j6"/);assert.match(source,/if\(!isDue\(row\.due_at\)\)return\[\]/)});
 test("les 24 h ouvrées de l'alerte J+6 partent de J+6 et non de l'envoi initial",()=>{assert.match(source,/followupStage\(row\)===SIGNATURE_J6_STAGE\)return row\.due_at/);assert.match(source,/AGENT_SHARED_AFTER_BUSINESS_HOURS=24/);assert.match(source,/isOverdueAfterBusinessHours/)});
