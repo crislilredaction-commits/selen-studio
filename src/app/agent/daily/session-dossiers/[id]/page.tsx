@@ -74,11 +74,13 @@ async function persistProgram(formData: FormData, validate: boolean) {
     duration_days: durationDays,
     modality: value(formData, "modality") || "presentiel",
     access_delays: value(formData, "access_delays"),
+    registration_methods: value(formData, "registration_methods"),
     price: value(formData, "price"),
     pedagogical_methods: value(formData, "pedagogical_methods"),
     pedagogical_resources: value(formData, "pedagogical_resources"),
     evaluation_methods: value(formData, "evaluation_methods"),
     accessibility: value(formData, "accessibility"),
+    disability_referent: value(formData, "disability_referent") || null,
     contact_phone: value(formData, "contact_phone"),
     contact_email: value(formData, "contact_email").toLowerCase(),
     contact_website: value(formData, "contact_website") || null,
@@ -210,6 +212,7 @@ export default async function SessionPreparationPage({ params }: Props) {
             <Field label="Durée en jours"><input name="duration_days" type="number" step="0.5" min="0.5" defaultValue={formation.duration_days ?? ""} disabled={!editable} required style={s.input} /></Field>
             <Field label="Modalité"><select name="modality" defaultValue={formation.modality ?? "presentiel"} disabled={!editable} style={s.input}><option value="presentiel">Présentiel</option><option value="distanciel">Distanciel</option><option value="mixte">Mixte</option></select></Field>
             <Field label="Délai d'accès"><input name="access_delays" defaultValue={formation.access_delays ?? ""} disabled={!editable} style={s.input} /></Field>
+            <Field label="Modalités d’inscription" wide><textarea name="registration_methods" defaultValue={formation.registration_methods ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
             <Field label="Tarif TTC"><input name="price" defaultValue={formation.price ?? ""} disabled={!editable} style={s.input} /></Field>
           </div>
         </details>
@@ -221,6 +224,8 @@ export default async function SessionPreparationPage({ params }: Props) {
             <Field label="Moyens et ressources pédagogiques" wide><textarea name="pedagogical_resources" defaultValue={formation.pedagogical_resources ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
             <Field label="Modalités d'évaluation" wide><textarea name="evaluation_methods" defaultValue={formation.evaluation_methods ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
             <Field label="Accessibilité" wide><textarea name="accessibility" defaultValue={formation.accessibility ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
+          </div>
+                    <Field label="Référent handicap"><input name="disability_referent" defaultValue={formation.disability_referent ?? ""} disabled={!editable} style={s.input} /></Field>
           </div>
         </details>
 
