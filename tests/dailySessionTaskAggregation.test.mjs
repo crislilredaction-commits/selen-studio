@@ -127,3 +127,7 @@ test("la préparation préformation n'apparaît qu'après validation courante de
   assert.match(tasks, /const registrationResponses = responsesBySession\.get\(session\.id\) \?\? \[\]/);
   assert.match(tasks, /if \(!registrationReviewIsCurrent\(review, latestRegistrationResponse\)\) continue/);
 });
+
+
+test("les tâches validées ou terminées sont absentes de la source active",()=>{assert.match(source,/\.in\("status", \["todo", "in_progress", "to_review", "blocked"\]\)/);assert.doesNotMatch(source,/\.in\("status", \["todo", "in_progress", "to_review", "blocked", "validated"/);});
+test("la source canonique accepte un filtre strict par organisme",()=>{assert.match(source,/options\?: \{ organisationId\?: string \| null \}/);assert.match(source,/activeOrganisationIds\.filter\(\(id\) => id === requestedOrganisationId\)/);});

@@ -108,9 +108,11 @@ export function getDailySessionTaskHref(itemKey: string, sessionId: string) {
   }
 }
 
-export async function getDailyAgentTasks(staff: DailyTaskStaff): Promise<DailyAgentTask[]> {
+export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { organisationId?: string | null }): Promise<DailyAgentTask[]> {
   const admin = createSupabaseAdminClient();
-  const organisationIds = await getActiveDailyOrganisationIds();
+  const activeOrganisationIds = await getActiveDailyOrganisationIds();
+  const requestedOrganisationId = options?.organisationId?.trim() || null;
+  const organisationIds = requestedOrganisationId ? activeOrganisationIds.filter((id) => id === requestedOrganisationId) : activeOrganisationIds;
   if (organisationIds.length === 0) return [];
 
   const [orgRes, assignmentRes, sessionRes, actionRes] = await Promise.all([
