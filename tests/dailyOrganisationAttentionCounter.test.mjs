@@ -6,6 +6,10 @@ const source = await readFile(
   new URL("../src/app/agent/daily/organisations/page.tsx", import.meta.url),
   "utf8",
 );
+const detailSource = await readFile(
+  new URL("../src/app/agent/daily/organisations/[id]/page.tsx", import.meta.url),
+  "utf8",
+);
 
 test("le compteur des points à traiter réutilise le pilotage Daily canonique", () => {
   assert.match(source, /getDailyAgentTasks/);
@@ -27,4 +31,4 @@ test("l'assignation affichée reste issue de daily_organisation_assignments", ()
 });
 
 
-test("la vue d'ensemble affiche uniquement les tâches canoniques de l'OF courant",()=>{assert.match(source,/getDailyAgentTasks\(\{ id: null, role: "admin" \}, \{ organisationId: id \}\)/);assert.match(source,/Tâches de cet OF/);assert.match(source,/Aucune tâche active pour cet organisme/);});
+test("la vue d'ensemble affiche uniquement les tâches canoniques de l'OF courant",()=>{assert.match(detailSource,/getDailyAgentTasks\(\{ id: null, role: "admin" \}, \{ organisationId: id \}\)/);assert.match(detailSource,/Tâches de cet OF/);assert.match(detailSource,/Aucune tâche active pour cet organisme/);});
