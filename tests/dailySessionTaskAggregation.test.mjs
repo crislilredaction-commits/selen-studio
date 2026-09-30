@@ -129,5 +129,5 @@ test("la préparation préformation n'apparaît qu'après validation courante de
 });
 
 
-test("les tâches validées ou terminées sont absentes de la source active",()=>{assert.match(source,/\.in\("status", \["todo", "in_progress", "to_review", "blocked"\]\)/);assert.doesNotMatch(source,/\.in\("status", \["todo", "in_progress", "to_review", "blocked", "validated"/);});
-test("la source canonique accepte un filtre strict par organisme",()=>{assert.match(source,/options\?: \{ organisationId\?: string \| null \}/);assert.match(source,/activeOrganisationIds\.filter\(\(id\) => id === requestedOrganisationId\)/);});
+test("les tâches validées ou terminées sont absentes de la source active",()=>{assert.match(tasks,/\.in\("status", \["todo", "in_progress", "to_review", "blocked"\]\)/);assert.doesNotMatch(tasks,/\.in\("status", \["todo", "in_progress", "to_review", "blocked", "validated"/);});
+test("la source canonique accepte un filtre strict par organisme",()=>{assert.match(tasks,/options\?: \{ organisationId\?: string \| null \}/);assert.match(tasks,/activeOrganisationIds\.filter\(\(id\) => id === requestedOrganisationId\)/);});
