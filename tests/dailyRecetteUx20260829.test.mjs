@@ -53,17 +53,20 @@ test("la messagerie exclut les alertes Daily", () => {
 
 test("Pilotage Daily ne montre que les interventions réelles", () => {
   const page = read("src/app/agent/daily/page.tsx");
-  assert.match(page, /ne montre que les dossiers qui attendent réellement une intervention/);
-  assert.match(page, /responses\.length === 0/);
-  assert.match(page, /Programme à valider/);
-  assert.match(page, /Dossier d'inscription à traiter/);
+  const tasks = read("src/lib/server/dailyAgentTasks.ts");
+  assert.match(page, /getDailyPilotageTasks\(\)/);
+  assert.match(page, /tasks\.length === 0/);
+  assert.match(tasks, /registrationResponses\.length === 0/);
+  assert.match(tasks, /Programme à valider/);
+  assert.match(tasks, /Dossier d'inscription à traiter/);
+  assert.doesNotMatch(page, /daily_session_checklist_items/);
 });
 
 test("le tableau de bord ne compte plus la checklist technique Daily", () => {
   const dashboard = read("src/components/agent/AgentHomeDashboard.tsx");
-  assert.match(dashboard, /registrationNeedsAgent/);
-  assert.match(dashboard, /programme à vérifier et valider/);
-  assert.match(dashboard, /dossier.*d'inscription à traiter/);
+  assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}\)/);
+  assert.match(dashboard, /title: task\.title/);
+  assert.match(dashboard, /task\.reason/);
   assert.doesNotMatch(dashboard, /daily_session_checklist_items/);
   assert.doesNotMatch(dashboard, /pendingCount/);
 });

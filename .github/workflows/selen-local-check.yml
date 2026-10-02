@@ -1,0 +1,48 @@
+name: Selen local check
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branche ou commit à tester"
+        required: true
+        default: "main"
+  push:
+    branches:
+      - main
+      - "fix/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: [self-hosted, Linux, X64, selen-local]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          clean: true
+      - name: Environment
+        run: |
+          node --version
+          npm --version
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        env:
+          # Compilation uniquement : aucune clé de production ni aucun email réel.
+          STRIPE_SECRET_KEY: sk_test_build_only
+          STRIPE_WEBHOOK_SECRET: whsec_build_only
+          NEXT_PUBLIC_SUPABASE_URL: https://build-only.invalid
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: build-only-placeholder
+          SUPABASE_SERVICE_ROLE_KEY: build-only-placeholder
+          RESEND_API_KEY: re_build_only
+          OPENAI_API_KEY: sk_build_only
+        run: npm run build

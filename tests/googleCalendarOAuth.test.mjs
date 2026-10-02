@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  GoogleOAuthError,
-  refreshGoogleAccessToken,
-} from "../src/lib/server/googleOAuth";
+import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
+
+const { GoogleOAuthError, refreshGoogleAccessToken } = isolatedTsModule("src/lib/server/googleOAuth.ts");
 
 const config = {
   clientId: "client-id",
@@ -33,7 +32,7 @@ test("invalid_grant demande une reconnexion sans exposer la reponse Google", asy
         { status: 400 },
       ),
     ),
-    (error: unknown) => {
+    (error) => {
       assert.ok(error instanceof GoogleOAuthError);
       assert.equal(error.code, "invalid_grant");
       assert.equal(error.reconnectRequired, true);
