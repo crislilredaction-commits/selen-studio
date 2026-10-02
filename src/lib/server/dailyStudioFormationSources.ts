@@ -8,6 +8,9 @@ export const DAILY_SOURCE_MIME_TYPES = new Set([
 ]);
 export const DAILY_SOURCE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const DAILY_SOURCE_SHA = /^[a-f0-9]{64}$/i;
+export function sameDailySourceDigest(left: unknown, right: unknown) {
+  return typeof left === "string" && typeof right === "string" && DAILY_SOURCE_SHA.test(left) && DAILY_SOURCE_SHA.test(right) && left.toLowerCase() === right.toLowerCase();
+}
 export type PrivateDailySource = { id: string; name: string; bucket: string; storage_path: string; mime_type: string; sha256: string };
 export class DailySourceError extends Error {
   constructor(message: string, public status = 404) { super(message); }
@@ -57,7 +60,7 @@ export async function downloadPrivateDailySource(admin: SupabaseAdminClient, doc
   const { data, error } = await admin.storage.from("documents").download(document.storage_path);
   if (error || !data) throw new DailySourceError("Téléchargement indisponible.", 500);
   const bytes = new Uint8Array(await data.arrayBuffer());
-  if (createHash("sha256").update(bytes).digest("hex") !== document.sha256) {
+  if (!sameDailySourceDigest(createHash("sha256").update(bytes).digest("hex"), document.sha256)) {
     throw new DailySourceError("Le fichier ne correspond plus à sa preuve enregistrée.", 409);
   }
   return new Response(bytes, { headers: {

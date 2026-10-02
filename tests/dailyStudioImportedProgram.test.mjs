@@ -35,6 +35,9 @@ function completedForm() {
 async function actionFixture() {
   const f = dailyPrivateFixture(); f.flags.allowWrites = true;
   Object.assign(f.formation, { status: "draft", creation_mode: "program_import", public_registration_token: "stable-existing-token", prerequisite_mode: "required", prerequisite_requirements: [{ id: "proof-1", label: "Diplôme requis", description: "Copie lisible" }] });
+  const program = f.rows.daily_documents.find(row => row.id === ids.program);
+  program.storage_path = `daily/${ids.of}/onboarding/program.pdf`;
+  f.files.set(program.storage_path, f.files.get(f.source.storage_path));
   const h = editor(f);
   const tree = await h.shared.default({ formationId: ids.formation });
   const buttons = elements(tree).filter(item => item.type === "button" && item.props.formAction);
@@ -139,4 +142,31 @@ test("le téléchargement programme revérifie le périmètre et ne redirige pas
   assert.equal(response.headers.get("cache-control"), "private, no-store");
   f.auth.value.email = "agent-b@example.test"; f.downloads.length = 0;
   assert.equal((await f.getSource()).status, 404); assert.equal(f.downloads.length, 0);
+});
+
+for (const [kind, label] of [["program", "programme importé"], ["positioning", "questionnaire propre OF"]]) {
+  for (const [state, mutate, expected] of [
+    ["absent du stockage", (f, doc) => f.files.delete(doc.storage_path), /Téléchargement indisponible/],
+    ["altéré dans le stockage", (f, doc) => f.files.set(doc.storage_path, Buffer.from("%PDF-fichier-altéré")), /ne correspond plus à sa preuve/],
+  ]) {
+    test(`${label} ${state} : la validation reste ouverte sans écriture ni RPC`, async () => {
+      const { f, validate } = await actionFixture();
+      const doc = kind === "program" ? f.rows.daily_documents.find(row => row.id === ids.program) : f.source;
+      mutate(f, doc);
+      await assert.rejects(validate(completedForm()), expected);
+      assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0);
+      assert.equal(f.formation.status, "draft");
+      assert.ok(f.downloads.includes(doc.storage_path));
+    });
+  }
+}
+
+test("la validation vérifie les deux fichiers privés même avec des SHA-256 en majuscules", async () => {
+  const { f, validate } = await actionFixture();
+  const program = f.rows.daily_documents.find(row => row.id === ids.program);
+  program.sha256 = program.sha256.toUpperCase();
+  f.source.sha256 = f.source.sha256.toUpperCase();
+  await assert.rejects(validate(completedForm()), /REDIRECT .*saved=validated/);
+  assert.deepEqual(f.downloads, [program.storage_path, f.source.storage_path]);
+  assert.equal(f.formation.status, "validated"); assert.equal(f.rpcs.length, 1);
 });

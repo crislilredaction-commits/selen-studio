@@ -1,5 +1,5 @@
 import type { SupabaseAdminClient } from "@/lib/server/supabaseAdmin";
-import { loadScopedDailyFormation, DailySourceError, DAILY_SOURCE_UUID, DAILY_SOURCE_SHA, DAILY_SOURCE_MIME_TYPES, privateDailyPath, dailySourceDocumentId, type PrivateDailySource } from "@/lib/server/dailyStudioFormationSources";
+import { loadScopedDailyFormation, DailySourceError, DAILY_SOURCE_UUID, DAILY_SOURCE_SHA, DAILY_SOURCE_MIME_TYPES, privateDailyPath, dailySourceDocumentId, sameDailySourceDigest, type PrivateDailySource } from "@/lib/server/dailyStudioFormationSources";
 
 type Json = Record<string, unknown>;
 export function candidatureRecord(value: unknown): Json {
@@ -50,7 +50,7 @@ export async function loadCandidaturePositioning(admin: SupabaseAdminClient, req
   const validFile = (doc: typeof original) => Boolean(doc && doc.bucket === "documents" && doc.status !== "archived" &&
     privateDailyPath(doc.storage_path, formation.organisation_id) && DAILY_SOURCE_MIME_TYPES.has(doc.mime_type) && DAILY_SOURCE_SHA.test(doc.sha256 ?? ""));
   if (!validFile(original) || !original || original.document_type !== "positioning_questionnaire_source" || original.linked_object_type !== "organisation" ||
-    original.linked_object_id !== formation.organisation_id || (original.formation_id && original.formation_id !== formation.id) || original.sha256 !== answers.source_sha256) {
+    original.linked_object_id !== formation.organisation_id || (original.formation_id && original.formation_id !== formation.id) || !sameDailySourceDigest(original.sha256, answers.source_sha256)) {
     throw new DailySourceError("Questionnaire original de cette candidature introuvable.", 409);
   }
   const converted = descriptors.some(proof => byId.get(String(proof.document_id))?.document_type === "positioning_evidence");
@@ -78,8 +78,8 @@ export async function loadCandidaturePositioning(admin: SupabaseAdminClient, req
     const enrolmentBinding = request.decision_status === "accepted" && session && mapping && enrolment && doc?.document_type === "positioning_evidence" &&
       doc.linked_object_type === "enrolment" && doc.linked_object_id === doc.enrolment_id && doc.session_id === session.id && metadata.source_request_id === request.id && metadata.source_request_kind === "formation";
     if (!validFile(doc) || !doc || !firstName || !lastName || !email || !(candidateBinding || enrolmentBinding) || doc.formation_id !== formation.id ||
-      doc.sha256 !== proof.sha256 || !DAILY_SOURCE_SHA.test(text(proof.sha256)) || metadata.source !== "daily_own_positioning" || metadata.source_document_id !== sourceId ||
-      metadata.source_sha256 !== original.sha256 || metadata.submission_fingerprint !== answers.submission_fingerprint || metadata.participant_index !== proof.participant_index ||
+      !sameDailySourceDigest(doc.sha256, proof.sha256) || !DAILY_SOURCE_SHA.test(text(proof.sha256)) || metadata.source !== "daily_own_positioning" || metadata.source_document_id !== sourceId ||
+      !sameDailySourceDigest(metadata.source_sha256, original.sha256) || metadata.submission_fingerprint !== answers.submission_fingerprint || metadata.participant_index !== proof.participant_index ||
       normalized(metadata.subject_email) !== email || normalized(metadata.subject_first_name) !== normalized(firstName) || normalized(metadata.subject_last_name) !== normalized(lastName) ||
       normalized(proof.email) !== email || normalized(proof.first_name) !== normalized(firstName) || normalized(proof.last_name) !== normalized(lastName)) {
       throw new DailySourceError("Une copie de positionnement ne correspond pas à cette candidature.", 409);

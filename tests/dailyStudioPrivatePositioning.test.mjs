@@ -109,3 +109,29 @@ test("les positionnements Selen historiques ne deviennent pas des liens document
   const f = dailyPrivateFixture(); f.request.positioning_answers = { question: "Réponse" };
   assert.equal((await f.get()).status, 404); assert.equal(f.downloads.length, 0);
 });
+
+for (const kind of ["program", "positioning"]) {
+  test(`source ${kind} : une empreinte enregistrée en majuscules conserve le téléchargement privé`, async () => {
+    const f = dailyPrivateFixture();
+    const doc = kind === "program" ? f.rows.daily_documents.find(row => row.id === ids.program) : f.source;
+    doc.sha256 = doc.sha256.toUpperCase();
+    const response = await f.getSource(kind);
+    assert.equal(response.status, 200);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), f.files.get(doc.storage_path));
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+    assert.equal(response.headers.get("location"), null);
+  });
+}
+
+test("la copie et son original acceptent la même empreinte avec des casses différentes, sans réécrire leurs preuves", async () => {
+  const f = dailyPrivateFixture();
+  f.source.sha256 = f.source.sha256.toUpperCase();
+  f.proof.sha256 = f.proof.sha256.toUpperCase();
+  const before = JSON.stringify({ source: f.source, proof: f.proof, request: f.request });
+  const response = await f.get();
+  assert.equal(response.status, 200);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), f.filledBytes);
+  assert.equal((await f.get("original")).status, 200);
+  assert.equal(JSON.stringify({ source: f.source, proof: f.proof, request: f.request }), before);
+  assert.equal(f.writes.length, 0);
+});

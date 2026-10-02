@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
-import { dailySourceDocumentId, loadPrivateDailySource, loadScopedDailyFormation } from "@/lib/server/dailyStudioFormationSources";
+import { dailySourceDocumentId, downloadPrivateDailySource, loadPrivateDailySource, loadScopedDailyFormation } from "@/lib/server/dailyStudioFormationSources";
 
 const EDITABLE_STATUSES = new Set(["draft", "review", "correction_requested"]);
 type Props = { sessionId?: string; formationId?: string };
@@ -55,8 +55,13 @@ async function persistProgram(formData: FormData, validate: boolean) {
   }
   if (validate) {
     if (!value(formData, "detailed_program")) throw new Error("Complète le contenu détaillé avant de valider le programme.");
-    if (formation.creation_mode === "program_import") await loadPrivateDailySource(admin, formation, "program");
-    if (formation.positioning_mode === "off_platform") await loadPrivateDailySource(admin, formation, "positioning");
+    const requiredSources: Array<"program" | "positioning"> = [];
+    if (formation.creation_mode === "program_import") requiredSources.push("program");
+    if (formation.positioning_mode === "off_platform") requiredSources.push("positioning");
+    for (const kind of requiredSources) {
+      const source = await loadPrivateDailySource(admin, formation, kind);
+      await downloadPrivateDailySource(admin, source);
+    }
   }
 
   const patch = {
