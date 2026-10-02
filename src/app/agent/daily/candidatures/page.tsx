@@ -1,14 +1,21 @@
 import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 export const dynamic = "force-dynamic";
 export default async function DailyCandidaturesPage() {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={{padding:28}}>Accès refusé.</main>;
   const admin = createSupabaseAdminClient();
-  const { data, error } = await admin.from("daily_formation_registration_requests")
+  const organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  const { data: formations, error: formationError } = organisationIds.length
+    ? await admin.from("daily_formations").select("id").in("organisation_id", organisationIds).neq("status", "archived")
+    : { data: [], error: null };
+  if (formationError) return <main style={{padding:28}}>Chargement impossible.</main>;
+  const formationIds = (formations ?? []).map(row => row.id);
+  const { data, error } = formationIds.length ? await admin.from("daily_formation_registration_requests")
     .select("id,formation_id,respondent_first_name,respondent_last_name,respondent_email,company_name,response_type,submitted_at,decision_status,daily_formations(title)")
-    .in("decision_status", ["pending","ready_for_of"]).order("submitted_at",{ascending:true});
+    .in("formation_id", formationIds).in("decision_status", ["pending","ready_for_of"]).order("submitted_at",{ascending:true}) : { data: [], error: null };
   if (error) return <main style={{padding:28}}>Chargement impossible : {error.message}</main>;
   const rows=(data??[]) as Array<any>;
   return <main style={{maxWidth:1080,margin:"0 auto",padding:"28px"}}>
