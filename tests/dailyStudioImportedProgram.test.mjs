@@ -24,12 +24,13 @@ function editor(f) {
     "next/cache": { revalidatePath: path => invalidations.push(path) },
     "next/navigation": { redirect: path => { throw new Error(`REDIRECT ${path}`); } },
     "@/lib/server/dailyOrganisationScope": f.scope,
+    "@/lib/dailyFormationCreationPolicy": isolatedTsModule("src/lib/dailyFormationCreationPolicy.ts"),
   });
   return { shared, invalidations };
 }
 function completedForm() {
   const form = new FormData();
-  for (const [key, value] of Object.entries({ formation_id: ids.formation, title: "Programme saisi", global_objective: "Objectif complet", learning_objectives: "Objectif 1\nObjectif 2", duration_hours: "14", duration_days: "2", detailed_program: "Module 1 puis module 2, exercices et mise en pratique." })) form.set(key, value);
+  for (const [key, value] of Object.entries({ formation_id: ids.formation, title: "Programme saisi", global_objective: "Objectif complet", learning_objectives: "Objectif 1\nObjectif 2", duration_hours: "14", duration_days: "2", detailed_program: "Module 1 puis module 2, exercices et mise en pratique.", modality: "presentiel", target_audience: "Public professionnel", access_delays: "Deux semaines", price: "1200 euros TTC", pedagogical_resources: "Support et exercices", evaluation_methods: "Mise en situation", contact_phone: "0100000000", contact_email: "contact@example.test" })) form.set(key, value);
   return form;
 }
 async function actionFixture() {
@@ -170,3 +171,85 @@ test("la validation vérifie les deux fichiers privés même avec des SHA-256 en
   assert.deepEqual(f.downloads, [program.storage_path, f.source.storage_path]);
   assert.equal(f.formation.status, "validated"); assert.equal(f.rpcs.length, 1);
 });
+
+for (const [mode, fields] of [
+  ["program_import", ["contact_phone", "contact_email"]],
+  ["selen_form", ["target_audience", "access_delays", "price", "pedagogical_resources", "evaluation_methods", "contact_phone", "contact_email"]],
+]) {
+  for (const field of fields) {
+    test(`${mode} : un champ Daily requis effacé (${field}) bloque la validation`, async () => {
+      const { f, validate } = await actionFixture(); f.formation.creation_mode = mode;
+      const form = completedForm(); form.set(field, "  ");
+      await assert.rejects(validate(form), /avant de valider/);
+      assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0);
+      assert.equal(f.downloads.length, 0); assert.equal(f.formation.status, "draft");
+    });
+  }
+}
+
+for (const invalidModality of ["", "remote", "Présentiel"]) {
+  test(`modalité forgée ${invalidModality} : refus avant écriture`, async () => {
+    const { f, validate } = await actionFixture(); const form = completedForm(); form.set("modality", invalidModality);
+    await assert.rejects(validate(form), /Modalité de formation invalide/);
+    assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0); assert.equal(f.downloads.length, 0);
+  });
+}
+
+test("un brouillon conserve l'enregistrement progressif sans lancer la validation", async () => {
+  const { f, save } = await actionFixture(); const form = completedForm();
+  for (const field of ["contact_phone", "contact_email", "detailed_program"]) form.delete(field);
+  await assert.rejects(save(form), /REDIRECT .*saved=draft/);
+  assert.equal(f.formation.status, "draft"); assert.equal(f.rpcs.length, 0); assert.equal(f.downloads.length, 0);
+});
+
+test("un programme Selen complet se valide avec ses coordonnées et son contenu", async () => {
+  const { f, validate } = await actionFixture(); f.formation.creation_mode = "selen_form";
+  await assert.rejects(validate(completedForm()), /REDIRECT .*saved=validated/);
+  assert.equal(f.formation.status, "validated"); assert.equal(f.formation.contact_email, "contact@example.test");
+  assert.equal(f.rpcs.length, 1);
+});
+
+for (const mode of ["program_import", "selen_form"]) {
+  test(`${mode} : le formulaire distingue les exigences de validation et l'enregistrement du brouillon`, async () => {
+    const f = dailyPrivateFixture(); Object.assign(f.formation, { status: "draft", creation_mode: mode });
+    const tree = await editor(f).shared.default({ formationId: ids.formation });
+    const all = elements(tree);
+    const fields = new Map(all.filter(item => item.props.name).map(item => [item.props.name, item.props]));
+    assert.equal(fields.get("contact_phone").required, true); assert.equal(fields.get("contact_email").required, true);
+    assert.equal(fields.get("detailed_program").required, true);
+    for (const field of ["target_audience", "access_delays", "price", "pedagogical_resources", "evaluation_methods"]) {
+      assert.equal(Boolean(fields.get(field).required), mode === "selen_form");
+    }
+    const buttons = all.filter(item => item.type === "button" && item.props.formAction);
+    assert.equal(buttons[0].props.formNoValidate, true);
+    assert.equal(Boolean(buttons[1].props.formNoValidate), false);
+  });
+}
+
+test("une formation historique sans questionnaire propre OF configuré reste revalidable avec le même lien", async () => {
+  const { f, validate } = await actionFixture();
+  f.formation.creation_mode = null; f.formation.positioning_questionnaire_document_url = null;
+  await assert.rejects(validate(completedForm()), /REDIRECT .*saved=validated/);
+  assert.equal(f.formation.status, "validated"); assert.equal(f.formation.public_registration_token, "stable-existing-token");
+  assert.equal(f.formation.positioning_questionnaire_document_url, null); assert.equal(f.downloads.length, 0);
+});
+
+test("le dossier historique ne prétend pas qu'un document propre OF a été choisi", async () => {
+  const f = dailyPrivateFixture(); f.formation.status = "draft"; f.formation.positioning_questionnaire_document_url = null;
+  const tree = await editor(f).shared.default({ formationId: ids.formation });
+  assert.match(visibleText(tree), /Positionnement historique/);
+  assert.doesNotMatch(visibleText(tree), /réimportation obligatoire/);
+  assert.ok(!elements(tree).some(item => String(item.props.href).includes("kind=positioning")));
+});
+
+for (const [name, change] of [
+  ["questionnaire configuré sans fiche document", f => f.rows.daily_documents = f.rows.daily_documents.filter(doc => doc.id !== ids.original)],
+  ["questionnaire configuré avec une URL externe", f => f.formation.positioning_questionnaire_document_url = "https://outside.example.test/questionnaire.pdf"],
+]) {
+  test(`${name} : la compatibilité historique ne contourne pas le contrôle privé`, async () => {
+    const { f, validate } = await actionFixture(); change(f);
+    await assert.rejects(validate(completedForm()), /Document source privé introuvable/);
+    assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0);
+    assert.ok(!f.downloads.includes(f.source.storage_path));
+  });
+}

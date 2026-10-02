@@ -5,8 +5,16 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { dailySourceDocumentId, downloadPrivateDailySource, loadPrivateDailySource, loadScopedDailyFormation } from "@/lib/server/dailyStudioFormationSources";
+import { parseDailyFormationCreationMode, requiredFormationFields } from "@/lib/dailyFormationCreationPolicy";
 
 const EDITABLE_STATUSES = new Set(["draft", "review", "correction_requested"]);
+const MODALITIES = new Set(["presentiel", "distanciel", "mixte"]);
+const FIELD_LABELS: Record<string, string> = {
+  title: "intitulé", global_objective: "objectif principal", target_audience: "public visé",
+  duration_hours: "durée en heures", duration_days: "durée en jours", modality: "modalité",
+  access_delays: "délai d’accès", price: "tarif", pedagogical_resources: "moyens pédagogiques",
+  evaluation_methods: "modalités d’évaluation", contact_phone: "téléphone", contact_email: "email",
+};
 type Props = { sessionId?: string; formationId?: string };
 
 function value(formData: FormData, key: string) {
@@ -23,6 +31,10 @@ function objectives(formData: FormData) {
     .split("\n")
     .map((item) => item.trim().replace(/^[-•]\s*/, ""))
     .filter(Boolean);
+}
+
+function hasOwnPositioningSource(formation: Record<string, unknown>) {
+  return formation.positioning_mode === "off_platform" && Boolean(String(formation.positioning_questionnaire_document_url ?? "").trim());
 }
 
 async function persistProgram(formData: FormData, validate: boolean) {
@@ -50,14 +62,19 @@ async function persistProgram(formData: FormData, validate: boolean) {
   const durationHours = numberValue(formData, "duration_hours");
   const durationDays = numberValue(formData, "duration_days");
   const learningObjectives = objectives(formData);
+  const modality = value(formData, "modality");
+  if (!MODALITIES.has(modality)) throw new Error("Modalité de formation invalide.");
   if (!value(formData, "title") || !value(formData, "global_objective") || learningObjectives.length === 0 || !durationHours || !durationDays) {
     throw new Error("Complète au minimum l'intitulé, l'objectif principal, les objectifs pédagogiques et les durées.");
   }
   if (validate) {
+    const missing = requiredFormationFields(parseDailyFormationCreationMode(formation.creation_mode))
+      .filter(field => field !== "modality" && !value(formData, field));
+    if (missing.length) throw new Error(`Complète les champs requis avant de valider : ${missing.map(field => FIELD_LABELS[field] || field).join(", ")}.`);
     if (!value(formData, "detailed_program")) throw new Error("Complète le contenu détaillé avant de valider le programme.");
     const requiredSources: Array<"program" | "positioning"> = [];
     if (formation.creation_mode === "program_import") requiredSources.push("program");
-    if (formation.positioning_mode === "off_platform") requiredSources.push("positioning");
+    if (hasOwnPositioningSource(formation)) requiredSources.push("positioning");
     for (const kind of requiredSources) {
       const source = await loadPrivateDailySource(admin, formation, kind);
       await downloadPrivateDailySource(admin, source);
@@ -73,7 +90,7 @@ async function persistProgram(formData: FormData, validate: boolean) {
     prerequisites: value(formData, "prerequisites"),
     duration_hours: durationHours,
     duration_days: durationDays,
-    modality: value(formData, "modality") || "presentiel",
+    modality,
     access_delays: value(formData, "access_delays"),
     registration_methods: value(formData, "registration_methods"),
     price: value(formData, "price"),
@@ -146,6 +163,7 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
   const { data: organisation } = await admin.from("organisations").select("name,legal_name").eq("id", formation.organisation_id).maybeSingle();
 
   const editable = EDITABLE_STATUSES.has(formation.status);
+  const validationFields = new Set(requiredFormationFields(parseDailyFormationCreationMode(formation.creation_mode)));
   const sourceUrl = dailySourceDocumentId(formation.detailed_program_document_url) ? `/agent/api/daily/formations/${formation.id}/source-document?kind=program` : null;
   const organisationName = organisation?.legal_name || organisation?.name || "Organisme de formation";
   const objectiveLines = Array.isArray(formation.learning_objectives) ? formation.learning_objectives.join("\n") : "";
@@ -204,15 +222,15 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
             <Field label="Intitulé" wide><input name="title" defaultValue={formation.title ?? ""} disabled={!editable} required style={s.input} /></Field>
             <Field label="Objectif principal" wide><textarea name="global_objective" defaultValue={formation.global_objective ?? ""} disabled={!editable} required rows={3} style={s.textarea} /></Field>
             <Field label="Objectifs pédagogiques" help="Un objectif par ligne." wide><textarea name="learning_objectives" defaultValue={objectiveLines} disabled={!editable} required rows={4} style={s.textarea} /></Field>
-            <Field label="Contenu détaillé de la formation" wide><textarea name="detailed_program" defaultValue={formation.detailed_program ?? ""} disabled={!editable} rows={10} style={s.textarea} /></Field>
-            <Field label="Public visé"><textarea name="target_audience" defaultValue={formation.target_audience ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
+            <Field label="Contenu détaillé de la formation" wide><textarea name="detailed_program" defaultValue={formation.detailed_program ?? ""} disabled={!editable} required rows={10} style={s.textarea} /></Field>
+            <Field label="Public visé"><textarea name="target_audience" defaultValue={formation.target_audience ?? ""} disabled={!editable} required={validationFields.has("target_audience")} rows={3} style={s.textarea} /></Field>
             <Field label="Prérequis"><textarea name="prerequisites" defaultValue={formation.prerequisites ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
           </div>
         </details>
 
         <section style={{ ...s.section, padding: 16 }}>
           <h2 style={s.h2}>Positionnement et justificatifs configurés par l’OF</h2>
-          <p style={s.muted}>{formation.positioning_mode === "off_platform" ? "Questionnaire propre OF : téléchargement, remplissage hors Selen et réimportation obligatoire." : "Questionnaire de positionnement Selen."}</p>
+          <p style={s.muted}>{formation.positioning_mode === "off_platform" ? hasOwnPositioningSource(formation) ? "Questionnaire propre OF : téléchargement, remplissage hors Selen et réimportation obligatoire." : "Positionnement historique : aucun questionnaire propre OF n’a été importé." : "Questionnaire de positionnement Selen."}</p>
           {formation.positioning_mode === "off_platform" && dailySourceDocumentId(formation.positioning_questionnaire_document_url) ? <a href={`/agent/api/daily/formations/${formation.id}/source-document?kind=positioning`} style={s.secondaryLink}>Télécharger le questionnaire propre OF →</a> : null}
           <p style={s.muted}>{formation.prerequisite_mode === "required" ? "Prérequis obligatoires : les preuves ci-dessous sont demandées aux candidats." : "Aucun prérequis déclaré."}</p>
           {Array.isArray(formation.prerequisite_requirements) ? <ul>{formation.prerequisite_requirements.map((requirement: { id?: string; label?: string; description?: string }, index: number) => <li key={requirement.id || index}><strong>{requirement.label}</strong>{requirement.description ? ` · ${requirement.description}` : ""}</li>)}</ul> : null}
@@ -224,9 +242,9 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
             <Field label="Durée en heures"><input name="duration_hours" type="number" step="0.5" min="0.5" defaultValue={formation.duration_hours ?? ""} disabled={!editable} required style={s.input} /></Field>
             <Field label="Durée en jours"><input name="duration_days" type="number" step="0.5" min="0.5" defaultValue={formation.duration_days ?? ""} disabled={!editable} required style={s.input} /></Field>
             <Field label="Modalité"><select name="modality" defaultValue={formation.modality ?? "presentiel"} disabled={!editable} style={s.input}><option value="presentiel">Présentiel</option><option value="distanciel">Distanciel</option><option value="mixte">Mixte</option></select></Field>
-            <Field label="Délai d'accès"><input name="access_delays" defaultValue={formation.access_delays ?? ""} disabled={!editable} style={s.input} /></Field>
+            <Field label="Délai d'accès"><input name="access_delays" defaultValue={formation.access_delays ?? ""} disabled={!editable} required={validationFields.has("access_delays")} style={s.input} /></Field>
             <Field label="Modalités d’inscription" wide><textarea name="registration_methods" defaultValue={formation.registration_methods ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
-            <Field label="Tarif TTC"><input name="price" defaultValue={formation.price ?? ""} disabled={!editable} style={s.input} /></Field>
+            <Field label="Tarif TTC"><input name="price" defaultValue={formation.price ?? ""} disabled={!editable} required={validationFields.has("price")} style={s.input} /></Field>
           </div>
         </details>
 
@@ -234,8 +252,8 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
           <summary style={s.summary}>Pédagogie et évaluation</summary>
           <div style={s.grid}>
             <Field label="Méthodes pédagogiques" wide><textarea name="pedagogical_methods" defaultValue={formation.pedagogical_methods ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
-            <Field label="Moyens et ressources pédagogiques" wide><textarea name="pedagogical_resources" defaultValue={formation.pedagogical_resources ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
-            <Field label="Modalités d'évaluation" wide><textarea name="evaluation_methods" defaultValue={formation.evaluation_methods ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
+            <Field label="Moyens et ressources pédagogiques" wide><textarea name="pedagogical_resources" defaultValue={formation.pedagogical_resources ?? ""} disabled={!editable} required={validationFields.has("pedagogical_resources")} rows={3} style={s.textarea} /></Field>
+            <Field label="Modalités d'évaluation" wide><textarea name="evaluation_methods" defaultValue={formation.evaluation_methods ?? ""} disabled={!editable} required={validationFields.has("evaluation_methods")} rows={3} style={s.textarea} /></Field>
             <Field label="Accessibilité" wide><textarea name="accessibility" defaultValue={formation.accessibility ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
             <Field label="Référent handicap"><input name="disability_referent" defaultValue={formation.disability_referent ?? ""} disabled={!editable} style={s.input} /></Field>
           </div>
@@ -244,15 +262,15 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
         <details style={s.section}>
           <summary style={s.summary}>Coordonnées affichées</summary>
           <div style={s.grid}>
-            <Field label="Téléphone"><input name="contact_phone" defaultValue={formation.contact_phone ?? ""} disabled={!editable} style={s.input} /></Field>
-            <Field label="Email"><input name="contact_email" type="email" defaultValue={formation.contact_email ?? ""} disabled={!editable} style={s.input} /></Field>
+            <Field label="Téléphone"><input name="contact_phone" defaultValue={formation.contact_phone ?? ""} disabled={!editable} required style={s.input} /></Field>
+            <Field label="Email"><input name="contact_email" type="email" defaultValue={formation.contact_email ?? ""} disabled={!editable} required style={s.input} /></Field>
             <Field label="Site internet" wide><input name="contact_website" defaultValue={formation.contact_website ?? ""} disabled={!editable} style={s.input} /></Field>
           </div>
         </details>
 
         {editable ? (
           <div style={s.footerActions}>
-            <button formAction={saveProgram} style={s.secondaryButton}>Enregistrer pour plus tard</button>
+            <button formAction={saveProgram} formNoValidate style={s.secondaryButton}>Enregistrer pour plus tard</button>
             <button formAction={validateProgram} style={s.primaryButton}>✓ Valider le programme</button>
           </div>
         ) : null}
