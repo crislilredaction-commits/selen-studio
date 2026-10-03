@@ -58,6 +58,10 @@ async function persistProgram(formData: FormData, validate: boolean) {
   if (!EDITABLE_STATUSES.has(formation.status)) {
     throw new Error("Ce programme est déjà validé. Crée une nouvelle version avant de le modifier.");
   }
+  const expectedUpdatedAt = value(formData, "formation_updated_at");
+  if (!expectedUpdatedAt || expectedUpdatedAt !== formation.updated_at) {
+    throw new Error("Le programme a changé. Actualise le dossier avant de l’enregistrer.");
+  }
 
   const durationHours = numberValue(formData, "duration_hours");
   const durationDays = numberValue(formData, "duration_days");
@@ -105,8 +109,7 @@ async function persistProgram(formData: FormData, validate: boolean) {
     updated_at: new Date().toISOString(),
   };
 
-  let updateQuery = admin.from("daily_formations").update(patch).eq("id", formationId).eq("organisation_id", formation.organisation_id).eq("status", formation.status);
-  if (formation.updated_at) updateQuery = updateQuery.eq("updated_at", formation.updated_at);
+  const updateQuery = admin.from("daily_formations").update(patch).eq("id", formationId).eq("organisation_id", formation.organisation_id).eq("status", formation.status).eq("updated_at", expectedUpdatedAt);
   const { data: updatedFormation, error: updateError } = await updateQuery.select("id").maybeSingle();
   if (updateError) throw new Error(updateError.message);
   if (!updatedFormation) throw new Error("Le programme a changé. Actualise le dossier avant de l’enregistrer.");
@@ -202,7 +205,7 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
         </section>
       ) : null}
 
-      {sourceUrl && editable ? (
+      {sourceUrl ? (
         <section style={s.sourceBox}>
           <div>
             <strong>Programme transmis par le client</strong>
@@ -215,6 +218,7 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
       <form style={s.form}>
         <input type="hidden" name="session_id" value={session?.id ?? ""} />
         <input type="hidden" name="formation_id" value={formation.id} />
+        <input type="hidden" name="formation_updated_at" value={formation.updated_at ?? ""} />
 
         <details open style={s.section}>
           <summary style={s.summary}>Essentiel du programme</summary>

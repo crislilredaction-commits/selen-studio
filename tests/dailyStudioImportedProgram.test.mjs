@@ -28,14 +28,16 @@ function editor(f) {
   });
   return { shared, invalidations };
 }
-function completedForm() {
+const INITIAL_REVISION = "2026-10-03T08:00:00+00:00";
+function completedForm(revision = INITIAL_REVISION) {
   const form = new FormData();
+  form.set("formation_updated_at", revision ?? "");
   for (const [key, value] of Object.entries({ formation_id: ids.formation, title: "Programme saisi", global_objective: "Objectif complet", learning_objectives: "Objectif 1\nObjectif 2", duration_hours: "14", duration_days: "2", detailed_program: "Module 1 puis module 2, exercices et mise en pratique.", modality: "presentiel", target_audience: "Public professionnel", access_delays: "Deux semaines", price: "1200 euros TTC", pedagogical_resources: "Support et exercices", evaluation_methods: "Mise en situation", contact_phone: "0100000000", contact_email: "contact@example.test" })) form.set(key, value);
   return form;
 }
 async function actionFixture() {
   const f = dailyPrivateFixture(); f.flags.allowWrites = true;
-  Object.assign(f.formation, { status: "draft", creation_mode: "program_import", public_registration_token: "stable-existing-token", prerequisite_mode: "required", prerequisite_requirements: [{ id: "proof-1", label: "Diplôme requis", description: "Copie lisible" }] });
+  Object.assign(f.formation, { status: "draft", updated_at: INITIAL_REVISION, creation_mode: "program_import", public_registration_token: "stable-existing-token", prerequisite_mode: "required", prerequisite_requirements: [{ id: "proof-1", label: "Diplôme requis", description: "Copie lisible" }] });
   const program = f.rows.daily_documents.find(row => row.id === ids.program);
   program.storage_path = `daily/${ids.of}/onboarding/program.pdf`;
   f.files.set(program.storage_path, f.files.get(f.source.storage_path));
@@ -56,11 +58,26 @@ test("avant la première session, l'agent ouvre l'original privé et les vrais p
   assert.ok(!links.some(link => String(link).includes("storage")));
 });
 
+for (const session of [false, true]) {
+  test(`le programme original reste téléchargeable dans le dossier ${session ? "session" : "formation"} après validation`, async () => {
+    const f = dailyPrivateFixture(); Object.assign(f.formation, { status: "validated", creation_mode: "program_import", updated_at: INITIAL_REVISION });
+    if (session) f.rows.daily_sessions.push({ id: ids.session, organisation_id: ids.of, formation_id: ids.formation, status: "active" });
+    const tree = await editor(f).shared.default(session ? { sessionId: ids.session } : { formationId: ids.formation });
+    const all = elements(tree);
+    const links = all.filter(item => item.props.href).map(item => item.props.href);
+    assert.ok(links.includes(`/agent/api/daily/formations/${ids.formation}/source-document?kind=program`));
+    assert.equal(all.filter(item => item.type === "button" && item.props.formAction).length, 0);
+    assert.ok(all.filter(item => item.props.name && item.props.type !== "hidden").every(item => item.props.disabled === true));
+    assert.ok(!links.some(link => String(link).includes("storage")));
+  });
+}
+
 test("une sauvegarde puis validation sans session utilise la formation canonique et garde le lien stable", async () => {
   const { f, save, validate, invalidations } = await actionFixture();
   const form = completedForm(); form.set("organisation_id", ids.otherOf); form.set("public_registration_token", "forged");
   await assert.rejects(save(form), /REDIRECT .*saved=draft/);
   assert.equal(f.formation.status, "draft"); assert.equal(f.rpcs.length, 0);
+  form.set("formation_updated_at", f.formation.updated_at);
   await assert.rejects(validate(form), /REDIRECT .*saved=validated/);
   assert.equal(f.formation.status, "validated");
   assert.equal(f.formation.title, "Programme saisi");
@@ -113,9 +130,44 @@ test("l'action refuse une session forgée d'un autre OF même si la formation es
 test("l'édition concurrente est détectée au lieu d'écraser les nouvelles données", async () => {
   const { f, save } = await actionFixture(); f.formation.updated_at = "2026-10-02T08:00:00Z";
   f.flags.beforeUpdate = () => { f.formation.updated_at = "2026-10-02T09:00:00Z"; f.formation.title = "Modification concurrente"; };
-  await assert.rejects(save(completedForm()), /Le programme a changé/);
+  await assert.rejects(save(completedForm(f.formation.updated_at)), /Le programme a changé/);
   assert.equal(f.formation.title, "Modification concurrente"); assert.equal(f.rpcs.length, 0);
 });
+
+for (const actionName of ["save", "validate"]) {
+  test(`${actionName} : un ancien écran refuse d'écraser une modification déjà enregistrée`, async () => {
+    const { f, [actionName]: action } = await actionFixture();
+    const oldForm = completedForm();
+    Object.assign(f.formation, { updated_at: "2026-10-03T08:05:00+00:00", title: "Programme corrigé par l’OF", detailed_program: "Nouveau contenu confirmé par l’OF" });
+    await assert.rejects(action(oldForm), /Le programme a changé/);
+    assert.equal(f.formation.title, "Programme corrigé par l’OF");
+    assert.equal(f.formation.detailed_program, "Nouveau contenu confirmé par l’OF");
+    assert.equal(f.formation.status, "draft");
+    assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0); assert.equal(f.downloads.length, 0);
+  });
+  test(`${actionName} : une version omise impose de réouvrir le dossier avant toute écriture`, async () => {
+    const { f, [actionName]: action } = await actionFixture(); const form = completedForm();
+    form.delete("formation_updated_at");
+    await assert.rejects(action(form), /Le programme a changé/);
+    assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0); assert.equal(f.downloads.length, 0);
+  });
+  test(`${actionName} : une version vide ne désactive pas le contrôle de concurrence`, async () => {
+    const { f, [actionName]: action } = await actionFixture(); const form = completedForm("");
+    await assert.rejects(action(form), /Le programme a changé/);
+    assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0); assert.equal(f.downloads.length, 0);
+  });
+}
+
+for (const session of [false, true]) {
+  test(`la revue ${session ? "session" : "formation"} transmet la version réellement ouverte`, async () => {
+    const f = dailyPrivateFixture(); Object.assign(f.formation, { status: "draft", updated_at: INITIAL_REVISION });
+    if (session) f.rows.daily_sessions.push({ id: ids.session, organisation_id: ids.of, formation_id: ids.formation, status: "active" });
+    const tree = await editor(f).shared.default(session ? { sessionId: ids.session } : { formationId: ids.formation });
+    const revision = elements(tree).find(item => item.props.name === "formation_updated_at");
+    assert.equal(revision?.props.type, "hidden"); assert.equal(revision.props.value, INITIAL_REVISION);
+  });
+}
+
 
 test("la validation doit être confirmée par le statut réel après la RPC", async () => {
   const { f, validate } = await actionFixture(); f.flags.validateStatus = false;
