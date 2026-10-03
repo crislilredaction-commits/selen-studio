@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const phases = await readFile(new URL("../src/lib/daily/sessionPhase.ts", import.meta.url), "utf8");
-const programReview = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/page.tsx", import.meta.url), "utf8");
+const programReview = await readFile(new URL("../src/components/daily/DailyFormationReview.tsx", import.meta.url), "utf8");
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashboard.tsx", import.meta.url), "utf8");
 const pilotage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");

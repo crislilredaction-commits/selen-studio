@@ -34,9 +34,13 @@ type Session = {
 };
 type Formation = {
   id: string;
+  organisation_id: string;
+  creation_mode: string | null;
+  detailed_program_document_url: string | null;
   title: string | null;
   status: string | null;
   agent_review_signaled_at: string | null;
+  created_at: string | null;
   updated_at: string | null;
 };
 type Response = { id: string; session_id: string; created_at: string | null };
@@ -131,10 +135,9 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
   const assignmentByOrg = new Map(assignments.map((row) => [row.organisation_id, row]));
   const orgById = new Map(organisations.map((row) => [row.id, row]));
 
-  const formationIds = [...new Set(sessions.map((row) => row.formation_id).filter(Boolean))];
   const sessionIds = sessions.map((row) => row.id);
   const [formationRes, responseRes, reviewRes, checklistRes] = await Promise.all([
-    formationIds.length ? admin.from("daily_formations").select("id,title,status,agent_review_signaled_at,updated_at").in("id", formationIds).neq("status", "archived") : Promise.resolve({ data: [], error: null }),
+    admin.from("daily_formations").select("id,organisation_id,creation_mode,detailed_program_document_url,title,status,agent_review_signaled_at,created_at,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
     sessionIds.length ? admin.from("daily_registration_responses").select("id,session_id,created_at").in("session_id", sessionIds).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_registration_reviews").select("session_id,validated_at").in("session_id", sessionIds) : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_session_checklist_items").select("id,session_id,organisation_id,item_key,phase,responsibility,label,description,status,signaled_at").in("session_id", sessionIds).in("responsibility", ["selen", "shared"]).in("status", ["todo", "in_progress", "to_review", "blocked"]).order("signaled_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
@@ -234,22 +237,23 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
   for (const session of sessions) {
     const organisation = orgById.get(session.organisation_id);
     const formation = formationById.get(session.formation_id);
-    if (!organisation || !formation) continue;
+    if (!organisation || !formation || formation.organisation_id !== session.organisation_id) continue;
     const assignment = assignmentByOrg.get(session.organisation_id);
     if (!assignment) continue;
     const orgName = organisation.legal_name || organisation.name || "Organisme Daily";
 
-    if (formation.status === "review" && !programSeen.has(formation.id)) {
+    const importedDraft = formation.status === "draft" && formation.creation_mode === "program_import" && Boolean(formation.detailed_program_document_url);
+    if ((formation.status === "review" || importedDraft) && !programSeen.has(formation.id)) {
       programSeen.add(formation.id);
-      const createdAt = formation.agent_review_signaled_at ?? formation.updated_at ?? session.updated_at;
+      const createdAt = formation.agent_review_signaled_at ?? (importedDraft ? formation.created_at : null) ?? formation.updated_at ?? session.updated_at;
       const overdueShared = isOverdue(createdAt);
       tasks.push({
         id: `daily-program-${formation.id}`,
         organisationId: organisation.id,
         organisation: orgName,
         title: formation.title || session.internal_reference || "Programme de formation",
-        reason: "Programme à valider",
-        detail: "Vérifie le programme puis valide-le ou demande une correction.",
+        reason: importedDraft ? "Programme importé à compléter" : "Programme à valider",
+        detail: importedDraft ? "Relis l’original transmis par l’OF, saisis son programme dans Selen puis vérifie-le avant validation." : "Vérifie le programme puis valide-le ou demande une correction.",
         href: `/agent/daily/session-dossiers/${session.id}`,
         createdAt,
         assignedAgentProfileId: assignment.agent_profile_id,
@@ -285,6 +289,32 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
       assignedAgentProfileId: assignment.agent_profile_id,
       overdueShared,
       kind: adaptation ? "adaptation" : "registration",
+    });
+  }
+
+  // Imported drafts are actionable before any session exists. Keep the same
+  // canonical task identity when a session is subsequently attached.
+  for (const formation of formations) {
+    if (programSeen.has(formation.id)) continue;
+    const importedDraft = formation.status === "draft" && formation.creation_mode === "program_import" && Boolean(formation.detailed_program_document_url);
+    if (formation.status !== "review" && !importedDraft) continue;
+    const organisation = orgById.get(formation.organisation_id);
+    const assignment = assignmentByOrg.get(formation.organisation_id);
+    if (!organisation || !assignment) continue;
+    programSeen.add(formation.id);
+    const createdAt = formation.agent_review_signaled_at ?? (importedDraft ? formation.created_at : null) ?? formation.updated_at;
+    tasks.push({
+      id: `daily-program-${formation.id}`,
+      organisationId: organisation.id,
+      organisation: organisation.legal_name || organisation.name || "Organisme Daily",
+      title: formation.title || "Programme de formation",
+      reason: importedDraft ? "Programme importé à compléter" : "Programme à valider",
+      detail: importedDraft ? "Relis l’original transmis par l’OF, saisis son programme dans Selen puis vérifie-le avant validation." : "Vérifie le programme puis valide-le ou demande une correction.",
+      href: `/agent/daily/formations/${formation.id}`,
+      createdAt,
+      assignedAgentProfileId: assignment.agent_profile_id,
+      overdueShared: isOverdue(createdAt),
+      kind: "program",
     });
   }
 

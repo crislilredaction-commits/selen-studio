@@ -11,16 +11,16 @@ test("la veille Studio utilise un champ commun synthèse et améliorations", () 
 });
 
 test("la préparation de session explique son utilité et replie les détails", () => {
-  const page = read("src/app/agent/daily/session-dossiers/[id]/page.tsx");
-  assert.match(page, /Vérifie uniquement le programme/);
+  const page = read("src/components/daily/DailyFormationReview.tsx");
+  assert.match(page, /Vérifie le programme et les questionnaires/);
   assert.match(page, /Le reste de la session se traite dans les tâches agent/);
   assert.match(page, /<details open/);
-  assert.match(page, /Valider le programme/);
+  assert.match(page, /Valider la formation/);
   assert.match(page, /Voir le dossier complet/);
 });
 
 test("la validation crée l'action client de diffusion sans exposer le lien dans Studio", () => {
-  const page = read("src/app/agent/daily/session-dossiers/[id]/page.tsx");
+  const page = read("src/components/daily/DailyFormationReview.tsx");
   assert.match(page, /daily_validate_formation_version/);
   assert.match(page, /spontaneous_registration_task_status: "to_attach"/);
   assert.doesNotMatch(page, /public-registration-qr/);

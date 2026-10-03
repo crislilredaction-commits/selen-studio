@@ -15,7 +15,7 @@ function fixture() {
     organisations: ["of-a", "of-b"].map(id => ({ id, name: id, status: "active", created_at: today })),
     daily_organisation_assignments: ["of-a", "of-b"].map(organisation_id => ({ organisation_id, agent_profile_id: organisation_id === "of-a" ? "agent-a" : "agent-b" })),
     daily_sessions: ["of-a", "of-b"].map((organisation_id, i) => ({ id: `session-${i}`, organisation_id, formation_id: `formation-${i}`, status: "active", start_date: "2026-12-01", end_date: "2026-12-02", registration_status: "summary_validated", adaptation_needed: false, updated_at: today })),
-    daily_formations: [0, 1].map(i => ({ id: `formation-${i}`, title: `Formation ${i}`, status: "validated", updated_at: today })),
+    daily_formations: [0, 1].map(i => ({ id: `formation-${i}`, organisation_id: i === 0 ? "of-a" : "of-b", title: `Formation ${i}`, status: "validated", updated_at: today })),
     daily_registration_responses: [{ id: "response-1", session_id: "session-0", created_at: "2026-10-01T08:00:00Z" }],
     daily_registration_reviews: [{ session_id: "session-0", validated_at: "2026-10-01T09:00:00Z" }],
     daily_session_checklist_items: [], daily_quality_actions: [], daily_work_escalations: [],
@@ -128,4 +128,46 @@ test("la visibilité et les droits de traitement conservent l'assignation et l'e
   rows.daily_formations[0].agent_review_signaled_at = "2026-09-30T08:00:00Z";
   assert.equal((await h.getDailyAgentTasks({ id: "agent-b", role: "agent" })).length, 1);
   assert.equal(rows.daily_organisation_assignments[0].agent_profile_id, "agent-a");
+});
+
+test("un programme importé sans session ouvre la tâche canonique et conserve son identité après rattachement", async () => {
+  const rows = fixture(); rows.daily_sessions.length = 0;
+  Object.assign(rows.daily_formations[0], { status: "draft", creation_mode: "program_import", detailed_program_document_url: "/api/client/daily/uploads?id=original", created_at: "2026-10-01T10:00:00Z" });
+  const h = harness(rows);
+  const [task] = await h.getDailyAgentTasks({ id: "agent-a", role: "agent" });
+  assert.equal(task.id, "daily-program-formation-0");
+  assert.equal(task.href, "/agent/daily/formations/formation-0");
+  assert.equal(task.createdAt, "2026-10-01T10:00:00Z");
+  assert.equal(task.reason, "Programme importé à compléter");
+  rows.daily_formations[0].updated_at = today;
+  assert.equal((await h.getDailyAgentTasks(adminStaff))[0].createdAt, task.createdAt);
+  rows.daily_sessions.push({ id: "new-session", organisation_id: "of-a", formation_id: "formation-0", status: "active", start_date: "2026-12-01", updated_at: today });
+  assert.deepEqual(Array.from(await h.getDailyPilotageTasks(), x => x.id), [task.id]);
+  rows.daily_formations[0].status = "validated";
+  assert.equal((await h.getDailyAgentTasks(adminStaff)).length, 0);
+});
+
+test("un programme sans session à revalider donne une tâche unique et bornée à son OF", async () => {
+  const rows = fixture(); rows.daily_sessions.length = 0;
+  rows.daily_formations[0].status = "review";
+  const h = harness(rows);
+  assert.equal((await h.getDailyAgentTasks(adminStaff, { organisationId: "of-b" })).length, 0);
+  const tasks = await h.getDailyAgentTasks(adminStaff, { organisationId: "of-a" });
+  assert.equal(tasks.length, 1); assert.equal(tasks[0].id, "daily-program-formation-0");
+});
+
+test("un brouillon Selen, un import validé ou une correction attendue de l'OF ne produit pas de tâche import active", async () => {
+  const rows = fixture(); rows.daily_sessions.length = 0;
+  Object.assign(rows.daily_formations[0], { creation_mode: "selen_form", status: "draft" });
+  const h = harness(rows);
+  assert.equal((await h.getDailyAgentTasks(adminStaff)).length, 0);
+  Object.assign(rows.daily_formations[0], { creation_mode: "program_import", detailed_program_document_url: "/api/client/daily/uploads?id=original", status: "correction_requested" });
+  assert.equal((await h.getDailyAgentTasks(adminStaff)).length, 0);
+});
+
+test("une relation session/formation incohérente ne mélange pas les organismes", async () => {
+  const rows = fixture(); rows.daily_sessions[0].formation_id = "formation-1";
+  rows.daily_formations[1].status = "review";
+  const tasks = await harness(rows).getDailyAgentTasks(adminStaff, { organisationId: "of-a" });
+  assert.equal(tasks.length, 0);
 });
