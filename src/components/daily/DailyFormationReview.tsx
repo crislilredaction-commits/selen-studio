@@ -6,6 +6,8 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { dailySourceDocumentId, downloadPrivateDailySource, loadPrivateDailySource, loadScopedDailyFormation } from "@/lib/server/dailyStudioFormationSources";
 import { parseDailyFormationCreationMode, requiredFormationFields } from "@/lib/dailyFormationCreationPolicy";
+import DailyFormationReviewTabs from "@/components/daily/DailyFormationReviewTabs";
+import DailyQuestionnairePreview from "@/components/daily/DailyQuestionnairePreview";
 
 const EDITABLE_STATUSES = new Set(["draft", "review", "correction_requested"]);
 const MODALITIES = new Set(["presentiel", "distanciel", "mixte"]);
@@ -188,10 +190,10 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
       <section style={s.purposeCard}>
         <div style={s.purposeNumber}>1</div>
         <div>
-          <h2 style={s.h2}>{editable ? "Vérifie uniquement le programme" : "Programme validé"}</h2>
+          <h2 style={s.h2}>{editable ? "Vérifie le programme et les questionnaires" : "Programme validé"}</h2>
           <p style={s.muted}>
             {editable
-              ? "Cette page sert à relire les informations qui seront publiées dans le programme. Tu corriges seulement ce qui doit l'être, puis tu valides. Le reste de la session se traite dans les tâches agent."
+              ? "Relis le programme, le questionnaire de positionnement et l’évaluation finale configurés par l’OF. Corrige les informations du programme si besoin, puis valide la formation. Le reste de la session se traite dans les tâches agent."
               : "Tu n'as plus rien à faire sur le programme. Le client dispose maintenant de son lien d'inscription et de son QR code dans son espace Daily."}
           </p>
         </div>
@@ -220,62 +222,87 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
         <input type="hidden" name="formation_id" value={formation.id} />
         <input type="hidden" name="formation_updated_at" value={formation.updated_at ?? ""} />
 
-        <details open style={s.section}>
-          <summary style={s.summary}>Essentiel du programme</summary>
-          <div style={s.grid}>
-            <Field label="Intitulé" wide><input name="title" defaultValue={formation.title ?? ""} disabled={!editable} required style={s.input} /></Field>
-            <Field label="Objectif principal" wide><textarea name="global_objective" defaultValue={formation.global_objective ?? ""} disabled={!editable} required rows={3} style={s.textarea} /></Field>
-            <Field label="Objectifs pédagogiques" help="Un objectif par ligne." wide><textarea name="learning_objectives" defaultValue={objectiveLines} disabled={!editable} required rows={4} style={s.textarea} /></Field>
-            <Field label="Contenu détaillé de la formation" wide><textarea name="detailed_program" defaultValue={formation.detailed_program ?? ""} disabled={!editable} required rows={10} style={s.textarea} /></Field>
-            <Field label="Public visé"><textarea name="target_audience" defaultValue={formation.target_audience ?? ""} disabled={!editable} required={validationFields.has("target_audience")} rows={3} style={s.textarea} /></Field>
-            <Field label="Prérequis"><textarea name="prerequisites" defaultValue={formation.prerequisites ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
-          </div>
-        </details>
+        <DailyFormationReviewTabs>
+          <div style={{ display: "grid", gap: 12 }}>
+            <details open style={s.section}>
+              <summary style={s.summary}>Essentiel du programme</summary>
+              <div style={s.grid}>
+                <Field label="Intitulé" wide><input name="title" defaultValue={formation.title ?? ""} disabled={!editable} required style={s.input} /></Field>
+                <Field label="Objectif principal" wide><textarea name="global_objective" defaultValue={formation.global_objective ?? ""} disabled={!editable} required rows={3} style={s.textarea} /></Field>
+                <Field label="Objectifs pédagogiques" help="Un objectif par ligne." wide><textarea name="learning_objectives" defaultValue={objectiveLines} disabled={!editable} required rows={4} style={s.textarea} /></Field>
+                <Field label="Contenu détaillé de la formation" wide><textarea name="detailed_program" defaultValue={formation.detailed_program ?? ""} disabled={!editable} required rows={10} style={s.textarea} /></Field>
+                <Field label="Public visé"><textarea name="target_audience" defaultValue={formation.target_audience ?? ""} disabled={!editable} required={validationFields.has("target_audience")} rows={3} style={s.textarea} /></Field>
+                <Field label="Prérequis"><textarea name="prerequisites" defaultValue={formation.prerequisites ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
+              </div>
+            </details>
 
-        <section style={{ ...s.section, padding: 16 }}>
-          <h2 style={s.h2}>Positionnement et justificatifs configurés par l’OF</h2>
-          <p style={s.muted}>{formation.positioning_mode === "off_platform" ? hasOwnPositioningSource(formation) ? "Questionnaire propre OF : téléchargement, remplissage hors Selen et réimportation obligatoire." : "Positionnement historique : aucun questionnaire propre OF n’a été importé." : "Questionnaire de positionnement Selen."}</p>
-          {formation.positioning_mode === "off_platform" && dailySourceDocumentId(formation.positioning_questionnaire_document_url) ? <a href={`/agent/api/daily/formations/${formation.id}/source-document?kind=positioning`} style={s.secondaryLink}>Télécharger le questionnaire propre OF →</a> : null}
-          <p style={s.muted}>{formation.prerequisite_mode === "required" ? "Prérequis obligatoires : les preuves ci-dessous sont demandées aux candidats." : "Aucun prérequis déclaré."}</p>
-          {Array.isArray(formation.prerequisite_requirements) ? <ul>{formation.prerequisite_requirements.map((requirement: { id?: string; label?: string; description?: string }, index: number) => <li key={requirement.id || index}><strong>{requirement.label}</strong>{requirement.description ? ` · ${requirement.description}` : ""}</li>)}</ul> : null}
-        </section>
+            <section style={{ ...s.section, padding: 16 }}>
+              <h2 style={s.h2}>Justificatifs des prérequis configurés par l’OF</h2>
+              <p style={s.muted}>{formation.prerequisite_mode === "required" ? "Prérequis obligatoires : les preuves ci-dessous sont demandées aux candidats." : "Aucun prérequis déclaré."}</p>
+              {Array.isArray(formation.prerequisite_requirements) ? <ul>{formation.prerequisite_requirements.map((requirement: { id?: string; label?: string; description?: string }, index: number) => <li key={requirement.id || index}><strong>{requirement.label}</strong>{requirement.description ? ` · ${requirement.description}` : ""}</li>)}</ul> : null}
+            </section>
 
-        <details style={s.section}>
-          <summary style={s.summary}>Organisation pratique</summary>
-          <div style={s.grid}>
-            <Field label="Durée en heures"><input name="duration_hours" type="number" step="0.5" min="0.5" defaultValue={formation.duration_hours ?? ""} disabled={!editable} required style={s.input} /></Field>
-            <Field label="Durée en jours"><input name="duration_days" type="number" step="0.5" min="0.5" defaultValue={formation.duration_days ?? ""} disabled={!editable} required style={s.input} /></Field>
-            <Field label="Modalité"><select name="modality" defaultValue={formation.modality ?? "presentiel"} disabled={!editable} style={s.input}><option value="presentiel">Présentiel</option><option value="distanciel">Distanciel</option><option value="mixte">Mixte</option></select></Field>
-            <Field label="Délai d'accès"><input name="access_delays" defaultValue={formation.access_delays ?? ""} disabled={!editable} required={validationFields.has("access_delays")} style={s.input} /></Field>
-            <Field label="Modalités d’inscription" wide><textarea name="registration_methods" defaultValue={formation.registration_methods ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
-            <Field label="Tarif TTC"><input name="price" defaultValue={formation.price ?? ""} disabled={!editable} required={validationFields.has("price")} style={s.input} /></Field>
-          </div>
-        </details>
+            <details style={s.section}>
+              <summary style={s.summary}>Organisation pratique</summary>
+              <div style={s.grid}>
+                <Field label="Durée en heures"><input name="duration_hours" type="number" step="0.5" min="0.5" defaultValue={formation.duration_hours ?? ""} disabled={!editable} required style={s.input} /></Field>
+                <Field label="Durée en jours"><input name="duration_days" type="number" step="0.5" min="0.5" defaultValue={formation.duration_days ?? ""} disabled={!editable} required style={s.input} /></Field>
+                <Field label="Modalité"><select name="modality" defaultValue={formation.modality ?? "presentiel"} disabled={!editable} style={s.input}><option value="presentiel">Présentiel</option><option value="distanciel">Distanciel</option><option value="mixte">Mixte</option></select></Field>
+                <Field label="Délai d'accès"><input name="access_delays" defaultValue={formation.access_delays ?? ""} disabled={!editable} required={validationFields.has("access_delays")} style={s.input} /></Field>
+                <Field label="Modalités d’inscription" wide><textarea name="registration_methods" defaultValue={formation.registration_methods ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
+                <Field label="Tarif TTC"><input name="price" defaultValue={formation.price ?? ""} disabled={!editable} required={validationFields.has("price")} style={s.input} /></Field>
+              </div>
+            </details>
 
-        <details style={s.section}>
-          <summary style={s.summary}>Pédagogie et évaluation</summary>
-          <div style={s.grid}>
-            <Field label="Méthodes pédagogiques" wide><textarea name="pedagogical_methods" defaultValue={formation.pedagogical_methods ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
-            <Field label="Moyens et ressources pédagogiques" wide><textarea name="pedagogical_resources" defaultValue={formation.pedagogical_resources ?? ""} disabled={!editable} required={validationFields.has("pedagogical_resources")} rows={3} style={s.textarea} /></Field>
-            <Field label="Modalités d'évaluation" wide><textarea name="evaluation_methods" defaultValue={formation.evaluation_methods ?? ""} disabled={!editable} required={validationFields.has("evaluation_methods")} rows={3} style={s.textarea} /></Field>
-            <Field label="Accessibilité" wide><textarea name="accessibility" defaultValue={formation.accessibility ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
-            <Field label="Référent handicap"><input name="disability_referent" defaultValue={formation.disability_referent ?? ""} disabled={!editable} style={s.input} /></Field>
-          </div>
-        </details>
+            <details style={s.section}>
+              <summary style={s.summary}>Pédagogie et évaluation</summary>
+              <div style={s.grid}>
+                <Field label="Méthodes pédagogiques" wide><textarea name="pedagogical_methods" defaultValue={formation.pedagogical_methods ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
+                <Field label="Moyens et ressources pédagogiques" wide><textarea name="pedagogical_resources" defaultValue={formation.pedagogical_resources ?? ""} disabled={!editable} required={validationFields.has("pedagogical_resources")} rows={3} style={s.textarea} /></Field>
+                <Field label="Modalités d'évaluation" wide><textarea name="evaluation_methods" defaultValue={formation.evaluation_methods ?? ""} disabled={!editable} required={validationFields.has("evaluation_methods")} rows={3} style={s.textarea} /></Field>
+                <Field label="Accessibilité" wide><textarea name="accessibility" defaultValue={formation.accessibility ?? ""} disabled={!editable} rows={3} style={s.textarea} /></Field>
+                <Field label="Référent handicap"><input name="disability_referent" defaultValue={formation.disability_referent ?? ""} disabled={!editable} style={s.input} /></Field>
+              </div>
+            </details>
 
-        <details style={s.section}>
-          <summary style={s.summary}>Coordonnées affichées</summary>
-          <div style={s.grid}>
-            <Field label="Téléphone"><input name="contact_phone" defaultValue={formation.contact_phone ?? ""} disabled={!editable} required style={s.input} /></Field>
-            <Field label="Email"><input name="contact_email" type="email" defaultValue={formation.contact_email ?? ""} disabled={!editable} required style={s.input} /></Field>
-            <Field label="Site internet" wide><input name="contact_website" defaultValue={formation.contact_website ?? ""} disabled={!editable} style={s.input} /></Field>
+            <details style={s.section}>
+              <summary style={s.summary}>Coordonnées affichées</summary>
+              <div style={s.grid}>
+                <Field label="Téléphone"><input name="contact_phone" defaultValue={formation.contact_phone ?? ""} disabled={!editable} required style={s.input} /></Field>
+                <Field label="Email"><input name="contact_email" type="email" defaultValue={formation.contact_email ?? ""} disabled={!editable} required style={s.input} /></Field>
+                <Field label="Site internet" wide><input name="contact_website" defaultValue={formation.contact_website ?? ""} disabled={!editable} style={s.input} /></Field>
+              </div>
+            </details>
           </div>
-        </details>
+
+          <section style={{ ...s.section, padding: 16 }}>
+            <h2 style={s.h2}>Questionnaire de positionnement</h2>
+            {formation.positioning_mode === "off_platform" ? (
+              <>
+                <p style={s.muted}>{hasOwnPositioningSource(formation) ? "Questionnaire propre OF : téléchargement, remplissage hors Selen et réimportation obligatoire." : "Positionnement historique : aucun questionnaire propre OF n’a été importé."}</p>
+                {dailySourceDocumentId(formation.positioning_questionnaire_document_url) ? <a href={`/agent/api/daily/formations/${formation.id}/source-document?kind=positioning`} style={s.secondaryLink}>Télécharger le questionnaire propre OF →</a> : null}
+              </>
+            ) : formation.positioning_mode === "selen" ? (
+              <>
+                <p style={s.muted}>Questionnaire de positionnement Selen configuré par l’OF.</p>
+                <DailyQuestionnairePreview questions={formation.positioning_questions} />
+              </>
+            ) : <p style={s.muted}>Positionnement non configuré.</p>}
+          </section>
+
+          <section style={{ ...s.section, padding: 16 }}>
+            <h2 style={s.h2}>Évaluation finale</h2>
+            <p style={s.muted}>{formation.learning_assessment_mode === "selen_quiz" ? "Évaluation intégrée dans Selen." : formation.learning_assessment_mode === "external" ? "Évaluation externe fournie par le formateur ou l’OF." : "Évaluation finale non configurée."}</p>
+            <h3 style={{ fontSize: 14, margin: "16px 0 6px" }}>Consignes de l’OF</h3>
+            <p style={{ ...s.muted, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{formation.learning_assessment_instructions || "Aucune consigne renseignée."}</p>
+            {formation.learning_assessment_mode === "selen_quiz" ? <DailyQuestionnairePreview questions={formation.learning_assessment_questions} assessment /> : null}
+          </section>
+        </DailyFormationReviewTabs>
 
         {editable ? (
           <div style={s.footerActions}>
             <button formAction={saveProgram} formNoValidate style={s.secondaryButton}>Enregistrer pour plus tard</button>
-            <button formAction={validateProgram} style={s.primaryButton}>✓ Valider le programme</button>
+            <button formAction={validateProgram} style={s.primaryButton}>✓ Valider la formation</button>
           </div>
         ) : null}
       </form>
@@ -310,7 +337,7 @@ const s: Record<string, React.CSSProperties> = {
   form: { display: "grid", gap: 12 },
   section: { border: "1px solid var(--selen-border)", background: "var(--selen-bg2)", borderRadius: 14, overflow: "hidden" },
   summary: { cursor: "pointer", padding: "14px 16px", fontWeight: 850, color: "var(--selen-text)" },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 14, padding: "0 16px 16px" },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(260px,100%),1fr))", gap: 14, padding: "0 16px 16px" },
   field: { display: "grid", gap: 6 },
   wide: { gridColumn: "1 / -1" },
   label: { fontSize: 12, fontWeight: 800, color: "var(--selen-text)" },

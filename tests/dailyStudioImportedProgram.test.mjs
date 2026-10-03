@@ -25,6 +25,8 @@ function editor(f) {
     "next/navigation": { redirect: path => { throw new Error(`REDIRECT ${path}`); } },
     "@/lib/server/dailyOrganisationScope": f.scope,
     "@/lib/dailyFormationCreationPolicy": isolatedTsModule("src/lib/dailyFormationCreationPolicy.ts"),
+    "@/components/daily/DailyFormationReviewTabs": { default: "div" },
+    "@/components/daily/DailyQuestionnairePreview": isolatedTsModule("src/components/daily/DailyQuestionnairePreview.tsx", { "react/jsx-runtime": require("react/jsx-runtime") }),
   });
   return { shared, invalidations };
 }
