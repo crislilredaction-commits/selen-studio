@@ -38,8 +38,12 @@ export async function PATCH(req: Request) {
   const id = String(body.id ?? "");
   const action = String(body.action ?? "");
   const note = typeof body.note === "string" ? body.note.trim() : "";
+  const expectedUpdatedAt = typeof body.expected_updated_at === "string" ? body.expected_updated_at.trim() : "";
   if (!id || !["validate", "request_correction", "publish"].includes(action)) {
     return NextResponse.json({ error: "Action invalide." }, { status: 400 });
+  }
+  if (!expectedUpdatedAt || !Number.isFinite(new Date(expectedUpdatedAt).getTime())) {
+    return NextResponse.json({ error: "Rechargez la liste pour relire la version courante du document." }, { status: 400 });
   }
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
@@ -52,13 +56,17 @@ export async function PATCH(req: Request) {
   const admin = createSupabaseAdminClient();
   const { data: current, error: readError } = await admin
     .from("daily_documents")
-    .select("id,status,metadata,organisation_id,document_type,logical_name,version")
+    .select("id,status,metadata,organisation_id,document_type,logical_name,version,updated_at")
     .eq("id", id)
     .in("organisation_id", organisationIds)
     .in("document_type", types)
     .eq("is_current", true)
     .single();
   if (readError || !current) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+  const conflictMessage = "Le document a changé depuis son ouverture. Rechargez la liste et relisez la pièce avant de réessayer.";
+  if (current.updated_at !== expectedUpdatedAt) {
+    return NextResponse.json({ error: conflictMessage }, { status: 409 });
+  }
 
   if (action === "publish") {
     const publication = await publishDailyDocumentAndNotify({
@@ -70,7 +78,7 @@ export async function PATCH(req: Request) {
     if (!publication.ok) {
       return NextResponse.json({ error: publication.error }, { status: publication.status });
     }
-    return NextResponse.json({ document: publication.document, notification: { sent: true } });
+    return NextResponse.json({ document: publication.document, notification: publication.notification });
   }
 
   if (["published", "signed", "archived"].includes(current.status)) {
@@ -90,8 +98,13 @@ export async function PATCH(req: Request) {
     .update(updates)
     .eq("id", id)
     .in("organisation_id", organisationIds)
+    .eq("is_current", true)
+    .eq("status", current.status)
+    .eq("version", current.version)
+    .eq("updated_at", expectedUpdatedAt)
     .select("*")
-    .single();
+    .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (!data) return NextResponse.json({ error: conflictMessage }, { status: 409 });
   return NextResponse.json({ document: data });
 }
