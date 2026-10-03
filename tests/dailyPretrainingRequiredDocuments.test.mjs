@@ -29,3 +29,5 @@ test("Studio pretraining review includes every required document family", async 
   assert.match(page, /Règlement intérieur/);
   assert.match(page, /Convention/);
 });
+
+test("la publication préformation exige relecture et retourne la preuve email",async()=>{const [route,page]=await Promise.all([readFile(routePath,"utf8"),readFile(pagePath,"utf8")]);assert.match(page,/Confirmez-vous avoir relu cette pièce/);assert.match(page,/notification\.providerMessageId/);assert.match(page,/notification\.sentAt/);assert.match(route,/publication_notification_resend_id/);assert.match(route,/publication_notification_sent_at/);assert.match(route,/publication_recipient_email/);});

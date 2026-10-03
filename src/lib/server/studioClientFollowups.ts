@@ -7,13 +7,15 @@ type ReminderRow = { id:string; client_email:string|null; dossier_id:string|null
 const AGENT_SHARED_AFTER_BUSINESS_HOURS=24;
 const SIGNATURE_REMINDER="daily_signature_pending_72h";
 const SIGNATURE_J3_STAGE="automatic_email_j3";
-const SIGNATURE_J6_STAGE="phone_call_j6";
+const SIGNATURE_J6_STAGE="automatic_email_j6";
+const SIGNATURE_J9_STAGE="phone_call_j9";
+const SIGNATURE_URGENT_STAGE="agent_urgent_before_start";
 function text(value:unknown){return typeof value==="string"?value.trim():""}
 function isOverdue(value:string|null){return isOverdueAfterBusinessHours(value,AGENT_SHARED_AFTER_BUSINESS_HOURS)}
 function isDue(value:string|null){if(!value)return true;const time=new Date(value).getTime();return Number.isFinite(time)&&time<=Date.now()}
 function assignedAgent(metadata:Record<string,unknown>|null){return text(metadata?.assigned_agent_profile_id||metadata?.agent_profile_id)||null}
 function followupStage(row:ReminderRow){return text(row.metadata?.followup_stage)}
-function queuedAt(row:ReminderRow){if(row.reminder_type===SIGNATURE_REMINDER&&followupStage(row)===SIGNATURE_J6_STAGE)return row.due_at;return text(row.metadata?.queued_at||row.metadata?.created_at||row.metadata?.first_due_at)||row.due_at}
+function queuedAt(row:ReminderRow){if(row.reminder_type===SIGNATURE_REMINDER&&[SIGNATURE_J6_STAGE,SIGNATURE_J9_STAGE].includes(followupStage(row)))return row.due_at;return text(row.metadata?.queued_at||row.metadata?.created_at||row.metadata?.first_due_at)||row.due_at}
 function dailyReminder(row:ReminderRow){const source=text(row.metadata?.source||row.metadata?.domain||row.metadata?.product||row.metadata?.scope).toLowerCase();return source.includes("daily")||String(row.reminder_type??"").toLowerCase().startsWith("daily_")}
 function visible(row:ReminderRow,staff:FollowupStaff,overdueShared:boolean){if(staff.role==="admin")return true;const agentId=assignedAgent(row.metadata);if(!agentId)return true;return staff.id===agentId||overdueShared}
 function exactMetadataHref(row:ReminderRow){
@@ -40,8 +42,8 @@ export async function getStudioClientFollowups(staff:FollowupStaff,options?:{dai
  if(error)throw new Error(error.message);
  const rows=(data??[]) as ReminderRow[];
  return rows.flatMap((row):StudioClientFollowup[]=>{
-  if(row.reminder_type===SIGNATURE_REMINDER&&followupStage(row)===SIGNATURE_J3_STAGE)return[];
   if(!isDue(row.due_at))return[];
+  if(row.reminder_type===SIGNATURE_REMINDER&&[SIGNATURE_J3_STAGE,SIGNATURE_J6_STAGE].includes(followupStage(row)))return[];
   const overdueShared=isOverdue(queuedAt(row)),isDaily=dailyReminder(row);
   if((options?.dailyOnly&&!isDaily)||!visible(row,staff,overdueShared))return[];
   return[{id:row.id,title:row.client_email||"Partie prenante à relancer",detail:text(row.metadata?.reason)||row.subject||"Relance à traiter",href:followupHref(row,isDaily),dueAt:row.due_at,assignedAgentProfileId:assignedAgent(row.metadata),overdueShared,reminderType:row.reminder_type,isDaily}];
