@@ -17,6 +17,10 @@ async function saveAnalysis(formData:FormData){
   if(!scoped) throw new Error("Candidature introuvable.");
   const req={...scoped.request,daily_formations:scoped.formation};
   if(req.decision_status!=="pending"&&req.decision_status!=="ready_for_of") throw new Error("Cette candidature a déjà reçu une décision finale.");
+  const expectedUpdatedAt=text(formData,"candidature_updated_at");
+  if(!expectedUpdatedAt||!Number.isFinite(new Date(expectedUpdatedAt).getTime())) throw new Error("Rechargez le dossier pour relire la version courante de l’analyse.");
+  const conflictMessage="Le dossier a changé depuis son ouverture. Rechargez-le avant de transmettre l’analyse à l’OF.";
+  if(req.updated_at!==expectedUpdatedAt) throw new Error(conflictMessage);
   if(scoped.formation.status==="archived") throw new Error("Cette version de formation est archivée. Le dossier est conservé en lecture seule.");
   if(candidatureRecord(req.positioning_answers).mode==="off_platform"){
     const positioning=await loadCandidaturePositioning(admin,scoped.request,scoped.formation);
@@ -33,8 +37,9 @@ async function saveAnalysis(formData:FormData){
   const summary={motivation_summary:text(formData,"motivation_summary"),expectations_summary:text(formData,"expectations_summary"),positioning_summary:text(formData,"positioning_summary"),needs_summary:text(formData,"needs_summary"),adaptations_summary:text(formData,"adaptations_summary"),prerequisites_comment:text(formData,"prerequisites_comment"),observations:text(formData,"observations"),evaluator_email:auth.email};
   if(!summary.motivation_summary||!summary.positioning_summary||!summary.needs_summary) throw new Error("Motivation, positionnement et besoins doivent être synthétisés avant transmission.");
   const now=new Date().toISOString();
-  const {error}=await admin.from("daily_formation_registration_requests").update({agent_analysis_summary:summary,agent_analysis_completed_at:now,agent_analysis_completed_by:auth.userId,prerequisites_validated:true,decision_status:"ready_for_of",updated_at:now}).eq("id",id).in("decision_status",["pending","ready_for_of"]);
+  const {data:updated,error}=await admin.from("daily_formation_registration_requests").update({agent_analysis_summary:summary,agent_analysis_completed_at:now,agent_analysis_completed_by:auth.userId,prerequisites_validated:true,decision_status:"ready_for_of",updated_at:now}).eq("id",id).eq("formation_id",scoped.formation.id).in("decision_status",["pending","ready_for_of"]).eq("decision_status",req.decision_status).eq("updated_at",expectedUpdatedAt).select("id").maybeSingle();
   if(error) throw new Error(error.message);
+  if(!updated) throw new Error(conflictMessage);
   const formation=(req.daily_formations as any);
   const organisationId=String(formation?.organisation_id??"").trim();
   if(organisationId){
@@ -86,7 +91,7 @@ export default async function DailyCandidatureAnalysisPage({params}:Props){
         {(evidenceWithUrls.length?evidenceWithUrls:[{id:"none",requirement_label:"Aucun justificatif requis",status:"verified",url:null,name:null}]).map((row:any)=><div key={row.id} style={{padding:"8px 0",borderTop:"1px solid var(--selen-border)"}}><strong>{row.requirement_label}</strong> · {row.status}{row.url?<><br/><a href={row.url} target="_blank" rel="noreferrer">Ouvrir le justificatif{row.name?" · "+row.name:""} →</a></>:null}{row.review_comment?<p>{row.review_comment}</p>:null}</div>)}
       </section>
       <section style={{padding:16,border:"1px solid var(--selen-border)",borderRadius:12}}><h2>Synthèse Selen</h2><p style={{color:"var(--selen-text2)"}}>Cette synthèse prépare la décision de l’OF. L’agent n’accepte ni ne refuse la candidature.</p>
-        <form action={saveAnalysis} style={{display:"grid",gap:12}}><input type="hidden" name="id" value={req.id}/>{[["motivation_summary","Synthèse motivation"],["expectations_summary","Attentes"],["positioning_summary","Positionnement / niveau"],["needs_summary","Besoins spécifiques"],["adaptations_summary","Adaptations à prévoir"],["prerequisites_comment","Commentaire prérequis"],["observations","Observations / notes utiles"]].map(([name,label])=><label key={name} style={{display:"grid",gap:5}}><strong>{label}</strong><textarea name={name} defaultValue={String(summary[name]??"")} rows={name==="observations"?5:3} disabled={final}/></label>)}<p><strong>Prérequis :</strong> {req.prerequisites_validated?"Vérifiés":"À vérifier"} · <strong>État :</strong> {req.decision_status}</p>{!final?<button style={{padding:"10px 14px",fontWeight:800}}>Terminer l’analyse et transmettre à l’OF</button>:<p>Décision OF déjà enregistrée. L’analyse est conservée en lecture seule.</p>}</form>
+        <form action={saveAnalysis} style={{display:"grid",gap:12}}><input type="hidden" name="id" value={req.id}/><input type="hidden" name="candidature_updated_at" value={String(req.updated_at??"")}/>{[["motivation_summary","Synthèse motivation"],["expectations_summary","Attentes"],["positioning_summary","Positionnement / niveau"],["needs_summary","Besoins spécifiques"],["adaptations_summary","Adaptations à prévoir"],["prerequisites_comment","Commentaire prérequis"],["observations","Observations / notes utiles"]].map(([name,label])=><label key={name} style={{display:"grid",gap:5}}><strong>{label}</strong><textarea name={name} defaultValue={String(summary[name]??"")} rows={name==="observations"?5:3} disabled={final}/></label>)}<p><strong>Prérequis :</strong> {req.prerequisites_validated?"Vérifiés":"À vérifier"} · <strong>État :</strong> {req.decision_status}</p>{!final?<button style={{padding:"10px 14px",fontWeight:800}}>Terminer l’analyse et transmettre à l’OF</button>:<p>Décision OF déjà enregistrée. L’analyse est conservée en lecture seule.</p>}</form>
         {req.agent_analysis_completed_at?<p style={{marginTop:12}}>Analyse terminée le {new Date(req.agent_analysis_completed_at).toLocaleString("fr-FR")} par {String(summary.evaluator_email??"Selen")}.</p>:null}
       </section>
     </div></main>;

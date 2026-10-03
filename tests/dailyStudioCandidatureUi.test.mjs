@@ -5,6 +5,7 @@ import { dailyPrivateFixture, materializeFixture, ids } from "./helpers/dailyPri
 import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
 
 const require = createRequire(import.meta.url);
+const ANALYSIS_REVISION = "2026-10-03T12:00:00+00:00";
 function elements(node, result = []) {
   if (Array.isArray(node)) { for (const child of node) elements(child, result); }
   else if (node?.props) { result.push(node); elements(node.props.children, result); }
@@ -18,6 +19,7 @@ function visibleText(node) {
 function pageFixture() {
   const f = dailyPrivateFixture(); const emailCalls = [];
   f.formation.prerequisite_mode = "none";
+  f.request.updated_at = ANALYSIS_REVISION;
   const modules = {
     ...f.modules,
     "react/jsx-runtime": require("react/jsx-runtime"),
@@ -34,6 +36,7 @@ function pageFixture() {
 }
 function analysisForm() {
   const form = new FormData(); form.set("id", ids.request);
+  form.set("candidature_updated_at", ANALYSIS_REVISION);
   for (const field of ["motivation_summary", "expectations_summary", "positioning_summary", "needs_summary", "adaptations_summary", "prerequisites_comment", "observations"]) form.set(field, `Synthèse ${field}`);
   return form;
 }
