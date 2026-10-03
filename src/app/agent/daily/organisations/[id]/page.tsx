@@ -10,6 +10,7 @@ import SelenBadge from "@/components/ui/SelenBadge";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import { createAgentAssistanceToken } from "@/lib/server/agentAssistanceTokens";
+import { getDailyAgentTasks } from "@/lib/server/dailyAgentTasks";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -239,6 +240,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const { id } = await params;
   const tab = safeTab((await searchParams).tab);
   const admin = createSupabaseAdminClient();
+  const scopedDailyTasksPromise = getDailyAgentTasks({ id: null, role: "admin" }, { organisationId: id });
 
   const [organisationRes, assignmentRes, agentsRes, adminAccessRes, checklistRes, membershipsRes, rolesRes, blocksRes, invitationsRes, trainersRes, certificationsRes, validationsRes, historyRes, profilesRes] = await Promise.all([
     admin.from("organisations").select("*").eq("id", id).maybeSingle(),
@@ -259,6 +261,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
 
   if (organisationRes.error || !organisationRes.data) return <main style={s.page}><p style={s.error}>Organisme introuvable.</p></main>;
   const organisation = organisationRes.data;
+  const scopedDailyTasks = await scopedDailyTasksPromise;
   const checklist = checklistRes.data ?? [];
   const memberships = membershipsRes.data ?? [];
   const roles = rolesRes.data ?? [];
@@ -318,7 +321,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
 
       {tab === "overview" ? (
         <div style={s.twoCols}>
-          <SelenCard><SelenCardTitle>À traiter maintenant</SelenCardTitle>{attention.length === 0 ? <p style={s.muted}>Rien de bloquant pour le moment.</p> : attention.map((item) => <div key={item.id} style={s.attentionRow}><div><strong>{item.label}</strong><p style={s.mutedInline}>{item.description}</p></div><SelenBadge variant={item.status === "blocked" ? "danger" : "warn"}>{item.status === "blocked" ? "Bloqué" : item.status === "to_review" ? "À vérifier" : `À faire · ${daysSince(item.signaled_at)} j`}</SelenBadge></div>)}</SelenCard>
+          <SelenCard><SelenCardTitle>Tâches de cet OF</SelenCardTitle>{scopedDailyTasks.length === 0 ? <p style={s.muted}>Aucune tâche active pour cet organisme.</p> : scopedDailyTasks.map((item) => <div key={item.id} style={s.attentionRow}><div><strong>{item.title}</strong><p style={s.mutedInline}>{item.reason} · {item.detail}</p></div><Link href={item.href} style={s.back}>Traiter →</Link></div>)}</SelenCard>
           <SelenCard><SelenCardTitle>Signaux dossier</SelenCardTitle><Signal label="NDA" value={organisation.nda_status || "unknown"} /><Signal label="Qualiopi" value={organisation.qualiopi_status || "unknown"} /><Signal label="Utilisateurs actifs" value={String(memberships.filter((m) => m.status === "active").length)} /><Signal label="Formateurs actifs" value={String(trainers.filter((t) => t.active).length)} /><Signal label="Invitations en attente" value={String(invitations.filter((i) => i.status === "pending").length)} /></SelenCard>
           <SelenCard style={{ gridColumn: "1 / -1" }}><SelenCardTitle>Échéances formateurs</SelenCardTitle>{expiring.length === 0 ? <p style={s.muted}>Aucune certification à durée limitée n’arrive à échéance dans les 90 jours.</p> : expiring.map((cert) => { const trainer = trainers.find((t) => t.id === cert.trainer_profile_id); return <div key={cert.id} style={s.attentionRow}><span>{trainer?.display_name || "Formateur"} · {cert.title}</span><SelenBadge variant={certVariant(cert.validity_mode, cert.valid_until)}>{certificationLabel(cert.validity_mode, cert.valid_until)}</SelenBadge></div>; })}</SelenCard>
         </div>

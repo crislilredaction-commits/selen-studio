@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit --incremental false",
     "dev": "next dev --webpack",
     "build": "npm run test:agent-access && npm run test:agent-message-read-state && npm run test:agent-sidebar-navigation && npm run test:daily-assignment && npm run test:daily-trainer-certifications-ui && npm run test:daily-qualiopi-preaudit && npm run test:daily-satisfaction && npm run test:daily-navigation && npm run test:daily-session-tasks && npm run test:daily-checklist-monotonic && npm run test:daily-pilotage && npm run test:daily-watch-cadence && npm run test:daily-corrective-actions-cadence && npm run test:daily-trainer-annual-review && npm run test:daily-internal-procedures && npm run test:daily-stakeholder-feedback && npm run test:daily-session-followup && npm run test:daily-session-followup-pdf && npm run test:daily-client-followups && npm run test:daily-task-reminder-preference && npm run test:daily-enrolment-processing && npm run test:daily-signature-reminders && npm run test:daily-learners-scope && npm run test:daily-document-scope && npm run test:daily-document-publication && npm run test:daily-delegated-document-upload && npm run test:daily-positioning-followup && npm run test:daily-attendance-followup && npm run test:daily-direct-session-access && npm run test:support-manual-ticket && npm run test:auth-recovery && next build --webpack",
     "start": "next start",
