@@ -11,7 +11,7 @@ export function isolatedTsModule(file, modules = {}, globals = {}) {
   }).outputText;
   const module = { exports: {} };
   vm.runInNewContext(output, {
-    module, exports: module.exports, Date, URL, URLSearchParams, Response, Request,
+    module, exports: module.exports, Error, Date, URL, URLSearchParams, Response, Request, ReadableStream,
     fetch: () => { throw new Error("Live fetch forbidden in tests"); },
     require: (id) => {
       if (!Object.hasOwn(modules, id)) throw new Error(`Unexpected dependency: ${id}`);

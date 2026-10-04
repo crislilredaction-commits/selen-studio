@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { dailySourceDocumentId, downloadPrivateDailySource, loadPrivateDailySource, loadScopedDailyFormation } from "@/lib/server/dailyStudioFormationSources";
 import { parseDailyFormationCreationMode, requiredFormationFields } from "@/lib/dailyFormationCreationPolicy";
 import DailyFormationReviewTabs from "@/components/daily/DailyFormationReviewTabs";
-import DailyQuestionnairePreview from "@/components/daily/DailyQuestionnairePreview";
+import DailyQuestionnaireEditor from "@/components/daily/DailyQuestionnaireEditor";
+import DailyQuestionnaireSourceUpload from "@/components/daily/DailyQuestionnaireSourceUpload";
+import DailyFormationReviewForm from "@/components/daily/DailyFormationReviewForm";
+import { parseDailyQuestionnaire } from "@/lib/dailyQuestionnaireEditing";
+import { questionnaireFiles, saveDailyQuestionnaireSources } from "@/lib/server/dailyStudioQuestionnaireSources";
 
 const EDITABLE_STATUSES = new Set(["draft", "review", "correction_requested"]);
 const MODALITIES = new Set(["presentiel", "distanciel", "mixte"]);
@@ -39,7 +43,7 @@ function hasOwnPositioningSource(formation: Record<string, unknown>) {
   return formation.positioning_mode === "off_platform" && Boolean(String(formation.positioning_questionnaire_document_url ?? "").trim());
 }
 
-async function persistProgram(formData: FormData, validate: boolean) {
+async function persistProgram(formData: FormData, validate: boolean, questionnairesOnly = false) {
   "use server";
 
   const auth = await requireSupportAgent();
@@ -57,7 +61,7 @@ async function persistProgram(formData: FormData, validate: boolean) {
   if (sessionError || (sessionId && !session)) {
     throw new Error("Le programme ne correspond pas à cette session.");
   }
-  if (!EDITABLE_STATUSES.has(formation.status)) {
+  if (!EDITABLE_STATUSES.has(formation.status) && !(questionnairesOnly && formation.status === "validated")) {
     throw new Error("Ce programme est déjà validé. Crée une nouvelle version avant de le modifier.");
   }
   const expectedUpdatedAt = value(formData, "formation_updated_at");
@@ -65,12 +69,21 @@ async function persistProgram(formData: FormData, validate: boolean) {
     throw new Error("Le programme a changé. Actualise le dossier avant de l’enregistrer.");
   }
 
+  const files = questionnaireFiles(formData, formation);
+  const questionnairePatch: Record<string, unknown> = {};
+  if (formation.positioning_mode === "selen" && (formData.has("positioning_questions") || validate)) {
+    questionnairePatch.positioning_questions = parseDailyQuestionnaire(formData.has("positioning_questions") ? value(formData, "positioning_questions") : JSON.stringify(formation.positioning_questions));
+  }
+  if (formation.learning_assessment_mode === "selen_quiz") {
+    if (formData.has("learning_assessment_questions") || validate) questionnairePatch.learning_assessment_questions = parseDailyQuestionnaire(formData.has("learning_assessment_questions") ? value(formData, "learning_assessment_questions") : JSON.stringify(formation.learning_assessment_questions), true);
+    if (formData.has("learning_assessment_instructions")) questionnairePatch.learning_assessment_instructions = value(formData, "learning_assessment_instructions") || null;
+  }
   const durationHours = numberValue(formData, "duration_hours");
   const durationDays = numberValue(formData, "duration_days");
   const learningObjectives = objectives(formData);
   const modality = value(formData, "modality");
-  if (!MODALITIES.has(modality)) throw new Error("Modalité de formation invalide.");
-  if (!value(formData, "title") || !value(formData, "global_objective") || learningObjectives.length === 0 || !durationHours || !durationDays) {
+  if (!questionnairesOnly && !MODALITIES.has(modality)) throw new Error("Modalité de formation invalide.");
+  if (!questionnairesOnly && (!value(formData, "title") || !value(formData, "global_objective") || learningObjectives.length === 0 || !durationHours || !durationDays)) {
     throw new Error("Complète au minimum l'intitulé, l'objectif principal, les objectifs pédagogiques et les durées.");
   }
   if (validate) {
@@ -78,16 +91,18 @@ async function persistProgram(formData: FormData, validate: boolean) {
       .filter(field => field !== "modality" && !value(formData, field));
     if (missing.length) throw new Error(`Complète les champs requis avant de valider : ${missing.map(field => FIELD_LABELS[field] || field).join(", ")}.`);
     if (!value(formData, "detailed_program")) throw new Error("Complète le contenu détaillé avant de valider le programme.");
-    const requiredSources: Array<"program" | "positioning"> = [];
+    const requiredSources: Array<"program" | "positioning" | "assessment"> = [];
     if (formation.creation_mode === "program_import") requiredSources.push("program");
     if (hasOwnPositioningSource(formation)) requiredSources.push("positioning");
+    if (formation.learning_assessment_mode === "external" && formation.learning_assessment_document_url) requiredSources.push("assessment");
     for (const kind of requiredSources) {
+      if (files.some(file => file.kind === kind)) continue;
       const source = await loadPrivateDailySource(admin, formation, kind);
       await downloadPrivateDailySource(admin, source);
     }
   }
 
-  const patch = {
+  const patch: Record<string, unknown> = questionnairesOnly ? {} : {
     title: value(formData, "title"),
     global_objective: value(formData, "global_objective"),
     learning_objectives: learningObjectives,
@@ -110,13 +125,25 @@ async function persistProgram(formData: FormData, validate: boolean) {
     contact_website: value(formData, "contact_website") || null,
     updated_at: new Date().toISOString(),
   };
+  Object.assign(patch, questionnairePatch);
+  if (questionnairesOnly && formation.status === "validated") Object.assign(patch, { status: "review", validation_note: null, agent_review_signaled_at: new Date().toISOString() });
+  patch.updated_at = new Date().toISOString();
 
-  const updateQuery = admin.from("daily_formations").update(patch).eq("id", formationId).eq("organisation_id", formation.organisation_id).eq("status", formation.status).eq("updated_at", expectedUpdatedAt);
-  const { data: updatedFormation, error: updateError } = await updateQuery.select("id").maybeSingle();
-  if (updateError) throw new Error(updateError.message);
-  if (!updatedFormation) throw new Error("Le programme a changé. Actualise le dossier avant de l’enregistrer.");
+  if (files.length) {
+    await saveDailyQuestionnaireSources(admin, formation, auth.email, auth.userId, patch, files);
+  } else {
+    const updateQuery = admin.from("daily_formations").update(patch).eq("id", formationId).eq("organisation_id", formation.organisation_id).eq("status", formation.status).eq("updated_at", expectedUpdatedAt);
+    const { data: updatedFormation, error: updateError } = await updateQuery.select("id").maybeSingle();
+    if (updateError) throw new Error(updateError.message);
+    if (!updatedFormation) throw new Error("Le programme a changé. Actualise le dossier avant de l’enregistrer.");
+  }
 
   if (validate) {
+    if (files.length) {
+      const saved = await loadScopedDailyFormation(admin, auth.email, formationId);
+      if (!saved) throw new Error("Programme introuvable.");
+      for (const file of files) await downloadPrivateDailySource(admin, await loadPrivateDailySource(admin, saved, file.kind as "positioning" | "assessment"));
+    }
     const { data: validated, error: validationError } = await admin.rpc("daily_validate_formation_version", {
       p_formation_id: formationId,
       p_validation_note: "Programme vérifié et validé.",
@@ -151,6 +178,21 @@ async function saveProgram(formData: FormData) {
 async function validateProgram(formData: FormData) {
   "use server";
   return persistProgram(formData, true);
+}
+
+async function saveQuestionnaires(formData: FormData) {
+  "use server";
+  return persistProgram(formData, false, true);
+}
+
+async function submitReview(formData: FormData, intent: "save" | "validate" | "questionnaires") {
+  "use server";
+  if (!["save", "validate", "questionnaires"].includes(intent)) return { error: "Action invalide." };
+  try { await persistProgram(formData, intent === "validate", intent === "questionnaires"); }
+  catch (error) {
+    unstable_rethrow(error);
+    return { error: error instanceof Error ? error.message : "Enregistrement indisponible." };
+  }
 }
 
 export default async function DailyFormationReview({ sessionId, formationId }: Props) {
@@ -194,8 +236,8 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
           <h2 style={s.h2}>{editable ? "Vérifie le programme et les questionnaires" : "Programme validé"}</h2>
           <p style={s.muted}>
             {editable
-              ? "Relis le programme, le questionnaire de positionnement et l’évaluation finale configurés par l’OF. Corrige les informations du programme si besoin, puis valide la formation. Le reste de la session se traite dans les tâches agent."
-              : "Tu n'as plus rien à faire sur le programme. Le client dispose maintenant de son lien d'inscription et de son QR code dans son espace Daily."}
+              ? "Relis le programme, le questionnaire de positionnement et l’évaluation finale configurés par l’OF. Corrige le programme et les questionnaires si besoin, puis valide la formation. Le reste de la session se traite dans les tâches agent."
+              : "Le programme est validé. Tu peux modifier les questionnaires ci-dessous ; leur enregistrement renverra la formation en vérification, avec le même lien d’inscription."}
           </p>
         </div>
       </section>
@@ -218,7 +260,7 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
         </section>
       ) : null}
 
-      <form style={s.form}>
+      <DailyFormationReviewForm submit={submitReview} defaultIntent={editable ? "save" : "questionnaires"}>
         <input type="hidden" name="session_id" value={session?.id ?? ""} />
         <input type="hidden" name="formation_id" value={formation.id} />
         <input type="hidden" name="formation_updated_at" value={formation.updated_at ?? ""} />
@@ -281,12 +323,14 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
             {formation.positioning_mode === "off_platform" ? (
               <>
                 <p style={s.muted}>{hasOwnPositioningSource(formation) ? "Questionnaire propre OF : téléchargement, remplissage hors Selen et réimportation obligatoire." : "Positionnement historique : aucun questionnaire propre OF n’a été importé."}</p>
-                {dailySourceDocumentId(formation.positioning_questionnaire_document_url) ? <a href={`/agent/api/daily/formations/${formation.id}/source-document?kind=positioning`} style={s.secondaryLink}>Télécharger le questionnaire propre OF →</a> : null}
+                {dailySourceDocumentId(formation.positioning_questionnaire_document_url) ? <a href={`/agent/api/daily/formations/${formation.id}/source-document?kind=positioning`} style={s.secondaryLink} target="_blank" rel="noreferrer">Ouvrir le questionnaire propre OF →</a> : null}
+                <h3>Remplacer le questionnaire de positionnement</h3><p style={s.muted}>L’original est remplacé lors de l’enregistrement. Les versions précédentes sont conservées.</p>
+                <DailyQuestionnaireSourceUpload formationId={formation.id} updatedAt={formation.updated_at} kind="positioning" />
               </>
             ) : formation.positioning_mode === "selen" ? (
               <>
                 <p style={s.muted}>Questionnaire de positionnement Selen configuré par l’OF.</p>
-                <DailyQuestionnairePreview questions={formation.positioning_questions} />
+                <DailyQuestionnaireEditor questions={formation.positioning_questions} />
               </>
             ) : <p style={s.muted}>Positionnement non configuré.</p>}
           </section>
@@ -295,18 +339,25 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
             <h2 style={s.h2}>Évaluation finale</h2>
             <p style={s.muted}>{formation.learning_assessment_mode === "selen_quiz" ? "Évaluation intégrée dans Selen." : formation.learning_assessment_mode === "external" ? "Évaluation externe fournie par le formateur ou l’OF." : "Évaluation finale non configurée."}</p>
             <h3 style={{ fontSize: 14, margin: "16px 0 6px" }}>Consignes de l’OF</h3>
-            <p style={{ ...s.muted, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{formation.learning_assessment_instructions || "Aucune consigne renseignée."}</p>
-            {formation.learning_assessment_mode === "selen_quiz" ? <DailyQuestionnairePreview questions={formation.learning_assessment_questions} assessment /> : null}
+            {formation.learning_assessment_mode === "selen_quiz" ? <>
+              <textarea aria-label="Consignes de l’évaluation finale" name="learning_assessment_instructions" defaultValue={formation.learning_assessment_instructions || ""} style={s.textarea} rows={3} />
+              <DailyQuestionnaireEditor questions={formation.learning_assessment_questions} assessment />
+            </> : <p style={{ ...s.muted, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{formation.learning_assessment_instructions || "Aucune consigne renseignée."}</p>}
+            {formation.learning_assessment_mode === "external" ? <>
+              {dailySourceDocumentId(formation.learning_assessment_document_url) ? <a href={`/agent/api/daily/formations/${formation.id}/source-document?kind=assessment`} target="_blank" rel="noreferrer" style={s.secondaryLink}>Ouvrir le questionnaire d’évaluation finale →</a> : <p style={s.muted}>Aucun questionnaire source importé. Les copies remplies après la session restent dans les dossiers apprenants.</p>}
+              <h3>Importer ou remplacer le questionnaire d’évaluation finale</h3><p style={s.muted}>Ce fichier est distinct des copies remplies par les apprenants.</p>
+              <DailyQuestionnaireSourceUpload formationId={formation.id} updatedAt={formation.updated_at} kind="assessment" />
+            </> : null}
           </section>
         </DailyFormationReviewTabs>
 
         {editable ? (
           <div style={s.footerActions}>
-            <button formAction={saveProgram} formNoValidate style={s.secondaryButton}>Enregistrer pour plus tard</button>
-            <button formAction={validateProgram} style={s.primaryButton}>✓ Valider la formation</button>
+            <button data-review-intent="save" formAction={saveProgram} formNoValidate style={s.secondaryButton}>Enregistrer pour plus tard</button>
+            <button data-review-intent="validate" formAction={validateProgram} style={s.primaryButton}>✓ Valider la formation</button>
           </div>
-        ) : null}
-      </form>
+        ) : formation.status === "validated" ? <div style={s.footerActions}><p style={s.muted}>Une modification des questionnaires renvoie cette formation en vérification, en conservant son lien d’inscription.</p><button data-review-intent="questionnaires" formAction={saveQuestionnaires} formNoValidate style={s.primaryButton}>Enregistrer les questionnaires</button></div> : null}
+      </DailyFormationReviewForm>
     </main>
   );
 }

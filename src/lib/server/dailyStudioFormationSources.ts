@@ -35,18 +35,19 @@ export async function loadScopedDailyFormation(admin: SupabaseAdminClient, email
   return data;
 }
 
-export async function loadPrivateDailySource(admin: SupabaseAdminClient, formation: { id: string; organisation_id: string; [key: string]: unknown }, kind: "program" | "positioning") {
-  const reference = kind === "program" ? formation.detailed_program_document_url : formation.positioning_questionnaire_document_url;
+export async function loadPrivateDailySource(admin: SupabaseAdminClient, formation: { id: string; organisation_id: string; [key: string]: unknown }, kind: "program" | "positioning" | "assessment") {
+  const reference = kind === "program" ? formation.detailed_program_document_url : kind === "positioning" ? formation.positioning_questionnaire_document_url : formation.learning_assessment_document_url;
   if (kind === "positioning" && formation.positioning_mode !== "off_platform") throw new DailySourceError("Document source privé introuvable.");
+  if (kind === "assessment" && formation.learning_assessment_mode !== "external") throw new DailySourceError("Document source privé introuvable.");
   const id = dailySourceDocumentId(reference);
   if (!id || formation.status === "archived") throw new DailySourceError("Document source privé introuvable.");
-  const documentType = kind === "program" ? "training_program_source" : "positioning_questionnaire_source";
+  const documentType = kind === "program" ? "training_program_source" : kind === "positioning" ? "positioning_questionnaire_source" : "learning_assessment_source";
   const { data: doc, error } = await admin.from("daily_documents")
-    .select("id,organisation_id,formation_id,document_type,linked_object_type,linked_object_id,bucket,storage_path,mime_type,sha256,is_current,status,logical_name,metadata")
+    .select("id,organisation_id,formation_id,document_type,linked_object_type,linked_object_id,bucket,storage_path,mime_type,sha256,is_current,status,archived_at,logical_name,metadata")
     .eq("id", id).eq("organisation_id", formation.organisation_id).eq("document_type", documentType)
     .eq("linked_object_type", "organisation").eq("linked_object_id", formation.organisation_id).maybeSingle();
   if (error) throw new DailySourceError("Lecture du document source indisponible.", 500);
-  if (!doc || doc.bucket !== "documents" || !doc.is_current || doc.status === "archived" ||
+  if (!doc || doc.bucket !== "documents" || !doc.is_current || doc.status === "archived" || doc.archived_at ||
     (doc.formation_id && doc.formation_id !== formation.id) || !privateDailyPath(doc.storage_path, formation.organisation_id) ||
     !DAILY_SOURCE_MIME_TYPES.has(doc.mime_type) || !DAILY_SOURCE_SHA.test(doc.sha256 ?? "")) {
     throw new DailySourceError("Document source privé introuvable.");
@@ -63,7 +64,17 @@ export async function downloadPrivateDailySource(admin: SupabaseAdminClient, doc
   if (!sameDailySourceDigest(createHash("sha256").update(bytes).digest("hex"), document.sha256)) {
     throw new DailySourceError("Le fichier ne correspond plus à sa preuve enregistrée.", 409);
   }
-  return new Response(bytes, { headers: {
+  // Verify the complete private file before streaming it. Chunked responses also
+  // support the 10 MiB upload limit without buffering a large function response.
+  let offset = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= bytes.length) { controller.close(); return; }
+      const end = Math.min(offset + 64 * 1024, bytes.length);
+      controller.enqueue(bytes.subarray(offset, end)); offset = end;
+    },
+  });
+  return new Response(stream, { headers: {
     "Content-Type": document.mime_type,
     "Content-Disposition": `attachment; filename="document"; filename*=UTF-8''${encodeURIComponent(document.name)}`,
     "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",

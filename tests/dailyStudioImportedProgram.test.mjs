@@ -68,8 +68,9 @@ for (const session of [false, true]) {
     const all = elements(tree);
     const links = all.filter(item => item.props.href).map(item => item.props.href);
     assert.ok(links.includes(`/agent/api/daily/formations/${ids.formation}/source-document?kind=program`));
-    assert.equal(all.filter(item => item.type === "button" && item.props.formAction).length, 0);
-    assert.ok(all.filter(item => item.props.name && item.props.type !== "hidden").every(item => item.props.disabled === true));
+    assert.equal(all.filter(item => item.type === "button" && item.props.formAction).length, 1);
+    assert.match(visibleText(tree), /Enregistrer les questionnaires/);
+    assert.ok(all.filter(item => item.props.name && item.props.type !== "hidden" && item.props.type !== "file").every(item => item.props.disabled === true));
     assert.ok(!links.some(link => String(link).includes("storage")));
   });
 }

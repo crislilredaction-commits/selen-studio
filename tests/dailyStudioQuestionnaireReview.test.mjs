@@ -96,7 +96,7 @@ test("les contenus absents ou anciens restent lisibles sans inventer de question
   const legacy = await review(f);
   assert.match(legacy, /Positionnement non configuré/); assert.match(legacy, /Évaluation finale non configurée/);
   assert.match(legacy, /Aucune consigne renseignée/);
-  f.formation.positioning_mode = "selen"; f.formation.positioning_questions = [null, { type: "unknown", label: "Question ancienne" }];
+  f.formation.positioning_mode = "selen"; f.formation.positioning_questions = [null, { type: "unknown", label: "Question ancienne", options: "old malformed options" }];
   const malformed = await review(f);
   assert.match(malformed, /Question sans intitulé/); assert.match(malformed, /Question ancienne/); assert.match(malformed, /Type non renseigné/);
 });
