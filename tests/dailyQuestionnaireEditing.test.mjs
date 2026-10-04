@@ -178,6 +178,6 @@ test("le véritable SDK Storage transmet les octets Word avec le type normalisé
     assert.equal(result.error,null);assert.equal(calls.length,1);assert.equal(calls[0].init.method,"PUT");
     const multipart=calls[0].init.body;assert.ok(multipart instanceof FormData);assert.equal(multipart.get("cacheControl"),"0");
     const actual=multipart.get("");assert.equal(actual.type,mime);assert.deepEqual(Buffer.from(await actual.arrayBuffer()),bytes);
-    assert.equal(calls[0].init.headers["x-upsert"],"false");
+    assert.equal(new Headers(calls[0].init.headers).get("x-upsert"),"false");
   }
 });
