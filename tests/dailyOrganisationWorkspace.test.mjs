@@ -96,6 +96,14 @@ test("une pièce privée historique sans empreinte reste lisible sans écriture 
   assert.equal((await f.get()).status, 200); assert.equal(f.writes.length, 0);
 });
 
+test("une pièce signée archivée par date, toujours courante, est absente de la liste et inaccessible", async () => {
+  const f = fixture(); const doc = f.rows.daily_documents.find(row => row.id === ids.program);
+  Object.assign(doc, { status: "signed", is_current: true, archived_at: "2026-10-04T08:00:00Z" });
+  const tree = await f.workspace.default({ organisationId: ids.of, email: f.auth.value.email, kind: "documents" });
+  assert.doesNotMatch(text(tree), /Programme.pdf/);
+  assert.equal((await f.get()).status, 404); assert.equal(f.downloads.length, 0);
+});
+
 test("la liste refuse l'OF hors assignation avant toute lecture des programmes ou documents", async () => {
   const f = fixture();
   for (const kind of ["programs", "documents"]) await assert.rejects(f.documents.loadDailyOrganisationWorkspace(f.admin, f.auth.value.email, ids.otherOf, kind), /hors de ton périmètre/);

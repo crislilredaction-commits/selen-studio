@@ -41,6 +41,7 @@ export function dailyPrivateFixture() {
         select(value) { projection = value; return query; },
         update(value) { assert.equal(flags.allowWrites, true, "Writes forbidden in this fixture"); patch = value; return query; },
         eq(key, value) { filters.push(row => row[key] === value); return query; },
+        is(key, value) { filters.push(row => value === null ? row[key] == null : row[key] === value); return query; },
         neq(key, value) { filters.push(row => row[key] !== value); return query; },
         in(key, values) { filters.push(row => values.includes(row[key])); return query; },
         order() { return query; },
