@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { isDailyOrganisationInAgentScope, getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
-import { DAILY_SOURCE_UUID, DAILY_SOURCE_SHA, DailySourceError, privateDailyPath, sameDailySourceDigest } from "@/lib/server/dailyStudioFormationSources";
+import { DAILY_SOURCE_UUID, DAILY_SOURCE_SHA, DailySourceError, privateDailyPath, sameDailySourceDigest, dailyPrivateDownloadResponse } from "@/lib/server/dailyStudioFormationSources";
 
 export type DailyOrganisationDocument = {
   id: string; organisation_id: string; document_type: string; logical_name: string;
@@ -54,9 +54,5 @@ export async function downloadScopedDailyOrganisationDocument(admin: SupabaseAdm
     throw new DailySourceError("Le fichier ne correspond plus à sa preuve enregistrée.", 409);
   }
   const name = String(document.metadata?.original_filename || document.logical_name || "Document client").replace(/[\u0000-\u001f\u007f]/g, "");
-  return new Response(bytes, { headers: {
-    "Content-Type": document.mime_type,
-    "Content-Disposition": `attachment; filename="document"; filename*=UTF-8''${encodeURIComponent(name)}`,
-    "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
-  } });
+  return dailyPrivateDownloadResponse(bytes, { name, mime_type: document.mime_type });
 }

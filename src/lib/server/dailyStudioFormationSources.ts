@@ -64,8 +64,12 @@ export async function downloadPrivateDailySource(admin: SupabaseAdminClient, doc
   if (!sameDailySourceDigest(createHash("sha256").update(bytes).digest("hex"), document.sha256)) {
     throw new DailySourceError("Le fichier ne correspond plus à sa preuve enregistrée.", 409);
   }
-  // Verify the complete private file before streaming it. Chunked responses also
-  // support the 10 MiB upload limit without buffering a large function response.
+  return dailyPrivateDownloadResponse(bytes, document);
+}
+
+// The caller must check access and the complete file's integrity before sending
+// any bytes. Chunked responses support large private originals and client pieces.
+export function dailyPrivateDownloadResponse(bytes: Uint8Array, document: Pick<PrivateDailySource, "name" | "mime_type">) {
   let offset = 0;
   const stream = new ReadableStream<Uint8Array>({
     pull(controller) {
