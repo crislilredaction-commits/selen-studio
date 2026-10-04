@@ -126,7 +126,7 @@ async function persistProgram(formData: FormData, validate: boolean, questionnai
     updated_at: new Date().toISOString(),
   };
   Object.assign(patch, questionnairePatch);
-  if (questionnairesOnly && formation.status === "validated") Object.assign(patch, { status: "review", validation_note: null, agent_review_signaled_at: new Date().toISOString() });
+  if (formation.status === "correction_requested" || (questionnairesOnly && formation.status === "validated")) Object.assign(patch, { status: "review", validation_note: null, agent_review_signaled_at: new Date().toISOString() });
   patch.updated_at = new Date().toISOString();
 
   if (files.length) {

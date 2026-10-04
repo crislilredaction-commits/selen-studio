@@ -46,6 +46,11 @@ test("formation validée : seules les modifications des questionnaires repartent
   await assert.rejects(save(f.form),/REDIRECT/);assert.equal(f.formation.status,"review");assert.equal(f.formation.title,"Formation exemple");assert.equal(f.formation.validation_note,null);
   assert.equal(f.formation.public_registration_token,"stable-link");assert.equal(f.formation.version,4);assert.equal(f.rpcs.length,0);
 });
+test("la correction des questionnaires Selen renvoie une demande de correction en revue",async()=>{
+  const f=fixture("correction_requested"),save=await f.action();f.formation.validation_note="À corriger";f.formation.agent_review_signaled_at="2026-10-01T09:00:00Z";
+  f.form.set("positioning_questions",JSON.stringify([{...position[0],label:"Correction transmise"}]));
+  await assert.rejects(save(f.form),/REDIRECT/);assert.equal(f.formation.status,"review");assert.equal(f.formation.validation_note,null);assert.notEqual(f.formation.agent_review_signaled_at,"2026-10-01T09:00:00Z");assert.equal(f.formation.public_registration_token,"stable-link");
+});
 test("le formulaire reçoit une erreur lisible sans quitter le dossier",async()=>{
   const f=fixture(); const submit=elements(await f.getTree()).find(n=>n.props.submit)?.props.submit;
   f.form.set("positioning_questions","[]");const result=await submit(f.form,"save");assert.match(result.error,/1 et 100 questions/);assert.equal(f.writes.length,0);
