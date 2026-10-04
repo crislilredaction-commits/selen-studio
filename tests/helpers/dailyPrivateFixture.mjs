@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import * as crypto from "node:crypto";
+import { createRequire } from "node:module";
 import { isolatedTsModule } from "./isolatedTsModule.mjs";
+const require = createRequire(import.meta.url);
 
 export const ids = {
   of: "11111111-1111-4111-8111-111111111111", otherOf: "22222222-2222-4222-8222-222222222222",
@@ -79,7 +82,21 @@ export function dailyPrivateFixture() {
   });
   const candidatures = isolatedTsModule("src/lib/server/dailyStudioCandidature.ts", { "@/lib/server/dailyStudioFormationSources": sources });
   const auth = { value: { ok: true, email: "agent-a@example.test", userId: "test-user" } };
+  const reviewForm = isolatedTsModule("src/components/daily/DailyFormationReviewForm.tsx", { react: require("react"), "react/jsx-runtime": require("react/jsx-runtime") });
   const modules = {
+    "@/components/daily/DailyFormationReviewForm": reviewForm,
+    "@/lib/dailyQuestionnaireEditing": isolatedTsModule("src/lib/dailyQuestionnaireEditing.ts"),
+    "@/lib/server/dailyStudioQuestionnaireSources": isolatedTsModule("src/lib/server/dailyStudioQuestionnaireSources.ts", { "node:crypto": crypto, "./dailyStudioFormationSources": sources }),
+    "@/components/daily/DailyQuestionnaireEditor": isolatedTsModule("src/components/daily/DailyQuestionnaireEditor.tsx", {
+      react: require("react"), "react/jsx-runtime": require("react/jsx-runtime"),
+      "./DailyQuestionnairePreview": isolatedTsModule("src/components/daily/DailyQuestionnairePreview.tsx", { "react/jsx-runtime": require("react/jsx-runtime") }),
+    }),
+    "@/components/daily/DailyQuestionnaireSourceUpload": isolatedTsModule("src/components/daily/DailyQuestionnaireSourceUpload.tsx", {
+      react: require("react"), "react/jsx-runtime": require("react/jsx-runtime"),
+      "@/lib/supabase/client": { createClient() { throw new Error("Live browser storage forbidden in tests"); } },
+      "@/lib/dailyQuestionnaireEditing": isolatedTsModule("src/lib/dailyQuestionnaireEditing.ts"),
+      "./DailyFormationReviewForm": reviewForm,
+    }),
     "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } },
     "@/app/agent/api/support/_utils": { requireSupportAgent: async () => auth.value },
     "@/lib/server/supabaseAdmin": supabase,
