@@ -2,6 +2,7 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import Link from "next/link";
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -63,6 +64,7 @@ export default async function OnboardingDocumentsPage({ params }: PageProps) {
   ] : [];
 
   return <main style={{ maxWidth: 1000, margin: "0 auto", padding: 28 }}>
+    <Link href={`/agent/daily/organisations/${id}?tab=documents`} style={{ color: "var(--selen-gold)", fontWeight: 700 }}>← Tous les documents client</Link>
     <p style={{ fontSize: 12, fontWeight: 700, color: "var(--selen-text2)" }}>SELEN DAILY · PIÈCES CLIENT</p>
     <h1>Pièces permanentes · {organisation.name}</h1>
     <p style={{ color: "var(--selen-text2)", maxWidth: 760, lineHeight: 1.6 }}>Consultez ici les pièces réellement déposées lors du paramétrage Daily avant toute décision métier. Studio ouvre la pièce d’origine via un accès temporaire sécurisé : aucune copie documentaire parallèle n’est créée.</p>

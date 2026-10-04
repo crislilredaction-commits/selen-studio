@@ -36,7 +36,7 @@ export function dailyPrivateFixture() {
     auth: { admin: { getUserById: async id => ({ data: { user: { email: `${id}@example.test` } }, error: null }) } },
     from(table) {
       assert.ok(Object.hasOwn(rows, table), `Unexpected table: ${table}`);
-      const filters = []; let projection = "*"; let single = false; let patch = null;
+      const filters = []; let projection = "*"; let single = false; let patch = null; let range = null;
       const query = {
         select(value) { projection = value; return query; },
         update(value) { assert.equal(flags.allowWrites, true, "Writes forbidden in this fixture"); patch = value; return query; },
@@ -44,11 +44,13 @@ export function dailyPrivateFixture() {
         neq(key, value) { filters.push(row => row[key] !== value); return query; },
         in(key, values) { filters.push(row => values.includes(row[key])); return query; },
         order() { return query; },
+        range(from, to) { range = [from, to]; return query; },
         maybeSingle() { single = true; return query; },
         then(resolve, reject) {
           reads.push({ table, projection });
           if (patch && flags.beforeUpdate) { flags.beforeUpdate(); flags.beforeUpdate = null; }
-          const matching = rows[table].filter(row => filters.every(f => f(row)));
+          let matching = rows[table].filter(row => filters.every(f => f(row)));
+          if (range) matching = matching.slice(range[0], range[1] + 1);
           if (patch) { for (const row of matching) Object.assign(row, patch); writes.push({ table, ids: matching.map(row => row.id), patch }); }
           const data = matching.map(row => projection === "*" ? { ...row } : Object.fromEntries(projection.split(",").map(key => [key, row[key]])));
           assert.ok(!single || data.length <= 1, "Ambiguous single-row fixture");

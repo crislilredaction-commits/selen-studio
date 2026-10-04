@@ -182,6 +182,7 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
           <p style={s.muted}>{organisationName}{session?.internal_reference ? ` · ${session.internal_reference}` : ""}</p>
         </div>
         <div style={s.actionsTop}>
+          <Link href={`/agent/daily/organisations/${formation.organisation_id}?tab=programs`} style={s.secondaryLink}>← Programmes de cet OF</Link>
           <Link href="/agent/daily/session-dossiers" style={s.secondaryLink}>← Sessions</Link>
           {session ? <Link href={`/agent/daily/session-dossiers/${encodeURIComponent(session.id)}/full`} style={s.secondaryLink}>Voir le dossier complet</Link> : <Link href={`/agent/daily/organisations/${formation.organisation_id}`} style={s.secondaryLink}>Voir le dossier complet de l’OF</Link>}
         </div>

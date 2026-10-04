@@ -11,15 +11,18 @@ import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import { createAgentAssistanceToken } from "@/lib/server/agentAssistanceTokens";
 import { getDailyAgentTasks } from "@/lib/server/dailyAgentTasks";
+import DailyOrganisationWorkspace from "@/components/daily/DailyOrganisationWorkspace";
 
 type PageProps = {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string }>;
 };
 
-type TabKey = "overview" | "checklist" | "info" | "users" | "trainers" | "validations" | "history";
+type TabKey = "overview" | "programs" | "documents" | "checklist" | "info" | "users" | "trainers" | "validations" | "history";
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "overview", label: "Vue d’ensemble" },
+  { key: "programs", label: "Programmes de formation" },
+  { key: "documents", label: "Documents client" },
   { key: "checklist", label: "Checklist" },
   { key: "info", label: "Informations" },
   { key: "users", label: "Utilisateurs" },
@@ -317,10 +320,14 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
         <MiniStat label="Agent" value={assignedAgent ? ([assignedAgent.first_name, assignedAgent.last_name].filter(Boolean).join(" ") || assignedAgent.email || "Assigné") : "Non assigné"} />
       </section>
 
-      <nav style={s.tabs}>{tabs.map((item) => <Link key={item.key} href={`/agent/daily/organisations/${id}?tab=${item.key}`} style={{ ...s.tab, ...(tab === item.key ? s.activeTab : {}) }}>{item.label}</Link>)}</nav>
+      <nav style={s.tabs} aria-label="Rubriques du dossier Daily">{tabs.map((item) => <Link key={item.key} href={`/agent/daily/organisations/${id}?tab=${item.key}`} aria-current={tab === item.key ? "page" : undefined} style={{ ...s.tab, ...(tab === item.key ? s.activeTab : {}) }}>{item.label}</Link>)}</nav>
+
+      {tab === "programs" || tab === "documents" ? <DailyOrganisationWorkspace organisationId={id} email={auth.email} kind={tab} /> : null}
 
       {tab === "overview" ? (
         <div style={s.twoCols}>
+          <SelenCard><SelenCardTitle>Programmes de formation</SelenCardTitle><p style={s.muted}>Modifie et valide les programmes, puis consulte leurs questionnaires.</p><Link href={`/agent/daily/organisations/${id}?tab=programs`} style={{ color: "var(--selen-gold)", fontWeight: 700 }}>Voir les programmes →</Link></SelenCard>
+          <SelenCard><SelenCardTitle>Documents client</SelenCardTitle><p style={s.muted}>Ouvre les fichiers et justificatifs déposés dans l’espace Daily de cet organisme.</p><Link href={`/agent/daily/organisations/${id}?tab=documents`} style={{ color: "var(--selen-gold)", fontWeight: 700 }}>Consulter les documents →</Link></SelenCard>
           <SelenCard><SelenCardTitle>Tâches de cet OF</SelenCardTitle>{scopedDailyTasks.length === 0 ? <p style={s.muted}>Aucune tâche active pour cet organisme.</p> : scopedDailyTasks.map((item) => <div key={item.id} style={s.attentionRow}><div><strong>{item.title}</strong><p style={s.mutedInline}>{item.reason} · {item.detail}</p></div><Link href={item.href} style={s.back}>Traiter →</Link></div>)}</SelenCard>
           <SelenCard><SelenCardTitle>Signaux dossier</SelenCardTitle><Signal label="NDA" value={organisation.nda_status || "unknown"} /><Signal label="Qualiopi" value={organisation.qualiopi_status || "unknown"} /><Signal label="Utilisateurs actifs" value={String(memberships.filter((m) => m.status === "active").length)} /><Signal label="Formateurs actifs" value={String(trainers.filter((t) => t.active).length)} /><Signal label="Invitations en attente" value={String(invitations.filter((i) => i.status === "pending").length)} /></SelenCard>
           <SelenCard style={{ gridColumn: "1 / -1" }}><SelenCardTitle>Échéances formateurs</SelenCardTitle>{expiring.length === 0 ? <p style={s.muted}>Aucune certification à durée limitée n’arrive à échéance dans les 90 jours.</p> : expiring.map((cert) => { const trainer = trainers.find((t) => t.id === cert.trainer_profile_id); return <div key={cert.id} style={s.attentionRow}><span>{trainer?.display_name || "Formateur"} · {cert.title}</span><SelenBadge variant={certVariant(cert.validity_mode, cert.valid_until)}>{certificationLabel(cert.validity_mode, cert.valid_until)}</SelenBadge></div>; })}</SelenCard>
