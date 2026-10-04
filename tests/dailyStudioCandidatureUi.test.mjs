@@ -28,6 +28,8 @@ function pageFixture() {
     "next/navigation": { notFound() { throw new Error("NOT_FOUND"); } },
     "@/lib/server/clientNotificationSilence": { async sendClientEmailWithSilence(args) { emailCalls.push(args); return { sent: true }; } },
     "@/lib/server/dailyOrganisationScope": f.scope,
+    "@/lib/dailyCandidaturePresentation": isolatedTsModule("src/lib/dailyCandidaturePresentation.ts"),
+    "./analysis.module.css": { default: new Proxy({}, { get: (_, key) => String(key) }) },
   };
   const page = isolatedTsModule("src/app/agent/daily/candidatures/[id]/page.tsx", modules);
   const list = isolatedTsModule("src/app/agent/daily/candidatures/page.tsx", modules);
@@ -73,6 +75,78 @@ test("le questionnaire Selen reste consultable sous sa forme historique", async 
   const f = pageFixture(); f.request.positioning_answers = { question_1: "Réponse libre" };
   const tree = await f.render(); assert.match(visibleText(tree), /Réponse libre/);
   assert.ok(!elements(tree).some(item => String(item.props.href ?? "").includes("positioning-document")));
+});
+
+test("les questions historiques Selen et les réponses multiples sont lisibles sans les métadonnées", async () => {
+  const f = pageFixture();
+  f.request.need_answers = { motivations: "Évoluer dans mon poste", expectations: "Animer une réunion", phone: "01 02 03 04 05", autre_besoin: "Une réponse ancienne" };
+  f.request.positioning_answers = { mode: "selen", questions: [
+    { id: "question-ancienne", label: "Dans quelles situations prends-tu la parole ?", type: "multiple_choice", answer: ["Réunions", "Présentations"] },
+    { id: "niveau", label: "Quel est ton niveau ?", type: "scale_1_5", answer: 0 },
+  ] };
+  f.formation.positioning_questions = [{ id: "question-ancienne", label: "Question modifiée depuis la candidature" }];
+  const tree = await f.render(), text = visibleText(tree);
+  for (const value of ["Motivations", "Évoluer dans mon poste", "Attentes", "Téléphone", "01 02 03 04 05", "Autre besoin", "Une réponse ancienne", "Dans quelles situations prends-tu la parole ?", "Réunions", "Présentations", "Quel est ton niveau ?"]) assert.ok(text.includes(value), value);
+  assert.doesNotMatch(text, /Question modifiée depuis|multiple_choice|scale_1_5|question-ancienne|"motivations"|\[object Object\]/);
+  assert.ok(!elements(tree).some(item => item.type === "pre"));
+});
+
+test("les participants d'une entreprise gardent leurs coordonnées dans une présentation lisible", async () => {
+  const f = pageFixture();
+  f.request.response_type = "company"; f.request.company_name = "Entreprise exemple";
+  f.request.positioning_answers = {};
+  f.request.participants = [
+    { first_name: "Ada", last_name: "Test", email: "ada@example.test", phone: "01 02 03 04 05" },
+    { firstName: "Louis", lastName: "Exemple", mail: "louis@example.test", postal_address: "10 rue de la Formation" },
+  ];
+  const text = visibleText(await f.render());
+  for (const value of ["Entreprise exemple", "Ada Test", "Louis Exemple", "ada@example.test", "louis@example.test", "Téléphone", "10 rue de la Formation"]) assert.ok(text.includes(value), value);
+  assert.doesNotMatch(text, /first_name|firstName|postal_address|"email"/);
+});
+
+test("la synthèse conserve ses sept champs, ses valeurs et la version du dossier", async () => {
+  const f = pageFixture(); f.request.agent_analysis_summary = { motivation_summary: "Analyse déjà enregistrée" };
+  const tree = await f.render(), inputs = elements(tree);
+  const textareas = inputs.filter(item => item.type === "textarea");
+  assert.deepEqual(textareas.map(item => item.props.name).sort(), ["adaptations_summary", "expectations_summary", "motivation_summary", "needs_summary", "observations", "positioning_summary", "prerequisites_comment"]);
+  assert.equal(textareas.find(item => item.props.name === "motivation_summary").props.defaultValue, "Analyse déjà enregistrée");
+  assert.deepEqual(textareas.filter(item => item.props.required).map(item => item.props.name).sort(), ["motivation_summary", "needs_summary", "positioning_summary"]);
+  for (const field of textareas) assert.ok(inputs.some(item => item.type === "label" && item.props.htmlFor === field.props.id));
+  assert.equal(inputs.find(item => item.props.name === "candidature_updated_at").props.value, ANALYSIS_REVISION);
+});
+
+test("un prérequis sans preuve ne paraît pas vérifié et sa transmission reste bloquée", async () => {
+  const f = pageFixture(); f.formation.prerequisite_mode = "required";
+  const tree = await f.render(), text = visibleText(tree);
+  assert.match(text, /justificatifs requis restent à vérifier/);
+  assert.doesNotMatch(text, /Aucun justificatif requis/);
+  assert.equal(elements(tree).find(item => item.type === "button" && item.props.type === "submit").props.disabled, true);
+  await assert.rejects(analysisAction(tree)(analysisForm()), /prérequis obligatoires/);
+  assert.equal(f.emailCalls.length, 0);
+});
+
+test("un justificatif vérifié du bon OF reste directement consultable et permet la transmission", async () => {
+  const f = pageFixture(); f.formation.prerequisite_mode = "required";
+  f.rows.daily_prerequisite_evidence.push({ id: "evidence", registration_request_id: ids.request, participant_index: 0, document_id: ids.proof, requirement_label: "Diplôme requis", status: "verified", review_comment: "Document relu par l’agent" });
+  const originalFrom = f.admin.storage.from;
+  f.admin.storage.from = bucket => ({ ...originalFrom(bucket), createSignedUrl: async (path, seconds) => {
+    assert.equal(path, f.proof.storage_path); assert.equal(seconds, 600);
+    return { data: { signedUrl: "https://storage.example.test/justificatif-verifie" }, error: null };
+  } });
+  const tree = await f.render(), items = elements(tree);
+  assert.match(visibleText(tree), /Diplôme requis.*Vérifié/);
+  assert.match(visibleText(tree), /Document relu par l’agent/);
+  assert.ok(items.some(item => item.props.href === "https://storage.example.test/justificatif-verifie"));
+  assert.equal(items.find(item => item.type === "button" && item.props.type === "submit").props.disabled, false);
+  assert.equal(f.downloads.length, 0); assert.equal(f.emailCalls.length, 0);
+});
+
+test("une formation archivée conserve l'analyse et tous les champs en lecture seule", async () => {
+  const f = pageFixture(); f.formation.status = "archived";
+  const tree = await f.render();
+  assert.match(visibleText(tree), /archivée.*lecture seule/);
+  assert.ok(elements(tree).filter(item => item.type === "textarea").every(item => item.props.disabled));
+  assert.ok(!elements(tree).some(item => item.type === "button" && item.props.type === "submit"));
 });
 
 test("l'historique signé accepté est lisible mais sa synthèse ne peut plus être modifiée", async () => {

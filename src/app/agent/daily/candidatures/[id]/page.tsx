@@ -6,7 +6,41 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 import { loadScopedDailyCandidature, loadCandidaturePositioning, candidatureRecord, type CandidaturePositioning } from "@/lib/server/dailyStudioCandidature";
 import { privateDailyPath, downloadPrivateDailySource } from "@/lib/server/dailyStudioFormationSources";
+import { candidatureNeedAnswers, candidaturePositioningAnswers, candidatureParticipants, candidatureDecisionLabel, candidatureEvidenceLabel, type CandidatureAnswer } from "@/lib/dailyCandidaturePresentation";
+import styles from "./analysis.module.css";
+
 type Props={params:Promise<{id:string}>};
+
+const analysisGroups = [
+  { title: "Motivation et attentes", fields: [
+    { name: "motivation_summary", label: "Motivation", required: true, placeholder: "Le projet et ce qui motive le bénéficiaire." },
+    { name: "expectations_summary", label: "Attentes", required: false, placeholder: "Les résultats attendus de la formation." },
+  ] },
+  { title: "Positionnement et prérequis", fields: [
+    { name: "positioning_summary", label: "Positionnement / niveau", required: true, placeholder: "Le niveau de départ et les éléments observés." },
+    { name: "prerequisites_comment", label: "Commentaire prérequis", required: false, placeholder: "Les vérifications réalisées et les points à préciser." },
+  ] },
+  { title: "Besoins et adaptations", fields: [
+    { name: "needs_summary", label: "Besoins spécifiques", required: true, placeholder: "Les besoins identifiés, ou leur absence." },
+    { name: "adaptations_summary", label: "Adaptations à prévoir", required: false, placeholder: "Les aménagements utiles pour cette formation." },
+  ] },
+  { title: "Notes de suivi", fields: [
+    { name: "observations", label: "Observations / notes utiles", required: false, placeholder: "Les autres informations à conserver dans la fiche de suivi." },
+  ] },
+];
+
+function renderAnswers(rows: CandidatureAnswer[], empty = "Aucune réponse renseignée.") {
+  return rows.length ? <dl className={styles.answers}>{rows.map(row => <div key={row.key} className={styles.answer}>
+    <dt>{row.label}</dt>{row.lines.map((line, index) => <dd key={index}>{line}</dd>)}
+  </div>)}</dl> : <p className={styles.empty}>{empty}</p>;
+}
+function displayDate(value: unknown) {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null;
+  return new Date(value).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" });
+}
+function documentIcon() {
+  return <span className={styles.documentIcon} aria-hidden="true"><svg width="18" height="21" viewBox="0 0 24 28" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M5 2h9l5 5v19H5zM14 2v6h5M8 13h8M8 18h8" /></svg></span>;
+}
 function text(fd:FormData,key:string){return String(fd.get(key)??"").trim();}
 async function saveAnalysis(formData:FormData){
   "use server";
@@ -75,24 +109,119 @@ export default async function DailyCandidatureAnalysisPage({params}:Props){
   const summary=(req.agent_analysis_summary??{}) as Record<string,unknown>;
   const label=req.company_name || [req.respondent_first_name,req.respondent_last_name].filter(Boolean).join(" ") || req.respondent_email || "Candidat";
   const final=req.decision_status==="accepted"||req.decision_status==="refused";
-  return <main style={{maxWidth:1180,margin:"0 auto",padding:"28px"}}><Link href="/agent/daily/candidatures">← Candidatures</Link>
-    <p style={{fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"var(--selen-gold2)",marginTop:18}}>Analyse du dossier de candidature</p><h1>{label}</h1><p>{(req.daily_formations as any)?.title||"Formation"} · {req.submitted_at?new Date(req.submitted_at).toLocaleString("fr-FR"):""}</p>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:16,alignItems:"start"}}>
-      <section style={{padding:16,border:"1px solid var(--selen-border)",borderRadius:12}}><h2>Dossier original</h2><p><strong>Identité :</strong> {label} · {req.respondent_email||"email non renseigné"}</p><p><strong>Type :</strong> {req.response_type==="company"?"Entreprise":"Bénéficiaire"} · <strong>Adaptation signalée :</strong> {req.adaptation_needed?"Oui":"Non"}</p>
-        <h3>Réponses besoins / motivation / attentes</h3><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(req.need_answers??{},null,2)}</pre>
-        <h3>Positionnement</h3>
-        {positioning ? <div>
-          <p><a href={`/agent/api/daily/candidatures/${req.id}/positioning-document?document=original`}>Télécharger le questionnaire original de cette candidature →</a></p>
-          {!positioning.current ? <p>Une nouvelle version du questionnaire existe. Ces copies sont conservées comme historique de cette candidature.</p> : null}
-          {positioning.filled.map(document=><p key={document.id}><strong>{document.participant}</strong><br/><a href={`/agent/api/daily/candidatures/${req.id}/positioning-document?document=${document.id}`}>Télécharger le positionnement rempli · {document.name} →</a></p>)}
-          <p>Le dépôt d’une copie ne vaut pas validation humaine du niveau ou des prérequis.</p>
-        </div> : candidatureRecord(req.positioning_answers).mode==="off_platform" || positioningError ? <p>Les documents de positionnement ne peuvent pas être vérifiés. Contrôle le dossier avant de terminer l’analyse.</p> : <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(req.positioning_answers??{},null,2)}</pre>}
-        <h3>Participants</h3><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(req.participants??[],null,2)}</pre><h3>Prérequis et justificatifs</h3>
-        {(evidenceWithUrls.length?evidenceWithUrls:[{id:"none",requirement_label:"Aucun justificatif requis",status:"verified",url:null,name:null}]).map((row:any)=><div key={row.id} style={{padding:"8px 0",borderTop:"1px solid var(--selen-border)"}}><strong>{row.requirement_label}</strong> · {row.status}{row.url?<><br/><a href={row.url} target="_blank" rel="noreferrer">Ouvrir le justificatif{row.name?" · "+row.name:""} →</a></>:null}{row.review_comment?<p>{row.review_comment}</p>:null}</div>)}
-      </section>
-      <section style={{padding:16,border:"1px solid var(--selen-border)",borderRadius:12}}><h2>Synthèse Selen</h2><p style={{color:"var(--selen-text2)"}}>Cette synthèse prépare la décision de l’OF. L’agent n’accepte ni ne refuse la candidature.</p>
-        <form action={saveAnalysis} style={{display:"grid",gap:12}}><input type="hidden" name="id" value={req.id}/><input type="hidden" name="candidature_updated_at" value={String(req.updated_at??"")}/>{[["motivation_summary","Synthèse motivation"],["expectations_summary","Attentes"],["positioning_summary","Positionnement / niveau"],["needs_summary","Besoins spécifiques"],["adaptations_summary","Adaptations à prévoir"],["prerequisites_comment","Commentaire prérequis"],["observations","Observations / notes utiles"]].map(([name,label])=><label key={name} style={{display:"grid",gap:5}}><strong>{label}</strong><textarea name={name} defaultValue={String(summary[name]??"")} rows={name==="observations"?5:3} disabled={final}/></label>)}<p><strong>Prérequis :</strong> {req.prerequisites_validated?"Vérifiés":"À vérifier"} · <strong>État :</strong> {req.decision_status}</p>{!final?<button style={{padding:"10px 14px",fontWeight:800}}>Terminer l’analyse et transmettre à l’OF</button>:<p>Décision OF déjà enregistrée. L’analyse est conservée en lecture seule.</p>}</form>
-        {req.agent_analysis_completed_at?<p style={{marginTop:12}}>Analyse terminée le {new Date(req.agent_analysis_completed_at).toLocaleString("fr-FR")} par {String(summary.evaluator_email??"Selen")}.</p>:null}
-      </section>
-    </div></main>;
+  const readOnly=final||scoped.formation.status==="archived";
+  const needs=candidatureNeedAnswers(req.need_answers);
+  const positioningRows=candidaturePositioningAnswers(req.positioning_answers);
+  const participants=candidatureParticipants(req.participants);
+  const hasPrerequisites=(scoped.formation.prerequisite_mode??"none")!=="none";
+  const allPrerequisitesVerified=!hasPrerequisites||(evidenceWithUrls.length>0&&evidenceWithUrls.every(row=>row.status==="verified"));
+  const offPlatform=candidatureRecord(req.positioning_answers).mode==="off_platform";
+  const transmissionBlock=!allPrerequisitesVerified
+    ? "Les prérequis obligatoires doivent être vérifiés avant la transmission à l’OF."
+    : offPlatform&&(!positioning?.current||!positioning.filled.length||positioningError)
+      ? "Un positionnement courant et ses copies remplies doivent être vérifiés avant la transmission à l’OF."
+      : null;
+  const completedAt=displayDate(req.agent_analysis_completed_at);
+
+  return <main className={styles.page}>
+    <Link className={styles.back} href="/agent/daily/candidatures"><span aria-hidden="true">←</span> Candidatures</Link>
+    <header className={styles.hero}>
+      <div>
+        <p className={styles.eyebrow}>Analyse du dossier de candidature</p>
+        <h1 className={styles.title}>{label}</h1>
+        <p className={styles.subtitle}>{scoped.formation.title||"Formation"}</p>
+      </div>
+      <div className={styles.heroMeta}>
+        <span className={styles.status}>{scoped.formation.status==="archived"?"Formation archivée · lecture seule":candidatureDecisionLabel(req.decision_status)}</span>
+        {displayDate(req.submitted_at)?<span className={styles.date}>Reçu le {displayDate(req.submitted_at)}</span>:null}
+      </div>
+    </header>
+    <nav className={styles.sectionNav} aria-label="Rubriques de la candidature">
+      <a href="#dossier-original">Dossier original</a>
+      <a href="#positionnement">Positionnement</a>
+      <a href="#prerequis">Prérequis et pièces</a>
+      <a href="#synthese-selen">Synthèse Selen</a>
+    </nav>
+    <div className={styles.workspace}>
+      <div className={styles.column}>
+        <div className={styles.columnHeader}><h2>Dossier original</h2><span>Réponses du bénéficiaire</span></div>
+        <section id="dossier-original" className={styles.paper} aria-labelledby="identite-title">
+          <h3 id="identite-title">{req.response_type==="company"?"Entreprise et contact":"Bénéficiaire"}</h3>
+          <p className={styles.identityName}>{req.response_type==="company"?req.company_name||label:[req.respondent_first_name,req.respondent_last_name].filter(Boolean).join(" ")||label}</p>
+          {req.response_type==="company"&&[req.respondent_first_name,req.respondent_last_name].filter(Boolean).length?<p className={styles.email}>Contact : {[req.respondent_first_name,req.respondent_last_name].filter(Boolean).join(" ")}</p>:null}
+          <p className={styles.email}>{req.respondent_email||"Email non renseigné"}</p>
+          <div className={styles.identityMeta}>
+            <span>{req.response_type==="company"?"Candidature entreprise":"Candidature individuelle"}</span>
+            <span>Adaptation signalée : {req.adaptation_needed?"oui":"non"}</span>
+          </div>
+          {needs.details.length?<details className={styles.details}><summary>Coordonnées et informations pratiques</summary>{renderAnswers(needs.details)}</details>:null}
+        </section>
+        <section className={styles.paper} aria-labelledby="besoins-title">
+          <h3 id="besoins-title">Besoins, motivation et attentes</h3>
+          {renderAnswers(needs.main)}
+        </section>
+        {req.response_type==="company"||participants.length?<section className={styles.paper} aria-labelledby="participants-title">
+          <h3 id="participants-title">Participants{participants.length?" · "+participants.length:""}</h3>
+          {participants.length?<ul className={styles.participantList}>{participants.map((person,index)=><li key={index} className={styles.participant}>
+            <strong>{person.name}</strong><p className={styles.email}>{person.email||"Email non renseigné"}</p>
+            {person.details.length?<details className={styles.details}><summary>Informations du participant</summary>{renderAnswers(person.details)}</details>:null}
+          </li>)}</ul>:<p className={styles.empty}>Aucun participant renseigné.</p>}
+        </section>:null}
+        <section id="positionnement" className={styles.paper} aria-labelledby="positionnement-title">
+          <h3 id="positionnement-title">Positionnement</h3>
+          {positioning ? <>
+            {!positioning.current?<div className={styles.alert}><p>Une nouvelle version du questionnaire existe. Ces copies sont conservées comme historique de cette candidature.</p></div>:null}
+            <ul className={styles.documents}>
+              <li className={styles.document}>{documentIcon()}<div>
+                <a className={styles.documentLink} href={"/agent/api/daily/candidatures/"+req.id+"/positioning-document?document=original"}>Télécharger le questionnaire original de cette candidature →</a>
+                <p className={styles.documentName}>{positioning.original.name}</p>
+              </div></li>
+              {positioning.filled.map(document=><li key={document.id} className={styles.document}>{documentIcon()}<div>
+                <a className={styles.documentLink} href={"/agent/api/daily/candidatures/"+req.id+"/positioning-document?document="+document.id}>Télécharger le positionnement rempli · {document.participant} →</a>
+                <p className={styles.documentName}>{document.name}</p>
+              </div></li>)}
+            </ul>
+            <p className={styles.note}>Le dépôt d’une copie ne vaut pas validation humaine du niveau ou des prérequis.</p>
+          </> : offPlatform||positioningError ? <div className={styles.alert}><p>Les documents de positionnement ne peuvent pas être vérifiés. Contrôle le dossier avant de terminer l’analyse.</p></div> : <>
+            <p className={styles.intro}>Réponses au questionnaire Selen</p>
+            {renderAnswers(positioningRows,"Aucune réponse de positionnement renseignée.")}
+          </>}
+        </section>
+        <section id="prerequis" className={styles.paper} aria-labelledby="prerequis-title">
+          <h3 id="prerequis-title">Prérequis et justificatifs</h3>
+          {evidenceWithUrls.length?<ul className={styles.evidenceList}>{evidenceWithUrls.map(row=><li key={row.id} className={styles.evidence}>
+            <div className={styles.evidenceHead}><strong>{row.requirement_label}</strong><span className={styles.evidenceStatus+" "+(row.status==="verified"?styles.verified:"")}>{candidatureEvidenceLabel(row.status)}</span></div>
+            {req.response_type==="company"&&Number.isInteger(row.participant_index)?<p className={styles.documentName}>{participants[row.participant_index]?.name||"Participant "+(row.participant_index+1)}</p>:null}
+            {row.url?<a className={styles.documentLink} href={row.url} target="_blank" rel="noreferrer">Ouvrir le justificatif{row.name?" · "+row.name:""} →</a>:<p className={styles.documentName}>Aucune pièce consultable.</p>}
+            {row.review_comment?<p className={styles.reviewComment}>{row.review_comment}</p>:null}
+          </li>)}</ul>:<p className={styles.empty}>{hasPrerequisites?"Les justificatifs requis restent à vérifier.":"Aucun justificatif requis."}</p>}
+        </section>
+      </div>
+      <div className={styles.column}>
+        <div className={styles.columnHeader}><h2>Synthèse Selen</h2><span>Analyse de l’agent</span></div>
+        <section id="synthese-selen" className={styles.paper+" "+styles.analysis} aria-labelledby="analyse-title">
+          <h3 id="analyse-title">Ton analyse</h3>
+          <p className={styles.intro}>Cette synthèse alimente la fiche de suivi et prépare la décision de l’OF. L’agent n’accepte ni ne refuse la candidature.</p>
+          {readOnly?<div className={styles.alert}><p>{final?"Décision OF déjà enregistrée. L’analyse est conservée en lecture seule.":"Cette version de formation est archivée. L’analyse est conservée en lecture seule."}</p></div>:null}
+          <form action={saveAnalysis} className={styles.analysisForm}>
+            <input type="hidden" name="id" value={req.id}/>
+            <input type="hidden" name="candidature_updated_at" value={String(req.updated_at??"")}/>
+            {analysisGroups.map(group=><div key={group.title} className={styles.analysisGroup}>
+              <h3>{group.title}</h3>
+              {group.fields.map(field=><div key={field.name} className={styles.field}>
+                <label htmlFor={field.name}>{field.label}{field.required?<span className={styles.required} aria-hidden="true"> *</span>:null}</label>
+                <textarea id={field.name} name={field.name} defaultValue={String(summary[field.name]??"")} rows={field.name==="observations"?5:3} required={field.required} disabled={readOnly} placeholder={field.placeholder}/>
+              </div>)}
+            </div>)}
+            {!readOnly?<div className={styles.formFooter}>
+              {transmissionBlock?<div id="transmission-block" className={styles.alert}><p>{transmissionBlock}</p></div>:null}
+              <button type="submit" className={styles.submit} disabled={Boolean(transmissionBlock)} aria-describedby={transmissionBlock?"transmission-block":"transmission-hint"}>Terminer l’analyse et transmettre à l’OF</button>
+              <p id="transmission-hint" className={styles.formHint}>Les champs marqués * sont obligatoires. L’OF prendra ensuite la décision d’accepter ou de refuser la candidature.</p>
+            </div>:null}
+          </form>
+          {completedAt?<p className={styles.completion}>Analyse terminée le {completedAt} par {String(summary.evaluator_email??"Selen")}.</p>:null}
+        </section>
+      </div>
+    </div>
+  </main>;
 }
