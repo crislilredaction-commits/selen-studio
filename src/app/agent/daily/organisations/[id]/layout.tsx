@@ -26,7 +26,9 @@ export default async function DailyOrganisationLayout({ children, params }: Dail
   const canSelfAssign = !isAdmin && profileRes.data?.role === "agent" && Boolean(profileRes.data?.id) && !assignmentRes.data;
   return <>
     <div style={{maxWidth:1220,margin:"18px auto 0",padding:"0 24px",display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
-      <Link href={`/agent/daily/organisations/${id}/onboarding-documents`} style={{textDecoration:"none"}}><SelenButton size="sm" variant="secondary">Pièces client</SelenButton></Link>
+      <Link href={`/agent/daily/organisations/${id}?tab=programs`} style={{textDecoration:"none"}}><SelenButton size="sm" variant="secondary">Programmes de formation</SelenButton></Link>
+      <Link href={`/agent/daily/organisations/${id}?tab=documents`} style={{textDecoration:"none"}}><SelenButton size="sm" variant="secondary">Documents client</SelenButton></Link>
+      <Link href={`/agent/daily/organisations/${id}/onboarding-documents`} style={{textDecoration:"none"}}><SelenButton size="sm" variant="secondary">Pièces de paramétrage</SelenButton></Link>
       <Link href={`/agent/daily/organisations/${id}/import-document`} style={{textDecoration:"none"}}><SelenButton size="sm" variant="secondary">Importer en délégation</SelenButton></Link>
       <Link href={`/agent/daily/organisations/${id}/qualiopi-cycle`} style={{textDecoration:"none"}}><SelenButton size="sm" variant="secondary">Cycle Qualiopi</SelenButton></Link>
       <Link href={`/agent/daily/organisations/${id}/trainer-certification-proofs`} style={{textDecoration:"none"}}><SelenButton size="sm" variant="secondary">Justificatifs formateurs</SelenButton></Link>
