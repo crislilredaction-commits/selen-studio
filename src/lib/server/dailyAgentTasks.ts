@@ -15,7 +15,7 @@ export type DailyAgentTask = {
   createdAt: string | null;
   assignedAgentProfileId: string | null;
   overdueShared: boolean;
-  kind: "assignment" | "program" | "registration" | "adaptation" | "preaudit" | "satisfaction" | "session";
+  kind: "assignment" | "program" | "registration" | "adaptation" | "preaudit" | "satisfaction" | "session" | "organisation";
 };
 
 type Org = { id: string; name: string | null; legal_name: string | null; created_at: string | null };
@@ -76,7 +76,7 @@ function isOverdue(value: string | null) {
 function visibleFor(task: DailyAgentTask, staff: DailyTaskStaff) {
   if (task.kind === "assignment") return true;
   if (staff.role === "admin") return true;
-  if (!task.assignedAgentProfileId) return true;
+  if (!task.assignedAgentProfileId) return false;
   if (staff.id === task.assignedAgentProfileId) return true;
   return task.overdueShared;
 }
@@ -136,13 +136,14 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
   const orgById = new Map(organisations.map((row) => [row.id, row]));
 
   const sessionIds = sessions.map((row) => row.id);
-  const [formationRes, responseRes, reviewRes, checklistRes] = await Promise.all([
+  const [formationRes, responseRes, reviewRes, checklistRes, organisationChecklistRes] = await Promise.all([
     admin.from("daily_formations").select("id,organisation_id,creation_mode,detailed_program_document_url,title,status,agent_review_signaled_at,created_at,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
     sessionIds.length ? admin.from("daily_registration_responses").select("id,session_id,created_at").in("session_id", sessionIds).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_registration_reviews").select("session_id,validated_at").in("session_id", sessionIds) : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_session_checklist_items").select("id,session_id,organisation_id,item_key,phase,responsibility,label,description,status,signaled_at").in("session_id", sessionIds).in("responsibility", ["selen", "shared"]).in("status", ["todo", "in_progress", "to_review", "blocked"]).order("signaled_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
+    admin.from("daily_organisation_checklist_items").select("id,organisation_id,label,status,signaled_at").in("organisation_id", organisationIds).in("status", ["to_review", "blocked"]),
   ]);
-  if (formationRes.error || responseRes.error || reviewRes.error || checklistRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? reviewRes.error?.message ?? checklistRes.error?.message ?? "Erreur Daily");
+  if (formationRes.error || responseRes.error || reviewRes.error || checklistRes.error || organisationChecklistRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? reviewRes.error?.message ?? checklistRes.error?.message ?? organisationChecklistRes.error?.message ?? "Erreur Daily");
 
   const formations = (formationRes.data ?? []) as Formation[];
   const responses = (responseRes.data ?? []) as Response[];
@@ -202,7 +203,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
     const session = sessionById.get(item.session_id);
     const organisation = orgById.get(item.organisation_id);
     const assignment = assignmentByOrg.get(item.organisation_id);
-    if (!session || !organisation || !assignment) continue;
+    if (!session || !organisation || session.organisation_id !== organisation.id) continue;
     const currentPhase = getDailySessionPhase(session);
     if (!isAvailablePhaseItem(item.phase, currentPhase)) continue;
 
@@ -227,7 +228,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
       detail: `${sessionLabel}${item.description ? ` · ${item.description}` : ""}`,
       href: getDailySessionTaskHref(item.item_key, session.id),
       createdAt,
-      assignedAgentProfileId: assignment.agent_profile_id,
+      assignedAgentProfileId: assignment?.agent_profile_id ?? null,
       overdueShared,
       kind: "session",
     });
@@ -239,7 +240,6 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
     const formation = formationById.get(session.formation_id);
     if (!organisation || !formation || formation.organisation_id !== session.organisation_id) continue;
     const assignment = assignmentByOrg.get(session.organisation_id);
-    if (!assignment) continue;
     const orgName = organisation.legal_name || organisation.name || "Organisme Daily";
 
     const importedDraft = formation.status === "draft" && formation.creation_mode === "program_import" && Boolean(formation.detailed_program_document_url);
@@ -256,7 +256,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
         detail: importedDraft ? "Relis l’original transmis par l’OF, saisis son programme dans Selen puis vérifie-le avant validation." : "Vérifie le programme puis valide-le ou demande une correction.",
         href: `/agent/daily/session-dossiers/${session.id}`,
         createdAt,
-        assignedAgentProfileId: assignment.agent_profile_id,
+        assignedAgentProfileId: assignment?.agent_profile_id ?? null,
         overdueShared,
         kind: "program",
       });
@@ -286,7 +286,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
         : `${registrationResponses.length} dossier${registrationResponses.length > 1 ? "s" : ""} reçu${registrationResponses.length > 1 ? "s" : ""}. Vérifie les besoins, prérequis et positionnements.`,
       href: `/agent/daily/sessions/${session.id}`,
       createdAt,
-      assignedAgentProfileId: assignment.agent_profile_id,
+      assignedAgentProfileId: assignment?.agent_profile_id ?? null,
       overdueShared,
       kind: adaptation ? "adaptation" : "registration",
     });
@@ -300,7 +300,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
     if (formation.status !== "review" && !importedDraft) continue;
     const organisation = orgById.get(formation.organisation_id);
     const assignment = assignmentByOrg.get(formation.organisation_id);
-    if (!organisation || !assignment) continue;
+    if (!organisation) continue;
     programSeen.add(formation.id);
     const createdAt = formation.agent_review_signaled_at ?? (importedDraft ? formation.created_at : null) ?? formation.updated_at;
     tasks.push({
@@ -312,10 +312,22 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
       detail: importedDraft ? "Relis l’original transmis par l’OF, saisis son programme dans Selen puis vérifie-le avant validation." : "Vérifie le programme puis valide-le ou demande une correction.",
       href: `/agent/daily/formations/${formation.id}`,
       createdAt,
-      assignedAgentProfileId: assignment.agent_profile_id,
+      assignedAgentProfileId: assignment?.agent_profile_id ?? null,
       overdueShared: isOverdue(createdAt),
       kind: "program",
     });
+  }
+
+  for (const item of organisationChecklistRes.data ?? []) {
+    const organisation = orgById.get(item.organisation_id);
+    if (!organisation) continue;
+    tasks.push({ id: `daily-checklist-${item.id}`, organisationId: organisation.id,
+      organisation: organisation.legal_name || organisation.name || "Organisme Daily", title: item.label,
+      reason: item.status === "blocked" ? "Point Daily bloqué" : "Vérification Daily à effectuer",
+      detail: "Contrôle le point signalé dans la checklist de l’organisme.",
+      href: `/agent/daily/organisations/${organisation.id}?tab=checklist`, createdAt: item.signaled_at,
+      assignedAgentProfileId: assignmentByOrg.get(organisation.id)?.agent_profile_id ?? null,
+      overdueShared: isOverdue(item.signaled_at), kind: "organisation" });
   }
 
   return tasks.filter((task) => visibleFor(task, staff)).sort((a, b) => {
