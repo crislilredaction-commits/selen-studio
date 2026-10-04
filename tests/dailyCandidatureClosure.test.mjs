@@ -24,6 +24,8 @@ function fixture() {
     "@/lib/server/dailyStudioCandidature": f.candidatures,
     "@/lib/server/dailyStudioFormationSources": f.sources,
     "@/lib/server/dailyOrganisationScope": f.scope,
+    "@/lib/dailyCandidaturePresentation": isolatedTsModule("src/lib/dailyCandidaturePresentation.ts"),
+    "./analysis.module.css": { default: new Proxy({}, { get: (_, key) => String(key) }) },
   };
   const page = isolatedTsModule("src/app/agent/daily/candidatures/[id]/page.tsx", modules);
   const list = isolatedTsModule("src/app/agent/daily/candidatures/page.tsx", modules);
