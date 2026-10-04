@@ -2,6 +2,7 @@
 
 import { useState, type ChangeEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { dailyQuestionnaireSourceMime } from "@/lib/dailyQuestionnaireEditing";
 import { useDailyReviewUploadPending } from "./DailyFormationReviewForm";
 
 export default function DailyQuestionnaireSourceUpload({ formationId, updatedAt, kind }: { formationId: string; updatedAt: string; kind: "positioning" | "assessment" }) {
@@ -16,15 +17,16 @@ export default function DailyQuestionnaireSourceUpload({ formationId, updatedAt,
     setUploadPending(kind, true);
     setBusy(true); setError(""); setSource(JSON.stringify({ pending: true })); setFileName("");
     try {
-      if (!["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.type) || !file.size || file.size > 10 * 1024 * 1024) throw new Error("Choisis un fichier PDF ou Word de moins de 10 Mo.");
-      const response = await fetch("/agent/api/daily/formations/" + formationId + "/source-upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, mime_type: file.type, size_bytes: file.size, expected_updated_at: updatedAt }) });
+      const mimeType = dailyQuestionnaireSourceMime(file.name, file.type);
+      if (!mimeType || !file.size || file.size > 10 * 1024 * 1024) throw new Error("Choisis un fichier PDF ou Word de moins de 10 Mo.");
+      const response = await fetch("/agent/api/daily/formations/" + formationId + "/source-upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, mime_type: mimeType, size_bytes: file.size, expected_updated_at: updatedAt }) });
       const ticket = await response.json().catch(() => ({}));
       if (!response.ok || !ticket.token) throw new Error(ticket.error || "Import indisponible.");
       const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
       const sha256 = Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
-      const { error } = await createClient().storage.from("documents").uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: file.type });
+      const { error } = await createClient().storage.from("documents").uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: mimeType });
       if (error) throw new Error("Le fichier n’a pas pu être importé. Réessaie.");
-      setSource(JSON.stringify({ id: ticket.id, name: file.name, mime_type: file.type, size_bytes: file.size, sha256 }));
+      setSource(JSON.stringify({ id: ticket.id, name: file.name, mime_type: mimeType, size_bytes: file.size, sha256 }));
       setFileName(file.name);
       setUploadPending(kind, false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Import impossible."); }

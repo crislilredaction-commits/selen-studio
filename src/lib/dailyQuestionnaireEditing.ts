@@ -31,3 +31,14 @@ export function parseDailyQuestionnaire(input: string, assessment = false): Dail
     return question;
   });
 }
+
+// Some browsers leave File.type empty for Word files. Only supported extensions
+// may fill an absent or generic MIME type; an explicit incompatible type fails.
+export function dailyQuestionnaireSourceMime(name: string, mime: string) {
+  const extensions: Record<string, string> = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+  const extension = name.match(/\.([a-z0-9]+)$/i)?.[1].toLowerCase();
+  const expected = extension ? extensions[extension] : undefined;
+  if (!expected) return null;
+  if (!mime || ["application/octet-stream", "binary/octet-stream"].includes(mime.toLowerCase())) return expected;
+  return mime.toLowerCase() === expected ? expected : null;
+}

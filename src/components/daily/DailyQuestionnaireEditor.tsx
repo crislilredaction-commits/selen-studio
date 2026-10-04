@@ -41,7 +41,7 @@ export default function DailyQuestionnaireEditor({ questions, assessment = false
           update(index, { options, correct_answers: (q.correct_answers || []).filter(answer => options.map(s => s.trim()).includes(answer)) });
         }} rows={4} style={input} /></> : null}
         {assessment ? <>
-          <label htmlFor={field + "-points"}>Nombre de points</label><input id={field + "-points"} type="number" min="0.5" step="0.5" value={q.points ?? 1} onChange={e => update(index, { points: Number(e.target.value) })} style={input} />
+          <label htmlFor={field + "-points"}>Nombre de points</label><input id={field + "-points"} type="number" min="0" step="any" value={q.points ?? 1} onChange={e => update(index, { points: Number(e.target.value) })} style={input} />
           {choice ? <fieldset style={{ border: 0, padding: 0 }}><legend>Réponses attendues</legend>{q.options.filter(s => s.trim()).map((option, i) => <label key={i} style={{ display: "block", padding: "5px 0" }}><input type={q.type === "single_choice" ? "radio" : "checkbox"} name={field + "-answer"} checked={(q.correct_answers || []).includes(option.trim())} onChange={e => update(index, { correct_answers: q.type === "single_choice" ? [option.trim()] : e.target.checked ? [...(q.correct_answers || []), option.trim()] : (q.correct_answers || []).filter(answer => answer !== option.trim()) })} /> {option}</label>)}</fieldset> : null}
         </> : null}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

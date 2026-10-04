@@ -30,14 +30,14 @@ function fixture(status="review") {
 test("les deux questionnaires sont modifiés puis relus dans le vrai dossier",async()=>{
   const f=fixture(), save=await f.action();
   const p=[{...position[0],label:"Niveau corrigé",help_text:"Nouvelle aide",required:true},{id:"p2",label:"Expérience",type:"free_text",options:[],required:false}];
-  const q=[{...assessment[0],label:"Question corrigée",options:["Préparer","Vérifier"],correct_answers:["Vérifier"],points:2.5}];
+  const q=[{...assessment[0],label:"Question corrigée",options:["Préparer","Vérifier"],correct_answers:["Vérifier"],points:2.25}];
   f.form.set("positioning_questions",JSON.stringify(p));f.form.set("learning_assessment_questions",JSON.stringify(q));f.form.set("learning_assessment_instructions","Nouvelle consigne");
   await assert.rejects(save(f.form),/REDIRECT/);
   assert.equal(f.formation.positioning_questions[0].id,"p-stable"); assert.equal(f.formation.positioning_questions[1].order,2);
-  assert.equal(f.formation.learning_assessment_questions[0].points,2.5);assert.deepEqual(Array.from(f.formation.learning_assessment_questions[0].correct_answers),["Vérifier"]);
+  assert.equal(f.formation.learning_assessment_questions[0].points,2.25);assert.deepEqual(Array.from(f.formation.learning_assessment_questions[0].correct_answers),["Vérifier"]);
   assert.equal(f.formation.learning_assessment_instructions,"Nouvelle consigne");assert.equal(f.formation.version,4);assert.equal(f.formation.public_registration_token,"stable-link");
   const html=require("react-dom/server").renderToStaticMarkup(await f.getTree());
-  for(const text of ["Niveau corrigé","Question corrigée","Nouvelle aide","Nouvelle consigne","2.5 point(s)"])assert.ok(html.includes(text),text);
+  for(const text of ["Niveau corrigé","Question corrigée","Nouvelle aide","Nouvelle consigne","2.25 point(s)"])assert.ok(html.includes(text),text);
   assert.ok(html.includes('name="positioning_questions"'));assert.ok(html.includes('name="learning_assessment_questions"'));
 });
 test("formation validée : seules les modifications des questionnaires repartent en revue",async()=>{
@@ -150,4 +150,19 @@ test("un original privé de 5 Mo est vérifié puis envoyé par morceaux sans al
   for(;;){const {done,value}=await reader.read();if(done)break;assert.ok(value.length<=64*1024);chunks.push(Buffer.from(value));}
   assert.ok(chunks.length>1);assert.deepEqual(Buffer.concat(chunks),bytes);
   f.files.set(f.proof.storage_path,Buffer.alloc(bytes.length,12));assert.equal((await f.getSource("assessment")).status,409);
+});
+
+for(const [name,mime,expected] of [
+  ["Original.doc","", "application/msword"],
+  ["Original.DOCX","", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  ["Original.docx","application/octet-stream","application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  ["Original.doc","binary/octet-stream","application/msword"],
+  ["Original.PDF","application/pdf","application/pdf"],
+  ["Original.doc","application/msword","application/msword"],
+  ["Original.docx","text/html",null],
+  ["Original.exe","application/octet-stream",null],
+  ["Original","application/pdf",null],
+])test("format importé : "+name+" / "+(mime||"MIME absent"),()=>{
+  const {dailyQuestionnaireSourceMime}=isolatedTsModule("src/lib/dailyQuestionnaireEditing.ts");
+  assert.equal(dailyQuestionnaireSourceMime(name,mime),expected);
 });

@@ -94,6 +94,7 @@ export function dailyPrivateFixture() {
     "@/components/daily/DailyQuestionnaireSourceUpload": isolatedTsModule("src/components/daily/DailyQuestionnaireSourceUpload.tsx", {
       react: require("react"), "react/jsx-runtime": require("react/jsx-runtime"),
       "@/lib/supabase/client": { createClient() { throw new Error("Live browser storage forbidden in tests"); } },
+      "@/lib/dailyQuestionnaireEditing": isolatedTsModule("src/lib/dailyQuestionnaireEditing.ts"),
       "./DailyFormationReviewForm": reviewForm,
     }),
     "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } },
