@@ -166,3 +166,18 @@ for(const [name,mime,expected] of [
   const {dailyQuestionnaireSourceMime}=isolatedTsModule("src/lib/dailyQuestionnaireEditing.ts");
   assert.equal(dailyQuestionnaireSourceMime(name,mime),expected);
 });
+
+test("le véritable SDK Storage transmet les octets Word avec le type normalisé et un cache privé",async()=>{
+  const {createClient}=require("@supabase/supabase-js");
+  const {dailyQuestionnaireSourceMime,prepareDailyQuestionnaireSourceUpload}=isolatedTsModule("src/lib/dailyQuestionnaireEditing.ts");
+  for(const browserMime of ["","application/octet-stream"]){
+    const bytes=Buffer.from("PK-isolated-docx-bytes"),file=new Blob([bytes],{type:browserMime}),mime=dailyQuestionnaireSourceMime("Original.docx",browserMime),prepared=prepareDailyQuestionnaireSourceUpload(file,mime);
+    const calls=[];
+    const client=createClient("https://storage.example.test","isolated-anon-key",{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},global:{fetch:async(url,init)=>{calls.push({url:String(url),init});return Response.json({Key:"documents/private/source"});}}});
+    const result=await client.storage.from("documents").uploadToSignedUrl("private/source","isolated-upload-token",prepared.body,prepared.options);
+    assert.equal(result.error,null);assert.equal(calls.length,1);assert.equal(calls[0].init.method,"PUT");
+    const multipart=calls[0].init.body;assert.ok(multipart instanceof FormData);assert.equal(multipart.get("cacheControl"),"0");
+    const actual=multipart.get("");assert.equal(actual.type,mime);assert.deepEqual(Buffer.from(await actual.arrayBuffer()),bytes);
+    assert.equal(calls[0].init.headers["x-upsert"],"false");
+  }
+});

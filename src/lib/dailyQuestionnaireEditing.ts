@@ -42,3 +42,9 @@ export function dailyQuestionnaireSourceMime(name: string, mime: string) {
   if (!mime || ["application/octet-stream", "binary/octet-stream"].includes(mime.toLowerCase())) return expected;
   return mime.toLowerCase() === expected ? expected : null;
 }
+
+export function prepareDailyQuestionnaireSourceUpload(file: Blob, mimeType: string) {
+  // The Storage SDK reads the multipart Blob type, not contentType, for files.
+  // A slice preserves all bytes while carrying the normalized Word/PDF MIME.
+  return { body: file.slice(0, file.size, mimeType), options: { contentType: mimeType, cacheControl: "0", upsert: false } };
+}

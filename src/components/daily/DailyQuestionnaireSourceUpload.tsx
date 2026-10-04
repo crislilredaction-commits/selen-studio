@@ -2,7 +2,7 @@
 
 import { useState, type ChangeEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { dailyQuestionnaireSourceMime } from "@/lib/dailyQuestionnaireEditing";
+import { dailyQuestionnaireSourceMime, prepareDailyQuestionnaireSourceUpload } from "@/lib/dailyQuestionnaireEditing";
 import { useDailyReviewUploadPending } from "./DailyFormationReviewForm";
 
 export default function DailyQuestionnaireSourceUpload({ formationId, updatedAt, kind }: { formationId: string; updatedAt: string; kind: "positioning" | "assessment" }) {
@@ -24,7 +24,8 @@ export default function DailyQuestionnaireSourceUpload({ formationId, updatedAt,
       if (!response.ok || !ticket.token) throw new Error(ticket.error || "Import indisponible.");
       const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
       const sha256 = Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
-      const { error } = await createClient().storage.from("documents").uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: mimeType });
+      const prepared = prepareDailyQuestionnaireSourceUpload(file, mimeType);
+      const { error } = await createClient().storage.from("documents").uploadToSignedUrl(ticket.path, ticket.token, prepared.body, prepared.options);
       if (error) throw new Error("Le fichier n’a pas pu être importé. Réessaie.");
       setSource(JSON.stringify({ id: ticket.id, name: file.name, mime_type: mimeType, size_bytes: file.size, sha256 }));
       setFileName(file.name);
