@@ -70,6 +70,50 @@ test("le bouton document télécharge le fichier réel avec preuve et sans cache
   assert.equal(f.downloads.length, 1); assert.equal(f.writes.length, 0);
 });
 
+for (const withDigest of [true, false]) {
+  test(`une pièce client privée de 5 Mo se télécharge par morceaux ${withDigest ? "avec son empreinte" : "sans inventer de preuve historique"}`, async () => {
+    const f = fixture();
+    const document = f.rows.daily_documents.find(row => row.id === ids.program);
+    const bytes = Buffer.alloc(5 * 1024 * 1024 + 17, 0x61);
+    bytes.write("%PDF-original-client");
+    document.sha256 = withDigest ? createHash("sha256").update(bytes).digest("hex") : null;
+    f.files.set(document.storage_path, bytes);
+
+    const response = await f.get();
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "application/pdf");
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+    assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+    const reader = response.body.getReader();
+    const chunks = [];
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      assert.ok(value.byteLength <= 1024 * 1024, "Le téléchargement ne doit pas renvoyer le fichier entier en un bloc.");
+      chunks.push(Buffer.from(value));
+    }
+    assert.ok(chunks.length > 1);
+    assert.deepEqual(Buffer.concat(chunks), bytes);
+    assert.equal(document.sha256, withDigest ? createHash("sha256").update(bytes).digest("hex") : null);
+    assert.equal(f.downloads.length, 1);
+    assert.equal(f.writes.length, 0);
+  });
+}
+
+test("une pièce client de 5 Mo altérée ne commence aucun téléchargement du fichier", async () => {
+  const f = fixture();
+  const document = f.rows.daily_documents.find(row => row.id === ids.program);
+  const bytes = Buffer.alloc(5 * 1024 * 1024, 0x61);
+  document.sha256 = createHash("sha256").update(bytes).digest("hex");
+  bytes[bytes.length - 1] = 0x62;
+  f.files.set(document.storage_path, bytes);
+  const response = await f.get();
+  assert.equal(response.status, 409);
+  assert.match(response.headers.get("content-type"), /application\/json/);
+  assert.match((await response.json()).error, /preuve enregistrée/);
+  assert.equal(f.writes.length, 0);
+});
+
 for (const [name, change] of [
   ["non authentifié", f => f.auth.value = { ok: false, status: 401, error: "Accès refusé" }],
   ["agent réaffecté", f => f.rows.daily_organisation_assignments[0].agent_profile_id = "agent-b"],
