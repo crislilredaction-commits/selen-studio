@@ -18,7 +18,7 @@ function fixture() {
     daily_formations: [0, 1].map(i => ({ id: `formation-${i}`, organisation_id: i === 0 ? "of-a" : "of-b", title: `Formation ${i}`, status: "validated", updated_at: today })),
     daily_registration_responses: [{ id: "response-1", session_id: "session-0", created_at: "2026-10-01T08:00:00Z" }],
     daily_registration_reviews: [{ session_id: "session-0", validated_at: "2026-10-01T09:00:00Z" }],
-    daily_session_checklist_items: [], daily_quality_actions: [], daily_work_escalations: [],
+    daily_session_checklist_items: [], daily_quality_actions: [], daily_work_escalations: [], daily_organisation_checklist_items: [],
   };
 }
 
@@ -170,4 +170,51 @@ test("une relation session/formation incohérente ne mélange pas les organismes
   rows.daily_formations[1].status = "review";
   const tasks = await harness(rows).getDailyAgentTasks(adminStaff, { organisationId: "of-a" });
   assert.equal(tasks.length, 0);
+});
+
+test("A6 sans agent affecté, le programme importé reste une tâche admin unique avant et après rattachement", async () => {
+  const rows = fixture(); rows.daily_organisation_assignments = []; rows.daily_sessions = [];
+  Object.assign(rows.daily_formations[0], { status: "draft", creation_mode: "program_import", detailed_program_document_url: "private-original", created_at: today });
+  const h = harness(rows);
+  const [task] = (await h.getDailyAgentTasks(adminStaff)).filter(x => x.kind === "program");
+  assert.equal(task.id, "daily-program-formation-0"); assert.equal(task.assignedAgentProfileId, null); assert.equal(task.href, "/agent/daily/formations/formation-0");
+  assert.equal((await h.getDailyAgentTasks({ id: "agent-a", role: "agent" })).filter(x => x.kind === "program").length, 0);
+  assert.equal(h.canTreatDailyPilotageTask(task, adminStaff), true); assert.equal(h.canTreatDailyPilotageTask(task, { id: "agent-a", role: "agent" }), false);
+  rows.daily_sessions.push({ id: "attached-session", organisation_id: "of-a", formation_id: "formation-0", status: "active", start_date: "2026-12-01", updated_at: today });
+  assert.deepEqual(Array.from((await h.getDailyPilotageTasks()).filter(x => x.kind === "program"), x => x.id), [task.id]);
+  rows.daily_formations[0].status = "validated"; assert.equal((await h.getDailyPilotageTasks()).filter(x => x.kind === "program").length, 0);
+});
+
+test("A6 une tâche de session sans agent reste visible aux admins dans Dashboard et Pilotage", async () => {
+  const rows = fixture(); rows.daily_organisation_assignments = [];
+  rows.daily_session_checklist_items = [{ id: "trainer", organisation_id: "of-a", session_id: "session-0", item_key: "trainer_assignment", phase: "before", responsibility: "selen", label: "Affecter le formateur", status: "todo", signaled_at: today }];
+  const h = harness(rows);
+  const dashboard = (await h.getDailyAgentTasks(adminStaff)).filter(x => x.kind === "session");
+  const pilotage = (await h.getDailyPilotageTasks()).filter(x => x.kind === "session");
+  assert.deepEqual(Array.from(dashboard, x => x.id), ["daily-session-checklist-trainer"]); assert.deepEqual(Array.from(pilotage, x => x.id), Array.from(dashboard, x => x.id));
+  assert.equal((await h.getDailyAgentTasks({ id: "agent-a", role: "agent" })).filter(x => x.kind === "session").length, 0);
+});
+
+test("A6 les points organisme à vérifier/bloqués utilisent leur identité et lien canonique", async () => {
+  const rows = fixture(); rows.daily_organisation_checklist_items = ["todo", "to_review", "blocked", "validated"].map(status => ({ id: status, organisation_id: "of-a", label: status, status, signaled_at: today }));
+  const h = harness(rows);
+  const tasks = (await h.getDailyAgentTasks({ id: "agent-a", role: "agent" })).filter(x => x.kind === "organisation");
+  assert.deepEqual(Array.from(tasks, x => x.id).sort(), ["daily-checklist-blocked", "daily-checklist-to_review"]);
+  assert.ok(tasks.every(x => x.href === "/agent/daily/organisations/of-a?tab=checklist")); assert.equal(rows.daily_organisation_checklist_items.length, 4);
+  assert.equal((await h.getDailyAgentTasks(adminStaff, { organisationId: "of-b" })).filter(x => x.kind === "organisation").length, 0);
+});
+
+test("A6 le secours admin ne duplique pas une tâche et n'ouvre pas le traitement à un agent tiers", async () => {
+  const rows = fixture(); rows.daily_organisation_assignments = [];
+  rows.daily_organisation_checklist_items = [{ id: "one", organisation_id: "of-a", label: "Pièce à relire", status: "to_review", signaled_at: "2026-01-01T10:00:00Z" }];
+  const h = harness(rows); const [task] = (await h.getDailyPilotageTasks()).filter(x => x.kind === "organisation");
+  assert.equal(task.assignedAgentProfileId, null); assert.equal(task.overdueShared, true); assert.equal(h.canTreatDailyPilotageTask(task, { id: "agent-b", role: "agent" }), false);
+  assert.equal((await h.getDailyAgentTasks({ id: "agent-b", role: "agent" })).filter(x => x.kind === "organisation").length, 0);
+  rows.daily_organisation_assignments.push({ organisation_id: "of-a", agent_profile_id: "agent-a" });
+  assert.deepEqual(Array.from((await h.getDailyPilotageTasks()).filter(x => x.kind === "organisation"), x => x.id), [task.id]);
+});
+
+test("A6 une checklist session incohérente ne mélange pas les OF", async () => {
+  const rows = fixture(); rows.daily_session_checklist_items = [{ id: "foreign", organisation_id: "of-b", session_id: "session-0", item_key: "trainer_assignment", phase: "before", responsibility: "selen", status: "todo", label: "Foreign", signaled_at: today }];
+  assert.equal((await harness(rows).getDailyAgentTasks(adminStaff)).filter(x => x.kind === "session").length, 0);
 });

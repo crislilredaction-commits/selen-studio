@@ -28,6 +28,6 @@ export async function getDailyPilotageTasks(): Promise<DailyPilotageTask[]> {
 export function canTreatDailyPilotageTask(task: DailyAgentTask, staff: DailyTaskStaff) {
   if (task.kind === "assignment") return true;
   if (staff.role === "admin") return true;
-  if (!task.assignedAgentProfileId) return true;
+  if (!task.assignedAgentProfileId) return false;
   return task.assignedAgentProfileId === staff.id || task.overdueShared;
 }
