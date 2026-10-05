@@ -106,7 +106,9 @@ test("une réponse plus récente réouvre le pilotage et redémarre le délai de
 });
 
 test("la validation programme confirme le statut et rafraîchit pilotage et tableau de bord", () => {
-  assert.match(programReview, /daily_validate_formation_version/);
+  assert.match(programReview, /daily_validate_formation_review/);
+  assert.match(programReview, /p_expected_updated_at: savedFormation\.updated_at/);
+  assert.match(programReview, /p_expected_status: savedFormation\.status/);
   assert.match(programReview, /validatedFormation\.status !== "validated"/);
   assert.match(programReview, /revalidatePath\("\/agent\/daily"\)/);
   assert.match(programReview, /revalidatePath\("\/agent"\)/);
