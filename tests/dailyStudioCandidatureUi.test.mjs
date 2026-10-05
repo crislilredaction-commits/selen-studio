@@ -64,11 +64,10 @@ test("l'agent hors OF ne lit pas le dossier ni les copies et ne voit pas sa cand
 
 test("les preuves de prérequis d'un autre OF ne donnent pas de lien signé", async () => {
   const f = pageFixture();
-  f.rows.daily_prerequisite_evidence.push({ id: "evidence", registration_request_id: ids.request, participant_index: 0, document_id: ids.program, requirement_label: "Diplôme", status: "submitted" });
-  f.rows.daily_documents.find(row => row.id === ids.program).organisation_id = ids.otherOf;
-  const tree = await f.render();
-  const links = elements(tree).filter(item => item.props.href).map(item => item.props.href);
-  assert.ok(!links.some(link => String(link).includes("signed"))); assert.equal(f.downloads.length, 0);
+  f.formation.prerequisite_mode = "required"; f.formation.prerequisite_requirements = [{ id: "diploma", label: "Diplôme" }];
+  f.rows.daily_prerequisite_evidence.push({ id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", registration_request_id: ids.request, registration_response_id: null, participant_index: 0, requirement_id: "diploma", requirement_label: "Diplôme", document_id: ids.prerequisite, status: "submitted", updated_at: ANALYSIS_REVISION, reviewed_at: null, reviewed_by: null, review_comment: null });
+  f.prerequisite.organisation_id = ids.otherOf;
+  await assert.rejects(f.render(), /ne correspond pas exactement/); assert.equal(f.downloads.length, 0);
 });
 
 test("le questionnaire Selen reste consultable sous sa forme historique", async () => {
@@ -116,7 +115,7 @@ test("la synthèse conserve ses sept champs, ses valeurs et la version du dossie
 });
 
 test("un prérequis sans preuve ne paraît pas vérifié et sa transmission reste bloquée", async () => {
-  const f = pageFixture(); f.formation.prerequisite_mode = "required";
+  const f = pageFixture(); f.formation.prerequisite_mode = "required"; f.formation.prerequisite_requirements = [{ id: "diploma", label: "Diplôme requis" }];
   const tree = await f.render(), text = visibleText(tree);
   assert.match(text, /justificatifs requis restent à vérifier/);
   assert.doesNotMatch(text, /Aucun justificatif requis/);
@@ -126,11 +125,12 @@ test("un prérequis sans preuve ne paraît pas vérifié et sa transmission rest
 });
 
 test("un justificatif vérifié du bon OF reste directement consultable et permet la transmission", async () => {
-  const f = pageFixture(); f.formation.prerequisite_mode = "required";
-  f.rows.daily_prerequisite_evidence.push({ id: "evidence", registration_request_id: ids.request, participant_index: 0, document_id: ids.proof, requirement_label: "Diplôme requis", status: "verified", review_comment: "Document relu par l’agent" });
+  const f = pageFixture(); f.formation.prerequisite_mode = "required"; f.formation.prerequisite_requirements = [{ id: "diploma", label: "Diplôme requis" }];
+  f.prerequisite.metadata.requirement_id = "diploma";
+  f.rows.daily_prerequisite_evidence.push({ id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", registration_request_id: ids.request, registration_response_id: null, participant_index: 0, requirement_id: "diploma", document_id: ids.prerequisite, requirement_label: "Diplôme requis", status: "verified", updated_at: ANALYSIS_REVISION, reviewed_at: ANALYSIS_REVISION, reviewed_by: ids.reviewer, review_comment: "Document relu par l’agent" });
   const originalFrom = f.admin.storage.from;
   f.admin.storage.from = bucket => ({ ...originalFrom(bucket), createSignedUrl: async (path, seconds) => {
-    assert.equal(path, f.proof.storage_path); assert.equal(seconds, 600);
+    assert.equal(path, f.prerequisite.storage_path); assert.equal(seconds, 600);
     return { data: { signedUrl: "https://storage.example.test/justificatif-verifie" }, error: null };
   } });
   const tree = await f.render(), items = elements(tree);
@@ -138,7 +138,7 @@ test("un justificatif vérifié du bon OF reste directement consultable et perme
   assert.match(visibleText(tree), /Document relu par l’agent/);
   assert.ok(items.some(item => item.props.href === "https://storage.example.test/justificatif-verifie"));
   assert.equal(items.find(item => item.type === "button" && item.props.type === "submit").props.disabled, false);
-  assert.equal(f.downloads.length, 0); assert.equal(f.emailCalls.length, 0);
+  assert.equal(f.downloads.length, 1); assert.equal(f.emailCalls.length, 0);
 });
 
 test("une formation archivée conserve l'analyse et tous les champs en lecture seule", async () => {

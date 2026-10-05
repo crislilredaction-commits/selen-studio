@@ -5,7 +5,8 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 import { loadScopedDailyCandidature, loadCandidaturePositioning, candidatureRecord, type CandidaturePositioning } from "@/lib/server/dailyStudioCandidature";
-import { privateDailyPath, downloadPrivateDailySource } from "@/lib/server/dailyStudioFormationSources";
+import { downloadPrivateDailySource } from "@/lib/server/dailyStudioFormationSources";
+import { hasExactVerifiedPrerequisiteCoverage, loadDailyPrerequisiteEvidence, reviewDailyPrerequisiteEvidence } from "@/lib/server/dailyStudioPrerequisiteEvidence";
 import { candidatureNeedAnswers, candidaturePositioningAnswers, candidatureParticipants, candidatureDecisionLabel, candidatureEvidenceLabel, type CandidatureAnswer } from "@/lib/dailyCandidaturePresentation";
 import styles from "./analysis.module.css";
 
@@ -42,6 +43,20 @@ function documentIcon() {
   return <span className={styles.documentIcon} aria-hidden="true"><svg width="18" height="21" viewBox="0 0 24 28" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M5 2h9l5 5v19H5zM14 2v6h5M8 13h8M8 18h8" /></svg></span>;
 }
 function text(fd:FormData,key:string){return String(fd.get(key)??"").trim();}
+async function reviewEvidence(formData:FormData){
+  "use server";
+  const auth=await requireSupportAgent(); if(!auth.ok) throw new Error(auth.error);
+  const id=text(formData,"id"); if(!id) throw new Error("Candidature introuvable.");
+  const admin=createSupabaseAdminClient();
+  const scoped=await loadScopedDailyCandidature(admin,auth.email,id);
+  if(!scoped) throw new Error("Candidature introuvable.");
+  await reviewDailyPrerequisiteEvidence({
+    admin,
+    owner:{kind:"formation",id,organisationId:scoped.formation.organisation_id,formationId:scoped.formation.id,sessionId:scoped.request.attached_session_id??null},
+    evidenceId:text(formData,"evidence_id"),expectedUpdatedAt:text(formData,"evidence_updated_at"),decision:text(formData,"decision"),comment:text(formData,"comment"),reviewerId:auth.userId,
+  });
+  revalidatePath(`/agent/daily/candidatures/${id}`);
+}
 async function saveAnalysis(formData:FormData){
   "use server";
   const auth=await requireSupportAgent(); if(!auth.ok) throw new Error(auth.error);
@@ -63,10 +78,9 @@ async function saveAnalysis(formData:FormData){
     for(const document of positioning.filled) await downloadPrivateDailySource(admin,document);
   }
   const prerequisiteMode=(req.daily_formations as any)?.prerequisite_mode??"none";
-  const {data:evidence,error:evidenceError}=await admin.from("daily_prerequisite_evidence").select("status").eq("registration_request_id",id);
-  if(evidenceError) throw new Error(evidenceError.message);
-  const rows=evidence??[];
-  const prerequisitesValidated=prerequisiteMode==="none" || (rows.length>0 && rows.every((row)=>row.status==="verified"));
+  const evidence=prerequisiteMode==="required"?await loadDailyPrerequisiteEvidence(admin,{kind:"formation",id,organisationId:scoped.formation.organisation_id,formationId:scoped.formation.id,sessionId:scoped.request.attached_session_id??null}):[];
+  const participantCount=req.response_type==="company"?Math.max(Array.isArray(req.participants)?req.participants.length:0,1):1;
+  const prerequisitesValidated=prerequisiteMode!=="required" || hasExactVerifiedPrerequisiteCoverage(evidence,(req.daily_formations as any)?.prerequisite_requirements,participantCount);
   if(!prerequisitesValidated) throw new Error("Tous les prérequis obligatoires doivent être vérifiés humainement avant transmission à l’OF.");
   const summary={motivation_summary:text(formData,"motivation_summary"),expectations_summary:text(formData,"expectations_summary"),positioning_summary:text(formData,"positioning_summary"),needs_summary:text(formData,"needs_summary"),adaptations_summary:text(formData,"adaptations_summary"),prerequisites_comment:text(formData,"prerequisites_comment"),observations:text(formData,"observations"),evaluator_email:auth.email};
   if(!summary.motivation_summary||!summary.positioning_summary||!summary.needs_summary) throw new Error("Motivation, positionnement et besoins doivent être synthétisés avant transmission.");
@@ -100,12 +114,8 @@ export default async function DailyCandidatureAnalysisPage({params}:Props){
   let positioning:CandidaturePositioning|null=null;
   let positioningError=false;
   try{positioning=await loadCandidaturePositioning(admin,scoped.request,scoped.formation);}catch{positioningError=true;}
-  const {data:evidence,error:evidenceError}=await admin.from("daily_prerequisite_evidence").select("id,participant_index,requirement_label,document_id,status,reviewed_at,review_comment").eq("registration_request_id",id).order("participant_index");
-  if(evidenceError) throw new Error(evidenceError.message);
-  const documentIds=(evidence??[]).map((row)=>row.document_id).filter(Boolean);
-  const {data:documents}=documentIds.length?await admin.from("daily_documents").select("id,logical_name,bucket,storage_path,mime_type,status").eq("organisation_id",scoped.formation.organisation_id).in("id",documentIds):{data:[]};
-  const documentMap=new Map((documents??[]).map((doc)=>[doc.id,doc]));
-  const evidenceWithUrls=await Promise.all((evidence??[]).map(async(row)=>{const doc=row.document_id?documentMap.get(row.document_id):null;if(doc?.bucket!=="documents"||doc.status==="archived"||!privateDailyPath(doc.storage_path,scoped.formation.organisation_id))return {...row,url:null,name:doc?.logical_name??null};const {data}=await admin.storage.from("documents").createSignedUrl(doc.storage_path,600);return {...row,url:data?.signedUrl??null,name:doc.logical_name};}));
+  const hasPrerequisites=(scoped.formation.prerequisite_mode??"none")==="required";
+  const evidenceWithUrls=hasPrerequisites?await loadDailyPrerequisiteEvidence(admin,{kind:"formation",id,organisationId:scoped.formation.organisation_id,formationId:scoped.formation.id,sessionId:scoped.request.attached_session_id??null}):[];
   const summary=(req.agent_analysis_summary??{}) as Record<string,unknown>;
   const label=req.company_name || [req.respondent_first_name,req.respondent_last_name].filter(Boolean).join(" ") || req.respondent_email || "Candidat";
   const final=req.decision_status==="accepted"||req.decision_status==="refused";
@@ -113,8 +123,8 @@ export default async function DailyCandidatureAnalysisPage({params}:Props){
   const needs=candidatureNeedAnswers(req.need_answers);
   const positioningRows=candidaturePositioningAnswers(req.positioning_answers);
   const participants=candidatureParticipants(req.participants);
-  const hasPrerequisites=(scoped.formation.prerequisite_mode??"none")!=="none";
-  const allPrerequisitesVerified=!hasPrerequisites||(evidenceWithUrls.length>0&&evidenceWithUrls.every(row=>row.status==="verified"));
+  const participantCount=req.response_type==="company"?Math.max(participants.length,1):1;
+  const allPrerequisitesVerified=!hasPrerequisites||hasExactVerifiedPrerequisiteCoverage(evidenceWithUrls,scoped.formation.prerequisite_requirements,participantCount);
   const offPlatform=candidatureRecord(req.positioning_answers).mode==="off_platform";
   const transmissionBlock=!allPrerequisitesVerified
     ? "Les prérequis obligatoires doivent être vérifiés avant la transmission à l’OF."
@@ -192,8 +202,15 @@ export default async function DailyCandidatureAnalysisPage({params}:Props){
           {evidenceWithUrls.length?<ul className={styles.evidenceList}>{evidenceWithUrls.map(row=><li key={row.id} className={styles.evidence}>
             <div className={styles.evidenceHead}><strong>{row.requirement_label}</strong><span className={styles.evidenceStatus+" "+(row.status==="verified"?styles.verified:"")}>{candidatureEvidenceLabel(row.status)}</span></div>
             {req.response_type==="company"&&Number.isInteger(row.participant_index)?<p className={styles.documentName}>{participants[row.participant_index]?.name||"Participant "+(row.participant_index+1)}</p>:null}
-            {row.url?<a className={styles.documentLink} href={row.url} target="_blank" rel="noreferrer">Ouvrir le justificatif{row.name?" · "+row.name:""} →</a>:<p className={styles.documentName}>Aucune pièce consultable.</p>}
+            <a className={styles.documentLink} href={row.url} target="_blank" rel="noreferrer">Ouvrir le justificatif · {row.document.name} →</a>
             {row.review_comment?<p className={styles.reviewComment}>{row.review_comment}</p>:null}
+            {row.reviewed_at?<p className={styles.documentName}>Revu par {row.reviewer_label||"agent identifié"} le {displayDate(row.reviewed_at)}</p>:null}
+            {!readOnly&&row.status==="submitted"?<form action={reviewEvidence} className={styles.reviewForm}>
+              <input type="hidden" name="id" value={req.id}/><input type="hidden" name="evidence_id" value={row.id}/><input type="hidden" name="evidence_updated_at" value={row.updated_at}/>
+              <label htmlFor={`review-comment-${row.id}`}>Commentaire de revue <span>(obligatoire en cas de refus)</span></label>
+              <textarea id={`review-comment-${row.id}`} name="comment" rows={2}/>
+              <div className={styles.reviewActions}><button type="submit" name="decision" value="verified">Valider la preuve</button><button type="submit" name="decision" value="rejected">Refuser la preuve</button></div>
+            </form>:null}
           </li>)}</ul>:<p className={styles.empty}>{hasPrerequisites?"Les justificatifs requis restent à vérifier.":"Aucun justificatif requis."}</p>}
         </section>
       </div>
