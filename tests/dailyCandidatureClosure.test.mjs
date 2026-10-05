@@ -104,7 +104,7 @@ test("la sauvegarde revérifie l’affectation et les prérequis humains", async
   for (const deny of [
     f => { f.rows.daily_organisation_assignments[0].agent_profile_id = "agent-b"; },
     f => { f.rows.agent_profiles[0].is_active = false; },
-    f => { f.formation.prerequisite_mode = "required"; f.rows.daily_prerequisite_evidence.push({ registration_request_id: ids.request, status: "to_check" }); },
+    f => { f.formation.prerequisite_mode = "required"; f.formation.prerequisite_requirements = [{ id: "diploma", label: "Diplôme" }]; f.rows.daily_prerequisite_evidence.push({ id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", registration_request_id: ids.request, registration_response_id: null, participant_index: 0, requirement_id: "diploma", requirement_label: "Diplôme", document_id: ids.prerequisite, status: "submitted", updated_at: openedAt, reviewed_at: null, reviewed_by: null, review_comment: null }); },
   ]) {
     const h = fixture(); const action = await h.action(); deny(h.f);
     await assert.rejects(action(h.form()), /introuvable|vérifiés/i);

@@ -61,6 +61,17 @@ test("P0-B bloque côté serveur une validation incomplète et reflète le bloca
   assert.match(source, /Validation bloquée/);
 });
 
+test("A4 raccorde les preuves historiques de session à la même revue humaine traçable", () => {
+  assert.match(source, /loadScopedDailySessionPrerequisites/);
+  assert.match(source, /reviewDailyPrerequisiteEvidence/);
+  assert.match(source, /reviewSessionEvidence/);
+  assert.match(source, /response_id/);
+  assert.match(source, /prerequisiteDossier\.complete/);
+  assert.match(source, /Tous les justificatifs obligatoires doivent être contrôlés/);
+  assert.match(source, /Valider la preuve/);
+  assert.match(source, /Refuser la preuve/);
+});
+
 test("P0-B conserve un layout responsive pour le poste de traitement", () => {
   assert.match(source, /maxWidth: 1180/);
   assert.match(source, /flexWrap: "wrap"/);

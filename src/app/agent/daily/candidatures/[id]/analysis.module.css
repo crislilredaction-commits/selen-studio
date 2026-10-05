@@ -122,6 +122,13 @@
 .verified { color: var(--selen-text); }
 .evidence .documentLink { display: inline-block; margin-top: 8px; }
 .reviewComment { margin: 8px 0 0; color: var(--selen-text2); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.reviewForm { display: grid; gap: 7px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--selen-border); }
+.reviewForm label { font-size: 13px; font-weight: 650; }
+.reviewForm label span { color: var(--selen-text2); font-weight: 400; }
+.reviewForm textarea { width: 100%; resize: vertical; padding: 9px 10px; color: var(--selen-ink); background: var(--selen-bg); border: 1px solid var(--selen-border2); border-radius: var(--radius-sm); font: inherit; font-size: 14px; }
+.reviewActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.reviewActions button { min-height: 38px; padding: 8px 12px; border: 1px solid var(--selen-ink); border-radius: var(--radius-sm); background: var(--selen-card); color: var(--selen-text-oncard); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+.reviewActions button:last-child { background: var(--selen-bg); color: var(--selen-ink); }
 .analysis { border-top: 3px solid var(--selen-copper); }
 .analysisForm { display: grid; gap: 26px; }
 .analysisGroup { display: grid; gap: 18px; margin: 0; padding: 0; border: 0; min-width: 0; }

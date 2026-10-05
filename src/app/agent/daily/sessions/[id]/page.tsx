@@ -1,5 +1,6 @@
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { revalidatePath } from "next/cache";
+import { notFound } from "next/navigation";
 import LegacyAgentDailySessionPage from "./legacyPage";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
@@ -8,12 +9,13 @@ import {
   provisionDirectSessionPortalAccesses,
   type DirectSessionPortalSource,
 } from "@/lib/server/dailyDirectSessionPortalAccess";
+import { loadScopedDailySessionPrerequisites, reviewDailyPrerequisiteEvidence } from "@/lib/server/dailyStudioPrerequisiteEvidence";
 
 type PageProps = { params: Promise<{ id: string }> };
 type SessionRow = DirectSessionPortalSource & {
   registration_status?: string | null;
   organisation_id?: string | null;
-  daily_formations?: { title?: string | null } | null;
+  daily_formations?: { title?: string | null; prerequisite_mode?: string | null; prerequisite_requirements?: unknown } | null;
 };
 type RegistrationReviewRow = {
   prerequisites_validated?: boolean | null;
@@ -27,10 +29,11 @@ type RegistrationReviewRow = {
   validated_at?: string | null;
 };
 
-function validationBlockReason(status: string | null | undefined, responseCount: number, review: RegistrationReviewRow | null) {
+function validationBlockReason(status: string | null | undefined, responseCount: number, review: RegistrationReviewRow | null, prerequisiteEvidenceReady: boolean) {
   if (status === "summary_validated") return null;
   if (status !== "summary_to_review") return "Le dossier doit être en synthèse à relire avant validation.";
   if (responseCount < 1) return "Aucune réponse de candidature n’est disponible pour ce dossier.";
+  if (!prerequisiteEvidenceReady) return "Tous les justificatifs obligatoires doivent être contrôlés et validés humainement.";
   if (!review?.validated_at || !review.evaluator_name?.trim()) return "L’analyse humaine doit être enregistrée avec son auteur avant validation.";
   if (review.prerequisites_validated !== true) return "Les prérequis doivent être explicitement vérifiés avant validation.";
   if (!review.decision) return "Une décision d’analyse doit être enregistrée avant validation.";
@@ -44,6 +47,8 @@ async function summaryValidatedAction(formData: FormData) {
   const id = String(formData.get("id") ?? "").trim();
   if (!id) throw new Error("Session Daily introuvable.");
   const admin = createSupabaseAdminClient();
+  const prerequisiteDossier = await loadScopedDailySessionPrerequisites(admin, auth.email, id);
+  if (!prerequisiteDossier) throw new Error("Session Daily introuvable.");
   const [{ data, error }, { count: responseCount, error: responseError }, { data: reviewData, error: reviewError }] = await Promise.all([
     admin.from("daily_sessions").select("id,user_id,individual_beneficiaries,beneficiaries,companies,registration_status,daily_formations(title)").eq("id", id).maybeSingle(),
     admin.from("daily_registration_responses").select("id", { count: "exact", head: true }).eq("session_id", id),
@@ -55,7 +60,7 @@ async function summaryValidatedAction(formData: FormData) {
   const session = data as unknown as SessionRow | null;
   const review = reviewData as RegistrationReviewRow | null;
   if (!session) throw new Error("Session Daily introuvable.");
-  const blocked = validationBlockReason(session.registration_status, responseCount ?? 0, review);
+  const blocked = validationBlockReason(session.registration_status, responseCount ?? 0, review, prerequisiteDossier.complete);
   if (blocked) throw new Error(blocked);
   if (session.registration_status === "summary_validated") return;
   const definitions = buildDirectSessionPortalDefinitions(session);
@@ -65,6 +70,25 @@ async function summaryValidatedAction(formData: FormData) {
   if (updateError) throw new Error(updateError.message);
   revalidatePath(`/agent/daily/sessions/${session.id}`);
   revalidatePath("/agent/daily");
+}
+
+function formText(formData: FormData, key: string) { return String(formData.get(key) ?? "").trim(); }
+async function reviewSessionEvidence(formData: FormData) {
+  "use server";
+  const auth = await requireSupportAgent();
+  if (!auth.ok) throw new Error(auth.error);
+  const id = formText(formData, "id");
+  const responseId = formText(formData, "response_id");
+  const admin = createSupabaseAdminClient();
+  const dossier = await loadScopedDailySessionPrerequisites(admin, auth.email, id);
+  const response = dossier?.dossiers.find((item) => item.response.id === responseId);
+  if (!dossier || !response) throw new Error("Dossier de prérequis introuvable.");
+  await reviewDailyPrerequisiteEvidence({
+    admin,
+    owner: { kind: "session", id: responseId, organisationId: dossier.session.organisation_id, formationId: dossier.session.formation_id, sessionId: id },
+    evidenceId: formText(formData, "evidence_id"), expectedUpdatedAt: formText(formData, "evidence_updated_at"), decision: formText(formData, "decision"), comment: formText(formData, "comment"), reviewerId: auth.userId,
+  });
+  revalidatePath(`/agent/daily/sessions/${id}`);
 }
 
 function patchSummaryValidationAction(node: ReactNode, blockedReason: string | null): ReactNode {
@@ -106,8 +130,10 @@ export default async function AgentDailySessionPage(props: PageProps) {
   if (!auth.ok) return <main style={{ padding: 28 }}>Accès refusé.</main>;
 
   const admin = createSupabaseAdminClient();
+  const prerequisiteDossier = await loadScopedDailySessionPrerequisites(admin, auth.email, id);
+  if (!prerequisiteDossier) notFound();
   const [{ data: sessionData }, { count: responseCount }, { data: reviewData }, { count: documentCount }] = await Promise.all([
-    admin.from("daily_sessions").select("id,organisation_id,registration_status,daily_formations(title)").eq("id", id).maybeSingle(),
+    admin.from("daily_sessions").select("id,organisation_id,registration_status,daily_formations(title,prerequisite_mode,prerequisite_requirements)").eq("id", id).maybeSingle(),
     admin.from("daily_registration_responses").select("id", { count: "exact", head: true }).eq("session_id", id),
     admin.from("daily_registration_reviews").select("prerequisites_validated,prerequisites_comment,positioning_result,adaptation_required,adaptation_details,decision,justification,evaluator_name,validated_at").eq("session_id", id).maybeSingle(),
     admin.from("daily_documents").select("id", { count: "exact", head: true }).eq("session_id", id).eq("is_current", true),
@@ -124,7 +150,7 @@ export default async function AgentDailySessionPage(props: PageProps) {
   const responses = responseCount ?? 0;
   const documents = documentCount ?? 0;
   const signal = treatmentSignal(session?.registration_status, responses);
-  const blockedReason = validationBlockReason(session?.registration_status, responses, review);
+  const blockedReason = validationBlockReason(session?.registration_status, responses, review, prerequisiteDossier.complete);
   const legacy = await LegacyAgentDailySessionPage(props);
 
   return (
@@ -158,6 +184,26 @@ export default async function AgentDailySessionPage(props: PageProps) {
             </div>
             <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--selen-text2)" }}>Le dépôt d’une pièce ne vaut pas validation. Le contrôle reste effectué dans le circuit documentaire canonique Daily.</p>
           </div>
+          {prerequisiteDossier.formation.prerequisite_mode === "required" ? <div aria-label="Justificatifs de prérequis" style={{ marginTop: 14, borderRadius: 12, border: "1px solid var(--selen-border)", background: "var(--selen-bg)", padding: "14px" }}>
+            <strong>Justificatifs de prérequis</strong>
+            <p style={{ margin: "5px 0 12px", fontSize: 12, color: "var(--selen-text2)" }}>Chaque preuve est privée, rattachée à un apprenant et une exigence, puis vérifiée humainement avant validation.</p>
+            {prerequisiteDossier.dossiers.map((dossier, dossierIndex) => <div key={dossier.response.id} style={{ paddingTop: dossierIndex ? 14 : 0, marginTop: dossierIndex ? 14 : 0, borderTop: dossierIndex ? "1px solid var(--selen-border)" : undefined }}>
+              <b>{[dossier.response.respondent_first_name, dossier.response.respondent_last_name].filter(Boolean).join(" ") || `Candidature ${dossierIndex + 1}`}</b>
+              {dossier.evidence.map((row) => <div key={row.id} style={{ marginTop: 10, padding: 11, border: "1px solid var(--selen-border)", borderRadius: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><span>{row.requirement_label} · apprenant {row.participant_index + 1}</span><b>{row.status === "verified" ? "Validé" : row.status === "rejected" ? "Refusé" : "À vérifier"}</b></div>
+                <a href={row.url} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 7, fontSize: 13, fontWeight: 800, color: "var(--selen-gold2)" }}>Ouvrir le justificatif · {row.document.name} →</a>
+                {row.review_comment ? <p style={{ margin: "7px 0 0", fontSize: 12, color: "var(--selen-text2)" }}>{row.review_comment}</p> : null}
+                {row.reviewed_at ? <p style={{ margin: "7px 0 0", fontSize: 12, color: "var(--selen-text2)" }}>Revu par {row.reviewer_label || "agent identifié"} le {formatReviewDate(row.reviewed_at)}</p> : null}
+                {row.status === "submitted" ? <form action={reviewSessionEvidence} style={{ display: "grid", gap: 7, marginTop: 10 }}>
+                  <input type="hidden" name="id" value={id}/><input type="hidden" name="response_id" value={dossier.response.id}/><input type="hidden" name="evidence_id" value={row.id}/><input type="hidden" name="evidence_updated_at" value={row.updated_at}/>
+                  <label htmlFor={`session-evidence-${row.id}`} style={{ fontSize: 12, fontWeight: 700 }}>Commentaire de revue (obligatoire en cas de refus)</label>
+                  <textarea id={`session-evidence-${row.id}`} name="comment" rows={2} style={{ width: "100%", resize: "vertical", border: "1px solid var(--selen-border)", borderRadius: 8, padding: 8, font: "inherit" }}/>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="submit" name="decision" value="verified">Valider la preuve</button><button type="submit" name="decision" value="rejected">Refuser la preuve</button></div>
+                </form> : null}
+              </div>)}
+              {!dossier.evidence.length ? <p style={{ margin: "8px 0 0", fontSize: 12, fontWeight: 700 }}>Justificatifs absents : validation bloquée.</p> : null}
+            </div>)}
+          </div> : null}
           <div aria-label="Analyse humaine du dossier" style={{ marginTop: 14, borderRadius: 12, border: "1px solid var(--selen-border)", background: "var(--selen-bg)", padding: "14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <strong>Analyse humaine</strong>

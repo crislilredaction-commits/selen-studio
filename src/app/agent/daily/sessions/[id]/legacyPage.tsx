@@ -12,6 +12,8 @@ import {
 } from "@/lib/dailyRegistrationConfig";
 import { buildDailyConventionDocumentHtml } from "@/lib/server/dailyConventionDocumentHtml";
 import { buildDailyConvocationDocumentHtml } from "@/lib/server/dailyConvocationDocumentHtml";
+import { loadScopedDailyFormation } from "@/lib/server/dailyStudioFormationSources";
+import { loadScopedDailySessionPrerequisites } from "@/lib/server/dailyStudioPrerequisiteEvidence";
 
 type PageProps = { params: Promise<{ id: string }> };
 type JsonRecord = Record<string, unknown>;
@@ -843,17 +845,17 @@ async function saveRegistrationReview(formData: FormData) {
   if (!id) throw new Error("Session Daily introuvable.");
 
   const admin = createSupabaseAdminClient();
-  const { data: session, error: sessionError } = await admin
-    .from("daily_sessions")
-    .select("id,user_id")
-    .eq("id", id)
-    .maybeSingle();
+  const prerequisiteDossier = await loadScopedDailySessionPrerequisites(admin, auth.email, id);
+  if (!prerequisiteDossier) throw new Error("Session Daily introuvable.");
+  const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,user_id").eq("id", id).maybeSingle();
   if (sessionError) throw new Error(sessionError.message);
   if (!session) throw new Error("Session Daily introuvable.");
 
   const adaptationRequired = formBoolean(formData, "adaptation_required");
   const validatedAt = formText(formData, "validated_at");
   const decision = formText(formData, "decision");
+  const prerequisitesValidated = formBoolean(formData, "prerequisites_validated");
+  if (prerequisitesValidated === true && !prerequisiteDossier.complete) throw new Error("Tous les justificatifs obligatoires doivent être vérifiés humainement avant de valider les prérequis.");
 
   const { error } = await admin
     .from("daily_registration_reviews")
@@ -863,7 +865,7 @@ async function saveRegistrationReview(formData: FormData) {
         user_id: session.user_id,
         prerequisites_expected: formText(formData, "prerequisites_expected"),
         beneficiary_elements: formText(formData, "beneficiary_elements"),
-        prerequisites_validated: formBoolean(formData, "prerequisites_validated"),
+        prerequisites_validated: prerequisitesValidated,
         prerequisites_comment: formText(formData, "prerequisites_comment"),
         positioning_result: formText(formData, "positioning_result"),
         starting_level: formText(formData, "starting_level"),
@@ -1290,6 +1292,10 @@ export default async function AgentDailySessionPage({ params }: PageProps) {
 
   const { id } = await params;
   const admin = createSupabaseAdminClient();
+  const { data: scopeSession, error: scopeError } = await admin.from("daily_sessions").select("id,formation_id,organisation_id").eq("id", id).maybeSingle();
+  if (scopeError) return <main style={s.page}><p style={s.error}>{scopeError.message}</p></main>;
+  const scopedFormation = scopeSession?.formation_id ? await loadScopedDailyFormation(admin, auth.email, scopeSession.formation_id) : null;
+  if (!scopeSession || !scopedFormation || scopedFormation.organisation_id !== scopeSession.organisation_id) return <main style={s.page}><p style={s.error}>Session Daily introuvable.</p></main>;
   const [sessionRes, responsesRes, recipientsRes, reviewRes, conventionsRes, signaturesRes, portalLinksRes, convocationsRes] = await Promise.all([
     admin
       .from("daily_sessions")
