@@ -93,7 +93,7 @@ async function persistProgram(formData: FormData, validate: boolean, questionnai
     if (!value(formData, "detailed_program")) throw new Error("Complète le contenu détaillé avant de valider le programme.");
     const requiredSources: Array<"program" | "positioning" | "assessment"> = [];
     if (formation.creation_mode === "program_import") requiredSources.push("program");
-    if (hasOwnPositioningSource(formation)) requiredSources.push("positioning");
+    if (formation.positioning_mode === "off_platform") requiredSources.push("positioning");
     if (formation.learning_assessment_mode === "external" && formation.learning_assessment_document_url) requiredSources.push("assessment");
     for (const kind of requiredSources) {
       if (files.some(file => file.kind === kind)) continue;
@@ -328,7 +328,7 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
             <h2 style={s.h2}>Questionnaire de positionnement</h2>
             {formation.positioning_mode === "off_platform" ? (
               <>
-                <p style={s.muted}>{hasOwnPositioningSource(formation) ? "Questionnaire propre OF : téléchargement, remplissage hors Selen et réimportation obligatoire." : "Positionnement historique : aucun questionnaire propre OF n’a été importé."}</p>
+                <p style={s.muted}>{hasOwnPositioningSource(formation) ? "Questionnaire propre OF : téléchargement, remplissage hors Selen et réimportation obligatoire." : "Importe le questionnaire original de l’OF avant de valider la formation. Le candidat le téléchargera, le remplira hors Selen puis réimportera sa copie."}</p>
                 {dailySourceDocumentId(formation.positioning_questionnaire_document_url) ? <a href={`/agent/api/daily/formations/${formation.id}/source-document?kind=positioning`} style={s.secondaryLink} target="_blank" rel="noreferrer">Ouvrir le questionnaire propre OF →</a> : null}
                 <h3>Remplacer le questionnaire de positionnement</h3><p style={s.muted}>L’original est remplacé lors de l’enregistrement. Les versions précédentes sont conservées.</p>
                 <DailyQuestionnaireSourceUpload formationId={formation.id} updatedAt={formation.updated_at} kind="positioning" />

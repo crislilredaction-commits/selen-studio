@@ -99,6 +99,14 @@ test("un contenu détaillé vide bloque la validation avant toute écriture", as
   await assert.rejects(validate(form), /contenu détaillé/); assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0);
 });
 
+test("un positionnement propre OF sans original bloque la validation avant toute écriture", async () => {
+  const { f, validate } = await actionFixture();
+  f.formation.positioning_questionnaire_document_url = null;
+  await assert.rejects(validate(completedForm()), /questionnaire|document|original/i);
+  assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0);
+  assert.notEqual(f.formation.status, "validated");
+});
+
 for (const [label, change] of [
   ["programme modifié", row => { row.title = "Contenu non relu"; row.updated_at = "2030-01-01T00:00:00Z"; }],
   ["formation archivée", row => { row.status = "archived"; }],
@@ -352,18 +360,24 @@ for (const mode of ["program_import", "selen_form"]) {
   });
 }
 
-test("une formation historique sans questionnaire propre OF configuré reste revalidable avec le même lien", async () => {
+test("une formation historique retrouve la validation et son même lien après import obligatoire de l’original", async () => {
   const { f, validate } = await actionFixture();
   f.formation.creation_mode = null; f.formation.positioning_questionnaire_document_url = null;
+  await assert.rejects(validate(completedForm()), /Document source privé introuvable/);
+  assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0);
+  assert.equal(f.formation.public_registration_token, "stable-existing-token");
+  f.formation.positioning_questionnaire_document_url = `/api/client/daily/uploads?id=${ids.original}`;
   await assert.rejects(validate(completedForm()), /REDIRECT .*saved=validated/);
   assert.equal(f.formation.status, "validated"); assert.equal(f.formation.public_registration_token, "stable-existing-token");
-  assert.equal(f.formation.positioning_questionnaire_document_url, null); assert.equal(f.downloads.length, 0);
+  assert.equal(f.formation.id, ids.formation); assert.equal(f.rows.daily_formations.length, 1);
+  assert.equal(f.formation.positioning_questionnaire_document_url, `/api/client/daily/uploads?id=${ids.original}`);
+  assert.ok(f.downloads.includes(f.source.storage_path));
 });
 
 test("le dossier historique ne prétend pas qu'un document propre OF a été choisi", async () => {
   const f = dailyPrivateFixture(); f.formation.status = "draft"; f.formation.positioning_questionnaire_document_url = null;
   const tree = await editor(f).shared.default({ formationId: ids.formation });
-  assert.match(visibleText(tree), /Positionnement historique/);
+  assert.match(visibleText(tree), /Importe le questionnaire original de l’OF avant de valider/);
   assert.doesNotMatch(visibleText(tree), /réimportation obligatoire/);
   assert.ok(!elements(tree).some(item => String(item.props.href).includes("kind=positioning")));
 });
