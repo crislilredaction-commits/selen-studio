@@ -64,10 +64,13 @@ export function dailyPrivateFixture() {
       return query;
     },
     async rpc(name, args) {
-      assert.equal(flags.allowWrites, true); assert.equal(name, "daily_validate_formation_version");
+      assert.equal(flags.allowWrites, true); assert.equal(name, "daily_validate_formation_review");
       rpcs.push({ name, args });
       const row = rows.daily_formations.find(row => row.id === args.p_formation_id);
-      if (flags.validateStatus) row.status = "validated";
+      assert.equal(args.p_organisation_id, row.organisation_id);
+      assert.equal(args.p_expected_updated_at, row.updated_at);
+      assert.equal(args.p_expected_status, row.status);
+      if (flags.validateStatus) Object.assign(row, { status: "validated", spontaneous_registration_task_status: "to_attach" });
       return { data: { ...row }, error: null };
     },
     storage: { from(bucket) { assert.equal(bucket, "documents"); return { download: async path => {

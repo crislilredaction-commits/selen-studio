@@ -99,6 +99,77 @@ test("un contenu détaillé vide bloque la validation avant toute écriture", as
   await assert.rejects(validate(form), /contenu détaillé/); assert.equal(f.writes.length, 0); assert.equal(f.rpcs.length, 0);
 });
 
+for (const [label, change] of [
+  ["programme modifié", row => { row.title = "Contenu non relu"; row.updated_at = "2030-01-01T00:00:00Z"; }],
+  ["formation archivée", row => { row.status = "archived"; }],
+  ["formation déplacée vers un autre OF", row => { row.organisation_id = ids.otherOf; }],
+]) {
+  test(`${label} après sauvegarde : aucun contenu concurrent n’est validé`, async () => {
+    const { f, validate } = await actionFixture();
+    const originalRpc = f.admin.rpc.bind(f.admin);
+    f.admin.rpc = async (name, args) => {
+      change(f.formation);
+      if (name === "daily_validate_formation_review" &&
+        (f.formation.organisation_id !== args.p_organisation_id ||
+          f.formation.updated_at !== args.p_expected_updated_at ||
+          f.formation.status !== args.p_expected_status)) {
+        return { data: null, error: { code: "P0001", message: "Formation modifiée" } };
+      }
+      return originalRpc(name, args);
+    };
+    await assert.rejects(validate(completedForm()), /programme a changé|Programme introuvable/i);
+    assert.notEqual(f.formation.status, "validated");
+    assert.equal(f.formation.spontaneous_registration_task_status, undefined);
+  });
+}
+
+test("réaffectation après sauvegarde : la validation exige encore l’assignation courante", async () => {
+  const { f, validate } = await actionFixture();
+  const from = f.admin.from.bind(f.admin);
+  f.admin.from = table => {
+    const query = from(table);
+    if (table === "daily_formations") {
+      const update = query.update.bind(query);
+      query.update = patch => {
+        f.rows.daily_organisation_assignments[0].agent_profile_id = "agent-b";
+        return update(patch);
+      };
+    }
+    return query;
+  };
+  await assert.rejects(validate(completedForm()), /Programme introuvable/);
+  assert.equal(f.rpcs.length, 0);
+  assert.notEqual(f.formation.status, "validated");
+});
+
+test("la validation utilise la révision retournée par PostgreSQL, même si un trigger remplace l’horodatage envoyé", async () => {
+  const { f, validate } = await actionFixture();
+  const databaseRevision = "2030-02-01T09:30:00.123456+00:00";
+  const from = f.admin.from.bind(f.admin);
+  f.admin.from = table => {
+    const query = from(table);
+    if (table === "daily_formations") {
+      let saving = false;
+      const update = query.update.bind(query), then = query.then.bind(query);
+      query.update = patch => { saving = true; return update(patch); };
+      query.then = (resolve, reject) => then(response => {
+        if (saving && response.data) {
+          f.formation.updated_at = databaseRevision;
+          response.data.updated_at = databaseRevision;
+        }
+        return resolve(response);
+      }, reject);
+    }
+    return query;
+  };
+  await assert.rejects(validate(completedForm()), /REDIRECT .*saved=validated/);
+  assert.notEqual(f.writes[0].patch.updated_at, databaseRevision);
+  assert.equal(f.rpcs[0].args.p_expected_updated_at, databaseRevision);
+  assert.equal(f.rpcs[0].args.p_organisation_id, ids.of);
+  assert.equal(f.rpcs[0].args.p_expected_status, "draft");
+  assert.equal(f.writes.length, 1, "le marqueur de tâche est écrit dans la transaction de validation");
+});
+
 for (const [name, change] of [
   ["original programme d'un autre OF", f => f.rows.daily_documents.find(row => row.id === ids.program).organisation_id = ids.otherOf],
   ["questionnaire périmé", f => f.source.is_current = false],
