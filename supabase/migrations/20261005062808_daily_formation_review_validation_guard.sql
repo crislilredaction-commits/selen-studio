@@ -1,5 +1,6 @@
 -- Validate exactly the programme saved by Studio. The legacy validator retains
 -- the existing identity, public-link and version-history rules under this lock.
+-- Filename matches the shared database's applied migration version.
 create or replace function public.daily_validate_formation_review(
   p_formation_id uuid,
   p_organisation_id uuid,

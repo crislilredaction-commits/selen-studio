@@ -21,7 +21,7 @@ test("la préparation de session explique son utilité et replie les détails", 
 
 test("la validation crée l'action client de diffusion sans exposer le lien dans Studio", () => {
   const page = read("src/components/daily/DailyFormationReview.tsx");
-  const validation = read("supabase/migrations/20261005061254_daily_formation_review_validation_guard.sql");
+  const validation = read("supabase/migrations/20261005062808_daily_formation_review_validation_guard.sql");
   assert.match(page, /daily_validate_formation_review/);
   assert.match(validation, /daily_validate_formation_version\(f\.id, p_validation_note\)/);
   assert.match(validation, /spontaneous_registration_task_status = 'to_attach'/);
