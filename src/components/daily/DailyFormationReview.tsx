@@ -129,36 +129,42 @@ async function persistProgram(formData: FormData, validate: boolean, questionnai
   if (formation.status === "correction_requested" || (questionnairesOnly && formation.status === "validated")) Object.assign(patch, { status: "review", validation_note: null, agent_review_signaled_at: new Date().toISOString() });
   patch.updated_at = new Date().toISOString();
 
+  let savedFormation: { id: string; status: string; updated_at: string } | null;
   if (files.length) {
-    await saveDailyQuestionnaireSources(admin, formation, auth.email, auth.userId, patch, files);
+    savedFormation = await saveDailyQuestionnaireSources(admin, formation, auth.email, auth.userId, patch, files);
   } else {
     const updateQuery = admin.from("daily_formations").update(patch).eq("id", formationId).eq("organisation_id", formation.organisation_id).eq("status", formation.status).eq("updated_at", expectedUpdatedAt);
-    const { data: updatedFormation, error: updateError } = await updateQuery.select("id").maybeSingle();
+    const { data: updatedFormation, error: updateError } = await updateQuery.select("id,status,updated_at").maybeSingle();
     if (updateError) throw new Error(updateError.message);
     if (!updatedFormation) throw new Error("Le programme a changé. Actualise le dossier avant de l’enregistrer.");
+    savedFormation = updatedFormation;
   }
 
   if (validate) {
+    if (!savedFormation?.updated_at || !EDITABLE_STATUSES.has(savedFormation.status)) {
+      throw new Error("L’enregistrement n’a pas pu être confirmé. Recharge le dossier.");
+    }
+    const saved = await loadScopedDailyFormation(admin, auth.email, formationId);
+    if (!saved || saved.organisation_id !== formation.organisation_id) throw new Error("Programme introuvable.");
+    if (saved.updated_at !== savedFormation.updated_at || saved.status !== savedFormation.status) {
+      throw new Error("Le programme a changé. Actualise le dossier avant de le valider.");
+    }
     if (files.length) {
-      const saved = await loadScopedDailyFormation(admin, auth.email, formationId);
-      if (!saved) throw new Error("Programme introuvable.");
       for (const file of files) await downloadPrivateDailySource(admin, await loadPrivateDailySource(admin, saved, file.kind as "positioning" | "assessment"));
     }
-    const { data: validated, error: validationError } = await admin.rpc("daily_validate_formation_version", {
+    const { data: validated, error: validationError } = await admin.rpc("daily_validate_formation_review", {
       p_formation_id: formationId,
+      p_organisation_id: formation.organisation_id,
+      p_expected_updated_at: savedFormation.updated_at,
+      p_expected_status: savedFormation.status,
       p_validation_note: "Programme vérifié et validé.",
     });
-    if (validationError) throw new Error(validationError.message);
+    if (validationError) throw new Error(validationError.code === "P0001" ? "Le programme a changé. Actualise le dossier avant de le valider." : validationError.message);
     const validatedRow = Array.isArray(validated) ? validated[0] : validated;
-    const validatedId = validatedRow?.id ?? formationId;
-    const { data: validatedFormation, error: validatedStatusError } = await admin.from("daily_formations").select("id,status").eq("id", validatedId).maybeSingle();
+    if (validatedRow?.id !== formationId) throw new Error("La validation n’a pas confirmé le programme attendu.");
+    const { data: validatedFormation, error: validatedStatusError } = await admin.from("daily_formations").select("id,status").eq("id", formationId).eq("organisation_id", formation.organisation_id).maybeSingle();
     if (validatedStatusError) throw new Error(validatedStatusError.message);
     if (!validatedFormation || validatedFormation.status !== "validated") throw new Error("La validation n’a pas confirmé le statut validé du programme.");
-    const { error: taskError } = await admin
-      .from("daily_formations")
-      .update({ spontaneous_registration_task_status: "to_attach" })
-      .eq("id", validatedId);
-    if (taskError) throw new Error(taskError.message);
   }
 
   if (sessionId) revalidatePath(`/agent/daily/session-dossiers/${sessionId}`);
