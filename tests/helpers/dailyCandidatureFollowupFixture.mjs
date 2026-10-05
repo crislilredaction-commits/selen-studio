@@ -1,0 +1,13 @@
+export function fixture() {
+    const keys = ['motivation_summary', 'expectations_summary', 'positioning_summary', 'needs_summary', 'adaptations_summary', 'prerequisites_comment', 'observations'];
+    const analysis = Object.fromEntries(keys.map((k, i) => [k, `SECTION_${i}\nLigne conservée`]));
+    analysis.evaluator_email = 'PRIVATE_AGENT';
+    analysis.other = 'PRIVATE_METADATA';
+    const rows = { daily_sessions: [{ id: 'session', organisation_id: 'of', formation_id: 'formation', internal_reference: 'S1', daily_formations: { title: 'Formation' }, organisations: { name: 'OF' } }], daily_formations: [{ id: 'formation', organisation_id: 'of' }], daily_learners: [{ id: 'learner', organisation_id: 'of', first_name: 'Ada', last_name: 'Test', email: 'ada@example.test' }], daily_session_enrolments: [{ id: 'enrolment', learner_id: 'learner', organisation_id: 'of', session_id: 'session', status: 'pending', daily_learners: { first_name: 'Ada', last_name: 'Test', email: 'ada@example.test' } }], daily_registration_request_enrolments: [{ registration_request_id: 'request', enrolment_id: 'enrolment', learner_id: 'learner', participant_index: 0 }], daily_formation_registration_requests: [{ id: 'request', formation_id: 'formation', attached_session_id: 'session', decision_status: 'accepted', agent_analysis_summary: analysis, agent_analysis_completed_at: '2026-10-01T10:00:00Z' }], organisations: [{ id: 'of', name: 'OF' }], daily_attendance_records: [], daily_learning_assessments: [], daily_learner_feedback_responses: [], daily_session_followup_entries: [], daily_conventions: [], daily_communications: [] };
+    const reads = [];
+    let fail = '';
+    const admin = { from(table) { if (!(table in rows))
+            throw Error('Unexpected table ' + table); const filters = []; let span = null, single = false; const q = { select() { return q; }, eq(k, v) { filters.push(r => r[k] === v); return q; }, in(k, vs) { filters.push(r => vs.includes(r[k])); return q; }, order() { return q; }, range(a, b) { span = [a, b]; return q; }, maybeSingle() { single = true; return q; }, then(resolve, reject) { reads.push({ table, span }); let data = rows[table].filter(r => filters.every(f => f(r))); if (span)
+                data = data.slice(span[0], span[1] + 1); return Promise.resolve({ data: single ? data[0] ?? null : data, error: fail === table ? { message: 'unavailable' } : null }).then(resolve, reject); }, insert() { throw Error('Writes forbidden'); }, update() { throw Error('Writes forbidden'); }, upsert() { throw Error('Writes forbidden'); }, delete() { throw Error('Writes forbidden'); } }; return q; } };
+    return { rows, reads, admin, fail(table) { fail = table; } };
+}
