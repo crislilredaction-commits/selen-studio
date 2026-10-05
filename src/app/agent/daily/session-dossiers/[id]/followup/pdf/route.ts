@@ -1,3 +1,5 @@
+import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
+import { loadDailyCandidatureFollowup } from "@/lib/server/dailyCandidatureFollowup";
 import { jsPDF } from "jspdf";
 import { NextResponse } from "next/server";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
@@ -19,8 +21,11 @@ function formatDate(value?: string | null) {
 
 function addWrappedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, lineHeight = 5) {
   const lines = doc.splitTextToSize(text, maxWidth) as string[];
-  doc.text(lines, x, y);
-  return y + Math.max(lines.length, 1) * lineHeight;
+  for (const line of lines) {
+    if (y + lineHeight > 278) { doc.addPage(); y = 18; }
+    doc.text(line, x, y); y += lineHeight;
+  }
+  return y;
 }
 
 export async function GET(_request: Request, { params }: RouteContext) {
@@ -29,28 +34,23 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   const { id } = await params;
   const admin = createSupabaseAdminClient();
-  const [sessionResult, entriesResult, enrolmentsResult] = await Promise.all([
-    admin
-      .from("daily_sessions")
-      .select("id,organisation_id,internal_reference,start_date,end_date,daily_formations(title),organisations(name,legal_name)")
-      .eq("id", id)
-      .maybeSingle(),
-    admin
-      .from("daily_session_followup_entries")
+  const { data: session, error: sessionError } = await admin.from("daily_sessions")
+    .select("id,organisation_id,internal_reference,start_date,end_date,daily_formations(title),organisations(name,legal_name)")
+    .eq("id", id).maybeSingle();
+  if (sessionError) return NextResponse.json({ error: "Lecture de la session indisponible." }, { status: 500 });
+  if (!session?.organisation_id) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
+  if (!(await isDailyOrganisationInAgentScope(auth.email, session.organisation_id))) return NextResponse.json({ error: "Accès refusé." }, { status: 403 });
+  const [entriesResult, enrolmentsResult] = await Promise.all([
+    admin.from("daily_session_followup_entries")
       .select("id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,author_role,author_name")
-      .eq("session_id", id)
-      .order("occurred_at", { ascending: true }),
-    admin
-      .from("daily_session_enrolments")
-      .select("id,daily_learners(first_name,last_name,email)")
-      .eq("session_id", id),
+      .eq("organisation_id", session.organisation_id).eq("session_id", id).order("occurred_at", { ascending: true }),
+    admin.from("daily_session_enrolments").select("id,daily_learners(first_name,last_name,email)")
+      .eq("organisation_id", session.organisation_id).eq("session_id", id),
   ]);
-
-  if (sessionResult.error || entriesResult.error || enrolmentsResult.error) {
-    return NextResponse.json({ error: "Impossible de générer la fiche de suivi." }, { status: 500 });
-  }
-  const session = sessionResult.data;
-  if (!session) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
+  if (entriesResult.error || enrolmentsResult.error) return NextResponse.json({ error: "Impossible de générer la fiche de suivi." }, { status: 500 });
+  let candidatures;
+  try { candidatures = await loadDailyCandidatureFollowup(admin, session.organisation_id, id); }
+  catch { return NextResponse.json({ error: "Lecture des synthèses indisponible." }, { status: 500 }); }
 
   const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
   const organisation = Array.isArray(session.organisations) ? session.organisations[0] : session.organisations;
@@ -86,10 +86,23 @@ export async function GET(_request: Request, { params }: RouteContext) {
   doc.line(left, y, right, y);
   y += 8;
 
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  y = addWrappedText(doc, "Synthèses de candidature", left, y, width);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  if (!candidatures.length) y = addWrappedText(doc, "Aucune synthèse rattachée à une inscription active.", left, y, width);
+  for (const item of candidatures) {
+    y = addWrappedText(doc, item.applicant, left, y + 4, width);
+    y = addWrappedText(doc, `Analyse Selen enregistrée : ${item.analyzedAt}`, left, y, width);
+    y = addWrappedText(doc, `Apprenants : ${item.learners.map(person => person.name).join(", ")}`, left, y, width);
+    for (const section of item.sections) y = addWrappedText(doc, `${section.label} : ${section.value}`, left, y, width);
+  }
+  y += 8;
   const entries = entriesResult.data ?? [];
   if (entries.length === 0) {
     doc.setFontSize(10);
-    doc.text("Aucun incident, adaptation ou note de suivi enregistré pour cette session.", left, y);
+    y = addWrappedText(doc, "Aucun incident, adaptation ou note de suivi enregistré pour cette session.", left, y, width);
   } else {
     for (const [index, entry] of entries.entries()) {
       if (y > 260) {
@@ -122,7 +135,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   const generatedAt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date());
   doc.setFontSize(8);
   doc.setTextColor(100);
-  doc.text(`Généré depuis Selen Studio le ${generatedAt}. Source : daily_session_followup_entries.`, left, 287);
+  doc.text(`Généré depuis Selen Studio le ${generatedAt}. Sources : candidatures et daily_session_followup_entries.`, left, 287);
 
   const output = doc.output("arraybuffer");
   const ref = safeText(session.internal_reference, "session").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "session";

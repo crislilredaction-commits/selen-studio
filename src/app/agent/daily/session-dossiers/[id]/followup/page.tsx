@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { loadDailyCandidatureFollowup } from "@/lib/server/dailyCandidatureFollowup";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
@@ -110,25 +111,28 @@ export default async function DailySessionFollowupPage({ params }: Props) {
   if (!auth.ok) return <main style={{ padding: 28 }}>Accès refusé.</main>;
   const { id } = await params;
   const admin = createSupabaseAdminClient();
-  const { data: session } = await admin
+  const { data: session, error: sessionError } = await admin
     .from("daily_sessions")
     .select("id,organisation_id,internal_reference,daily_formations(title)")
     .eq("id", id)
     .maybeSingle();
+  if (sessionError) throw new Error("Lecture de la session indisponible.");
   if (!session?.organisation_id) return <main style={{ padding: 28 }}>Session introuvable.</main>;
   if (!(await isDailyOrganisationInAgentScope(auth.email, session.organisation_id))) {
     return <main style={{ padding: 28 }}>Accès refusé.</main>;
   }
 
-  const [{ data: entries }, { data: enrolments }, { data: signatures }] = await Promise.all([
+  const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }, { data: signatures, error: signaturesError }] = await Promise.all([
     admin
       .from("daily_session_followup_entries")
       .select("id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at")
+      .eq("organisation_id", session.organisation_id)
       .eq("session_id", id)
       .order("occurred_at", { ascending: false }),
     admin
       .from("daily_session_enrolments")
       .select("id,daily_learners(first_name,last_name,email)")
+      .eq("organisation_id", session.organisation_id)
       .eq("session_id", id),
     admin
       .from("daily_convention_signatures")
@@ -136,6 +140,8 @@ export default async function DailySessionFollowupPage({ params }: Props) {
       .eq("session_id", id)
       .order("created_at", { ascending: false }),
   ]);
+  if (entriesError || enrolmentsError || signaturesError) throw new Error("Lecture de la fiche de suivi indisponible.");
+  const candidatures = await loadDailyCandidatureFollowup(admin, session.organisation_id, id);
   const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
   const pendingSignatures = (signatures ?? []).filter((signature) => !isSignatureTerminal(signature.status, signature.signed_at));
 
@@ -151,6 +157,16 @@ export default async function DailySessionFollowupPage({ params }: Props) {
           Télécharger la fiche PDF
         </Link>
       </p>
+
+      <SelenCard>
+        <SelenCardTitle>Synthèses de candidature</SelenCardTitle>
+        {candidatures.length === 0 ? <p>Aucune synthèse rattachée à une inscription active.</p> : candidatures.map(item => <article key={item.requestId} style={{ marginBottom: 18 }}>
+          <Link href={`/agent/daily/candidatures/${item.requestId}`}><strong>{item.applicant}</strong></Link>
+          <p>Analyse Selen enregistrée : {item.analyzedAt}</p>
+          <p>Apprenants : {item.learners.map(person => person.name).join(", ")}</p>
+          <dl>{item.sections.map(section => <div key={section.key}><dt style={{ fontWeight: 700 }}>{section.label}</dt><dd style={{ margin: "0 0 10px", whiteSpace: "pre-wrap" }}>{section.value}</dd></div>)}</dl>
+        </article>)}
+      </SelenCard>
 
       <SelenCard>
         <SelenCardTitle>Signatures en attente</SelenCardTitle>
