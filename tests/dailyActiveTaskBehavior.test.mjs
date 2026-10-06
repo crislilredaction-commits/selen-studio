@@ -218,3 +218,34 @@ test("A6 une checklist session incohérente ne mélange pas les OF", async () =>
   const rows = fixture(); rows.daily_session_checklist_items = [{ id: "foreign", organisation_id: "of-b", session_id: "session-0", item_key: "trainer_assignment", phase: "before", responsibility: "selen", status: "todo", label: "Foreign", signaled_at: today }];
   assert.equal((await harness(rows).getDailyAgentTasks(adminStaff)).filter(x => x.kind === "session").length, 0);
 });
+
+test("une session annulée ou supprimée retire immédiatement ses tâches et actions liées", async () => {
+  const rows = fixture();
+  rows.daily_session_checklist_items = [{ id: "ghost", organisation_id: "of-a", session_id: "session-0", item_key: "trainer_assignment", phase: "before", responsibility: "selen", status: "todo", label: "Fantôme", signaled_at: today }];
+  rows.daily_quality_actions = [{ id: "quality", organisation_id: "of-a", session_id: "session-0", title: "Action liée", status: "open", source_type: "satisfaction_phone_followup", created_at: today }];
+  const h = harness(rows);
+  assert.deepEqual(Array.from(await h.getDailyPilotageTasks(), task => task.id).sort(), ["daily-satisfaction-quality", "daily-session-checklist-ghost"]);
+
+  rows.daily_sessions[0].status = "cancelled";
+  assert.equal((await h.getDailyPilotageTasks()).length, 0);
+
+  rows.daily_sessions.splice(0, 1);
+  assert.equal((await h.getDailyAgentTasks(adminStaff)).length, 0);
+});
+
+test("une formation supprimée rend les tâches de sa session sans objet", async () => {
+  const rows = fixture();
+  rows.daily_session_checklist_items = [{ id: "orphan", organisation_id: "of-a", session_id: "session-0", item_key: "trainer_assignment", phase: "before", responsibility: "selen", status: "todo", label: "Orpheline", signaled_at: today }];
+  rows.daily_formations = rows.daily_formations.filter(row => row.id !== "formation-0");
+  assert.equal((await harness(rows).getDailyPilotageTasks()).length, 0);
+});
+
+test("Dashboard et Pilotage conservent les mêmes données canoniques pour une tâche active", async () => {
+  const rows = fixture();
+  rows.daily_session_checklist_items = [{ id: "shared", organisation_id: "of-a", session_id: "session-0", item_key: "trainer_assignment", phase: "before", responsibility: "selen", status: "blocked", label: "Affecter", description: "Choisir le formateur", signaled_at: today }];
+  const h = harness(rows);
+  const [dashboard] = await h.getDailyAgentTasks({ id: "agent-a", role: "agent" });
+  const [pilotage] = await h.getDailyPilotageTasks();
+  for (const key of ["id", "status", "priority", "dueAt", "context", "expectedAction", "href", "title", "detail"]) assert.equal(pilotage[key], dashboard[key]);
+  assert.equal(dashboard.priority, "urgent");
+});
