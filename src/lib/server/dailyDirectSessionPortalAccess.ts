@@ -37,7 +37,7 @@ export type DirectSessionPortalDefinition = {
 type ExistingPortalAccess = DirectSessionPortalDefinition & {
   id: string;
   token: string;
-  status: "pending" | "viewed" | "expired";
+  status: "pending" | "viewed" | "revoked" | "expired";
   expires_at: string | null;
   metadata?: JsonRecord | null;
 };
@@ -103,7 +103,7 @@ function metadataRecord(value: unknown): JsonRecord {
 }
 
 function isActiveAccess(access: ExistingPortalAccess | undefined, now = Date.now()) {
-  if (!access || access.status === "expired") return false;
+  if (!access || access.status === "expired" || access.status === "revoked") return false;
   if (!access.expires_at) return true;
   const expiresAt = new Date(access.expires_at).getTime();
   return Number.isFinite(expiresAt) && expiresAt > now;
