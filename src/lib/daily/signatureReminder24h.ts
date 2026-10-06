@@ -1,4 +1,4 @@
-export const DAILY_SIGNATURE_REMINDER_TYPE = "daily_signature_pending_24h";
+export const DAILY_SIGNATURE_REMINDER_TYPE = "daily_signature_pending_72h";
 export const ACTIVE_SIGNATURE_REMINDER_STATUSES = ["draft", "ready", "postponed"] as const;
 export const TERMINAL_SIGNATURE_STATUSES = new Set([
   "signed",
@@ -71,16 +71,9 @@ export function isFrenchWorkingDay(date: Date) {
   return weekday !== "Sat" && weekday !== "Sun" && !frenchPublicHolidayDates(year).has(dateKey);
 }
 
-/**
- * Règle canonique Selen « 24 h ouvrées » : prochaine journée ouvrée à la même heure,
- * en sautant samedi, dimanche et jours fériés nationaux français.
- */
+/** Première échéance canonique de relance de signature : J+3 après l'envoi initial. */
 export function signatureReminderDueAt(sentAt: Date) {
-  const candidate = new Date(sentAt.getTime() + 24 * 60 * 60 * 1000);
-  while (!isFrenchWorkingDay(candidate)) {
-    candidate.setUTCDate(candidate.getUTCDate() + 1);
-  }
-  return candidate;
+  return new Date(sentAt.getTime() + 3 * 24 * 60 * 60 * 1000);
 }
 
 export function signatureReminderDedupeKey(signatureId: string) {

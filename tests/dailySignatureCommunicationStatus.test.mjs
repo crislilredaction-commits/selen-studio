@@ -30,8 +30,9 @@ test("la relance existante est affichée depuis client_reminders avec son type c
   assert.match(source, /DAILY_SIGNATURE_REMINDER_TYPE,[\s\S]*from "@\/lib\/daily\/signatureReminder24h"/);
   assert.match(source, /\.eq\("reminder_type", DAILY_SIGNATURE_REMINDER_TYPE\)/);
   assert.match(source, /Relance nécessaire/);
-  assert.match(source, /Relance prévue après 24 h ouvrées/);
-  assert.doesNotMatch(source, /daily_signature_pending_72h|H\+72/);
+  assert.match(source, /Relance automatique J\+3 planifiée/);
+  assert.match(source, /Appel agent J\+9 à traiter/);
+  assert.doesNotMatch(source, /daily_signature_pending_24h|24 h ouvrées/);
   assert.doesNotMatch(source, /daily_organisation_assignments.*update|assigned_agent_profile_id.*update/s);
 });
 
