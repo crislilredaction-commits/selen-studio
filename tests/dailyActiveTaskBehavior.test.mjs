@@ -18,6 +18,10 @@ function fixture() {
     daily_formations: [0, 1].map(i => ({ id: `formation-${i}`, organisation_id: i === 0 ? "of-a" : "of-b", title: `Formation ${i}`, status: "validated", updated_at: today })),
     daily_registration_responses: [{ id: "response-1", session_id: "session-0", created_at: "2026-10-01T08:00:00Z" }],
     daily_registration_reviews: [{ session_id: "session-0", validated_at: "2026-10-01T09:00:00Z" }],
+    daily_formation_registration_requests: [
+      { id: "request-0", attached_session_id: "session-0", decision_status: "accepted" },
+      { id: "request-1", attached_session_id: "session-1", decision_status: "accepted" },
+    ],
     daily_session_checklist_items: [], daily_quality_actions: [], daily_work_escalations: [], daily_organisation_checklist_items: [],
   };
 }
@@ -116,6 +120,20 @@ test("les tâches client, d'une session archivée ou d'une phase future ne remon
     { id: "archive", session_id: "session-1", organisation_id: "of-b", responsibility: "selen", phase: "before" },
   ].map(row => ({ ...row, item_key: "trainer_assignment", status: "todo", label: row.id, signaled_at: today }));
   assert.equal((await harness(rows).getDailyAgentTasks(adminStaff)).length, 0);
+});
+
+test("la préparation préformation reste absente avant l'acceptation explicite de la candidature", async () => {
+  const rows = fixture();
+  rows.daily_session_checklist_items = [{ id: "pretraining", session_id: "session-0", organisation_id: "of-a", item_key: "pretraining_documents", phase: "before", responsibility: "selen", label: "Préparer", status: "todo", signaled_at: today }];
+  rows.daily_formation_registration_requests[0].decision_status = "ready_for_of";
+  const h = harness(rows);
+  assert.equal((await h.getDailyAgentTasks(adminStaff)).length, 0);
+
+  rows.daily_formation_registration_requests[0].decision_status = "accepted";
+  assert.deepEqual(Array.from(await h.getDailyPilotageTasks(), task => task.id), ["daily-session-checklist-pretraining"]);
+
+  rows.daily_registration_responses.push({ id: "response-new", session_id: "session-0", created_at: today });
+  assert.deepEqual(Array.from(await h.getDailyPilotageTasks(), task => task.id), ["daily-registration-session-0"]);
 });
 
 test("la visibilité et les droits de traitement conservent l'assignation et l'escalade existantes", async () => {

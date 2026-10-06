@@ -11,6 +11,7 @@ const sessionTimeline = await readFile(new URL("../src/app/agent/daily/session-d
 const pilotageVisibility = await readFile(new URL("../src/lib/server/dailyPilotageVisibility.ts", import.meta.url), "utf8");
 const notificationCadenceMigration = await readFile(new URL("../supabase/migrations/20260912211500_daily_notification_escalation_24h.sql", import.meta.url), "utf8");
 const notificationVisibilityMigration = await readFile(new URL("../supabase/migrations/20260912222000_daily_session_notification_phase_visibility.sql", import.meta.url), "utf8");
+const lifecycleMigration = await readFile(new URL("../supabase/migrations/20261006191034_daily_a11_task_lifecycle_notifications.sql", import.meta.url), "utf8");
 
 test("les phases de session sont cumulatives", () => {
   assert.match(phases, /phaseRank\[itemPhase\] <= phaseRank\[currentPhase\]/);
@@ -125,9 +126,26 @@ test("le Studio expose les champs métier du programme client modifiables avant 
 
 
 test("la préparation préformation n'apparaît qu'après validation courante de l'inscription", () => {
+  assert.match(tasks, /from\("daily_formation_registration_requests"\)/);
+  assert.match(tasks, /\.eq\("decision_status", "accepted"\)/);
+  assert.match(tasks, /if \(!acceptedSessionIds\.has\(session\.id\)\) continue/);
   assert.match(tasks, /item\.item_key === "pretraining_documents"/);
   assert.match(tasks, /const registrationResponses = responsesBySession\.get\(session\.id\) \?\? \[\]/);
   assert.match(tasks, /if \(!registrationReviewIsCurrent\(review, latestRegistrationResponse\)\) continue/);
+});
+
+test("les notifications A11 suivent les parents métier et la décision de candidature", () => {
+  assert.match(lifecycleMigration, /item\.status in \('todo','in_progress','to_review','blocked'\)/);
+  assert.match(lifecycleMigration, /item\.responsibility in \('selen','shared'\)/);
+  assert.match(lifecycleMigration, /r\.decision_status = 'accepted'/);
+  assert.match(lifecycleMigration, /review\.validated_at >= latest_response\.created_at/);
+  assert.match(lifecycleMigration, /daily_a11_resync_session_notifications/);
+  assert.match(lifecycleMigration, /daily_a11_resync_formation_notifications/);
+  assert.match(lifecycleMigration, /daily_a11_resync_candidature_notifications/);
+  assert.match(lifecycleMigration, /daily_a11_resync_registration_notifications/);
+  assert.match(lifecycleMigration, /daily_a11_resync_subscription_notifications/);
+  assert.match(lifecycleMigration, /daily_a11_resync_organisation_notifications/);
+  assert.match(lifecycleMigration, /dismissed_at = coalesce\(dismissed_at, now\(\)\)/);
 });
 
 

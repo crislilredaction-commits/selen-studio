@@ -51,6 +51,7 @@ type Formation = {
 };
 type Response = { id: string; session_id: string; created_at: string | null };
 type RegistrationReview = { session_id: string; validated_at: string | null };
+type RegistrationDecision = { attached_session_id: string | null };
 type SessionChecklistItem = {
   id: string;
   session_id: string;
@@ -160,18 +161,20 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
   const orgById = new Map(organisations.map((row) => [row.id, row]));
 
   const sessionIds = sessions.map((row) => row.id);
-  const [formationRes, responseRes, reviewRes, checklistRes, organisationChecklistRes] = await Promise.all([
+  const [formationRes, responseRes, reviewRes, decisionRes, checklistRes, organisationChecklistRes] = await Promise.all([
     admin.from("daily_formations").select("id,organisation_id,creation_mode,detailed_program_document_url,title,status,agent_review_signaled_at,created_at,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
     sessionIds.length ? admin.from("daily_registration_responses").select("id,session_id,created_at").in("session_id", sessionIds).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_registration_reviews").select("session_id,validated_at").in("session_id", sessionIds) : Promise.resolve({ data: [], error: null }),
+    sessionIds.length ? admin.from("daily_formation_registration_requests").select("attached_session_id").in("attached_session_id", sessionIds).eq("decision_status", "accepted") : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_session_checklist_items").select("id,session_id,organisation_id,item_key,phase,responsibility,label,description,status,signaled_at").in("session_id", sessionIds).in("responsibility", ["selen", "shared"]).in("status", ["todo", "in_progress", "to_review", "blocked"]).order("signaled_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     admin.from("daily_organisation_checklist_items").select("id,organisation_id,label,status,signaled_at").in("organisation_id", organisationIds).in("status", ["to_review", "blocked"]),
   ]);
-  if (formationRes.error || responseRes.error || reviewRes.error || checklistRes.error || organisationChecklistRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? reviewRes.error?.message ?? checklistRes.error?.message ?? organisationChecklistRes.error?.message ?? "Erreur Daily");
+  if (formationRes.error || responseRes.error || reviewRes.error || decisionRes.error || checklistRes.error || organisationChecklistRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? reviewRes.error?.message ?? decisionRes.error?.message ?? checklistRes.error?.message ?? organisationChecklistRes.error?.message ?? "Erreur Daily");
 
   const formations = ((formationRes.data ?? []) as Formation[]).filter((row) => isDailyTaskParentActive(row.status));
   const responses = (responseRes.data ?? []) as Response[];
   const reviews = (reviewRes.data ?? []) as RegistrationReview[];
+  const acceptedSessionIds = new Set(((decisionRes.data ?? []) as RegistrationDecision[]).map((row) => row.attached_session_id).filter((value): value is string => Boolean(value)));
   const checklistItems = (checklistRes.data ?? []) as SessionChecklistItem[];
   const formationById = new Map(formations.map((row) => [row.id, row]));
   const sessionById = new Map(sessions.map((row) => [row.id, row]));
@@ -247,6 +250,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
     const formation = formationById.get(session.formation_id);
     if (!formation || formation.organisation_id !== organisation.id) continue;
     if (item.item_key === "pretraining_documents") {
+      if (!acceptedSessionIds.has(session.id)) continue;
       const registrationResponses = responsesBySession.get(session.id) ?? [];
       const latestRegistrationResponse = registrationResponses[registrationResponses.length - 1];
       const review = reviewBySession.get(session.id);
