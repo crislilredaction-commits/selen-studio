@@ -16,6 +16,7 @@ type DailyDocumentForPublication = {
 const DOCUMENT_LABELS: Record<string, string> = {
   training_program: "Programme de formation",
   training_agreement: "Convention de formation",
+  training_contract: "Contrat individuel de formation professionnelle",
   convocation: "Convocation",
   registration_positioning: "Inscription et positionnement",
   attendance_summary: "Relevé des présences",

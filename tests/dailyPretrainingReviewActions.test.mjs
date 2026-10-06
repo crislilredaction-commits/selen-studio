@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
 
 const docId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -38,6 +39,7 @@ function fixture() {
     "@/lib/vitrineLinks": { getVitrineBaseUrl: () => "https://daily.example.test" },
   });
   const route = isolatedTsModule("src/app/agent/api/daily/pretraining-documents/route.ts", {
+    "node:crypto": { createHash, randomUUID: () => "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
     "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } },
     "@/lib/supabase/server": { createClient: async () => ({ auth: { getUser: async () => ({ data: { user: { id: "agent-user" } } }) } }) },
     "@/lib/server/supabaseAdmin": { createSupabaseAdminClient: () => admin },
