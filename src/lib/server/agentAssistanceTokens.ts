@@ -21,12 +21,14 @@ export async function createAgentAssistanceToken({
   agentEmail,
   organisationId,
   dossierId = null,
+  portalAccessId = null,
   headersList,
 }: {
   agentUserId?: string | null;
   agentEmail?: string | null;
   organisationId: string;
   dossierId?: string | null;
+  portalAccessId?: string | null;
   headersList?: Headers;
 }) {
   const admin = createSupabaseAdminClient();
@@ -81,6 +83,32 @@ export async function createAgentAssistanceToken({
     }
   }
 
+  if (portalAccessId) {
+    const { data: portalAccess } = await admin
+      .from("daily_portal_access_tokens")
+      .select("id, portal_type, status, expires_at, daily_sessions!inner(organisation_id, status)")
+      .eq("id", portalAccessId)
+      .eq("daily_sessions.organisation_id", organisationId)
+      .in("portal_type", ["learner", "trainer"])
+      .maybeSingle();
+    const session = Array.isArray(portalAccess?.daily_sessions)
+      ? portalAccess.daily_sessions[0]
+      : portalAccess?.daily_sessions;
+    const expired = Boolean(
+      portalAccess?.expires_at &&
+        new Date(portalAccess.expires_at).getTime() < Date.now(),
+    );
+    if (
+      !portalAccess ||
+      !session ||
+      session.status === "archived" ||
+      ["revoked", "expired"].includes(String(portalAccess.status ?? "")) ||
+      expired
+    ) {
+      throw new Error("Accès assistance refusé : portail hors organisme ou inactif.");
+    }
+  }
+
   const token = crypto.randomBytes(32).toString("base64url");
   const tokenHash = hashAssistanceToken(token);
   const expiresAt = new Date(
@@ -98,6 +126,9 @@ export async function createAgentAssistanceToken({
       expires_at: expiresAt,
       created_ip: getClientIp(headersList),
       created_user_agent: headersList?.get("user-agent") ?? null,
+      metadata: portalAccessId
+        ? { scope: "portal_preview", portal_access_id: portalAccessId }
+        : { scope: "daily_workspace" },
     })
     .select("id")
     .single();
@@ -116,16 +147,22 @@ export async function createAgentAssistanceToken({
     user_agent: headersList?.get("user-agent") ?? null,
   });
 
-  const targetPath = dossierId
-    ? `/client/dossier/${dossierId}`
-    : "/client";
+  const targetPath = portalAccessId
+    ? `/daily/assistance/portail/${portalAccessId}`
+    : dossierId
+      ? `/client/dossier/${dossierId}`
+      : "/client";
   const url = new URL(targetPath, getVitrineBaseUrl());
   url.searchParams.set("assistanceToken", token);
   const returnTo = headersList?.get("referer")?.trim();
   if (returnTo) {
     try {
       const returnUrl = new URL(returnTo);
-      if (returnUrl.protocol === "https:" || returnUrl.hostname === "localhost") {
+      const requestHost = headersList?.get("host")?.split(":")[0]?.toLowerCase();
+      const allowedHost = returnUrl.hostname === "studio.selen-editions.fr" ||
+        returnUrl.hostname === "localhost" ||
+        Boolean(requestHost && returnUrl.hostname.toLowerCase() === requestHost);
+      if (allowedHost && (returnUrl.protocol === "https:" || returnUrl.hostname === "localhost")) {
         url.searchParams.set("assistanceReturnTo", returnUrl.toString());
       }
     } catch {
