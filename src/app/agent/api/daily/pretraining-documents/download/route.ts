@@ -18,7 +18,7 @@ export async function GET(req:Request) {
     .select("bucket,storage_path,document_type,organisation_id")
     .eq("id",id)
     .in("organisation_id",organisationIds)
-    .in("document_type",["training_program","training_agreement","convocation","registration_positioning"])
+    .in("document_type",["training_program","training_agreement","training_contract","convocation","registration_positioning","welcome_booklet","internal_regulations"])
     .single();
   if (error || !document) return NextResponse.json({error:"Document introuvable."},{status:404});
   const { data:signed,error:signError } = await admin.storage.from(document.bucket).createSignedUrl(document.storage_path,120);
