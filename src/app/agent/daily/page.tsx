@@ -4,6 +4,7 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyPilotageTasks, canTreatDailyPilotageTask } from "@/lib/server/dailyPilotageVisibility";
 import { getStudioClientFollowups } from "@/lib/server/studioClientFollowups";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import { presentDailyTask } from "@/lib/dailyTaskPresentation";
 
 export const dynamic = "force-dynamic";
 
@@ -44,9 +45,11 @@ export default async function AgentDailyPage() {
         <div style={s.sectionHead}><h2 style={s.h2}>Tâches à faire</h2><span style={s.pill}>{tasks.length}</span></div>
         {tasks.length === 0 ? <SelenCard style={s.empty}><SelenCardTitle>Aucune tâche humaine ouverte</SelenCardTitle><p style={s.muted}>Aucune action Daily agent n’est actuellement ouverte.</p></SelenCard> : <div style={s.list}>{tasks.map((item) => {
           const canTreat = canTreatDailyPilotageTask(item, staff);
+          const daily = presentDailyTask(item);
           return <SelenCard key={item.id} style={s.card}>
-            <div className="daily-task-head" style={s.cardHead}><div><div style={s.badges}><span style={s.badge}>{item.reason}</span>{item.escalatedToAdmin ? <span style={{ ...s.badge, ...s.badgeEscalated }}>Escaladé à un administrateur</span> : null}{!canTreat && item.assignedAgentProfileId ? <span style={{ ...s.badge, ...s.badgeReadonly }}>Assignée à un autre agent</span> : null}</div><Link href={item.href} style={s.titleLink}><SelenCardTitle>{item.title}</SelenCardTitle></Link><p style={s.org}>{item.organisation}</p></div><span style={s.date}>{formatDate(item.createdAt)}</span></div>
+            <div className="daily-task-head" style={s.cardHead}><div><div style={s.badges}><span style={s.badge}>{item.reason}</span><span style={s.badge}>Statut : {daily.statusLabel}</span><span style={s.badge}>Priorité : {daily.priorityLabel}</span>{item.escalatedToAdmin ? <span style={{ ...s.badge, ...s.badgeEscalated }}>Escaladé à un administrateur</span> : null}{!canTreat && item.assignedAgentProfileId ? <span style={{ ...s.badge, ...s.badgeReadonly }}>Assignée à un autre agent</span> : null}</div><Link href={item.href} style={s.titleLink}><SelenCardTitle>{item.title}</SelenCardTitle></Link><p style={s.org}>Contexte : {daily.context}</p></div><span style={s.date}>Échéance : {daily.dueAt ? formatDate(daily.dueAt) : "non renseignée"}</span></div>
             <p style={s.detail}>{item.detail}</p>
+            <p style={s.detail}><strong>Action attendue :</strong> {daily.expectedAction}</p>
             <div className="daily-task-actions" style={s.actions}>
               {item.kind === "assignment" ? (role === "admin" ? <Link href={item.href} style={s.primary}>Assigner un agent →</Link> : <form method="post" action="/agent/api/daily/organisation-assignment"><input type="hidden" name="organisation_id" value={item.organisationId}/><button type="submit" style={s.primaryButton}>Me l’assigner →</button></form>) : canTreat ? <><Link href={item.href} style={s.primary}>Traiter maintenant →</Link><Link href={`/agent/daily/escalations?task_key=${encodeURIComponent(item.id)}`} style={s.secondary}>{item.escalatedToAdmin ? "Voir l’escalade" : "Escalader à un admin"}</Link></> : <span style={s.readonlyText}>Traitement réservé à l’agent assigné.</span>}
             </div>
