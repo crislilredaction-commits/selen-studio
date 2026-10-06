@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Generate 24h working-day signature reminders
+      - name: Run canonical J+3 / J+6 / J+9 signature sequence
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           SELEN_STUDIO_BASE_URL: ${{ secrets.SELEN_STUDIO_BASE_URL }}

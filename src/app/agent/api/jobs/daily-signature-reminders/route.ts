@@ -15,8 +15,18 @@ async function run(req: Request) {
   }
 
   try {
-    const result = await generateDailySignatureReminders();
-    return NextResponse.json({ ok: true, result });
+    const legacy = await generateDailySignatureReminders();
+    const baseUrl = (process.env.SELEN_DAILY_BASE_URL?.trim() || "https://www.selen-editions.fr").replace(/\/$/, "");
+    const upstream = await fetch(`${baseUrl}/api/internal/daily/signature-followup-automation?execute=1`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET?.trim()}` },
+      cache: "no-store",
+    });
+    const payload = await upstream.json().catch(() => ({ error: "Réponse Daily illisible." }));
+    if (!upstream.ok) {
+      return NextResponse.json({ ok: false, legacy, daily: payload }, { status: upstream.status });
+    }
+    return NextResponse.json({ ok: true, legacy, daily: payload });
   } catch (error) {
     console.error("Job relances signatures Daily échoué.", error);
     return NextResponse.json(

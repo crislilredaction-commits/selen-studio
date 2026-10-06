@@ -11,39 +11,31 @@ const workflow = fs.readFileSync(path.join(root, ".github/workflows/daily-signat
 const communicationsPage = fs.readFileSync(path.join(root, "src/app/agent/daily/communications/page.tsx"), "utf8");
 const followupPage = fs.readFileSync(path.join(root, "src/app/agent/daily/session-dossiers/[id]/followup/page.tsx"), "utf8");
 
-test("uses the canonical 24h reminder type and no 72h key in active UI or worker", () => {
-  assert.match(helper, /daily_signature_pending_24h/);
-  assert.doesNotMatch(helper + worker + communicationsPage, /daily_signature_pending_72h|H\+72|72 \* 60 \* 60/);
-  assert.match(communicationsPage, /Échéance 24 h ouvrées/);
+test("uses the canonical J+3 reminder type in the active UI", () => {
+  assert.match(helper, /daily_signature_pending_72h/);
+  assert.match(communicationsPage, /Prochaine échéance/);
   assert.match(communicationsPage, /signatureReminderDueAt/);
+  assert.match(communicationsPage, /Relance automatique J\+3 planifiée/);
+  assert.match(communicationsPage, /Relance automatique J\+6 planifiée/);
+  assert.match(communicationsPage, /Appel agent J\+9 à traiter/);
+  assert.match(communicationsPage, /Alerte urgente avant démarrage/);
 });
 
-test("skips weekends and French public holidays", () => {
-  assert.match(helper, /Europe\/Paris/);
-  assert.match(helper, /weekday !== "Sat" && weekday !== "Sun"/);
-  assert.match(helper, /07-14/);
-  assert.match(helper, /12-25/);
-  assert.match(helper, /easterMonday/);
+test("first canonical deadline is exactly J+3", () => {
+  assert.match(helper, /3 \* 24 \* 60 \* 60 \* 1000/);
 });
 
-test("automatic worker is idempotent by signature and resolves terminal expectations", () => {
-  assert.match(worker, /signatureReminderDedupeKey\(signature\.id\)/);
+test("Studio retires the obsolete parallel 24h reminders", () => {
+  assert.match(worker, /daily_signature_pending_24h/);
   assert.match(worker, /ACTIVE_SIGNATURE_REMINDER_STATUSES/);
   assert.match(worker, /status: "resolved"/);
-  assert.match(worker, /isSignatureTerminal\(signature\.status, signature\.signed_at\)/);
-  assert.match(worker, /communication_type", "convention_signature"/);
+  assert.match(worker, /superseded_by_canonical_j3_j6_j9/);
 });
 
-test("manual followup is scoped and atomically claimed before email send", () => {
-  assert.match(worker, /isDailyOrganisationInAgentScope\(agentEmail, session\.organisation_id\)/);
-  assert.match(worker, /daily_signature_manual_followup:\$\{signatureId\}:\$\{initialCommunicationId\}/);
-  assert.match(worker, /\.eq\("status", "draft"\)/);
-  assert.match(worker, /\.update\(\{ status: "ready", updated_at: now \}\)/);
-  assert.match(worker, /previous\?\.status === "sent"/);
-  assert.match(worker, /communication_type: "convention_signature_followup"/);
-  assert.match(followupPage, /sendManualDailySignatureReminder/);
-  assert.match(followupPage, /isDailyOrganisationInAgentScope/);
-  assert.match(followupPage, /Relancer la signature/);
+test("active Studio followup does not allow an extra manual email outside the canonical sequence", () => {
+  assert.doesNotMatch(followupPage, /sendManualDailySignatureReminder/);
+  assert.doesNotMatch(followupPage, /Relancer la signature/);
+  assert.match(followupPage, /emails J\+3 et J\+6, puis tâche agent J\+9/);
 });
 
 test("email transport evidence cannot become signature evidence", () => {
@@ -57,9 +49,16 @@ test("cron route fails closed without the shared secret", () => {
   assert.match(route, /Bearer \$\{secret\}/);
 });
 
+test("secured Studio job proxies the existing schedule to the Daily canonical worker", () => {
+  assert.match(route, /SELEN_DAILY_BASE_URL/);
+  assert.match(route, /signature-followup-automation\?execute=1/);
+  assert.match(route, /authorization: `Bearer \$\{process\.env\.CRON_SECRET\?\.trim\(\)\}`/);
+  assert.match(route, /if \(!upstream\.ok\)/);
+});
+
 test("scheduled workflow invokes the secured worker without Vercel Cron", () => {
   assert.match(workflow, /cron: "17 \* \* \* \*"/);
-  assert.match(workflow, /daily-signature-reminders/);
+  assert.match(workflow, /canonical J\+3 \/ J\+6 \/ J\+9/);
   assert.match(workflow, /CRON_SECRET/);
   assert.match(workflow, /SELEN_STUDIO_BASE_URL/);
 });

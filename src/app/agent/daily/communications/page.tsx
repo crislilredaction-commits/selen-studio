@@ -103,10 +103,15 @@ function reminderLabel(reminder: ReminderRow | undefined) {
   if (!reminder) return "Aucune relance enregistrée";
   if (reminder.status === "resolved") return "Relance clôturée";
   if (!activeReminderStatuses.has(String(reminder.status ?? ""))) return `Relance ${reminder.status ?? "—"}`;
+  const stage = text(reminder.metadata?.followup_stage);
+  if (stage === "automatic_email_j3") return "Relance automatique J+3 planifiée";
+  if (stage === "automatic_email_j6") return "Relance automatique J+6 planifiée";
+  if (stage === "phone_call_j9") return "Appel agent J+9 à traiter";
+  if (stage === "agent_urgent_before_start") return "Alerte urgente avant démarrage";
   if (!reminder.due_at) return "Relance active";
   return new Date(reminder.due_at).getTime() <= Date.now()
     ? "Relance nécessaire"
-    : "Relance prévue après 24 h ouvrées";
+    : "Relance planifiée";
 }
 
 export default async function DailyCommunicationsPage({ searchParams }: Props) {
@@ -228,7 +233,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
                     </p>
                     <p style={{ margin: "4px 0", fontSize: 13 }}>
                       <strong>Consultation du document :</strong> {signature.viewed_at ? dateLabel(signature.viewed_at) : "Non tracée"}
-                      {" · "}<strong>Échéance 24 h ouvrées :</strong> {dateLabel(deadline)}
+                      {" · "}<strong>Prochaine échéance :</strong> {dateLabel(deadline)}
                     </p>
                     <p style={{ margin: "4px 0", fontSize: 13 }}>
                       <strong>Signature :</strong> {signature.signed_at ? dateLabel(signature.signed_at) : "En attente"}

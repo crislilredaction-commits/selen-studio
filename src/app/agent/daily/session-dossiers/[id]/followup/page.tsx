@@ -4,7 +4,6 @@ import { loadDailyCandidatureFollowup } from "@/lib/server/dailyCandidatureFollo
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
-import { sendManualDailySignatureReminder } from "@/lib/server/dailySignatureReminders";
 import { isSignatureTerminal } from "@/lib/daily/signatureReminder24h";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
@@ -76,25 +75,6 @@ async function resolveEntry(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath(`/agent/daily/session-dossiers/${sessionId}/followup`);
   revalidatePath(`/agent/daily/session-dossiers/${sessionId}`);
-}
-
-async function sendSignatureFollowup(formData: FormData) {
-  "use server";
-  const auth = await requireSupportAgent();
-  if (!auth.ok) throw new Error(auth.error);
-  const sessionId = String(formData.get("session_id") ?? "");
-  const signatureId = String(formData.get("signature_id") ?? "");
-  if (!sessionId || !signatureId) throw new Error("Relance de signature invalide.");
-  await requireScopedSession(sessionId, auth.email);
-  const result = await sendManualDailySignatureReminder({
-    signatureId,
-    agentEmail: auth.email,
-    agentUserId: auth.userId,
-  });
-  if (result.error) throw new Error(result.error);
-  revalidatePath(`/agent/daily/session-dossiers/${sessionId}/followup`);
-  revalidatePath(`/agent/daily/session-dossiers/${sessionId}`);
-  revalidatePath(`/agent/daily/communications?session_id=${sessionId}`);
 }
 
 function partyLabel(value: string | null) {
@@ -182,17 +162,15 @@ export default async function DailySessionFollowupPage({ params }: Props) {
                   {signature.signatory_email ? ` · ${signature.signatory_email}` : ""}
                   {signature.viewed_at ? " · document consulté" : " · consultation non tracée"}
                 </div>
-                <form action={sendSignatureFollowup}>
-                  <input type="hidden" name="session_id" value={id} />
-                  <input type="hidden" name="signature_id" value={signature.id} />
-                  <SelenButton type="submit">Relancer la signature</SelenButton>
-                </form>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--selen-text2)" }}>
+                  Séquence suivie automatiquement : emails J+3 et J+6, puis tâche agent J+9. Une alerte urgente remplace la prochaine étape si la formation démarre avant celle-ci.
+                </p>
               </div>
             ))}
           </div>
         )}
         <p style={{ fontSize: 12, color: "var(--selen-text2)", marginBottom: 0, marginTop: 10 }}>
-          Un double-clic ou une répétition de la même relance n’envoie pas deux emails. Une nouvelle relance redevient possible après une nouvelle demande de signature initiale.
+          La signature arrête immédiatement la séquence. Les envois automatiques sont idempotents et restent traçables dans Communications & preuves.
         </p>
       </SelenCard>
 
