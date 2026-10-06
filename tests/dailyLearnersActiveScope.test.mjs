@@ -4,8 +4,9 @@ import test from "node:test";
 
 const learnersPage = readFileSync(new URL("../src/app/agent/daily/learners/page.tsx", import.meta.url), "utf8");
 
-test("la vue apprenants réutilise le périmètre canonique Daily actif", () => {
-  assert.match(learnersPage, /getActiveDailyOrganisationIds/);
+test("la vue apprenants réutilise le périmètre canonique actif et affecté à l'agent", () => {
+  assert.match(learnersPage, /getDailyOrganisationIdsForAgent\(auth\.email\)/);
+  assert.doesNotMatch(learnersPage, /getActiveDailyOrganisationIds/);
   assert.match(learnersPage, /\.from\("daily_learners"\)[\s\S]*\.in\("organisation_id", organisationIds\)/);
   assert.match(learnersPage, /\.from\("daily_session_enrolments"\)[\s\S]*\.in\("organisation_id", organisationIds\)/);
 });

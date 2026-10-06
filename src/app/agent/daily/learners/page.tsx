@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
-import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
 function badge(value: string) {
@@ -12,18 +12,18 @@ export default async function DailyLearnersStudioPage() {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={{ padding: 28 }}>Accès refusé.</main>;
   const admin = createSupabaseAdminClient();
-  const organisationIds = await getActiveDailyOrganisationIds();
+  const organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
 
   const [{ data: learners }, { data: enrolments }] = organisationIds.length
     ? await Promise.all([
         admin.from("daily_learners").select("*,organisations(name)").in("organisation_id", organisationIds).order("last_name"),
-        admin.from("daily_session_enrolments").select("*,daily_learners(first_name,last_name,email),daily_sessions(id,internal_reference,start_date,end_date,daily_formations(title)),organisations(name)").in("organisation_id", organisationIds).order("created_at", { ascending: false }),
+        admin.from("daily_session_enrolments").select("*,daily_learners(id,first_name,last_name,email),daily_sessions(id,internal_reference,start_date,end_date,daily_formations(title)),organisations(name)").in("organisation_id", organisationIds).order("created_at", { ascending: false }),
       ])
     : [{ data: [] }, { data: [] }];
 
   const enrolmentIds = (enrolments ?? []).map((item) => item.id);
   const { data: supportNeeds } = enrolmentIds.length
-    ? await admin.from("daily_enrolment_support_needs").select("*").in("enrolment_id", enrolmentIds).eq("has_specific_needs", true)
+    ? await admin.from("daily_enrolment_support_needs").select("*").in("organisation_id", organisationIds).in("enrolment_id", enrolmentIds).eq("has_specific_needs", true)
     : { data: [] };
 
   const needsMap = new Map((supportNeeds ?? []).map((item) => [item.enrolment_id, item]));
@@ -40,10 +40,10 @@ export default async function DailyLearnersStudioPage() {
       {(enrolments ?? []).length === 0 ? <div style={{border:"1px solid var(--selen-border)",borderRadius:12,padding:18}}>Aucune inscription pour le moment.</div> : (enrolments ?? []).map((e) => {
         const need = needsMap.get(e.id);
         const session = e.daily_sessions as { id?: string; internal_reference?: string | null; start_date?: string | null; daily_formations?: { title?: string | null } | null } | null;
-        const learner = e.daily_learners as { first_name?: string; last_name?: string; email?: string | null } | null;
+        const learner = e.daily_learners as { id?: string; first_name?: string; last_name?: string; email?: string | null } | null;
         const org = e.organisations as { name?: string } | null;
         return <article key={e.id} style={{border:"1px solid var(--selen-border)",borderRadius:12,padding:"clamp(12px, 3vw, 16px)",background:"var(--selen-bg2)",minWidth:0,overflow:"hidden"}}>
-          <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",minWidth:0}}><div style={{minWidth:0,flex:"1 1 240px",overflowWrap:"anywhere"}}><strong>{learner?.first_name} {learner?.last_name}</strong>{learner?.email ? ` · ${learner.email}` : ""}<div style={{fontSize:12,color:"var(--selen-text2)",marginTop:4,overflowWrap:"anywhere"}}>{org?.name ?? "Organisme"} · {session?.daily_formations?.title ?? "Session"} · {session?.internal_reference ?? session?.start_date ?? ""}</div></div><Link href={`/agent/daily/session-dossiers/${e.session_id}`} style={{fontSize:12,display:"inline-flex",alignItems:"center",minHeight:32}}>Ouvrir le dossier</Link></div>
+          <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",minWidth:0}}><div style={{minWidth:0,flex:"1 1 240px",overflowWrap:"anywhere"}}><strong>{learner?.first_name} {learner?.last_name}</strong>{learner?.email ? ` · ${learner.email}` : ""}<div style={{fontSize:12,color:"var(--selen-text2)",marginTop:4,overflowWrap:"anywhere"}}>{org?.name ?? "Organisme"} · {session?.daily_formations?.title ?? "Session"} · {session?.internal_reference ?? session?.start_date ?? ""}</div></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{learner?.id ? <Link href={`/agent/daily/learners/${learner.id}?session=${encodeURIComponent(e.session_id)}`} style={{fontSize:12,display:"inline-flex",alignItems:"center",minHeight:32}}>Ouvrir la fiche apprenant</Link> : null}<Link href={`/agent/daily/session-dossiers/${e.session_id}`} style={{fontSize:12,display:"inline-flex",alignItems:"center",minHeight:32}}>Ouvrir le dossier</Link></div></div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10,fontSize:12,minWidth:0}}><span style={{overflowWrap:"anywhere"}}>Inscription : <b>{badge(e.status)}</b></span><span style={{overflowWrap:"anywhere"}}>Positionnement : <b>{badge(e.positioning_status)}</b></span><span style={{overflowWrap:"anywhere"}}>Prérequis : <b>{badge(e.prerequisites_status)}</b></span><span style={{overflowWrap:"anywhere"}}>Financement : <b>{e.funding_type}</b></span></div>
           {need && <div style={{marginTop:10,padding:10,borderRadius:8,background:"rgba(210,145,65,.10)",overflowWrap:"anywhere"}}><strong>Adaptation à prévoir</strong>{need.needs_description ? <p style={{margin:"4px 0"}}>{need.needs_description}</p> : null}{need.planned_accommodations ? <p style={{margin:"4px 0"}}>Prévu : {need.planned_accommodations}</p> : null}{need.contact_requested ? <p style={{margin:"4px 0"}}>Un échange complémentaire est demandé.</p> : null}</div>}
         </article>;
