@@ -72,6 +72,28 @@ async function openAssistanceMode(formData: FormData) {
   redirect(result.url);
 }
 
+async function openPortalAssistanceMode(formData: FormData) {
+  "use server";
+  const auth = await requireSupportAgent();
+  if (!auth.ok) throw new Error(auth.error);
+  const organisationId = String(formData.get("organisation_id") ?? "").trim();
+  const portalAccessId = String(formData.get("portal_access_id") ?? "").trim();
+  if (!organisationId || !portalAccessId) {
+    throw new Error("Portail délégué incomplet.");
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const result = await createAgentAssistanceToken({
+    agentUserId: user?.id ?? null,
+    agentEmail: user?.email ?? auth.email ?? null,
+    organisationId,
+    portalAccessId,
+    headersList: await headers(),
+  });
+  redirect(result.url);
+}
+
 async function assignAgent(formData: FormData) {
   "use server";
   const auth = await requireSupportAdmin();
@@ -245,7 +267,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const admin = createSupabaseAdminClient();
   const scopedDailyTasksPromise = getDailyAgentTasks({ id: null, role: "admin" }, { organisationId: id });
 
-  const [organisationRes, assignmentRes, agentsRes, adminAccessRes, checklistRes, membershipsRes, rolesRes, blocksRes, invitationsRes, trainersRes, certificationsRes, validationsRes, historyRes, profilesRes] = await Promise.all([
+  const [organisationRes, assignmentRes, agentsRes, adminAccessRes, checklistRes, membershipsRes, rolesRes, blocksRes, invitationsRes, trainersRes, certificationsRes, validationsRes, historyRes, profilesRes, sessionsRes] = await Promise.all([
     admin.from("organisations").select("*").eq("id", id).maybeSingle(),
     admin.from("daily_organisation_assignments").select("organisation_id,agent_profile_id,agent_profiles(id,email,first_name,last_name,role)").eq("organisation_id", id).maybeSingle(),
     admin.from("agent_profiles").select("id,email,first_name,last_name,role").eq("is_active", true).in("role", ["agent", "admin"]).order("first_name"),
@@ -260,6 +282,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
     admin.from("daily_organisation_profile_change_requests").select("*").eq("organisation_id", id).order("requested_at", { ascending: false }),
     admin.from("daily_audit_logs").select("id,actor_type,actor_role,object_type,action,occurred_at,reason").eq("organisation_id", id).order("occurred_at", { ascending: false }).limit(80),
     admin.from("selen_client_profiles").select("user_id,email,full_name,organisation_id").eq("organisation_id", id),
+    admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,daily_formations(title)").eq("organisation_id", id).neq("status", "archived").order("start_date", { ascending: false }).limit(50),
   ]);
 
   if (organisationRes.error || !organisationRes.data) return <main style={s.page}><p style={s.error}>Organisme introuvable.</p></main>;
@@ -283,6 +306,22 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const assignedAgent = assignment?.agent_profiles;
   const isAdmin = adminAccessRes.data?.role === "admin" || (agentsRes.data ?? []).some((agent) => agent.email === auth.email && agent.role === "admin");
   const profileByUser = new Map((profilesRes.data ?? []).map((profile) => [profile.user_id, profile]));
+  const sessions = sessionsRes.data ?? [];
+  const sessionIds = sessions.map((session) => session.id);
+  const portalAccessRes = sessionIds.length
+    ? await admin
+        .from("daily_portal_access_tokens")
+        .select("id,session_id,portal_type,entity_name,entity_email,status,expires_at,viewed_at")
+        .in("session_id", sessionIds)
+        .in("portal_type", ["learner", "trainer"])
+        .not("status", "in", "(revoked,expired)")
+        .order("created_at", { ascending: false })
+        .limit(30)
+    : { data: [], error: null };
+  const activePortalAccess = (portalAccessRes.data ?? []).filter((access) =>
+    !access.expires_at || new Date(access.expires_at).getTime() >= Date.now(),
+  );
+  const sessionById = new Map(sessions.map((session) => [session.id, session]));
 
   return (
     <main style={s.page}>
@@ -328,6 +367,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
         <div style={s.twoCols}>
           <SelenCard><SelenCardTitle>Programmes de formation</SelenCardTitle><p style={s.muted}>Modifie et valide les programmes, puis consulte leurs questionnaires.</p><Link href={`/agent/daily/organisations/${id}?tab=programs`} style={{ color: "var(--selen-gold)", fontWeight: 700 }}>Voir les programmes →</Link></SelenCard>
           <SelenCard><SelenCardTitle>Documents client</SelenCardTitle><p style={s.muted}>Ouvre les fichiers et justificatifs déposés dans l’espace Daily de cet organisme.</p><Link href={`/agent/daily/organisations/${id}?tab=documents`} style={{ color: "var(--selen-gold)", fontWeight: 700 }}>Consulter les documents →</Link></SelenCard>
+          <SelenCard style={{ gridColumn: "1 / -1" }}><SelenCardTitle>Espaces apprenant et formateur délégués</SelenCardTitle><p style={s.muted}>Consultation sûre dans le contexte de cet OF. Les liens personnels ne sont pas révélés et aucune réponse, signature ou action personnelle ne peut être réalisée par l’agent.</p>{activePortalAccess.length === 0 ? <p style={s.muted}>Aucun espace actif disponible pour les sessions de cet organisme.</p> : activePortalAccess.map((access) => { const session = sessionById.get(access.session_id); const formation = Array.isArray(session?.daily_formations) ? session.daily_formations[0] : session?.daily_formations; return <div key={access.id} style={s.attentionRow}><div><strong>{access.portal_type === "learner" ? "Apprenant" : "Formateur"} · {access.entity_name || access.entity_email || "Espace sécurisé"}</strong><p style={s.mutedInline}>{formation?.title || session?.internal_reference || "Session"} · {session?.start_date || "date à préciser"}{access.viewed_at ? " · déjà ouvert par le titulaire" : " · non encore ouvert par le titulaire"}</p></div><form action={openPortalAssistanceMode}><input type="hidden" name="organisation_id" value={id} /><input type="hidden" name="portal_access_id" value={access.id} /><SelenButton type="submit" size="sm" variant="ghost">Consulter en délégation</SelenButton></form></div>; })}</SelenCard>
           <SelenCard><SelenCardTitle>Tâches de cet OF</SelenCardTitle>{scopedDailyTasks.length === 0 ? <p style={s.muted}>Aucune tâche active pour cet organisme.</p> : scopedDailyTasks.map((item) => <div key={item.id} style={s.attentionRow}><div><strong>{item.title}</strong><p style={s.mutedInline}>{item.reason} · {item.detail}</p></div><Link href={item.href} style={s.back}>Traiter →</Link></div>)}</SelenCard>
           <SelenCard><SelenCardTitle>Signaux dossier</SelenCardTitle><Signal label="NDA" value={organisation.nda_status || "unknown"} /><Signal label="Qualiopi" value={organisation.qualiopi_status || "unknown"} /><Signal label="Utilisateurs actifs" value={String(memberships.filter((m) => m.status === "active").length)} /><Signal label="Formateurs actifs" value={String(trainers.filter((t) => t.active).length)} /><Signal label="Invitations en attente" value={String(invitations.filter((i) => i.status === "pending").length)} /></SelenCard>
           <SelenCard style={{ gridColumn: "1 / -1" }}><SelenCardTitle>Échéances formateurs</SelenCardTitle>{expiring.length === 0 ? <p style={s.muted}>Aucune certification à durée limitée n’arrive à échéance dans les 90 jours.</p> : expiring.map((cert) => { const trainer = trainers.find((t) => t.id === cert.trainer_profile_id); return <div key={cert.id} style={s.attentionRow}><span>{trainer?.display_name || "Formateur"} · {cert.title}</span><SelenBadge variant={certVariant(cert.validity_mode, cert.valid_until)}>{certificationLabel(cert.validity_mode, cert.valid_until)}</SelenBadge></div>; })}</SelenCard>
