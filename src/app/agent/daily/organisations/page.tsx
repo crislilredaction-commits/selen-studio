@@ -6,6 +6,7 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
+import { dailyOrganisationProgramStats, dailyOrganisationTaskCounts } from "@/lib/dailyOrganisationStatistics";
 
 type OrganisationRow = {
   id: string;
@@ -26,12 +27,6 @@ type AssignmentRow = {
     last_name: string | null;
     email: string;
   } | null;
-};
-
-type ChecklistRow = {
-  organisation_id: string;
-  status: string;
-  signaled_at: string;
 };
 
 type ValidationRow = {
@@ -58,14 +53,6 @@ function agentLabel(assignment?: AssignmentRow) {
     .join(" ")
     .trim();
   return fullName || profile.email;
-}
-
-function isAttentionStatus(status: string) {
-  return ["to_review", "blocked"].includes(status);
-}
-
-function isCompletedStatus(status: string) {
-  return ["validated", "not_applicable"].includes(status);
 }
 
 function daysUntil(value: string) {
@@ -124,7 +111,7 @@ export default async function DailyOrganisationsPage() {
     ? dailyOrganisationIds
     : ["00000000-0000-0000-0000-000000000000"];
 
-  const [organisationsRes, assignmentsRes, checklistRes, validationsRes, trainersRes, certificationsRes] =
+  const [organisationsRes, assignmentsRes, formationsRes, validationsRes, trainersRes, certificationsRes] =
     await Promise.all([
       admin
         .from("organisations")
@@ -137,9 +124,10 @@ export default async function DailyOrganisationsPage() {
         .select("organisation_id,agent_profile_id,agent_profiles(first_name,last_name,email)")
         .in("organisation_id", scopeIds),
       admin
-        .from("daily_organisation_checklist_items")
-        .select("organisation_id,status,signaled_at")
-        .in("organisation_id", scopeIds),
+        .from("daily_formations")
+        .select("organisation_id,status")
+        .in("organisation_id", scopeIds)
+        .neq("status", "archived"),
       admin
         .from("daily_organisation_profile_change_requests")
         .select("organisation_id,status")
@@ -156,7 +144,7 @@ export default async function DailyOrganisationsPage() {
         .eq("validity_mode", "limited"),
     ]);
 
-  const firstError = [organisationsRes, assignmentsRes, checklistRes, validationsRes, trainersRes, certificationsRes]
+  const firstError = [organisationsRes, assignmentsRes, formationsRes, validationsRes, trainersRes, certificationsRes]
     .map((result) => result.error)
     .find(Boolean);
 
@@ -166,10 +154,11 @@ export default async function DailyOrganisationsPage() {
 
   const organisations = (organisationsRes.data ?? []) as OrganisationRow[];
   const assignments = (assignmentsRes.data ?? []) as unknown as AssignmentRow[];
-  const checklist = (checklistRes.data ?? []) as ChecklistRow[];
+  const formations = (formationsRes.data ?? []) as Array<{ organisation_id: string; status: string }>;
   const validations = (validationsRes.data ?? []) as ValidationRow[];
   const trainers = (trainersRes.data ?? []) as TrainerRow[];
   const certifications = (certificationsRes.data ?? []) as CertificationRow[];
+  const activeTaskCounts = dailyOrganisationTaskCounts(attentionTasks);
 
   const trainerOrganisation = new Map(trainers.map((trainer) => [trainer.id, trainer.organisation_id]));
   const urgentCertificationByOrganisation = new Map<string, number>();
@@ -210,8 +199,8 @@ export default async function DailyOrganisationsPage() {
       <section style={s.stats}>
         <Stat label="Organismes Daily actifs" value={organisations.length} />
         <Stat label="Points à traiter" value={totalAttention} tone="warn" />
-        <Stat label="Validations Selen" value={pendingValidations} tone="info" />
-        <Stat label="Certifications ≤ 90 j" value={expiringCertifications} tone="danger" />
+        <Stat label="Modifications de profil à valider" value={pendingValidations} tone="info" />
+        <Stat label="Certifications à surveiller" value={expiringCertifications} tone="danger" />
       </section>
 
       <SelenCard>
@@ -222,13 +211,10 @@ export default async function DailyOrganisationsPage() {
           <div style={s.list}>
             {organisations.map((organisation) => {
               const assignment = assignments.find((row) => row.organisation_id === organisation.id);
-              const items = checklist.filter((row) => row.organisation_id === organisation.id);
-              const done = items.filter((item) => isCompletedStatus(item.status)).length;
-              const attention = items.filter((item) => isAttentionStatus(item.status)).length;
+              const programStats = dailyOrganisationProgramStats(formations.filter((row) => row.organisation_id === organisation.id));
+              const attention = activeTaskCounts.get(organisation.id) ?? 0;
               const validationCount = validations.filter((row) => row.organisation_id === organisation.id).length;
               const certificationCount = urgentCertificationByOrganisation.get(organisation.id) ?? 0;
-              const progress = items.length ? Math.round((done / items.length) * 100) : 0;
-
               return (
                 <article key={organisation.id} style={s.row}>
                   <div style={s.rowMain}>
@@ -249,10 +235,10 @@ export default async function DailyOrganisationsPage() {
                   </div>
 
                   <div style={s.progressTrack}>
-                    <div style={{ ...s.progressFill, width: `${progress}%` }} />
+                    <div style={{ ...s.progressFill, width: `${programStats.progress}%` }} />
                   </div>
                   <div style={s.rowFooter}>
-                    <span style={s.progressText}>{done}/{items.length || 7} vérifications terminées · {progress}%</span>
+                    <span style={s.progressText}>{programStats.total === 0 ? "Aucun programme" : `${programStats.validated}/${programStats.total} programmes validés · ${programStats.toFinalize} à finaliser · ${programStats.progress}%`}</span>
                     <Link href={`/agent/daily/organisations/${organisation.id}`} style={{ textDecoration: "none" }}>
                       <SelenButton size="sm" variant="primary">Ouvrir le dossier</SelenButton>
                     </Link>
