@@ -9,6 +9,21 @@ import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 
 type Props = { params: Promise<{ id: string }> };
+const INACTIVE_ENROLMENTS = new Set(["cancelled", "declined", "abandoned", "completed"]);
+const newRequestId = () => globalThis.crypto?.randomUUID?.() ?? "00000000-0000-4000-8000-000000000000";
+
+async function refreshFollowupChecklist(admin: ReturnType<typeof createSupabaseAdminClient>, organisationId: string, sessionId: string) {
+  const [{ data: slots }, { data: records }, { count: openEntries }] = await Promise.all([
+    admin.from("daily_attendance_slots").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
+    admin.from("daily_attendance_records").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
+    admin.from("daily_session_followup_entries").select("id", { count: "exact", head: true }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("status", "open"),
+  ]);
+  const allSlotsClosed = (slots ?? []).length > 0 && (slots ?? []).every((slot) => ["closed", "cancelled"].includes(slot.status));
+  const allRecordsDecided = (records ?? []).length > 0 && (records ?? []).every((record) => record.status !== "pending");
+  const hasAttendanceActivity = (slots ?? []).some((slot) => slot.status !== "draft") || (records ?? []).some((record) => record.status !== "pending");
+  const status = (openEntries ?? 0) === 0 && allSlotsClosed && allRecordsDecided ? "to_review" : ((openEntries ?? 0) > 0 || hasAttendanceActivity ? "in_progress" : "todo");
+  await admin.from("daily_session_checklist_items").update({ status }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("item_key", "attendance_followup").neq("status", "not_applicable");
+}
 
 async function requireScopedSession(sessionId: string, email: string) {
   const admin = createSupabaseAdminClient();
@@ -33,23 +48,35 @@ async function addEntry(formData: FormData) {
   const summary = String(formData.get("summary") ?? "").trim();
   const entryType = String(formData.get("entry_type") ?? "incident");
   const level = String(formData.get("level") ?? "info");
-  if (!sessionId || !summary || !["incident", "adaptation"].includes(entryType) || !["info", "attention", "critical"].includes(level)) {
+  const requestId = String(formData.get("request_id") ?? "");
+  if (!sessionId || !summary || !requestId || !["incident", "adaptation", "absence"].includes(entryType) || !["info", "attention", "critical"].includes(level)) {
     throw new Error("Suivi invalide.");
   }
   const session = await requireScopedSession(sessionId, auth.email);
   const admin = createSupabaseAdminClient();
+  const enrolmentId = String(formData.get("enrolment_id") ?? "") || null;
+  if (enrolmentId) {
+    const { data: enrolment, error: enrolmentError } = await admin.from("daily_session_enrolments").select("id,status").eq("id", enrolmentId).eq("organisation_id", session.organisation_id).eq("session_id", sessionId).maybeSingle();
+    if (enrolmentError) throw new Error(enrolmentError.message);
+    if (!enrolment || INACTIVE_ENROLMENTS.has(enrolment.status)) throw new Error("Inscription introuvable ou inactive.");
+  }
   const { error } = await admin.from("daily_session_followup_entries").insert({
+    id: requestId,
     organisation_id: session.organisation_id,
     session_id: sessionId,
-    enrolment_id: String(formData.get("enrolment_id") ?? "") || null,
+    enrolment_id: enrolmentId,
     entry_type: entryType,
     level,
     summary,
     description: String(formData.get("description") ?? "").trim() || null,
     action_taken: String(formData.get("action_taken") ?? "").trim() || null,
     status: "open",
+    created_by: auth.userId,
+    author_role: "Agent Selen",
+    author_name: auth.email,
   });
-  if (error) throw new Error(error.message);
+  if (error && error.code !== "23505") throw new Error(error.message);
+  await refreshFollowupChecklist(admin, session.organisation_id, sessionId);
   revalidatePath(`/agent/daily/session-dossiers/${sessionId}/followup`);
   revalidatePath(`/agent/daily/session-dossiers/${sessionId}`);
 }
@@ -60,19 +87,27 @@ async function resolveEntry(formData: FormData) {
   if (!auth.ok) throw new Error(auth.error);
   const sessionId = String(formData.get("session_id") ?? "");
   const id = String(formData.get("id") ?? "");
-  if (!sessionId || !id) throw new Error("Suivi invalide.");
-  await requireScopedSession(sessionId, auth.email);
+  const actionTaken = String(formData.get("action_taken") ?? "").trim();
+  if (!sessionId || !id || !actionTaken) throw new Error("Suivi et action réalisée requis.");
+  const session = await requireScopedSession(sessionId, auth.email);
   const admin = createSupabaseAdminClient();
-  const { error } = await admin
+  const { data, error } = await admin
     .from("daily_session_followup_entries")
     .update({
-      action_taken: String(formData.get("action_taken") ?? "").trim() || null,
+      action_taken: actionTaken,
       status: "resolved",
       resolved_at: new Date().toISOString(),
+      resolved_by: auth.userId,
     })
     .eq("id", id)
-    .eq("session_id", sessionId);
+    .eq("organisation_id", session.organisation_id)
+    .eq("session_id", sessionId)
+    .eq("status", "open")
+    .select("id")
+    .maybeSingle();
   if (error) throw new Error(error.message);
+  if (!data) throw new Error("Suivi déjà traité ou introuvable.");
+  await refreshFollowupChecklist(admin, session.organisation_id, sessionId);
   revalidatePath(`/agent/daily/session-dossiers/${sessionId}/followup`);
   revalidatePath(`/agent/daily/session-dossiers/${sessionId}`);
 }
@@ -105,13 +140,13 @@ export default async function DailySessionFollowupPage({ params }: Props) {
   const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }, { data: signatures, error: signaturesError }] = await Promise.all([
     admin
       .from("daily_session_followup_entries")
-      .select("id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at")
+      .select("id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,author_role,author_name")
       .eq("organisation_id", session.organisation_id)
       .eq("session_id", id)
       .order("occurred_at", { ascending: false }),
     admin
       .from("daily_session_enrolments")
-      .select("id,daily_learners(first_name,last_name,email)")
+      .select("id,status,daily_learners(first_name,last_name,email)")
       .eq("organisation_id", session.organisation_id)
       .eq("session_id", id),
     admin
@@ -121,6 +156,7 @@ export default async function DailySessionFollowupPage({ params }: Props) {
       .order("created_at", { ascending: false }),
   ]);
   if (entriesError || enrolmentsError || signaturesError) throw new Error("Lecture de la fiche de suivi indisponible.");
+  const activeEnrolments = (enrolments ?? []).filter((enrolment) => !INACTIVE_ENROLMENTS.has(enrolment.status));
   const candidatures = await loadDailyCandidatureFollowup(admin, session.organisation_id, id);
   const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
   const pendingSignatures = (signatures ?? []).filter((signature) => !isSignatureTerminal(signature.status, signature.signed_at));
@@ -178,11 +214,12 @@ export default async function DailySessionFollowupPage({ params }: Props) {
         <SelenCardTitle>Ajouter un suivi</SelenCardTitle>
         <form action={addEntry} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
           <input type="hidden" name="session_id" value={id} />
-          <select name="entry_type" defaultValue="incident"><option value="incident">Incident / difficulté</option><option value="adaptation">Adaptation</option></select>
+          <input type="hidden" name="request_id" value={newRequestId()} />
+          <select name="entry_type" defaultValue="incident"><option value="incident">Incident / difficulté</option><option value="adaptation">Adaptation</option><option value="absence">Absence à qualifier</option></select>
           <select name="level" defaultValue="info"><option value="info">Information</option><option value="attention">À suivre</option><option value="critical">Critique</option></select>
           <select name="enrolment_id" defaultValue="">
             <option value="">Toute la session</option>
-            {(enrolments ?? []).map((enrolment) => {
+            {activeEnrolments.map((enrolment) => {
               const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
               return <option key={enrolment.id} value={enrolment.id}>{`${learner?.first_name ?? ""} ${learner?.last_name ?? ""}`.trim() || learner?.email || "Apprenant"}</option>;
             })}
@@ -201,6 +238,7 @@ export default async function DailySessionFollowupPage({ params }: Props) {
             <p style={{ fontSize: 12, color: "var(--selen-text2)" }}>
               {entry.entry_type} · {entry.level} · {entry.status === "resolved" ? "Traité" : "Ouvert"} · {new Date(entry.occurred_at).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}
             </p>
+            <p style={{ fontSize: 12, color: "var(--selen-text2)" }}>Ajouté par {entry.author_name || "auteur historique non renseigné"}{entry.author_role ? ` · ${entry.author_role}` : ""}</p>
             {entry.description ? <p>{entry.description}</p> : null}
             {entry.action_taken ? <p><strong>Action :</strong> {entry.action_taken}</p> : null}
             {entry.status !== "resolved" ? (
