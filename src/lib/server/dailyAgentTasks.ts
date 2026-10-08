@@ -73,8 +73,11 @@ type QualityAction = {
   proposed_solution: string | null;
   status: string | null;
   source_type: string | null;
+  source_id: string | null;
   created_at: string | null;
 };
+type SatisfactionEnrolment = { id: string; organisation_id: string; session_id: string; status: string | null };
+type SatisfactionResponse = { enrolment_id: string; session_id: string; organisation_id: string };
 
 const AGENT_SHARED_AFTER_BUSINESS_HOURS = 24;
 const TERMINAL_PARENT_STATUSES = new Set([
@@ -148,7 +151,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
     admin.from("organisations").select("id,name,legal_name,created_at").in("id", organisationIds).neq("status", "archived"),
     admin.from("daily_organisation_assignments").select("organisation_id,agent_profile_id,assigned_at").in("organisation_id", organisationIds),
     admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,registration_status,adaptation_needed,registration_responses_received_at,start_date,end_date,status,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
-    admin.from("daily_quality_actions").select("id,organisation_id,session_id,title,observation,proposed_solution,status,source_type,created_at").in("organisation_id", organisationIds).in("source_type", ["qualiopi_preaudit", "satisfaction_phone_followup"]).in("status", ["open", "planned"]).order("created_at", { ascending: true }),
+    admin.from("daily_quality_actions").select("id,organisation_id,session_id,title,observation,proposed_solution,status,source_type,source_id,created_at").in("organisation_id", organisationIds).in("source_type", ["qualiopi_preaudit", "satisfaction_phone_followup"]).in("status", ["open", "planned"]).order("created_at", { ascending: true }),
   ]);
   const error = orgRes.error ?? assignmentRes.error ?? sessionRes.error ?? actionRes.error;
   if (error) throw new Error(error.message);
@@ -157,19 +160,24 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
   const assignments = (assignmentRes.data ?? []) as Assignment[];
   const sessions = ((sessionRes.data ?? []) as Session[]).filter((row) => isDailyTaskParentActive(row.status));
   const actions = (actionRes.data ?? []) as QualityAction[];
+  const satisfactionEnrolmentIds = actions
+    .filter((row) => row.source_type === "satisfaction_phone_followup" && row.source_id)
+    .map((row) => row.source_id as string);
   const assignmentByOrg = new Map(assignments.map((row) => [row.organisation_id, row]));
   const orgById = new Map(organisations.map((row) => [row.id, row]));
 
   const sessionIds = sessions.map((row) => row.id);
-  const [formationRes, responseRes, reviewRes, decisionRes, checklistRes, organisationChecklistRes] = await Promise.all([
+  const [formationRes, responseRes, reviewRes, decisionRes, checklistRes, organisationChecklistRes, satisfactionEnrolmentRes, satisfactionResponseRes] = await Promise.all([
     admin.from("daily_formations").select("id,organisation_id,creation_mode,detailed_program_document_url,title,status,agent_review_signaled_at,created_at,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
     sessionIds.length ? admin.from("daily_registration_responses").select("id,session_id,created_at").in("session_id", sessionIds).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_registration_reviews").select("session_id,validated_at").in("session_id", sessionIds) : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_formation_registration_requests").select("attached_session_id").in("attached_session_id", sessionIds).eq("decision_status", "accepted") : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_session_checklist_items").select("id,session_id,organisation_id,item_key,phase,responsibility,label,description,status,signaled_at").in("session_id", sessionIds).in("responsibility", ["selen", "shared"]).in("status", ["todo", "in_progress", "to_review", "blocked"]).order("signaled_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     admin.from("daily_organisation_checklist_items").select("id,organisation_id,label,status,signaled_at").in("organisation_id", organisationIds).in("status", ["to_review", "blocked"]),
+    satisfactionEnrolmentIds.length ? admin.from("daily_session_enrolments").select("id,organisation_id,session_id,status").in("organisation_id", organisationIds).in("id", satisfactionEnrolmentIds) : Promise.resolve({ data: [], error: null }),
+    satisfactionEnrolmentIds.length ? admin.from("daily_learner_feedback_responses").select("enrolment_id,session_id,organisation_id").in("organisation_id", organisationIds).in("enrolment_id", satisfactionEnrolmentIds) : Promise.resolve({ data: [], error: null }),
   ]);
-  if (formationRes.error || responseRes.error || reviewRes.error || decisionRes.error || checklistRes.error || organisationChecklistRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? reviewRes.error?.message ?? decisionRes.error?.message ?? checklistRes.error?.message ?? organisationChecklistRes.error?.message ?? "Erreur Daily");
+  if (formationRes.error || responseRes.error || reviewRes.error || decisionRes.error || checklistRes.error || organisationChecklistRes.error || satisfactionEnrolmentRes.error || satisfactionResponseRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? reviewRes.error?.message ?? decisionRes.error?.message ?? checklistRes.error?.message ?? organisationChecklistRes.error?.message ?? satisfactionEnrolmentRes.error?.message ?? satisfactionResponseRes.error?.message ?? "Erreur Daily");
 
   const formations = ((formationRes.data ?? []) as Formation[]).filter((row) => isDailyTaskParentActive(row.status));
   const responses = (responseRes.data ?? []) as Response[];
@@ -178,6 +186,8 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
   const checklistItems = (checklistRes.data ?? []) as SessionChecklistItem[];
   const formationById = new Map(formations.map((row) => [row.id, row]));
   const sessionById = new Map(sessions.map((row) => [row.id, row]));
+  const satisfactionEnrolmentById = new Map(((satisfactionEnrolmentRes.data ?? []) as SatisfactionEnrolment[]).map((row) => [row.id, row]));
+  const satisfiedEnrolmentIds = new Set(((satisfactionResponseRes.data ?? []) as SatisfactionResponse[]).map((row) => row.enrolment_id));
   const reviewBySession = new Map(reviews.map((row) => [row.session_id, row]));
   const responsesBySession = new Map<string, Response[]>();
   for (const response of responses) responsesBySession.set(response.session_id, [...(responsesBySession.get(response.session_id) ?? []), response]);
@@ -208,6 +218,14 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
     const organisation = orgById.get(action.organisation_id);
     const assignment = assignmentByOrg.get(action.organisation_id);
     if (!organisation || !assignment) continue;
+    if (action.source_type === "satisfaction_phone_followup") {
+      const enrolment = action.source_id ? satisfactionEnrolmentById.get(action.source_id) : null;
+      if (!enrolment
+        || enrolment.organisation_id !== action.organisation_id
+        || enrolment.session_id !== action.session_id
+        || ["declined", "cancelled", "abandoned"].includes(enrolment.status ?? "")
+        || satisfiedEnrolmentIds.has(enrolment.id)) continue;
+    }
     if (action.session_id) {
       const linkedSession = sessionById.get(action.session_id);
       const linkedFormation = linkedSession ? formationById.get(linkedSession.formation_id) : null;
