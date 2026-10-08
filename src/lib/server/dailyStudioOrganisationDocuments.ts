@@ -5,7 +5,7 @@ import { DAILY_SOURCE_UUID, DAILY_SOURCE_SHA, DailySourceError, privateDailyPath
 
 export type DailyOrganisationDocument = {
   id: string; organisation_id: string; document_type: string; logical_name: string;
-  version: number; status: string; archived_at: string | null; created_at: string; bucket: string; storage_path: string;
+  version: number; status: string; is_current: boolean; archived_at: string | null; created_at: string; bucket: string; storage_path: string;
   mime_type: string; sha256: string | null; metadata: Record<string, unknown> | null;
 };
 export type DailyOrganisationProgram = {
@@ -13,7 +13,14 @@ export type DailyOrganisationProgram = {
 };
 
 export function isPrivateDailyOrganisationDocument(document: DailyOrganisationDocument) {
-  return !document.archived_at && document.bucket === "documents" && privateDailyPath(document.storage_path, document.organisation_id) &&
+  return document.is_current && document.status !== "archived" && !document.archived_at && document.bucket === "documents" && privateDailyPath(document.storage_path, document.organisation_id) &&
+    Boolean(document.mime_type && /^[\w.+-]+\/[\w.+-]+$/.test(document.mime_type)) &&
+    (!document.sha256 || DAILY_SOURCE_SHA.test(document.sha256));
+}
+
+function isHistoricalDelegatedDocument(document: DailyOrganisationDocument) {
+  return document.document_type === "delegated_upload" && document.metadata?.source === "studio_delegation" &&
+    document.bucket === "documents" && privateDailyPath(document.storage_path, document.organisation_id) &&
     Boolean(document.mime_type && /^[\w.+-]+\/[\w.+-]+$/.test(document.mime_type)) &&
     (!document.sha256 || DAILY_SOURCE_SHA.test(document.sha256));
 }
@@ -28,7 +35,7 @@ export async function loadDailyOrganisationWorkspace(admin: SupabaseAdminClient,
   for (let offset = 0; ; offset += 100) {
     const query = kind === "programs"
       ? admin.from("daily_formations").select("id,title,status,version,duration_hours").eq("organisation_id", organisationId).neq("status", "archived")
-      : admin.from("daily_documents").select("id,organisation_id,document_type,logical_name,version,status,archived_at,created_at,bucket,storage_path,mime_type,sha256,metadata").eq("organisation_id", organisationId).eq("is_current", true).neq("status", "archived").is("archived_at", null);
+      : admin.from("daily_documents").select("id,organisation_id,document_type,logical_name,version,status,is_current,archived_at,created_at,bucket,storage_path,mime_type,sha256,metadata").eq("organisation_id", organisationId).eq("is_current", true).neq("status", "archived").is("archived_at", null);
     const { data, error } = await query.order("created_at", { ascending: false }).order("id").range(offset, offset + 99);
     if (error) throw new DailySourceError("Chargement du dossier indisponible.", 500);
     const page = data ?? [];
@@ -43,10 +50,10 @@ export async function downloadScopedDailyOrganisationDocument(admin: SupabaseAdm
   const organisationIds = await getDailyOrganisationIdsForAgent(email);
   if (!organisationIds.length) throw new DailySourceError("Document introuvable.");
   const { data: document, error } = await admin.from("daily_documents")
-    .select("id,organisation_id,document_type,logical_name,version,status,archived_at,created_at,bucket,storage_path,mime_type,sha256,metadata")
-    .eq("id", id).in("organisation_id", organisationIds).eq("is_current", true).neq("status", "archived").is("archived_at", null).maybeSingle();
+    .select("id,organisation_id,document_type,logical_name,version,status,is_current,archived_at,created_at,bucket,storage_path,mime_type,sha256,metadata")
+    .eq("id", id).in("organisation_id", organisationIds).maybeSingle();
   if (error) throw new DailySourceError("Lecture du document indisponible.", 500);
-  if (!document || !isPrivateDailyOrganisationDocument(document)) throw new DailySourceError("Document privé introuvable.");
+  if (!document || (!isPrivateDailyOrganisationDocument(document) && !isHistoricalDelegatedDocument(document))) throw new DailySourceError("Document privé introuvable.");
   const { data: file, error: downloadError } = await admin.storage.from("documents").download(document.storage_path);
   if (downloadError || !file) throw new DailySourceError("Téléchargement indisponible.", 500);
   const bytes = new Uint8Array(await file.arrayBuffer());
