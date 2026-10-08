@@ -8,6 +8,10 @@ import DelegatedDocumentUpload from "./DelegatedDocumentUpload";
 type Props = { params: Promise<{ id: string }> };
 type Row = Record<string, unknown> & { id: string };
 type Option = { id: string; label: string };
+type DelegatedDocument = {
+  id: string; logical_name: string; version: number; status: string; is_current: boolean;
+  created_at: string; updated_at: string; metadata: Record<string, unknown> | null;
+};
 
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
 function first(row: Row, keys: string[], fallback: string) {
@@ -39,14 +43,16 @@ export default async function ImportDocumentPage({ params }: Props) {
   }
 
   const admin = createSupabaseAdminClient();
-  const [trainersRes, learnersRes, formationsRes, sessionsRes, enrolmentsRes] = await Promise.all([
+  const [trainersRes, learnersRes, formationsRes, sessionsRes, enrolmentsRes, documentsRes] = await Promise.all([
     admin.from("daily_trainer_profiles").select("id, display_name, professional_email").eq("organisation_id", id).order("display_name"),
     admin.from("daily_learners").select("id, first_name, last_name, email").eq("organisation_id", id).order("created_at", { ascending: false }),
-    admin.from("daily_formations").select("id, title, name").eq("organisation_id", id).order("created_at", { ascending: false }),
+    admin.from("daily_formations").select("id, title").eq("organisation_id", id).order("created_at", { ascending: false }),
     admin.from("daily_sessions").select("id, internal_reference").eq("organisation_id", id).order("created_at", { ascending: false }),
     admin.from("daily_session_enrolments").select("id, learner_id, session_id, status").eq("organisation_id", id).order("created_at", { ascending: false }),
+    admin.from("daily_documents").select("id, logical_name, version, status, is_current, created_at, updated_at, metadata")
+      .eq("organisation_id", id).eq("document_type", "delegated_upload").order("created_at", { ascending: false }),
   ]);
-  const failed = [trainersRes, learnersRes, formationsRes, sessionsRes, enrolmentsRes].find((result) => result.error);
+  const failed = [trainersRes, learnersRes, formationsRes, sessionsRes, enrolmentsRes, documentsRes].find((result) => result.error);
   if (failed?.error) return <main style={{padding:24}}><p>Chargement des rattachements impossible : {failed.error.message}</p></main>;
 
   const learners = (learnersRes.data ?? []) as Row[];
@@ -58,9 +64,10 @@ export default async function ImportDocumentPage({ params }: Props) {
       organisationId={id}
       trainers={options((trainersRes.data ?? []) as Row[], ["display_name", "professional_email"], "Formateur")}
       learners={learners.map((row) => ({ id: row.id, label: learnerLabel(row) }))}
-      formations={options((formationsRes.data ?? []) as Row[], ["title", "name"], "Formation")}
+      formations={options((formationsRes.data ?? []) as Row[], ["title"], "Formation")}
       sessions={options(sessions, ["internal_reference"], "Session")}
       enrolments={enrolmentOptions((enrolmentsRes.data ?? []) as Row[], learners, sessions)}
+      documents={(documentsRes.data ?? []) as DelegatedDocument[]}
     /></SelenCard></div>
   </main>;
 }
