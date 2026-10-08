@@ -67,7 +67,32 @@ export async function GET(){
     .eq("is_current",true)
     .order("created_at",{ascending:false});
   if(error)return NextResponse.json({error:error.message},{status:500});
-  return NextResponse.json({documents:data??[]});
+  const documents=data??[];
+  const directSessionIds=[...new Set(documents
+    .filter((document)=>document.document_type==="attendance_summary"&&document.linked_object_type==="session")
+    .map((document)=>document.linked_object_id))];
+  const enrolmentIds=[...new Set(documents
+    .filter((document)=>document.document_type==="completion_certificate"&&document.linked_object_type==="enrolment")
+    .map((document)=>document.linked_object_id))];
+  const [{data:sessions,error:sessionError},{data:enrolments,error:enrolmentError}]=await Promise.all([
+    directSessionIds.length
+      ? admin.from("daily_sessions").select("id,status").in("id",directSessionIds).in("organisation_id",organisationIds)
+      : Promise.resolve({data:[],error:null}),
+    enrolmentIds.length
+      ? admin.from("daily_session_enrolments").select("id,status,session_id,daily_sessions!inner(status)").in("id",enrolmentIds).in("organisation_id",organisationIds)
+      : Promise.resolve({data:[],error:null}),
+  ]);
+  if(sessionError||enrolmentError)return NextResponse.json({error:(sessionError??enrolmentError)?.message},{status:500});
+  const activeSessions=new Set((sessions??[]).filter((session)=>!["cancelled","archived"].includes(session.status)).map((session)=>session.id));
+  const activeEnrolments=new Set((enrolments??[]).filter((enrolment)=>{
+    const parent=Array.isArray(enrolment.daily_sessions)?enrolment.daily_sessions[0]:enrolment.daily_sessions;
+    return !["declined","cancelled","abandoned"].includes(enrolment.status)&&parent&&!['cancelled','archived'].includes(parent.status);
+  }).map((enrolment)=>enrolment.id));
+  return NextResponse.json({documents:documents.filter((document)=>(
+    document.document_type==="attendance_summary"
+      ? document.linked_object_type==="session"&&activeSessions.has(document.linked_object_id)
+      : document.linked_object_type==="enrolment"&&activeEnrolments.has(document.linked_object_id)
+  ))});
 }
 
 export async function PATCH(req:Request){
@@ -87,13 +112,26 @@ export async function PATCH(req:Request){
   const admin=createSupabaseAdminClient();
   const {data:current,error:readError}=await admin
     .from("daily_documents")
-    .select("id,status,metadata,organisation_id,document_type,logical_name,version")
+    .select("id,status,metadata,organisation_id,document_type,logical_name,version,linked_object_type,linked_object_id")
     .eq("id",id)
     .in("organisation_id",organisationIds)
     .in("document_type",types)
     .eq("is_current",true)
     .single();
   if(readError||!current)return NextResponse.json({error:"Document introuvable."},{status:404});
+
+  let parentActive=false;
+  if(current.document_type==="attendance_summary"&&current.linked_object_type==="session"){
+    const {data:session,error}=await admin.from("daily_sessions").select("id,status").eq("id",current.linked_object_id).eq("organisation_id",current.organisation_id).maybeSingle();
+    if(error)return NextResponse.json({error:error.message},{status:500});
+    parentActive=Boolean(session&&!['cancelled','archived'].includes(session.status));
+  }else if(current.document_type==="completion_certificate"&&current.linked_object_type==="enrolment"){
+    const {data:enrolment,error}=await admin.from("daily_session_enrolments").select("id,status,daily_sessions!inner(status)").eq("id",current.linked_object_id).eq("organisation_id",current.organisation_id).maybeSingle();
+    if(error)return NextResponse.json({error:error.message},{status:500});
+    const parent=Array.isArray(enrolment?.daily_sessions)?enrolment.daily_sessions[0]:enrolment?.daily_sessions;
+    parentActive=Boolean(enrolment&&!['declined','cancelled','abandoned'].includes(enrolment.status)&&parent&&!['cancelled','archived'].includes(parent.status));
+  }
+  if(!parentActive)return NextResponse.json({error:"Ce document est sans objet car son dossier métier n’est plus actif."},{status:409});
 
   if(action==="publish"){
     const publication=await publishDailyDocumentAndNotify({admin,document:current,publishedBy:userId,publishedByEmail:auth.email});
