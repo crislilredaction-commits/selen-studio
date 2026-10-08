@@ -12,6 +12,7 @@ import SelenButton from "@/components/ui/SelenButton";
 import { createAgentAssistanceToken } from "@/lib/server/agentAssistanceTokens";
 import { getDailyAgentTasks } from "@/lib/server/dailyAgentTasks";
 import DailyOrganisationWorkspace from "@/components/daily/DailyOrganisationWorkspace";
+import { dailyOrganisationProgramStats } from "@/lib/dailyOrganisationStatistics";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -267,7 +268,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const admin = createSupabaseAdminClient();
   const scopedDailyTasksPromise = getDailyAgentTasks({ id: null, role: "admin" }, { organisationId: id });
 
-  const [organisationRes, assignmentRes, agentsRes, adminAccessRes, checklistRes, membershipsRes, rolesRes, blocksRes, invitationsRes, trainersRes, certificationsRes, validationsRes, historyRes, profilesRes, sessionsRes] = await Promise.all([
+  const [organisationRes, assignmentRes, agentsRes, adminAccessRes, checklistRes, membershipsRes, rolesRes, blocksRes, invitationsRes, trainersRes, certificationsRes, validationsRes, historyRes, profilesRes, sessionsRes, formationsStatsRes] = await Promise.all([
     admin.from("organisations").select("*").eq("id", id).maybeSingle(),
     admin.from("daily_organisation_assignments").select("organisation_id,agent_profile_id,agent_profiles(id,email,first_name,last_name,role)").eq("organisation_id", id).maybeSingle(),
     admin.from("agent_profiles").select("id,email,first_name,last_name,role").eq("is_active", true).in("role", ["agent", "admin"]).order("first_name"),
@@ -283,11 +284,21 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
     admin.from("daily_audit_logs").select("id,actor_type,actor_role,object_type,action,occurred_at,reason").eq("organisation_id", id).order("occurred_at", { ascending: false }).limit(80),
     admin.from("selen_client_profiles").select("user_id,email,full_name,organisation_id").eq("organisation_id", id),
     admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,daily_formations(title)").eq("organisation_id", id).neq("status", "archived").order("start_date", { ascending: false }).limit(50),
+    admin.from("daily_formations").select("id,status").eq("organisation_id", id).neq("status", "archived"),
   ]);
 
   if (organisationRes.error || !organisationRes.data) return <main style={s.page}><p style={s.error}>Organisme introuvable.</p></main>;
+  const loadingError = [assignmentRes, agentsRes, adminAccessRes, checklistRes, membershipsRes, rolesRes, blocksRes, invitationsRes, trainersRes, certificationsRes, validationsRes, historyRes, profilesRes, sessionsRes, formationsStatsRes]
+    .map((result) => result.error)
+    .find(Boolean);
+  if (loadingError) return <main style={s.page}><p style={s.error}>Chargement du dossier impossible : {loadingError.message}</p></main>;
   const organisation = organisationRes.data;
-  const scopedDailyTasks = await scopedDailyTasksPromise;
+  let scopedDailyTasks;
+  try {
+    scopedDailyTasks = await scopedDailyTasksPromise;
+  } catch (error) {
+    return <main style={s.page}><p style={s.error}>Chargement des tâches impossible : {error instanceof Error ? error.message : "pilotage Daily indisponible"}</p></main>;
+  }
   const checklist = checklistRes.data ?? [];
   const memberships = membershipsRes.data ?? [];
   const roles = rolesRes.data ?? [];
@@ -298,10 +309,9 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const certifications = (certificationsRes.data ?? []).filter((certification) => trainerIds.has(certification.trainer_profile_id));
   const validations = validationsRes.data ?? [];
   const pendingValidations = validations.filter((request) => request.status === "pending");
-  const attention = checklist.filter((item) => ["todo", "to_review", "blocked"].includes(item.status));
-  const completed = checklist.filter((item) => ["validated", "not_applicable"].includes(item.status));
-  const expiring = certifications.filter((certification) => certification.validity_mode === "limited" && certification.valid_until && daysUntil(certification.valid_until) <= 90);
-  const progress = checklist.length ? Math.round((completed.length / checklist.length) * 100) : 0;
+  const activeTrainerIds = new Set(trainers.filter((trainer) => trainer.active).map((trainer) => trainer.id));
+  const expiring = certifications.filter((certification) => activeTrainerIds.has(certification.trainer_profile_id) && certification.validity_mode === "limited" && certification.valid_until && daysUntil(certification.valid_until) <= 90);
+  const programStats = dailyOrganisationProgramStats(formationsStatsRes.data ?? []);
   const assignment = assignmentRes.data as { agent_profile_id?: string; agent_profiles?: { first_name?: string | null; last_name?: string | null; email?: string } | null } | null;
   const assignedAgent = assignment?.agent_profiles;
   const isAdmin = adminAccessRes.data?.role === "admin" || (agentsRes.data ?? []).some((agent) => agent.email === auth.email && agent.role === "admin");
@@ -352,10 +362,10 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
       </header>
 
       <section style={s.stats}>
-        <MiniStat label="Avancement" value={`${progress}%`} />
-        <MiniStat label="À traiter" value={String(attention.length)} tone="warn" />
-        <MiniStat label="Validations" value={String(pendingValidations.length)} tone="info" />
-        <MiniStat label="Échéances ≤ 90 j" value={String(expiring.length)} tone="danger" />
+        <MiniStat label="Programmes validés" value={`${programStats.validated}/${programStats.total}`} detail={programStats.total === 0 ? "Aucun programme" : `${programStats.toFinalize} à finaliser · ${programStats.progress}% validés`} />
+        <MiniStat label="Tâches actives" value={String(scopedDailyTasks.length)} detail="Source Pilotage Daily" tone="warn" />
+        <MiniStat label="Modifications à valider" value={String(pendingValidations.length)} detail="Profil légal de l’OF" tone="info" />
+        <MiniStat label="Certifications à surveiller" value={String(expiring.length)} detail="Expirées ou à ≤ 90 j" tone="danger" />
         <MiniStat label="Agent" value={assignedAgent ? ([assignedAgent.first_name, assignedAgent.last_name].filter(Boolean).join(" ") || assignedAgent.email || "Assigné") : "Non assigné"} />
       </section>
 
@@ -405,9 +415,9 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   );
 }
 
-function MiniStat({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "warn" | "info" | "danger" }) {
+function MiniStat({ label, value, detail, tone = "neutral" }: { label: string; value: string; detail?: string; tone?: "neutral" | "warn" | "info" | "danger" }) {
   const color = tone === "danger" ? "#f48b8b" : tone === "warn" ? "var(--selen-gold)" : tone === "info" ? "var(--selen-info)" : "var(--selen-text)";
-  return <SelenCard style={s.statCard}><span style={s.tiny}>{label}</span><strong style={{ color, fontSize: value.length > 16 ? 14 : 24 }}>{value}</strong></SelenCard>;
+  return <SelenCard style={s.statCard}><span style={s.tiny}>{label}</span><strong style={{ color, fontSize: value.length > 16 ? 14 : 24 }}>{value}</strong>{detail ? <span style={s.statDetail}>{detail}</span> : null}</SelenCard>;
 }
 function Signal({ label, value }: { label: string; value: string }) { return <div style={s.signal}><span style={s.mutedInline}>{label}</span><strong>{value}</strong></div>; }
 function InfoCard({ title, rows }: { title: string; rows: Array<[string, unknown]> }) { return <SelenCard><SelenCardTitle>{title}</SelenCardTitle>{rows.map(([label, value]) => <Signal key={label} label={label} value={value == null || value === "" ? "—" : String(value)} />)}</SelenCard>; }
@@ -422,7 +432,7 @@ const s: Record<string, CSSProperties> = {
   assignmentForm: { display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }, smallLabel: { fontSize: 10, color: "var(--selen-text3)" },
   select: { background: "var(--selen-bg3)", color: "var(--selen-text)", border: "1px solid var(--selen-border)", borderRadius: 10, padding: "9px 10px", minHeight: 38 },
   input: { background: "var(--selen-bg3)", color: "var(--selen-text)", border: "1px solid var(--selen-border)", borderRadius: 10, padding: "9px 10px", minWidth: 150 },
-  stats: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, margin: "18px 0" }, statCard: { minHeight: 82, display: "flex", flexDirection: "column", justifyContent: "space-between" },
+  stats: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, margin: "18px 0" }, statCard: { minHeight: 96, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 5 }, statDetail: { color: "var(--selen-text3)", fontSize: 10, lineHeight: 1.35 },
   tabs: { display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 16 }, tab: { color: "var(--selen-text2)", textDecoration: "none", fontSize: 12, border: "1px solid var(--selen-border)", borderRadius: 999, padding: "8px 12px" }, activeTab: { color: "var(--selen-ink)", background: "linear-gradient(135deg,var(--selen-gold),var(--selen-copper))", borderColor: "transparent", fontWeight: 700 },
   twoCols: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 12 }, stack: { display: "grid", gap: 12 }, list: { display: "grid", gap: 10 }, attentionRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "1px solid var(--selen-border)" }, muted: { color: "var(--selen-text3)", fontSize: 13 }, mutedInline: { margin: "4px 0 0", color: "var(--selen-text3)", fontSize: 11, lineHeight: 1.45 }, tiny: { color: "var(--selen-text3)", fontSize: 10 }, signal: { display: "flex", justifyContent: "space-between", gap: 14, borderBottom: "1px solid var(--selen-border)", padding: "9px 0" },
   checkRow: { display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", padding: 12, border: "1px solid var(--selen-border)", borderRadius: 14, background: "var(--selen-bg3)" },
