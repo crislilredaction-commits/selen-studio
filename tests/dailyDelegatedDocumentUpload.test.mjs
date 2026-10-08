@@ -31,6 +31,9 @@ test("delegated import offers organisation-scoped business choices instead of UU
     assert.match(page, new RegExp(`from\\(\\"${table}\\"\\).*eq\\(\\"organisation_id\\", id\\)`));
   }
   assert.match(page, /first_name, last_name, email/);
+  assert.match(page, /id, display_name, professional_email/);
+  assert.match(page, /\["display_name", "professional_email"\]/);
+  assert.doesNotMatch(page, /daily_trainer_profiles"\)\.select\("[^"]*\bemail\b[^"]*"\)/);
   assert.match(page, /internal_reference/);
   assert.match(page, /learner_id, session_id, status/);
   assert.match(page, /learnerById/);

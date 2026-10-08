@@ -40,7 +40,7 @@ export default async function ImportDocumentPage({ params }: Props) {
 
   const admin = createSupabaseAdminClient();
   const [trainersRes, learnersRes, formationsRes, sessionsRes, enrolmentsRes] = await Promise.all([
-    admin.from("daily_trainer_profiles").select("id, display_name, email").eq("organisation_id", id).order("display_name"),
+    admin.from("daily_trainer_profiles").select("id, display_name, professional_email").eq("organisation_id", id).order("display_name"),
     admin.from("daily_learners").select("id, first_name, last_name, email").eq("organisation_id", id).order("created_at", { ascending: false }),
     admin.from("daily_formations").select("id, title, name").eq("organisation_id", id).order("created_at", { ascending: false }),
     admin.from("daily_sessions").select("id, internal_reference").eq("organisation_id", id).order("created_at", { ascending: false }),
@@ -56,7 +56,7 @@ export default async function ImportDocumentPage({ params }: Props) {
     <Link href={`/agent/daily/organisations/${id}`} style={{textDecoration:"none"}}>← Retour au dossier organisme</Link>
     <div style={{marginTop:18}}><SelenCard><SelenCardTitle>Ajouter un document pour cet OF</SelenCardTitle><p style={{lineHeight:1.6,color:"var(--selen-text2)"}}>Utilise ce formulaire lorsqu’un client transmet une pièce par email ou un dossier papier numérisé. Un seul fichier est stocké dans la source Daily canonique, puis rattaché aux objets métier utiles. Les rattachements se choisissent par leur libellé : aucun UUID n’est demandé à l’agent.</p><DelegatedDocumentUpload
       organisationId={id}
-      trainers={options((trainersRes.data ?? []) as Row[], ["display_name", "email"], "Formateur")}
+      trainers={options((trainersRes.data ?? []) as Row[], ["display_name", "professional_email"], "Formateur")}
       learners={learners.map((row) => ({ id: row.id, label: learnerLabel(row) }))}
       formations={options((formationsRes.data ?? []) as Row[], ["title", "name"], "Formation")}
       sessions={options(sessions, ["internal_reference"], "Session")}
