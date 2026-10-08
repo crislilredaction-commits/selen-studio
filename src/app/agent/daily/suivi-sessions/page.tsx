@@ -6,6 +6,9 @@ const TYPE_LABELS: Record<string, string> = {
   incident: "Incident",
   adaptation: "Adaptation",
   note: "Note de suivi",
+  absence: "Absence",
+  delay: "Retard",
+  abandonment_alert: "Abandon à confirmer",
 };
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -68,12 +71,13 @@ export default async function DailySessionFollowupPage() {
     const session = sessionById.get(entry.session_id);
     const formation = session?.formation_id ? formationById.get(session.formation_id) : undefined;
     const organisation = organisationById.get(entry.organisation_id);
-    return { entry, session, formation, organisation };
+    const actionable = Boolean(session && organisation && !["archived", "cancelled"].includes(String(session.status ?? "")));
+    return { entry, session, formation, organisation, actionable };
   });
 
-  const openCount = rows.filter(({ entry }) => entry.status === "open").length;
+  const openCount = rows.filter(({ entry, actionable }) => actionable && entry.status === "open").length;
   const incidentCount = rows.filter(({ entry }) => entry.entry_type === "incident").length;
-  const criticalOpenCount = rows.filter(({ entry }) => entry.status === "open" && entry.level === "critical").length;
+  const criticalOpenCount = rows.filter(({ entry, actionable }) => actionable && entry.status === "open" && entry.level === "critical").length;
 
   return (
     <main style={s.page}>
@@ -102,7 +106,7 @@ export default async function DailySessionFollowupPage() {
         <section style={s.card}><p style={s.muted}>Aucune entrée de suivi enregistrée pour le moment.</p></section>
       ) : (
         <section style={s.list}>
-          {rows.map(({ entry, session, formation, organisation }) => {
+          {rows.map(({ entry, session, formation, organisation, actionable }) => {
             const organisationName = organisation?.legal_name || organisation?.name || "Organisme Daily";
             const sessionLabel = session?.internal_reference || "Session Daily";
             const resolved = entry.status === "resolved";
@@ -113,7 +117,7 @@ export default async function DailySessionFollowupPage() {
                     <div style={s.badges}>
                       <span style={entry.entry_type === "incident" ? s.badgeIncident : entry.entry_type === "adaptation" ? s.badgeAdaptation : s.badgeNote}>{TYPE_LABELS[entry.entry_type] || entry.entry_type}</span>
                       <span style={entry.level === "critical" ? s.badgeCritical : entry.level === "attention" ? s.badgeAttention : s.badgeInfo}>{LEVEL_LABELS[entry.level] || entry.level}</span>
-                      <span style={resolved ? s.badgeResolved : s.badgeOpen}>{resolved ? "Résolue" : "Ouverte"}</span>
+                      <span style={resolved || !actionable ? s.badgeResolved : s.badgeOpen}>{resolved ? "Résolue" : actionable ? "Ouverte" : "Historique — sans action"}</span>
                     </div>
                     <h2 style={s.h2}>{entry.summary}</h2>
                     <p style={s.org}>{organisationName} · {formation?.title || "Formation non renseignée"}</p>
