@@ -10,6 +10,10 @@ test("les relances téléphoniques satisfaction utilisent les actions qualité e
   assert.match(tasks, /const satisfaction = action\.source_type === "satisfaction_phone_followup"/);
   assert.match(tasks, /kind: satisfaction \? "satisfaction" : "preaudit"/);
   assert.match(tasks, /Relance satisfaction à effectuer/);
+  assert.match(tasks, /daily_session_enrolments/);
+  assert.match(tasks, /daily_learner_feedback_responses/);
+  assert.match(tasks, /satisfiedEnrolmentIds\.has\(enrolment\.id\)/);
+  assert.match(tasks, /\["declined", "cancelled", "abandoned"\]/);
 });
 
 test("l'assignation reste celle de l'organisme avec partage après 24 h ouvrées", () => {
@@ -23,4 +27,12 @@ test("l'assignation reste celle de l'organisme avec partage après 24 h ouvrées
 
 test("une action satisfaction fermée disparaît du Pilotage", () => {
   assert.match(tasks, /\.in\("status", \["open", "planned"\]\)/);
+});
+
+test("une réponse ou un parent satisfaction caduc disparaît aussi avant le prochain cron", () => {
+  assert.match(tasks, /action\.source_type === "satisfaction_phone_followup"/);
+  assert.match(tasks, /!enrolment/);
+  assert.match(tasks, /enrolment\.organisation_id !== action\.organisation_id/);
+  assert.match(tasks, /enrolment\.session_id !== action\.session_id/);
+  assert.match(tasks, /satisfiedEnrolmentIds\.has\(enrolment\.id\)/);
 });

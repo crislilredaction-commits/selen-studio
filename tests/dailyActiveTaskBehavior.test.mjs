@@ -22,6 +22,8 @@ function fixture() {
       { id: "request-0", attached_session_id: "session-0", decision_status: "accepted" },
       { id: "request-1", attached_session_id: "session-1", decision_status: "accepted" },
     ],
+    daily_session_enrolments: [{ id: "enrolment-0", organisation_id: "of-a", session_id: "session-0", status: "completed" }],
+    daily_learner_feedback_responses: [],
     daily_session_checklist_items: [], daily_quality_actions: [], daily_work_escalations: [], daily_organisation_checklist_items: [],
   };
 }
@@ -240,7 +242,7 @@ test("A6 une checklist session incohérente ne mélange pas les OF", async () =>
 test("une session annulée ou supprimée retire immédiatement ses tâches et actions liées", async () => {
   const rows = fixture();
   rows.daily_session_checklist_items = [{ id: "ghost", organisation_id: "of-a", session_id: "session-0", item_key: "trainer_assignment", phase: "before", responsibility: "selen", status: "todo", label: "Fantôme", signaled_at: today }];
-  rows.daily_quality_actions = [{ id: "quality", organisation_id: "of-a", session_id: "session-0", title: "Action liée", status: "open", source_type: "satisfaction_phone_followup", created_at: today }];
+  rows.daily_quality_actions = [{ id: "quality", organisation_id: "of-a", session_id: "session-0", source_id: "enrolment-0", title: "Action liée", status: "open", source_type: "satisfaction_phone_followup", created_at: today }];
   const h = harness(rows);
   assert.deepEqual(Array.from(await h.getDailyPilotageTasks(), task => task.id).sort(), ["daily-satisfaction-quality", "daily-session-checklist-ghost"]);
 
