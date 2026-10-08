@@ -30,6 +30,10 @@ export default async function SessionPreparationPage({ params }: { params: Promi
   return <>
     <DailyFormationReview sessionId={id} />
     <section style={{ maxWidth: 1040, margin: "0 auto 32px", padding: "0 28px" }}>
+      <nav aria-label="Suivi de fin de session" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+        <Link href={`/agent/daily/session-dossiers/${id}/evaluation`}>Évaluation finale des acquis →</Link>
+        <Link href={`/agent/daily/session-dossiers/${id}/satisfaction`}>Satisfaction et retours →</Link>
+      </nav>
       <div style={{ border: "1px solid var(--selen-border)", borderRadius: 14, padding: 18, background: "var(--selen-bg2)" }}>
         <h2 style={{ marginTop: 0 }}>Apprenants inscrits ({safeEnrolments.length})</h2>
         {safeEnrolments.length === 0 ? <p style={{ color: "var(--selen-text2)" }}>Aucun apprenant inscrit dans cette session.</p> : <div style={{ display: "grid", gap: 10 }}>
