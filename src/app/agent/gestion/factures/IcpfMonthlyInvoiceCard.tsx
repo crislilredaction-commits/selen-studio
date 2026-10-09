@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import { navigateWithStudioFeedback } from "@/lib/studioNavigation";
 import { centsToEuros } from "@/lib/lilInvoiceShared";
 
 type PreviewAudit = {
@@ -75,7 +76,7 @@ export default function IcpfMonthlyInvoiceCard() {
       setError(result.error ?? "Creation impossible.");
       return;
     }
-    router.push(`/agent/gestion/factures/${result.invoice.id}`);
+    navigateWithStudioFeedback(router, `/agent/gestion/factures/${result.invoice.id}`, { label: "la facture mensuelle" });
   }
 
   return (

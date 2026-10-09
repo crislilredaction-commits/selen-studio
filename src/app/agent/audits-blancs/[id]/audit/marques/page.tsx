@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import AuditGrimoire from "@/components/agent/AuditGrimoire";
+import { navigateWithStudioFeedback } from "@/lib/studioNavigation";
 
 type BrandAnswer = "yes" | "no" | "";
 type Diagnostic = "a_verifier" | "conforme" | "mineure" | "majeure";
@@ -534,7 +535,7 @@ export default function AgentAuditMarquesPage() {
 
     if (!saved) return;
 
-    router.push(`/agent/audits-blancs/${auditCase.id}/audit/1`);
+    navigateWithStudioFeedback(router, `/agent/audits-blancs/${auditCase.id}/audit/1`, { label: "le premier indicateur" });
   }
 
   if (loading) {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { navigateWithStudioFeedback } from "@/lib/studioNavigation";
 
 import SelenButton from "@/components/ui/SelenButton";
 import {
@@ -262,7 +263,7 @@ export default function ArticleFormPage({ articleId }: { articleId?: string }) {
       return;
     }
 
-    router.replace(`/agent/articles/${data.id}/edit`);
+    navigateWithStudioFeedback(router, `/agent/articles/${data.id}/edit`, { label: "l’article", replace: true });
     router.refresh();
     setSaving(false);
   }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { navigateWithStudioFeedback } from "@/lib/studioNavigation";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import SelenButton from "@/components/ui/SelenButton";
@@ -332,7 +333,7 @@ export default function InvoiceForm({
         : "Brouillon enregistre.",
     );
     if (!invoice?.id && result.invoice?.id) {
-      router.push(`/agent/gestion/factures/${result.invoice.id}`);
+      navigateWithStudioFeedback(router, `/agent/gestion/factures/${result.invoice.id}`, { label: "la facture" });
       return;
     }
       router.refresh();
@@ -391,7 +392,7 @@ export default function InvoiceForm({
       setError(result.error ?? "Suppression impossible.");
       return;
     }
-    router.push("/agent/gestion/factures");
+    navigateWithStudioFeedback(router, "/agent/gestion/factures", { label: "les factures" });
   }
 
   async function invoiceAction(action: "mark_deposited" | "mark_paid") {
