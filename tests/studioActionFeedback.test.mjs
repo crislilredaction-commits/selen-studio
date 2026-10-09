@@ -30,8 +30,18 @@ test("l’état est accessible et empêche les doubles clics pendant une action"
   assert.match(source, /aria-live=/);
   assert.match(source, /role=\{feedback\.kind === "error" \? "alert" : "status"\}/);
   assert.match(source, /setAttribute\("aria-busy", "true"\)/);
+  assert.match(source, /action\.button\.disabled = true/);
+  assert.match(source, /pendingActionsRef = useRef\(new Map/);
+  assert.match(source, /releasePending\(pendingId\)/);
   assert.match(source, /pointer-events: none !important/);
   assert.match(source, /data-studio-feedback="off"/);
+});
+
+test("un formulaire refusé ne verrouille pas son bouton avant le départ réel de la mutation", async () => {
+  const source = await readFile(componentPath, "utf8");
+  const submitHandler = source.slice(source.indexOf("const onSubmit"), source.indexOf("document.addEventListener"));
+  assert.doesNotMatch(submitHandler, /markPending/);
+  assert.match(source, /const pendingId = markPending\(action\)/);
 });
 
 test("les lectures et actualisations automatiques ne déclenchent pas de faux succès", async () => {
