@@ -138,9 +138,9 @@ export default function AgentSidebar() {
           padding: "10px 12px",
           borderRadius: "var(--radius-sm)",
           fontSize: 13,
-          color: userSectionActive ? "var(--selen-gold2)" : "var(--selen-text2)",
-          background: userSectionActive ? "var(--selen-bg3)" : "transparent",
-          border: `1px solid ${userSectionActive ? "var(--selen-border2)" : "transparent"}`,
+          color: usersOpen || userSectionActive ? "var(--selen-gold2)" : "var(--selen-text2)",
+          background: usersOpen || userSectionActive ? "var(--selen-bg3)" : "transparent",
+          border: `1px solid ${usersOpen || userSectionActive ? "var(--selen-border2)" : "transparent"}`,
           textAlign: "left",
           cursor: "pointer",
         }}
