@@ -269,3 +269,31 @@ select option:disabled {
     opacity: 1;
   }
 }
+
+/* Immediate, accessible confirmation for navigation links in Studio. */
+.agent-shell a.studio-navigation-pending {
+  color: var(--selen-gold2) !important;
+  background-color: var(--selen-bg3) !important;
+  outline: 2px solid var(--selen-gold) !important;
+  outline-offset: 2px;
+  transition: none !important;
+  cursor: progress;
+}
+.agent-shell a.studio-navigation-pending::after {
+  content: "";
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-left: 0.5em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: studio-navigation-spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+@keyframes studio-navigation-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-shell a.studio-navigation-pending::after { animation: none; }
+}
