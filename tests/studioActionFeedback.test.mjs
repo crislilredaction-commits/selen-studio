@@ -33,6 +33,7 @@ test("l’état est accessible et empêche les doubles clics pendant une action"
   assert.match(source, /action\.button\.disabled = true/);
   assert.match(source, /pendingActionsRef = useRef\(new Map/);
   assert.match(source, /releasePending\(pendingId\)/);
+  assert.match(source, /finally \{\s*releasePending\(pendingId\)/);
   assert.match(source, /pointer-events: none !important/);
   assert.match(source, /data-studio-feedback="off"/);
 });
