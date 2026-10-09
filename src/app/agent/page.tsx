@@ -1,8 +1,6 @@
 import AgentHomeDashboard from "@/components/agent/AgentHomeDashboard";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+import AgentDashboardFreshness from "@/components/agent/AgentDashboardFreshness";
 
 export default function AgentHomePage() {
-  return <AgentHomeDashboard />;
+  return <><AgentDashboardFreshness /><AgentHomeDashboard /></>;
 }
