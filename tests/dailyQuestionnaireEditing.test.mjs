@@ -57,7 +57,7 @@ test("le formulaire reçoit une erreur lisible sans quitter le dossier",async()=
 });
 test("le formulaire conserve la redirection de succès vers le dossier",async()=>{
   const f=fixture();const submit=elements(await f.getTree()).find(n=>n.props.submit)?.props.submit;
-  await assert.rejects(submit(f.form,"save"),/REDIRECT .*saved=draft/);assert.equal(f.writes.length,1);
+  const result=await submit(f.form,"save");assert.match(result.redirectTo,/saved=draft/);assert.equal(f.writes.length,1);
 });
 for(const [label,field,input] of [
   ["JSON invalide","positioning_questions","{"],

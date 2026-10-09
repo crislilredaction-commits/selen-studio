@@ -9,7 +9,7 @@ export default function DailyPrerequisiteRequirementsEditor({ initial, disabled 
   const update = (index: number, patch: Partial<Requirement>) => setRows((current) => current.map((row, i) => i === index ? { ...row, ...patch } : row));
   return <div style={{ display: "grid", gap: 12 }}>
     <input type="hidden" name="prerequisite_requirements" value={JSON.stringify(rows)} disabled={disabled} />
-    <p style={{ margin: 0, opacity: .8 }}>Définissez les pièces demandées après le positionnement. Une pièce facultative peut être laissée vide par l'apprenant.</p>
+    <p style={{ margin: 0, opacity: .8 }}>Définissez les pièces demandées après le positionnement. Une pièce facultative peut être laissée vide par l&apos;apprenant.</p>
     {rows.length === 0 ? <p>Aucun justificatif nécessaire.</p> : null}
     {rows.map((row, index) => <fieldset key={row.id} style={{ border: "1px solid var(--selen-border, #bbb)", borderRadius: 8, padding: 12, display: "grid", gap: 8 }}>
       <legend>Document {index + 1}</legend>

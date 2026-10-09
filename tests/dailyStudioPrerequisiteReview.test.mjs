@@ -67,4 +67,13 @@ test("la couverture exige exactement chaque participant et exigence, sans surnum
   assert.equal(f.prerequisiteReview.hasExactVerifiedPrerequisiteCoverage([{ ...row, status: "verified" }], f.formation.prerequisite_requirements, 1), true);
   assert.equal(f.prerequisiteReview.hasExactVerifiedPrerequisiteCoverage([{ ...row, status: "verified" }], f.formation.prerequisite_requirements, 2), false);
   assert.equal(f.prerequisiteReview.hasExactVerifiedPrerequisiteCoverage([{ ...row, status: "verified" }, { ...row, id: "extra" }], f.formation.prerequisite_requirements, 1), false);
+
+  const mixedRequirements = [
+    { id: "diploma", label: "Diplôme requis", required: true },
+    { id: "experience", label: "Attestation d’expérience", required: false },
+  ];
+  const optionalRow = { ...row, id: "optional", requirement_id: "experience", status: "submitted" };
+  assert.equal(f.prerequisiteReview.hasExactVerifiedPrerequisiteCoverage([{ ...row, status: "verified" }, optionalRow], mixedRequirements, 1), true);
+  assert.equal(f.prerequisiteReview.hasExactVerifiedPrerequisiteCoverage([optionalRow], mixedRequirements, 1), false);
+  assert.equal(f.prerequisiteReview.hasExactVerifiedPrerequisiteCoverage([], [mixedRequirements[1]], 1), true);
 });

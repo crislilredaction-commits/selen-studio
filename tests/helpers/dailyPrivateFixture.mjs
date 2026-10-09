@@ -96,9 +96,19 @@ export function dailyPrivateFixture() {
   const candidatures = isolatedTsModule("src/lib/server/dailyStudioCandidature.ts", { "@/lib/server/dailyStudioFormationSources": sources });
   const prerequisiteReview = isolatedTsModule("src/lib/server/dailyStudioPrerequisiteEvidence.ts", { "@/lib/server/dailyStudioFormationSources": sources });
   const auth = { value: { ok: true, email: "agent-a@example.test", userId: ids.reviewer } };
-  const reviewForm = isolatedTsModule("src/components/daily/DailyFormationReviewForm.tsx", { react: require("react"), "react/jsx-runtime": require("react/jsx-runtime") });
+  const reviewForm = isolatedTsModule("src/components/daily/DailyFormationReviewForm.tsx", {
+    react: require("react"),
+    "react/jsx-runtime": require("react/jsx-runtime"),
+    "next/navigation": { useRouter: () => ({ push() {}, replace() {}, refresh() {} }) },
+    "@/lib/studioNavigation": isolatedTsModule("src/lib/studioNavigation.ts"),
+  });
+  const prerequisiteRequirementsEditor = isolatedTsModule("src/components/daily/DailyPrerequisiteRequirementsEditor.tsx", {
+    react: require("react"),
+    "react/jsx-runtime": require("react/jsx-runtime"),
+  });
   const modules = {
     "@/components/daily/DailyFormationReviewForm": reviewForm,
+    "@/components/daily/DailyPrerequisiteRequirementsEditor": prerequisiteRequirementsEditor,
     "@/lib/dailyQuestionnaireEditing": isolatedTsModule("src/lib/dailyQuestionnaireEditing.ts"),
     "@/lib/server/dailyStudioQuestionnaireSources": isolatedTsModule("src/lib/server/dailyStudioQuestionnaireSources.ts", { "node:crypto": crypto, "./dailyStudioFormationSources": sources }),
     "@/components/daily/DailyQuestionnaireEditor": isolatedTsModule("src/components/daily/DailyQuestionnaireEditor.tsx", {

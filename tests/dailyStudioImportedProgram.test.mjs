@@ -55,7 +55,8 @@ test("avant la première session, l'agent ouvre l'original privé et les vrais p
   const links = elements(tree).filter(item => item.props.href).map(item => item.props.href);
   assert.ok(links.includes(`/agent/api/daily/formations/${ids.formation}/source-document?kind=program`));
   assert.ok(links.includes(`/agent/api/daily/formations/${ids.formation}/source-document?kind=positioning`));
-  assert.match(visibleText(tree), /Diplôme requis/); assert.match(visibleText(tree), /Copie lisible/);
+  const html = require("react-dom/server").renderToStaticMarkup(tree);
+  assert.match(html, /Diplôme requis/); assert.match(html, /Copie lisible/);
   assert.ok(!links.some(link => String(link).startsWith("https://www.selen-editions.fr/api/client")));
   assert.ok(!links.some(link => String(link).includes("storage")));
 });
