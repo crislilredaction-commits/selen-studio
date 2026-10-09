@@ -39,6 +39,25 @@ function objectives(formData: FormData) {
     .filter(Boolean);
 }
 
+function parsePrerequisiteRequirements(raw: string) {
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new Error("La configuration des justificatifs est invalide."); }
+  if (!Array.isArray(parsed) || parsed.length > 30) throw new Error("La liste des justificatifs doit contenir au maximum 30 éléments.");
+  const seen = new Set<string>();
+  return parsed.map((item, index) => {
+    if (!item || typeof item !== "object") throw new Error(`Justificatif ${index + 1} invalide.`);
+    const row = item as Record<string, unknown>;
+    const id = String(row.id ?? "").trim();
+    const label = String(row.label ?? "").trim();
+    const description = String(row.description ?? "").trim();
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id) || seen.has(id) || !label || label.length > 500 || description.length > 2000) {
+      throw new Error(`Vérifie le justificatif ${index + 1} : identifiant unique, intitulé et consigne.`);
+    }
+    seen.add(id);
+    return { id, label, description, required: row.required !== false };
+  });
+}
+
 function hasOwnPositioningSource(formation: Record<string, unknown>) {
   return formation.positioning_mode === "off_platform" && Boolean(String(formation.positioning_questionnaire_document_url ?? "").trim());
 }
@@ -109,6 +128,7 @@ async function persistProgram(formData: FormData, validate: boolean, questionnai
     target_audience: value(formData, "target_audience"),
     detailed_program: value(formData, "detailed_program"),
     prerequisites: value(formData, "prerequisites"),
+    ...(formData.has("prerequisite_requirements") ? { prerequisite_requirements: parsePrerequisiteRequirements(value(formData, "prerequisite_requirements")) } : {}),
     duration_hours: durationHours,
     duration_days: durationDays,
     modality,
