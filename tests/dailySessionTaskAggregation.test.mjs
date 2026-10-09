@@ -5,6 +5,7 @@ import test from "node:test";
 const phases = await readFile(new URL("../src/lib/daily/sessionPhase.ts", import.meta.url), "utf8");
 const programReview = await readFile(new URL("../src/components/daily/DailyFormationReview.tsx", import.meta.url), "utf8");
 const tasks = await readFile(new URL("../src/lib/server/dailyAgentTasks.ts", import.meta.url), "utf8");
+const dashboardPage = await readFile(new URL("../src/app/agent/page.tsx", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/components/agent/AgentHomeDashboard.tsx", import.meta.url), "utf8");
 const pilotage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
 const sessionTimeline = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/timeline/page.tsx", import.meta.url), "utf8");
@@ -150,4 +151,9 @@ test("les notifications A11 suivent les parents métier et la décision de candi
 
 
 test("les tâches validées ou terminées sont absentes de la source active",()=>{assert.match(tasks,/\.in\("status", \["todo", "in_progress", "to_review", "blocked"\]\)/);assert.doesNotMatch(tasks,/\.in\("status", \["todo", "in_progress", "to_review", "blocked", "validated"/);});
+
+test("le Dashboard Studio relit toujours la source canonique au lieu d'un rendu mis en cache",()=>{
+  assert.match(dashboardPage,/export const dynamic = "force-dynamic"/);
+  assert.match(dashboardPage,/export const revalidate = 0/);
+});
 test("la source canonique accepte un filtre strict par organisme",()=>{assert.match(tasks,/options\?: \{ organisationId\?: string \| null \}/);assert.match(tasks,/activeOrganisationIds\.filter\(\(id\) => id === requestedOrganisationId\)/);});
