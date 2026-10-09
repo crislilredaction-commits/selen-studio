@@ -223,12 +223,15 @@ export default function AgentSidebar() {
           aria-expanded={profileOpen}
           aria-label="Ouvrir le menu utilisateur"
           onClick={() => setProfileOpen((open) => !open)}
+          aria-expanded={profileOpen}
           style={{
             marginTop: 6,
             padding: 0,
             border: 0,
-            background: "transparent",
-            color: "var(--selen-text)",
+            background: profileOpen ? "var(--selen-bg3)" : "transparent",
+            color: profileOpen ? "var(--selen-gold2)" : "var(--selen-text)",
+            borderRadius: "var(--radius-sm)",
+            outline: profileOpen ? "1px solid var(--selen-border2)" : "none",
             display: "flex",
             alignItems: "center",
             gap: 7,
