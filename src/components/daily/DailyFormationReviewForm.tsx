@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { createContext, useContext, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 type Intent = "save" | "validate" | "questionnaires";
 const UploadContext = createContext<(kind: string, pending: boolean) => void>(() => {});
@@ -7,8 +8,9 @@ export function useDailyReviewUploadPending() { return useContext(UploadContext)
 
 export default function DailyFormationReviewForm({ children, submit, defaultIntent }: {
   children: ReactNode; defaultIntent: Intent;
-  submit: (data: FormData, intent: Intent) => Promise<{ error: string } | undefined>;
+  submit: (data: FormData, intent: Intent) => Promise<{ error?: string; redirectTo?: string } | undefined>;
 }) {
+  const router = useRouter();
   const [error, setError] = useState("");
   const [pendingUploads, setPendingUploads] = useState<Record<string, boolean>>({});
   const [pending, startTransition] = useTransition();
@@ -23,7 +25,12 @@ export default function DailyFormationReviewForm({ children, submit, defaultInte
     const intent = intentValue && ["save", "validate", "questionnaires"].includes(intentValue) ? intentValue as Intent : defaultIntent;
     saving.current = true; setError("");
     startTransition(async () => {
-      try { const result = await submit(data, intent); if (result?.error) setError(result.error); }
+      try {
+        const result = await submit(data, intent);
+        if (result?.error) setError(result.error);
+        else if (result?.redirectTo) router.replace(result.redirectTo);
+        else setError("Le serveur n’a pas confirmé l’enregistrement. Vérifie le dossier avant de recommencer.");
+      }
       catch { setError("L’enregistrement n’a pas pu être confirmé. Recharge le dossier avant de réessayer."); }
       finally { saving.current = false; }
     });
