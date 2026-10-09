@@ -223,7 +223,6 @@ export default function AgentSidebar() {
           aria-expanded={profileOpen}
           aria-label="Ouvrir le menu utilisateur"
           onClick={() => setProfileOpen((open) => !open)}
-          aria-expanded={profileOpen}
           style={{
             marginTop: 6,
             padding: 0,
