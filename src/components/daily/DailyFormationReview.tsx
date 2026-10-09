@@ -180,17 +180,17 @@ async function persistProgram(formData: FormData, validate: boolean, questionnai
 
 async function saveProgram(formData: FormData) {
   "use server";
-  return persistProgram(formData, false);
+  await persistProgram(formData, false);
 }
 
 async function validateProgram(formData: FormData) {
   "use server";
-  return persistProgram(formData, true);
+  await persistProgram(formData, true);
 }
 
 async function saveQuestionnaires(formData: FormData) {
   "use server";
-  return persistProgram(formData, false, true);
+  await persistProgram(formData, false, true);
 }
 
 async function submitReview(formData: FormData, intent: "save" | "validate" | "questionnaires") {
