@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import AgentSidebar from "@/components/layout/AgentSidebar";
 import StudioTutoiementGuard from "@/components/StudioTutoiementGuard";
 import SupportQuickCreateLink from "@/components/support/SupportQuickCreateLink";
+import StudioActionFeedback from "@/components/agent/StudioActionFeedback";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -66,6 +67,7 @@ export default async function AgentLayout({ children }: { children: React.ReactN
       >
         <StudioTutoiementGuard />
         <SupportQuickCreateLink />
+        <StudioActionFeedback />
         {children}
       </main>
     </div>
