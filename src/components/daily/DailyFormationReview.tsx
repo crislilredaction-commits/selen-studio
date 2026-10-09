@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { redirect, unstable_rethrow } from "next/navigation";
+import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
@@ -43,7 +43,7 @@ function hasOwnPositioningSource(formation: Record<string, unknown>) {
   return formation.positioning_mode === "off_platform" && Boolean(String(formation.positioning_questionnaire_document_url ?? "").trim());
 }
 
-async function persistProgram(formData: FormData, validate: boolean, questionnairesOnly = false) {
+async function persistProgram(formData: FormData, validate: boolean, questionnairesOnly = false, returnDestination = false) {
   "use server";
 
   const auth = await requireSupportAgent();
@@ -173,7 +173,9 @@ async function persistProgram(formData: FormData, validate: boolean, questionnai
   revalidatePath("/agent/daily/session-dossiers");
   revalidatePath("/agent/daily");
   revalidatePath("/agent");
-  redirect(`${sessionId ? `/agent/daily/session-dossiers/${sessionId}` : `/agent/daily/formations/${formationId}`}?saved=${validate ? "validated" : "draft"}`);
+  const destination = `${sessionId ? `/agent/daily/session-dossiers/${sessionId}` : `/agent/daily/formations/${formationId}`}?saved=${validate ? "validated" : "draft"}`;
+  if (returnDestination) return destination;
+  redirect(destination);
 }
 
 async function saveProgram(formData: FormData) {
@@ -194,9 +196,10 @@ async function saveQuestionnaires(formData: FormData) {
 async function submitReview(formData: FormData, intent: "save" | "validate" | "questionnaires") {
   "use server";
   if (!["save", "validate", "questionnaires"].includes(intent)) return { error: "Action invalide." };
-  try { await persistProgram(formData, intent === "validate", intent === "questionnaires"); }
-  catch (error) {
-    unstable_rethrow(error);
+  try {
+    const destination = await persistProgram(formData, intent === "validate", intent === "questionnaires", true);
+    return { redirectTo: destination };
+  } catch (error) {
     return { error: error instanceof Error ? error.message : "Enregistrement indisponible." };
   }
 }
