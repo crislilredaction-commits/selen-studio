@@ -96,7 +96,12 @@ export function dailyPrivateFixture() {
   const candidatures = isolatedTsModule("src/lib/server/dailyStudioCandidature.ts", { "@/lib/server/dailyStudioFormationSources": sources });
   const prerequisiteReview = isolatedTsModule("src/lib/server/dailyStudioPrerequisiteEvidence.ts", { "@/lib/server/dailyStudioFormationSources": sources });
   const auth = { value: { ok: true, email: "agent-a@example.test", userId: ids.reviewer } };
-  const reviewForm = isolatedTsModule("src/components/daily/DailyFormationReviewForm.tsx", { react: require("react"), "react/jsx-runtime": require("react/jsx-runtime") });
+  const reviewForm = isolatedTsModule("src/components/daily/DailyFormationReviewForm.tsx", {
+    react: require("react"),
+    "react/jsx-runtime": require("react/jsx-runtime"),
+    "next/navigation": { useRouter: () => ({ push() {}, replace() {}, refresh() {} }) },
+    "@/lib/studioNavigation": isolatedTsModule("src/lib/studioNavigation.ts"),
+  });
   const modules = {
     "@/components/daily/DailyFormationReviewForm": reviewForm,
     "@/lib/dailyQuestionnaireEditing": isolatedTsModule("src/lib/dailyQuestionnaireEditing.ts"),

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { STUDIO_NAVIGATION_EVENT, type StudioNavigationEventDetail } from "@/lib/studioNavigation";
 
 type FeedbackKind = "loading" | "success" | "error";
 
@@ -277,17 +278,48 @@ export default function StudioActionFeedback() {
 export function StudioNavigationFeedback() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const activeRef = useRef<HTMLElement | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const counterRef = useRef(0);
 
   useEffect(() => {
-    const clear = () => {
+    const releaseActiveElement = () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
       activeRef.current?.classList.remove("studio-navigation-pending");
       activeRef.current?.removeAttribute("aria-busy");
       activeRef.current = null;
     };
+
+    const clear = () => {
+      releaseActiveElement();
+      setFeedback(null);
+    };
+
+    const begin = (element: HTMLElement | null, label?: string) => {
+      if (activeRef.current === element && element) return false;
+      releaseActiveElement();
+      activeRef.current = element;
+      element?.classList.add("studio-navigation-pending");
+      element?.setAttribute("aria-busy", "true");
+      const id = ++counterRef.current;
+      setFeedback({
+        id,
+        kind: "loading",
+        message: label ? `Ouverture de « ${label} »…` : "Ouverture…",
+      });
+      timeoutRef.current = setTimeout(() => {
+        releaseActiveElement();
+        setFeedback({
+          id: ++counterRef.current,
+          kind: "error",
+          message: "La page tarde à s’ouvrir. Réessaie ou recharge Studio.",
+        });
+      }, 15_000);
+      return true;
+    };
+
     const onClick = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (!(event.target instanceof Element)) return;
@@ -295,21 +327,54 @@ export function StudioNavigationFeedback() {
       if (!link || !link.closest(".agent-shell") || link.hasAttribute("download") || link.target === "_blank" || link.dataset.studioFeedback === "off") return;
       const url = new URL(link.href, window.location.href);
       if (url.origin !== window.location.origin || !url.pathname.startsWith("/agent")) return;
-      if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash === window.location.hash) return;
-      activeRef.current?.classList.remove("studio-navigation-pending");
-      activeRef.current?.removeAttribute("aria-busy");
-      activeRef.current = link;
-      // Synchronous DOM change: visible before the router/network responds.
-      link.classList.add("studio-navigation-pending");
-      link.setAttribute("aria-busy", "true");
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(clear, 12000);
+      // A same-page anchor is immediate and does not wait for the App Router.
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      if (activeRef.current === link) {
+        event.preventDefault();
+        return;
+      }
+      const label = cleanLabel(link.getAttribute("aria-label") || link.textContent);
+      // The class and aria-busy are applied in the capture phase, before the
+      // Next.js handler and before any network response can complete.
+      begin(link, label);
     };
+
+    const onNavigationEvent = (event: Event) => {
+      const detail = (event as CustomEvent<StudioNavigationEventDetail>).detail;
+      if (detail?.kind === "error") {
+        releaseActiveElement();
+        setFeedback({
+          id: ++counterRef.current,
+          kind: "error",
+          message: detail.message || "Impossible d’ouvrir cette page. Réessaie.",
+        });
+        return;
+      }
+      begin(null, detail?.label ? cleanLabel(detail.label) : undefined);
+    };
+
+    const onPopState = () => begin(null, "la page précédente");
+    const onNavigationError = () => {
+      if (!activeRef.current && !timeoutRef.current) return;
+      releaseActiveElement();
+      setFeedback({
+        id: ++counterRef.current,
+        kind: "error",
+        message: "La navigation a échoué. Réessaie.",
+      });
+    };
+
     document.addEventListener("click", onClick, true);
-    window.addEventListener("popstate", clear);
+    window.addEventListener(STUDIO_NAVIGATION_EVENT, onNavigationEvent);
+    window.addEventListener("popstate", onPopState);
+    window.addEventListener("error", onNavigationError);
+    window.addEventListener("unhandledrejection", onNavigationError);
     return () => {
       document.removeEventListener("click", onClick, true);
-      window.removeEventListener("popstate", clear);
+      window.removeEventListener(STUDIO_NAVIGATION_EVENT, onNavigationEvent);
+      window.removeEventListener("popstate", onPopState);
+      window.removeEventListener("error", onNavigationError);
+      window.removeEventListener("unhandledrejection", onNavigationError);
       clear();
     };
   }, []);
@@ -323,7 +388,29 @@ export function StudioNavigationFeedback() {
     }
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = null;
+    const clearFeedbackTimer = window.setTimeout(() => setFeedback(null), 0);
+    return () => window.clearTimeout(clearFeedbackTimer);
   }, [pathname, searchParams]);
 
-  return null;
+  if (!feedback) return null;
+  return (
+    <aside
+      aria-live={feedback.kind === "error" ? "assertive" : "polite"}
+      className={`studio-navigation-feedback studio-navigation-feedback--${feedback.kind}`}
+      role={feedback.kind === "error" ? "alert" : "status"}
+    >
+      {feedback.kind === "loading" ? <span aria-hidden="true" className="studio-navigation-feedback__spinner" /> : null}
+      <span>{feedback.message}</span>
+      {feedback.kind === "error" ? (
+        <button
+          aria-label="Fermer le message de navigation"
+          data-studio-feedback="off"
+          onClick={() => setFeedback(null)}
+          type="button"
+        >
+          ×
+        </button>
+      ) : null}
+    </aside>
+  );
 }

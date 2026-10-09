@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { navigateWithStudioFeedback } from "@/lib/studioNavigation";
 type Intent = "save" | "validate" | "questionnaires";
 const UploadContext = createContext<(kind: string, pending: boolean) => void>(() => {});
 export function useDailyReviewUploadPending() { return useContext(UploadContext); }
@@ -28,7 +29,7 @@ export default function DailyFormationReviewForm({ children, submit, defaultInte
       try {
         const result = await submit(data, intent);
         if (result?.error) setError(result.error);
-        else if (result?.redirectTo) router.replace(result.redirectTo);
+        else if (result?.redirectTo) navigateWithStudioFeedback(router, result.redirectTo, { label: "le dossier formation", replace: true });
         else setError("Le serveur n’a pas confirmé l’enregistrement. Vérifie le dossier avant de recommencer.");
       }
       catch { setError("L’enregistrement n’a pas pu être confirmé. Recharge le dossier avant de réessayer."); }
