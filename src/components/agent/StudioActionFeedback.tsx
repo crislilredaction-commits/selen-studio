@@ -133,15 +133,23 @@ export default function StudioActionFeedback() {
       activeActionRef.current = actionFromElement(event.target);
     };
 
-    const onSubmit = (event: SubmitEvent) => {
+    const onSubmitCapture = (event: SubmitEvent) => {
       const action =
         actionFromElement(event.submitter) ??
         ({ button: null, expiresAt: Date.now() + 2_000, label: "Enregistrement" } satisfies ActiveAction);
       activeActionRef.current = action;
     };
 
+    const onSubmit = (event: SubmitEvent) => {
+      const action = activeActionRef.current;
+      if (!action || event.defaultPrevented) return;
+      activeActionRef.current = null;
+      markPending(action);
+    };
+
     document.addEventListener("click", onClick, true);
-    document.addEventListener("submit", onSubmit, true);
+    document.addEventListener("submit", onSubmitCapture, true);
+    document.addEventListener("submit", onSubmit);
 
     const originalFetch = window.fetch.bind(window);
     const instrumentedFetch: typeof window.fetch = async (input, init) => {
@@ -184,7 +192,8 @@ export default function StudioActionFeedback() {
     window.fetch = instrumentedFetch;
     return () => {
       document.removeEventListener("click", onClick, true);
-      document.removeEventListener("submit", onSubmit, true);
+      document.removeEventListener("submit", onSubmitCapture, true);
+      document.removeEventListener("submit", onSubmit);
       if (window.fetch === instrumentedFetch) window.fetch = originalFetch;
       if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
       releaseAllPending();
