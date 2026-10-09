@@ -18,7 +18,8 @@ test("les mutations utilisateur publient chargement, succès et erreur", async (
   const source = await readFile(componentPath, "utf8");
   assert.match(source, /MUTATION_METHODS = new Set\(\["POST", "PUT", "PATCH", "DELETE"\]\)/);
   assert.match(source, /document\.addEventListener\("click", onClick, true\)/);
-  assert.match(source, /document\.addEventListener\("submit", onSubmit, true\)/);
+  assert.match(source, /document\.addEventListener\("submit", onSubmitCapture, true\)/);
+  assert.match(source, /document\.addEventListener\("submit", onSubmit\)/);
   assert.match(source, /window\.fetch = instrumentedFetch/);
   assert.match(source, /publish\("loading"/);
   assert.match(source, /publish\("success"/);
@@ -38,10 +39,11 @@ test("l’état est accessible et empêche les doubles clics pendant une action"
   assert.match(source, /data-studio-feedback="off"/);
 });
 
-test("un formulaire refusé ne verrouille pas son bouton avant le départ réel de la mutation", async () => {
+test("les formulaires natifs sont verrouillés, mais un formulaire refusé ne l’est pas", async () => {
   const source = await readFile(componentPath, "utf8");
-  const submitHandler = source.slice(source.indexOf("const onSubmit"), source.indexOf("document.addEventListener"));
-  assert.doesNotMatch(submitHandler, /markPending/);
+  const submitHandler = source.slice(source.indexOf("const onSubmit ="), source.indexOf("document.addEventListener"));
+  assert.match(submitHandler, /if \(!action \|\| event\.defaultPrevented\) return/);
+  assert.match(submitHandler, /markPending\(action\)/);
   assert.match(source, /const pendingId = markPending\(action\)/);
 });
 
