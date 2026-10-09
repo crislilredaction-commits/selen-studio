@@ -18,7 +18,8 @@ test("les mutations utilisateur publient chargement, succès et erreur", async (
   const source = await readFile(componentPath, "utf8");
   assert.match(source, /MUTATION_METHODS = new Set\(\["POST", "PUT", "PATCH", "DELETE"\]\)/);
   assert.match(source, /document\.addEventListener\("click", onClick, true\)/);
-  assert.match(source, /document\.addEventListener\("submit", onSubmit, true\)/);
+  assert.match(source, /document\.addEventListener\("submit", onSubmitCapture, true\)/);
+  assert.match(source, /document\.addEventListener\("submit", onSubmit\)/);
   assert.match(source, /window\.fetch = instrumentedFetch/);
   assert.match(source, /publish\("loading"/);
   assert.match(source, /publish\("success"/);
@@ -30,8 +31,20 @@ test("l’état est accessible et empêche les doubles clics pendant une action"
   assert.match(source, /aria-live=/);
   assert.match(source, /role=\{feedback\.kind === "error" \? "alert" : "status"\}/);
   assert.match(source, /setAttribute\("aria-busy", "true"\)/);
+  assert.match(source, /action\.button\.disabled = true/);
+  assert.match(source, /pendingActionsRef = useRef\(new Map/);
+  assert.match(source, /releasePending\(pendingId\)/);
+  assert.match(source, /finally \{\s*releasePending\(pendingId\)/);
   assert.match(source, /pointer-events: none !important/);
   assert.match(source, /data-studio-feedback="off"/);
+});
+
+test("les formulaires natifs sont verrouillés, mais un formulaire refusé ne l’est pas", async () => {
+  const source = await readFile(componentPath, "utf8");
+  const submitHandler = source.slice(source.indexOf("const onSubmit ="), source.indexOf("document.addEventListener"));
+  assert.match(submitHandler, /if \(!action \|\| event\.defaultPrevented\) return/);
+  assert.match(submitHandler, /markPending\(action\)/);
+  assert.match(source, /const pendingId = markPending\(action\)/);
 });
 
 test("les lectures et actualisations automatiques ne déclenchent pas de faux succès", async () => {

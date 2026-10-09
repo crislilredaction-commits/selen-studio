@@ -1,6 +1,5 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type FeedbackKind = "loading" | "success" | "error";
@@ -15,6 +14,11 @@ type ActiveAction = {
   button: HTMLButtonElement | null;
   expiresAt: number;
   label: string;
+};
+
+type PendingAction = {
+  button: HTMLButtonElement | null;
+  wasDisabled: boolean;
 };
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -67,20 +71,29 @@ async function responseMessage(response: Response, fallback: string) {
 }
 
 export default function StudioActionFeedback() {
-  const pathname = usePathname();
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const activeActionRef = useRef<ActiveAction | null>(null);
-  const pendingButtonRef = useRef<HTMLButtonElement | null>(null);
+  const pendingActionsRef = useRef(new Map<number, PendingAction>());
+  const pendingCounterRef = useRef(0);
   const counterRef = useRef(0);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const releaseButton = useCallback(() => {
-    const button = pendingButtonRef.current;
-    if (!button) return;
-    button.removeAttribute("aria-busy");
-    button.classList.remove("studio-action-pending");
-    pendingButtonRef.current = null;
+  const releasePending = useCallback((pendingId: number) => {
+    const pending = pendingActionsRef.current.get(pendingId);
+    if (!pending) return;
+    if (pending.button) {
+      pending.button.disabled = pending.wasDisabled;
+      pending.button.removeAttribute("aria-busy");
+      pending.button.classList.remove("studio-action-pending");
+    }
+    pendingActionsRef.current.delete(pendingId);
   }, []);
+
+  const releaseAllPending = useCallback(() => {
+    for (const pendingId of pendingActionsRef.current.keys()) {
+      releasePending(pendingId);
+    }
+  }, [releasePending]);
 
   const publish = useCallback(
     (kind: FeedbackKind, message: string, duration?: number) => {
@@ -88,27 +101,31 @@ export default function StudioActionFeedback() {
       const id = ++counterRef.current;
       setFeedback({ id, kind, message });
       if (kind !== "loading") {
-        releaseButton();
         clearTimerRef.current = setTimeout(
           () => setFeedback((current) => (current?.id === id ? null : current)),
           duration ?? (kind === "error" ? 8_000 : 4_000),
         );
       }
     },
-    [releaseButton],
+    [],
   );
 
   const markPending = useCallback(
     (action: ActiveAction) => {
-      releaseButton();
+      const pendingId = ++pendingCounterRef.current;
       if (action.button) {
+        const wasDisabled = action.button.disabled;
+        action.button.disabled = true;
         action.button.setAttribute("aria-busy", "true");
         action.button.classList.add("studio-action-pending");
-        pendingButtonRef.current = action.button;
+        pendingActionsRef.current.set(pendingId, { button: action.button, wasDisabled });
+      } else {
+        pendingActionsRef.current.set(pendingId, { button: null, wasDisabled: false });
       }
       publish("loading", `${action.label}…`);
+      return pendingId;
     },
-    [publish, releaseButton],
+    [publish],
   );
 
   useEffect(() => {
@@ -116,16 +133,23 @@ export default function StudioActionFeedback() {
       activeActionRef.current = actionFromElement(event.target);
     };
 
-    const onSubmit = (event: SubmitEvent) => {
+    const onSubmitCapture = (event: SubmitEvent) => {
       const action =
         actionFromElement(event.submitter) ??
         ({ button: null, expiresAt: Date.now() + 2_000, label: "Enregistrement" } satisfies ActiveAction);
       activeActionRef.current = action;
+    };
+
+    const onSubmit = (event: SubmitEvent) => {
+      const action = activeActionRef.current;
+      if (!action || event.defaultPrevented) return;
+      activeActionRef.current = null;
       markPending(action);
     };
 
     document.addEventListener("click", onClick, true);
-    document.addEventListener("submit", onSubmit, true);
+    document.addEventListener("submit", onSubmitCapture, true);
+    document.addEventListener("submit", onSubmit);
 
     const originalFetch = window.fetch.bind(window);
     const instrumentedFetch: typeof window.fetch = async (input, init) => {
@@ -137,7 +161,7 @@ export default function StudioActionFeedback() {
       if (!shouldReport || !action) return originalFetch(input, init);
 
       activeActionRef.current = null;
-      markPending(action);
+      const pendingId = markPending(action);
 
       try {
         const response = await originalFetch(input, init);
@@ -160,26 +184,21 @@ export default function StudioActionFeedback() {
             : `${action.label} : erreur réseau.`,
         );
         throw error;
+      } finally {
+        releasePending(pendingId);
       }
     };
 
     window.fetch = instrumentedFetch;
     return () => {
       document.removeEventListener("click", onClick, true);
-      document.removeEventListener("submit", onSubmit, true);
+      document.removeEventListener("submit", onSubmitCapture, true);
+      document.removeEventListener("submit", onSubmit);
       if (window.fetch === instrumentedFetch) window.fetch = originalFetch;
       if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
-      releaseButton();
+      releaseAllPending();
     };
-  }, [markPending, publish, releaseButton]);
-
-  useEffect(() => {
-    if (feedback?.kind === "loading") {
-      publish("success", "Page Studio actualisée.");
-    }
-    // Le changement de route est la confirmation d'une action de navigation ou de formulaire.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  }, [markPending, publish, releaseAllPending, releasePending]);
 
   if (!feedback) return null;
 
