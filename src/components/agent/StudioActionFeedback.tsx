@@ -157,7 +157,6 @@ export default function StudioActionFeedback() {
 
       try {
         const response = await originalFetch(input, init);
-        releasePending(pendingId);
         if (response.ok) {
           const message = await responseMessage(response, `${action.label} : terminé.`);
           publish("success", message);
@@ -170,7 +169,6 @@ export default function StudioActionFeedback() {
         }
         return response;
       } catch (error) {
-        releasePending(pendingId);
         publish(
           "error",
           error instanceof Error && error.message
@@ -178,6 +176,8 @@ export default function StudioActionFeedback() {
             : `${action.label} : erreur réseau.`,
         );
         throw error;
+      } finally {
+        releasePending(pendingId);
       }
     };
 
