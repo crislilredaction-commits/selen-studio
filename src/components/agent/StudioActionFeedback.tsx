@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 
 type FeedbackKind = "loading" | "success" | "error";
 
@@ -267,4 +268,62 @@ export default function StudioActionFeedback() {
       </aside>
     </>
   );
+}
+
+/**
+ * Navigation feedback is separate from mutation feedback: a Next.js link does
+ * not send a mutation request, so the action handler cannot observe its wait.
+ */
+export function StudioNavigationFeedback() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeRef = useRef<HTMLElement | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const clear = () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+      activeRef.current?.classList.remove("studio-navigation-pending");
+      activeRef.current?.removeAttribute("aria-busy");
+      activeRef.current = null;
+    };
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (!(event.target instanceof Element)) return;
+      const link = event.target.closest<HTMLAnchorElement>('a[href]');
+      if (!link || !link.closest(".agent-shell") || link.hasAttribute("download") || link.target === "_blank" || link.dataset.studioFeedback === "off") return;
+      const url = new URL(link.href, window.location.href);
+      if (url.origin !== window.location.origin || !url.pathname.startsWith("/agent")) return;
+      if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash === window.location.hash) return;
+      activeRef.current?.classList.remove("studio-navigation-pending");
+      activeRef.current?.removeAttribute("aria-busy");
+      activeRef.current = link;
+      // Synchronous DOM change: visible before the router/network responds.
+      link.classList.add("studio-navigation-pending");
+      link.setAttribute("aria-busy", "true");
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(clear, 12000);
+    };
+    document.addEventListener("click", onClick, true);
+    window.addEventListener("popstate", clear);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener("popstate", clear);
+      clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const active = activeRef.current;
+    if (active) {
+      active.classList.remove("studio-navigation-pending");
+      active.removeAttribute("aria-busy");
+      activeRef.current = null;
+    }
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = null;
+  }, [pathname, searchParams]);
+
+  return null;
 }
