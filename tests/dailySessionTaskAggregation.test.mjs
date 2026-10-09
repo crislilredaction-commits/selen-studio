@@ -156,6 +156,7 @@ test("les tâches validées ou terminées sont absentes de la source active",()=
 test("le Dashboard Studio rafraîchit la source canonique après retour ou reprise de l'écran",()=>{
   assert.match(dashboardPage,/AgentDashboardFreshness/);
   assert.match(dashboardFreshness,/router\.refresh\(\)/);
+  assert.match(dashboardFreshness,/refresh\(\);\s*window\.addEventListener\("pageshow"/);
   assert.match(dashboardFreshness,/addEventListener\("pageshow"/);
   assert.match(dashboardFreshness,/addEventListener\("popstate"/);
   assert.match(dashboardFreshness,/addEventListener\("visibilitychange"/);

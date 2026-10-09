@@ -15,6 +15,7 @@ export default function AgentDashboardFreshness() {
       if (document.visibilityState === "visible") refresh();
     };
 
+    refresh();
     window.addEventListener("pageshow", refreshRestoredPage);
     window.addEventListener("popstate", refresh);
     document.addEventListener("visibilitychange", refreshVisiblePage);
