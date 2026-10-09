@@ -7,6 +7,7 @@ import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import type { ExternalAuditRow } from "@/lib/server/externalAudits";
 import AuditDaysFields from "./AuditDaysFields";
+import { navigateWithStudioFeedback } from "@/lib/studioNavigation";
 
 const STATUSES = [["planned", "Planifié"], ["confirmed", "Confirmé"], ["completed", "Terminé"], ["to_invoice", "À facturer"], ["cancelled", "Annulé"]];
 type CalendarSaveResult = { audit?: { id?: string; google_calendar_event_id?: string | null }; calendar?: { created?: boolean; error?: string | null; eventId?: string | null }; conflictWarning?: string | null };
@@ -37,11 +38,11 @@ export default function ExternalAuditForm({ audit }: { audit?: ExternalAuditRow 
     if (!result) return; const warning = calendarWarningFromResult(result);
     if (autosave) { setSaveState("Sauvegarde OK"); if (warning) setNotice(warning); router.refresh(); return; }
     setNotice(noticeFromResult(result));
-    if (!audit?.id && result.audit?.id) { if (warning) window.sessionStorage.setItem(`externalAuditCalendarWarning:${result.audit.id}`, warning); router.push(`/agent/gestion/audits/${result.audit.id}`); return; }
+    if (!audit?.id && result.audit?.id) { if (warning) window.sessionStorage.setItem(`externalAuditCalendarWarning:${result.audit.id}`, warning); navigateWithStudioFeedback(router, `/agent/gestion/audits/${result.audit.id}`, { label: "le dossier d’audit" }); return; }
     router.refresh();
   }
 
-  async function deleteCancelledAudit() { if (!audit?.id || !window.confirm("Supprimer définitivement cet audit annulé ? Cette action est irréversible.")) return; setBusy(true); const response = await fetch("/agent/api/gestion/audits", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auditId: audit.id }) }); const result = await response.json().catch(() => ({})); setBusy(false); if (!response.ok) { setError(result.error ?? "Suppression impossible."); return; } router.push("/agent/gestion/audits"); }
+  async function deleteCancelledAudit() { if (!audit?.id || !window.confirm("Supprimer définitivement cet audit annulé ? Cette action est irréversible.")) return; setBusy(true); const response = await fetch("/agent/api/gestion/audits", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auditId: audit.id }) }); const result = await response.json().catch(() => ({})); setBusy(false); if (!response.ok) { setError(result.error ?? "Suppression impossible."); return; } navigateWithStudioFeedback(router, "/agent/gestion/audits", { label: "les audits" }); }
 
   return <SelenCard>
     <SelenCardTitle>{audit ? "Modifier l'audit externe" : "Nouvel audit externe"}</SelenCardTitle>

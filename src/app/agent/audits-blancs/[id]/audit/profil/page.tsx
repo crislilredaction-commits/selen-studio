@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import AuditGrimoire from "@/components/agent/AuditGrimoire";
+import { navigateWithStudioFeedback } from "@/lib/studioNavigation";
 
 type AgentProfile = {
   email: string;
@@ -481,7 +482,7 @@ export default function AgentAuditProfilePage() {
       return;
     }
 
-    router.push(`/agent/audits-blancs/${auditCase.id}/audit/marques`);
+    navigateWithStudioFeedback(router, `/agent/audits-blancs/${auditCase.id}/audit/marques`, { label: "l’étape Marques" });
   }
 
   const answeredCount = PROFILE_FIELDS.filter((field) =>

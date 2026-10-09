@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import AuditGrimoire from "@/components/agent/AuditGrimoire";
+import { navigateWithStudioFeedback } from "@/lib/studioNavigation";
 import { indicatorAdvice } from "@/content/review/indicatorAdvice";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -1231,7 +1232,7 @@ export default function AgentAuditToolPage() {
 
     await saveIndicatorNote(note, { silent: true });
 
-    router.push(`/agent/audits-blancs/${caseId}/audit/${targetNumber}`);
+    navigateWithStudioFeedback(router, `/agent/audits-blancs/${caseId}/audit/${targetNumber}`, { label: `l’indicateur ${targetNumber}` });
   }
 
   // ── Loading ──

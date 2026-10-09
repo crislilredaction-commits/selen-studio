@@ -5,6 +5,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import { navigateWithStudioFeedback } from "@/lib/studioNavigation";
 
 const CATEGORIES = [
   ["question", "Question"],
@@ -51,7 +52,7 @@ export default function NewSupportTicketPage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Création impossible.");
-      router.push(`/agent/support/${payload.ticketId}`);
+      navigateWithStudioFeedback(router, `/agent/support/${payload.ticketId}`, { label: "le ticket" });
       router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Création impossible.");
@@ -66,7 +67,7 @@ export default function NewSupportTicketPage() {
           <p style={s.eyebrow}>Studio agent</p>
           <h1 style={s.title}>Ouvrir un ticket manuellement</h1>
           <p style={s.subtitle}>
-            Pour enregistrer une demande reçue par téléphone, email ou tout autre canal sans perdre l'historique support.
+            Pour enregistrer une demande reçue par téléphone, email ou tout autre canal sans perdre l&apos;historique support.
           </p>
         </div>
         <Link href="/agent/support" style={{ textDecoration: "none" }}>
