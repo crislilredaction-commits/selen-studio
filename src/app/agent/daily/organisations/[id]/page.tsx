@@ -282,7 +282,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
     admin.from("daily_trainer_certifications").select("*").order("valid_until", { ascending: true, nullsFirst: false }),
     admin.from("daily_organisation_profile_change_requests").select("*").eq("organisation_id", id).order("requested_at", { ascending: false }),
     admin.from("daily_audit_logs").select("id,actor_type,actor_role,object_type,action,occurred_at,reason").eq("organisation_id", id).order("occurred_at", { ascending: false }).limit(80),
-    admin.from("selen_client_profiles").select("user_id,email,full_name,organisation_id").eq("organisation_id", id),
+    Promise.resolve({ data: [], error: null }),
     admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,daily_formations(title)").eq("organisation_id", id).neq("status", "archived").order("start_date", { ascending: false }).limit(50),
     admin.from("daily_formations").select("id,status").eq("organisation_id", id).neq("status", "archived"),
   ]);
@@ -315,7 +315,15 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const assignment = assignmentRes.data as { agent_profile_id?: string; agent_profiles?: { first_name?: string | null; last_name?: string | null; email?: string } | null } | null;
   const assignedAgent = assignment?.agent_profiles;
   const isAdmin = adminAccessRes.data?.role === "admin" || (agentsRes.data ?? []).some((agent) => agent.email === auth.email && agent.role === "admin");
-  const profileByUser = new Map((profilesRes.data ?? []).map((profile) => [profile.user_id, profile]));
+  // Profiles are keyed by user, not organisation. Scope them through memberships first.
+  const memberUserIds = [...new Set(memberships.map((membership) => membership.user_id).filter(Boolean))];
+  const memberProfilesRes = memberUserIds.length
+    ? await admin.from("selen_client_profiles").select("user_id,email,full_name").in("user_id", memberUserIds)
+    : { data: [], error: null };
+  if (memberProfilesRes.error) {
+    return <main style={s.page}><p style={s.error}>Chargement des utilisateurs impossible : {memberProfilesRes.error.message}</p></main>;
+  }
+  const profileByUser = new Map((memberProfilesRes.data ?? []).map((profile) => [profile.user_id, profile]));
   const sessions = sessionsRes.data ?? [];
   const sessionIds = sessions.map((session) => session.id);
   const portalAccessRes = sessionIds.length
