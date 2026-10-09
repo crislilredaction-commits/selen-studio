@@ -10,6 +10,7 @@ import DailyFormationReviewTabs from "@/components/daily/DailyFormationReviewTab
 import DailyQuestionnaireEditor from "@/components/daily/DailyQuestionnaireEditor";
 import DailyQuestionnaireSourceUpload from "@/components/daily/DailyQuestionnaireSourceUpload";
 import DailyFormationReviewForm from "@/components/daily/DailyFormationReviewForm";
+import DailyPrerequisiteRequirementsEditor from "@/components/daily/DailyPrerequisiteRequirementsEditor";
 import { parseDailyQuestionnaire } from "@/lib/dailyQuestionnaireEditing";
 import { questionnaireFiles, saveDailyQuestionnaireSources } from "@/lib/server/dailyStudioQuestionnaireSources";
 
@@ -311,7 +312,7 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
             <section style={{ ...s.section, padding: 16 }}>
               <h2 style={s.h2}>Justificatifs des prérequis configurés par l’OF</h2>
               <p style={s.muted}>{formation.prerequisite_mode === "required" ? "Prérequis obligatoires : les preuves ci-dessous sont demandées aux candidats." : "Aucun prérequis déclaré."}</p>
-              {Array.isArray(formation.prerequisite_requirements) ? <ul>{formation.prerequisite_requirements.map((requirement: { id?: string; label?: string; description?: string }, index: number) => <li key={requirement.id || index}><strong>{requirement.label}</strong>{requirement.description ? ` · ${requirement.description}` : ""}</li>)}</ul> : null}
+              <DailyPrerequisiteRequirementsEditor initial={Array.isArray(formation.prerequisite_requirements) ? formation.prerequisite_requirements : []} disabled={!editable} />
             </section>
 
             <details style={s.section}>
