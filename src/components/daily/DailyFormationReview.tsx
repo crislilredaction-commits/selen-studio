@@ -10,6 +10,7 @@ import DailyFormationReviewTabs from "@/components/daily/DailyFormationReviewTab
 import DailyQuestionnaireEditor from "@/components/daily/DailyQuestionnaireEditor";
 import DailyQuestionnaireSourceUpload from "@/components/daily/DailyQuestionnaireSourceUpload";
 import DailyFormationReviewForm from "@/components/daily/DailyFormationReviewForm";
+import DailyPrerequisiteRequirementsEditor from "@/components/daily/DailyPrerequisiteRequirementsEditor";
 import { parseDailyQuestionnaire } from "@/lib/dailyQuestionnaireEditing";
 import { questionnaireFiles, saveDailyQuestionnaireSources } from "@/lib/server/dailyStudioQuestionnaireSources";
 
@@ -37,6 +38,25 @@ function objectives(formData: FormData) {
     .split("\n")
     .map((item) => item.trim().replace(/^[-•]\s*/, ""))
     .filter(Boolean);
+}
+
+function parsePrerequisiteRequirements(raw: string) {
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new Error("La configuration des justificatifs est invalide."); }
+  if (!Array.isArray(parsed) || parsed.length > 30) throw new Error("La liste des justificatifs doit contenir au maximum 30 éléments.");
+  const seen = new Set<string>();
+  return parsed.map((item, index) => {
+    if (!item || typeof item !== "object") throw new Error(`Justificatif ${index + 1} invalide.`);
+    const row = item as Record<string, unknown>;
+    const id = String(row.id ?? "").trim();
+    const label = String(row.label ?? "").trim();
+    const description = String(row.description ?? "").trim();
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id) || seen.has(id) || !label || label.length > 500 || description.length > 2000) {
+      throw new Error(`Vérifie le justificatif ${index + 1} : identifiant unique, intitulé et consigne.`);
+    }
+    seen.add(id);
+    return { id, label, description, required: row.required !== false };
+  });
 }
 
 function hasOwnPositioningSource(formation: Record<string, unknown>) {
@@ -82,6 +102,9 @@ async function persistProgram(formData: FormData, validate: boolean, questionnai
   const durationDays = numberValue(formData, "duration_days");
   const learningObjectives = objectives(formData);
   const modality = value(formData, "modality");
+  const prerequisiteRequirements = formData.has("prerequisite_requirements")
+    ? parsePrerequisiteRequirements(value(formData, "prerequisite_requirements"))
+    : null;
   if (!questionnairesOnly && !MODALITIES.has(modality)) throw new Error("Modalité de formation invalide.");
   if (!questionnairesOnly && (!value(formData, "title") || !value(formData, "global_objective") || learningObjectives.length === 0 || !durationHours || !durationDays)) {
     throw new Error("Complète au minimum l'intitulé, l'objectif principal, les objectifs pédagogiques et les durées.");
@@ -109,6 +132,10 @@ async function persistProgram(formData: FormData, validate: boolean, questionnai
     target_audience: value(formData, "target_audience"),
     detailed_program: value(formData, "detailed_program"),
     prerequisites: value(formData, "prerequisites"),
+    ...(prerequisiteRequirements ? {
+      prerequisite_requirements: prerequisiteRequirements,
+      prerequisite_mode: prerequisiteRequirements.length > 0 ? "required" : "none",
+    } : {}),
     duration_hours: durationHours,
     duration_days: durationDays,
     modality,
@@ -288,12 +315,6 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
               </div>
             </details>
 
-            <section style={{ ...s.section, padding: 16 }}>
-              <h2 style={s.h2}>Justificatifs des prérequis configurés par l’OF</h2>
-              <p style={s.muted}>{formation.prerequisite_mode === "required" ? "Prérequis obligatoires : les preuves ci-dessous sont demandées aux candidats." : "Aucun prérequis déclaré."}</p>
-              {Array.isArray(formation.prerequisite_requirements) ? <ul>{formation.prerequisite_requirements.map((requirement: { id?: string; label?: string; description?: string }, index: number) => <li key={requirement.id || index}><strong>{requirement.label}</strong>{requirement.description ? ` · ${requirement.description}` : ""}</li>)}</ul> : null}
-            </section>
-
             <details style={s.section}>
               <summary style={s.summary}>Organisation pratique</summary>
               <div style={s.grid}>
@@ -327,8 +348,9 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
             </details>
           </div>
 
-          <section style={{ ...s.section, padding: 16 }}>
-            <h2 style={s.h2}>Questionnaire de positionnement</h2>
+          <div style={{ display: "grid", gap: 12 }}>
+            <section style={{ ...s.section, padding: 16 }}>
+              <h2 style={s.h2}>Questionnaire de positionnement</h2>
             {formation.positioning_mode === "off_platform" ? (
               <>
                 <p style={s.muted}>{hasOwnPositioningSource(formation) ? "Questionnaire propre OF : téléchargement, remplissage hors Selen et réimportation obligatoire." : "Importe le questionnaire original de l’OF avant de valider la formation. Le candidat le téléchargera, le remplira hors Selen puis réimportera sa copie."}</p>
@@ -342,7 +364,14 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
                 <DailyQuestionnaireEditor questions={formation.positioning_questions} />
               </>
             ) : <p style={s.muted}>Positionnement non configuré.</p>}
-          </section>
+            </section>
+
+            <section style={{ ...s.section, padding: 16 }}>
+              <h2 style={s.h2}>Justificatifs des prérequis</h2>
+              <p style={s.muted}>{formation.prerequisite_mode === "required" ? "Demandés après le positionnement. Seules les pièces marquées obligatoires bloquent l’admission." : "Aucun justificatif nécessaire."}</p>
+              <DailyPrerequisiteRequirementsEditor initial={Array.isArray(formation.prerequisite_requirements) ? formation.prerequisite_requirements : []} disabled={!editable} />
+            </section>
+          </div>
 
           <section style={{ ...s.section, padding: 16 }}>
             <h2 style={s.h2}>Évaluation finale</h2>

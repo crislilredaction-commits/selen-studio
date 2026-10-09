@@ -43,17 +43,21 @@ export function hasExactVerifiedPrerequisiteCoverage(
   participantCount: number,
 ) {
   if (!Array.isArray(requirements) || !requirements.length || participantCount < 1) return false;
-  const requiredIds = requirements.map((value) => {
+  const configured = requirements.map((value) => {
     const row = metadataRecord(value);
-    return { id: String(row.id ?? "").trim(), label: String(row.label ?? "").trim() };
+    return { id: String(row.id ?? "").trim(), label: String(row.label ?? "").trim(), required: row.required !== false };
   });
-  if (requiredIds.some((row) => !row.id || !row.label) || new Set(requiredIds.map((row) => row.id)).size !== requiredIds.length) return false;
+  if (configured.some((row) => !row.id || !row.label) || new Set(configured.map((row) => row.id)).size !== configured.length) return false;
+  const requiredIds = configured.filter((row) => row.required);
+  if (!requiredIds.length) return true;
   const expected = new Set<string>();
   for (let participantIndex = 0; participantIndex < participantCount; participantIndex++) {
     for (const requirement of requiredIds) expected.add(`${participantIndex}:${requirement.id}:${requirement.label}`);
   }
-  const actual = new Set(rows.map((row) => `${row.participant_index}:${row.requirement_id}:${row.requirement_label}`));
-  return rows.length === expected.size && actual.size === expected.size && rows.every((row) => row.status === "verified" && expected.has(`${row.participant_index}:${row.requirement_id}:${row.requirement_label}`));
+  const requiredIdSet = new Set(requiredIds.map((row) => row.id));
+  const requiredRows = rows.filter((row) => requiredIdSet.has(row.requirement_id));
+  const actual = new Set(requiredRows.map((row) => `${row.participant_index}:${row.requirement_id}:${row.requirement_label}`));
+  return requiredRows.length === expected.size && actual.size === expected.size && requiredRows.every((row) => row.status === "verified" && expected.has(`${row.participant_index}:${row.requirement_id}:${row.requirement_label}`));
 }
 
 function metadataRecord(value: unknown) {
