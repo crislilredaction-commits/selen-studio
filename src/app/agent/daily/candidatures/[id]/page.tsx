@@ -6,7 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 import { loadScopedDailyCandidature, loadCandidaturePositioning, candidatureRecord, type CandidaturePositioning } from "@/lib/server/dailyStudioCandidature";
 import { downloadPrivateDailySource } from "@/lib/server/dailyStudioFormationSources";
-import { hasExactVerifiedPrerequisiteCoverage, loadDailyPrerequisiteEvidence, reviewDailyPrerequisiteEvidence } from "@/lib/server/dailyStudioPrerequisiteEvidence";
+import { dailyPrerequisiteContract, hasExactVerifiedPrerequisiteCoverage, loadDailyPrerequisiteEvidence, reviewDailyPrerequisiteEvidence } from "@/lib/server/dailyStudioPrerequisiteEvidence";
 import { candidatureNeedAnswers, candidaturePositioningAnswers, candidatureParticipants, candidatureDecisionLabel, candidatureEvidenceLabel, type CandidatureAnswer } from "@/lib/dailyCandidaturePresentation";
 import styles from "./analysis.module.css";
 
@@ -77,10 +77,10 @@ async function saveAnalysis(formData:FormData){
     if(!positioning.current) throw new Error("Le questionnaire a changé. Un positionnement courant est nécessaire avant transmission à l’OF.");
     for(const document of positioning.filled) await downloadPrivateDailySource(admin,document);
   }
-  const prerequisiteMode=(req.daily_formations as any)?.prerequisite_mode??"none";
-  const evidence=prerequisiteMode==="required"?await loadDailyPrerequisiteEvidence(admin,{kind:"formation",id,organisationId:scoped.formation.organisation_id,formationId:scoped.formation.id,sessionId:scoped.request.attached_session_id??null}):[];
-  const participantCount=req.response_type==="company"?Math.max(Array.isArray(req.participants)?req.participants.length:0,1):1;
-  const prerequisitesValidated=prerequisiteMode!=="required" || hasExactVerifiedPrerequisiteCoverage(evidence,(req.daily_formations as any)?.prerequisite_requirements,participantCount);
+  const prerequisiteContract=dailyPrerequisiteContract(req.prerequisite_contract,scoped.formation);
+  const evidence=prerequisiteContract.mode==="required"?await loadDailyPrerequisiteEvidence(admin,{kind:"formation",id,organisationId:scoped.formation.organisation_id,formationId:scoped.formation.id,sessionId:scoped.request.attached_session_id??null}):[];
+  const participantCount=prerequisiteContract.participantCount||(req.response_type==="company"?Math.max(Array.isArray(req.participants)?req.participants.length:0,1):1);
+  const prerequisitesValidated=prerequisiteContract.mode!=="required" || hasExactVerifiedPrerequisiteCoverage(evidence,prerequisiteContract.requirements,participantCount,prerequisiteContract.participantKeys);
   if(!prerequisitesValidated) throw new Error("Tous les prérequis obligatoires doivent être vérifiés humainement avant transmission à l’OF.");
   const summary={motivation_summary:text(formData,"motivation_summary"),expectations_summary:text(formData,"expectations_summary"),positioning_summary:text(formData,"positioning_summary"),needs_summary:text(formData,"needs_summary"),adaptations_summary:text(formData,"adaptations_summary"),prerequisites_comment:text(formData,"prerequisites_comment"),observations:text(formData,"observations"),evaluator_email:auth.email};
   if(!summary.motivation_summary||!summary.positioning_summary||!summary.needs_summary) throw new Error("Motivation, positionnement et besoins doivent être synthétisés avant transmission.");
@@ -114,7 +114,8 @@ export default async function DailyCandidatureAnalysisPage({params}:Props){
   let positioning:CandidaturePositioning|null=null;
   let positioningError=false;
   try{positioning=await loadCandidaturePositioning(admin,scoped.request,scoped.formation);}catch{positioningError=true;}
-  const hasPrerequisites=(scoped.formation.prerequisite_mode??"none")==="required";
+  const prerequisiteContract=dailyPrerequisiteContract(scoped.request.prerequisite_contract,scoped.formation);
+  const hasPrerequisites=prerequisiteContract.mode==="required";
   const evidenceWithUrls=hasPrerequisites?await loadDailyPrerequisiteEvidence(admin,{kind:"formation",id,organisationId:scoped.formation.organisation_id,formationId:scoped.formation.id,sessionId:scoped.request.attached_session_id??null}):[];
   const summary=(req.agent_analysis_summary??{}) as Record<string,unknown>;
   const label=req.company_name || [req.respondent_first_name,req.respondent_last_name].filter(Boolean).join(" ") || req.respondent_email || "Candidat";
@@ -123,8 +124,8 @@ export default async function DailyCandidatureAnalysisPage({params}:Props){
   const needs=candidatureNeedAnswers(req.need_answers);
   const positioningRows=candidaturePositioningAnswers(req.positioning_answers);
   const participants=candidatureParticipants(req.participants);
-  const participantCount=req.response_type==="company"?Math.max(participants.length,1):1;
-  const allPrerequisitesVerified=!hasPrerequisites||hasExactVerifiedPrerequisiteCoverage(evidenceWithUrls,scoped.formation.prerequisite_requirements,participantCount);
+  const participantCount=prerequisiteContract.participantCount||(req.response_type==="company"?Math.max(participants.length,1):1);
+  const allPrerequisitesVerified=!hasPrerequisites||hasExactVerifiedPrerequisiteCoverage(evidenceWithUrls,prerequisiteContract.requirements,participantCount,prerequisiteContract.participantKeys);
   const offPlatform=candidatureRecord(req.positioning_answers).mode==="off_platform";
   const transmissionBlock=!allPrerequisitesVerified
     ? "Les prérequis obligatoires doivent être vérifiés avant la transmission à l’OF."
