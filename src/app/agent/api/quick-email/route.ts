@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     const sent = result.sent === true;
     const { error: updateError } = await admin.from("daily_communications").update({
       status: sent ? "sent" : "failed",
-      ...(sent ? { sent_at: new Date().toISOString(), provider_message_id: result.resendId ?? null } : { failed_at: new Date().toISOString(), failure_reason: result.error ?? "Échec d'envoi" })
+      ...(sent ? { sent_at: new Date().toISOString(), provider_message_id: ("resendId" in result ? result.resendId : null) ?? null } : { failed_at: new Date().toISOString(), failure_reason: result.error ?? "Échec d'envoi" })
     }).eq("id", entry.id);
     if (updateError) return NextResponse.json({ error: "Résultat d'envoi non confirmé dans l'historique. Ne renvoie pas le message sans vérifier.", sent, communicationId: entry.id }, { status: 500 });
     if (!sent) return NextResponse.json({ error: result.error ?? "Email non envoyé." }, { status: 502 });
