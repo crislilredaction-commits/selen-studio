@@ -339,3 +339,17 @@ select option:disabled {
   .agent-shell a.studio-navigation-pending::after,
   .studio-navigation-feedback__spinner { animation: none; }
 }
+
+/* Keep the clicked formation-review action visually selected while saving. */
+.agent-shell form[data-review-saving] button[data-review-intent] {
+  cursor: progress;
+}
+.agent-shell form[data-review-saving="save"] button[data-review-intent="save"],
+.agent-shell form[data-review-saving="validate"] button[data-review-intent="validate"],
+.agent-shell form[data-review-saving="questionnaires"] button[data-review-intent="questionnaires"] {
+  color: var(--selen-gold2) !important;
+  background: var(--selen-bg3) !important;
+  outline: 2px solid var(--selen-gold) !important;
+  outline-offset: 2px;
+  transition: none !important;
+}
