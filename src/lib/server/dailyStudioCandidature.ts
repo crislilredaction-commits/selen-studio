@@ -18,7 +18,7 @@ export async function loadScopedDailyCandidature(admin: SupabaseAdminClient, ema
   const formation = await loadScopedDailyFormation(admin, email, reference.formation_id);
   if (!formation) return null;
   const { data: request, error } = await admin.from("daily_formation_registration_requests")
-    .select("id,formation_id,response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,participants,need_answers,positioning_answers,adaptation_needed,submitted_at,signature_signed_at,decision_status,attached_session_id,agent_analysis_summary,agent_analysis_completed_at,prerequisites_validated,updated_at")
+    .select("id,formation_id,response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,participants,need_answers,positioning_answers,adaptation_needed,submitted_at,signature_signed_at,decision_status,attached_session_id,agent_analysis_summary,agent_analysis_completed_at,prerequisites_validated,prerequisite_contract,updated_at")
     .eq("id", id).eq("formation_id", formation.id).maybeSingle();
   if (error) throw new DailySourceError("Lecture de la candidature indisponible.", 500);
   return request ? { request, formation } : null;

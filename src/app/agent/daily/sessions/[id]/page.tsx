@@ -184,7 +184,7 @@ export default async function AgentDailySessionPage(props: PageProps) {
             </div>
             <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--selen-text2)" }}>Le dépôt d’une pièce ne vaut pas validation. Le contrôle reste effectué dans le circuit documentaire canonique Daily.</p>
           </div>
-          {prerequisiteDossier.formation.prerequisite_mode === "required" ? <div aria-label="Justificatifs de prérequis" style={{ marginTop: 14, borderRadius: 12, border: "1px solid var(--selen-border)", background: "var(--selen-bg)", padding: "14px" }}>
+          {prerequisiteDossier.dossiers.some((dossier) => dossier.contract.mode === "required") ? <div aria-label="Justificatifs de prérequis" style={{ marginTop: 14, borderRadius: 12, border: "1px solid var(--selen-border)", background: "var(--selen-bg)", padding: "14px" }}>
             <strong>Justificatifs de prérequis</strong>
             <p style={{ margin: "5px 0 12px", fontSize: 12, color: "var(--selen-text2)" }}>Chaque preuve est privée, rattachée à un apprenant et une exigence, puis vérifiée humainement avant validation.</p>
             {prerequisiteDossier.dossiers.map((dossier, dossierIndex) => <div key={dossier.response.id} style={{ paddingTop: dossierIndex ? 14 : 0, marginTop: dossierIndex ? 14 : 0, borderTop: dossierIndex ? "1px solid var(--selen-border)" : undefined }}>

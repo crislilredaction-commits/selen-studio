@@ -106,9 +106,16 @@ export function dailyPrivateFixture() {
     react: require("react"),
     "react/jsx-runtime": require("react/jsx-runtime"),
   });
+  const prerequisiteRequirementsForm = isolatedTsModule("src/components/daily/DailyPrerequisiteRequirementsForm.tsx", {
+    react: require("react"), "react/jsx-runtime": require("react/jsx-runtime"),
+    "next/navigation": { useRouter: () => ({ push() {}, replace() {}, refresh() {} }) },
+    "@/components/daily/DailyPrerequisiteRequirementsEditor": prerequisiteRequirementsEditor,
+    "@/lib/studioNavigation": isolatedTsModule("src/lib/studioNavigation.ts"),
+  });
   const modules = {
     "@/components/daily/DailyFormationReviewForm": reviewForm,
     "@/components/daily/DailyPrerequisiteRequirementsEditor": prerequisiteRequirementsEditor,
+    "@/components/daily/DailyPrerequisiteRequirementsForm": prerequisiteRequirementsForm,
     "@/lib/dailyQuestionnaireEditing": isolatedTsModule("src/lib/dailyQuestionnaireEditing.ts"),
     "@/lib/server/dailyStudioQuestionnaireSources": isolatedTsModule("src/lib/server/dailyStudioQuestionnaireSources.ts", { "node:crypto": crypto, "./dailyStudioFormationSources": sources }),
     "@/components/daily/DailyQuestionnaireEditor": isolatedTsModule("src/components/daily/DailyQuestionnaireEditor.tsx", {

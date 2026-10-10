@@ -21,6 +21,7 @@ export type DailyPrerequisiteEvidenceOwner = {
 export type DailyStudioPrerequisiteEvidence = {
   id: string;
   participant_index: number;
+  participant_key: string;
   requirement_id: string;
   requirement_label: string;
   status: "submitted" | "verified" | "rejected";
@@ -41,6 +42,7 @@ export function hasExactVerifiedPrerequisiteCoverage(
   rows: DailyStudioPrerequisiteEvidence[],
   requirements: unknown,
   participantCount: number,
+  participantKeys?: string[],
 ) {
   if (!Array.isArray(requirements) || !requirements.length || participantCount < 1) return false;
   const configured = requirements.map((value) => {
@@ -52,12 +54,26 @@ export function hasExactVerifiedPrerequisiteCoverage(
   if (!requiredIds.length) return true;
   const expected = new Set<string>();
   for (let participantIndex = 0; participantIndex < participantCount; participantIndex++) {
-    for (const requirement of requiredIds) expected.add(`${participantIndex}:${requirement.id}:${requirement.label}`);
+    const participantKey = participantKeys?.[participantIndex] || String(participantIndex);
+    for (const requirement of requiredIds) expected.add(`${participantKey}:${requirement.id}:${requirement.label}`);
   }
   const requiredIdSet = new Set(requiredIds.map((row) => row.id));
   const requiredRows = rows.filter((row) => requiredIdSet.has(row.requirement_id));
-  const actual = new Set(requiredRows.map((row) => `${row.participant_index}:${row.requirement_id}:${row.requirement_label}`));
-  return requiredRows.length === expected.size && actual.size === expected.size && requiredRows.every((row) => row.status === "verified" && expected.has(`${row.participant_index}:${row.requirement_id}:${row.requirement_label}`));
+  const actual = new Set(requiredRows.map((row) => `${participantKeys ? row.participant_key : row.participant_index}:${row.requirement_id}:${row.requirement_label}`));
+  return requiredRows.length === expected.size && actual.size === expected.size && requiredRows.every((row) => row.status === "verified" && expected.has(`${participantKeys ? row.participant_key : row.participant_index}:${row.requirement_id}:${row.requirement_label}`));
+}
+
+export function dailyPrerequisiteContract(value: unknown, fallback: { prerequisite_mode?: unknown; prerequisite_requirements?: unknown }) {
+  const contract = metadataRecord(value);
+  const participants = Array.isArray(contract.participants) ? contract.participants.map(metadataRecord) : [];
+  const validSnapshot = contract.version === 1 && ["none", "required"].includes(String(contract.mode)) && Array.isArray(contract.requirements) &&
+    participants.every((row) => Number.isInteger(row.index) && typeof row.key === "string" && /^[0-9a-f]{64}$/.test(row.key));
+  if (validSnapshot) return {
+    mode: String(contract.mode), requirements: contract.requirements,
+    participantKeys: participants.map((row) => String(row.key)), participantCount: participants.length,
+  };
+  return { mode: String(fallback.prerequisite_mode ?? "none"), requirements: fallback.prerequisite_requirements,
+    participantKeys: undefined, participantCount: 0 };
 }
 
 function metadataRecord(value: unknown) {
@@ -73,7 +89,7 @@ export async function loadDailyPrerequisiteEvidence(
   }
   const ownerColumn = owner.kind === "formation" ? "registration_request_id" : "registration_response_id";
   const { data, error } = await admin.from("daily_prerequisite_evidence")
-    .select("id,registration_request_id,registration_response_id,participant_index,requirement_id,requirement_label,document_id,status,updated_at,reviewed_at,reviewed_by,review_comment")
+    .select("id,registration_request_id,registration_response_id,participant_index,participant_key,requirement_id,requirement_label,document_id,status,updated_at,reviewed_at,reviewed_by,review_comment")
     .eq(ownerColumn, owner.id)
     .order("participant_index", { ascending: true })
     .order("requirement_id", { ascending: true });
@@ -111,7 +127,7 @@ export async function loadDailyPrerequisiteEvidence(
       privateDailyPath(document.storage_path, owner.organisationId) &&
       EVIDENCE_MIME_TYPES.has(document.mime_type) && DAILY_SOURCE_SHA.test(document.sha256 ?? "") &&
       metadata.source === "daily_prerequisite_evidence" &&
-      metadata.participant_index === row.participant_index && metadata.requirement_id === row.requirement_id;
+      metadata.participant_index === row.participant_index && metadata.participant_key === row.participant_key && metadata.requirement_id === row.requirement_id;
     if (!exactOwner || !exactDocument || !["submitted", "verified", "rejected"].includes(row.status)) {
       throw new DailyPrerequisiteEvidenceReviewError("Un justificatif ne correspond pas exactement à ce dossier.", 409);
     }
@@ -129,6 +145,7 @@ export async function loadDailyPrerequisiteEvidence(
     rows.push({
       id: row.id,
       participant_index: row.participant_index,
+      participant_key: row.participant_key,
       requirement_id: row.requirement_id,
       requirement_label: row.requirement_label,
       status: row.status as DailyStudioPrerequisiteEvidence["status"],
@@ -184,18 +201,19 @@ export async function loadScopedDailySessionPrerequisites(admin: SupabaseAdminCl
   const formation = await loadScopedDailyFormation(admin, email, session.formation_id);
   if (!formation || formation.organisation_id !== session.organisation_id) return null;
   const { data: responses, error: responseError } = await admin.from("daily_registration_responses")
-    .select("id,response_type,participants,respondent_first_name,respondent_last_name")
+    .select("id,response_type,participants,respondent_first_name,respondent_last_name,prerequisite_contract")
     .eq("session_id", sessionId)
     .eq("status", "submitted")
     .order("submitted_at", { ascending: true });
   if (responseError) throw new DailyPrerequisiteEvidenceReviewError("Lecture des candidatures indisponible.", 500);
   const dossiers = await Promise.all((responses ?? []).map(async (response) => {
-    const evidence = formation.prerequisite_mode === "required" ? await loadDailyPrerequisiteEvidence(admin, {
+    const contract = dailyPrerequisiteContract(response.prerequisite_contract, formation);
+    const evidence = contract.mode === "required" ? await loadDailyPrerequisiteEvidence(admin, {
       kind: "session", id: response.id, organisationId: session.organisation_id,
       formationId: session.formation_id, sessionId,
     }) : [];
-    const participantCount = response.response_type === "company" ? Math.max(Array.isArray(response.participants) ? response.participants.length : 0, 1) : 1;
-    return { response, evidence, complete: formation.prerequisite_mode !== "required" || hasExactVerifiedPrerequisiteCoverage(evidence, formation.prerequisite_requirements, participantCount) };
+    const participantCount = contract.participantCount || (response.response_type === "company" ? Math.max(Array.isArray(response.participants) ? response.participants.length : 0, 1) : 1);
+    return { response, contract, evidence, complete: contract.mode !== "required" || hasExactVerifiedPrerequisiteCoverage(evidence, contract.requirements, participantCount, contract.participantKeys) };
   }));
-  return { session, formation, dossiers, complete: formation.prerequisite_mode !== "required" || (dossiers.length > 0 && dossiers.every((dossier) => dossier.complete)) };
+  return { session, formation, dossiers, complete: dossiers.length === 0 || dossiers.every((dossier) => dossier.complete) };
 }

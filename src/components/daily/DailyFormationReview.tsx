@@ -10,7 +10,7 @@ import DailyFormationReviewTabs from "@/components/daily/DailyFormationReviewTab
 import DailyQuestionnaireEditor from "@/components/daily/DailyQuestionnaireEditor";
 import DailyQuestionnaireSourceUpload from "@/components/daily/DailyQuestionnaireSourceUpload";
 import DailyFormationReviewForm from "@/components/daily/DailyFormationReviewForm";
-import DailyPrerequisiteRequirementsEditor from "@/components/daily/DailyPrerequisiteRequirementsEditor";
+import DailyPrerequisiteRequirementsForm from "@/components/daily/DailyPrerequisiteRequirementsForm";
 import { parseDailyQuestionnaire } from "@/lib/dailyQuestionnaireEditing";
 import { questionnaireFiles, saveDailyQuestionnaireSources } from "@/lib/server/dailyStudioQuestionnaireSources";
 
@@ -220,6 +220,37 @@ async function saveQuestionnaires(formData: FormData) {
   await persistProgram(formData, false, true);
 }
 
+async function savePrerequisiteRequirements(_previous: { error?: string; redirectTo?: string }, formData: FormData) {
+  "use server";
+  try {
+    const auth = await requireSupportAgent();
+    if (!auth.ok) throw new Error(auth.error);
+    const formationId = value(formData, "formation_id");
+    const expectedUpdatedAt = value(formData, "formation_updated_at");
+    if (!formationId || !expectedUpdatedAt) throw new Error("Programme introuvable.");
+    const admin = createSupabaseAdminClient();
+    const formation = await loadScopedDailyFormation(admin, auth.email, formationId);
+    if (!formation) throw new Error("Programme introuvable.");
+    if (!["draft", "review", "correction_requested", "validated"].includes(formation.status)) throw new Error("Cette formation ne peut plus être modifiée.");
+    const requirements = parsePrerequisiteRequirements(value(formData, "prerequisite_requirements"));
+    const { data, error } = await admin.rpc("daily_update_formation_prerequisites", {
+      p_formation_id: formation.id,
+      p_organisation_id: formation.organisation_id,
+      p_expected_updated_at: expectedUpdatedAt,
+      p_mode: requirements.length ? "required" : "none",
+      p_requirements: requirements,
+    });
+    if (error) throw new Error(error.code === "40001" ? "La formation a changé. Recharge le dossier avant de recommencer." : error.message);
+    const saved = Array.isArray(data) ? data[0] : data;
+    if (!saved || saved.id !== formation.id || saved.status !== formation.status) throw new Error("L’enregistrement n’a pas confirmé la formation attendue.");
+    revalidatePath(`/agent/daily/formations/${formation.id}`);
+    revalidatePath(`/agent/daily/organisations/${formation.organisation_id}`);
+    return { redirectTo: `/agent/daily/formations/${formation.id}?saved=prerequisites` };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Enregistrement des justificatifs indisponible." };
+  }
+}
+
 async function submitReview(formData: FormData, intent: "save" | "validate" | "questionnaires") {
   "use server";
   if (!["save", "validate", "questionnaires"].includes(intent)) return { error: "Action invalide." };
@@ -369,7 +400,7 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
             <section style={{ ...s.section, padding: 16 }}>
               <h2 style={s.h2}>Justificatifs des prérequis</h2>
               <p style={s.muted}>{formation.prerequisite_mode === "required" ? "Demandés après le positionnement. Seules les pièces marquées obligatoires bloquent l’admission." : "Aucun justificatif nécessaire."}</p>
-              <DailyPrerequisiteRequirementsEditor initial={Array.isArray(formation.prerequisite_requirements) ? formation.prerequisite_requirements : []} disabled={!editable} />
+              <p style={s.muted}>La configuration se sauvegarde séparément afin de préserver le statut du programme et les dossiers déjà soumis.</p>
             </section>
           </div>
 
@@ -396,6 +427,19 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
           </div>
         ) : formation.status === "validated" ? <div style={s.footerActions}><p style={s.muted}>Une modification des questionnaires renvoie cette formation en vérification, en conservant son lien d’inscription.</p><button data-review-intent="questionnaires" formAction={saveQuestionnaires} formNoValidate style={s.primaryButton}>Enregistrer les questionnaires</button></div> : null}
       </DailyFormationReviewForm>
+
+      {["draft", "review", "correction_requested", "validated"].includes(formation.status) ? (
+        <section style={{ ...s.section, padding: 16, marginTop: 12 }}>
+          <h2 style={s.h2}>Configurer les justificatifs après positionnement</h2>
+          <p style={s.muted}>Cette action conserve le statut « {formation.status} », les sessions, inscriptions et pièces existantes. Les nouvelles exigences ne s’appliquent qu’aux prochains dossiers.</p>
+          <DailyPrerequisiteRequirementsForm
+            formationId={formation.id}
+            updatedAt={formation.updated_at ?? ""}
+            initial={Array.isArray(formation.prerequisite_requirements) ? formation.prerequisite_requirements : []}
+            submit={savePrerequisiteRequirements}
+          />
+        </section>
+      ) : null}
     </main>
   );
 }
