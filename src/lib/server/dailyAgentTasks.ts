@@ -78,6 +78,7 @@ type QualityAction = {
 };
 type SatisfactionEnrolment = { id: string; organisation_id: string; session_id: string; status: string | null };
 type SatisfactionResponse = { enrolment_id: string; session_id: string; organisation_id: string };
+type SessionDossier = { session_id: string; status: string | null };
 
 const AGENT_SHARED_AFTER_BUSINESS_HOURS = 24;
 const TERMINAL_PARENT_STATUSES = new Set([
@@ -118,6 +119,24 @@ function registrationReviewIsCurrent(review: RegistrationReview | undefined, lat
   return reviewedAt !== null && responseAt !== null && reviewedAt >= responseAt;
 }
 
+async function loadClosedDailySessionDossiers(admin: ReturnType<typeof createSupabaseAdminClient>, organisationIds: string[]) {
+  const rows: SessionDossier[] = [];
+  const pageSize = 500;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await admin
+      .from("daily_session_dossiers")
+      .select("session_id,status")
+      .in("organisation_id", organisationIds)
+      .in("status", ["completed", "archived"])
+      .order("session_id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) return { data: null, error };
+    const page = (data ?? []) as SessionDossier[];
+    rows.push(...page);
+    if (page.length < pageSize) return { data: rows, error: null };
+  }
+}
+
 export function getDailySessionTaskHref(itemKey: string, sessionId: string) {
   const encodedSessionId = encodeURIComponent(sessionId);
   switch (itemKey) {
@@ -147,18 +166,20 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
   const organisationIds = requestedOrganisationId ? activeOrganisationIds.filter((id) => id === requestedOrganisationId) : activeOrganisationIds;
   if (organisationIds.length === 0) return [];
 
-  const [orgRes, assignmentRes, sessionRes, actionRes] = await Promise.all([
+  const [orgRes, assignmentRes, sessionRes, dossierRes, actionRes] = await Promise.all([
     admin.from("organisations").select("id,name,legal_name,created_at").in("id", organisationIds).neq("status", "archived"),
     admin.from("daily_organisation_assignments").select("organisation_id,agent_profile_id,assigned_at").in("organisation_id", organisationIds),
     admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,registration_status,adaptation_needed,registration_responses_received_at,start_date,end_date,status,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
+    loadClosedDailySessionDossiers(admin, organisationIds),
     admin.from("daily_quality_actions").select("id,organisation_id,session_id,title,observation,proposed_solution,status,source_type,source_id,created_at").in("organisation_id", organisationIds).in("source_type", ["qualiopi_preaudit", "satisfaction_phone_followup"]).in("status", ["open", "planned"]).order("created_at", { ascending: true }),
   ]);
-  const error = orgRes.error ?? assignmentRes.error ?? sessionRes.error ?? actionRes.error;
+  const error = orgRes.error ?? assignmentRes.error ?? sessionRes.error ?? dossierRes.error ?? actionRes.error;
   if (error) throw new Error(error.message);
 
   const organisations = (orgRes.data ?? []) as Org[];
   const assignments = (assignmentRes.data ?? []) as Assignment[];
-  const sessions = ((sessionRes.data ?? []) as Session[]).filter((row) => isDailyTaskParentActive(row.status));
+  const closedSessionIds = new Set(((dossierRes.data ?? []) as SessionDossier[]).map((row) => row.session_id));
+  const sessions = ((sessionRes.data ?? []) as Session[]).filter((row) => isDailyTaskParentActive(row.status) && !closedSessionIds.has(row.id));
   const actions = (actionRes.data ?? []) as QualityAction[];
   const satisfactionEnrolmentIds = actions
     .filter((row) => row.source_type === "satisfaction_phone_followup" && row.source_id)
