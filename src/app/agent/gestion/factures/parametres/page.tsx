@@ -3,7 +3,10 @@ import type { CSSProperties } from "react";
 import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import { isLilOwner } from "@/lib/server/studioAdmin";
-import { getLilInvoiceSettings } from "@/lib/server/lilInvoices";
+import {
+  getLilInvoiceSequenceState,
+  getLilInvoiceSettings,
+} from "@/lib/server/lilInvoices";
 import SettingsForm from "@/app/agent/gestion/factures/parametres/SettingsForm";
 
 export default async function LilInvoiceSettingsPage() {
@@ -15,13 +18,16 @@ export default async function LilInvoiceSettingsPage() {
       </main>
     );
   }
-  const settings = await getLilInvoiceSettings();
+  const [settings, sequenceState] = await Promise.all([
+    getLilInvoiceSettings(),
+    getLilInvoiceSequenceState(),
+  ]);
   return (
     <main style={s.page}>
       <Link href="/agent/gestion/factures" style={{ textDecoration: "none" }}>
         <SelenButton type="button" variant="ghost">Retour factures</SelenButton>
       </Link>
-      <SettingsForm settings={settings} />
+      <SettingsForm settings={settings} sequenceState={sequenceState} />
     </main>
   );
 }

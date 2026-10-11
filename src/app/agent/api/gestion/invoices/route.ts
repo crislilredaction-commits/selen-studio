@@ -318,9 +318,16 @@ export async function POST(req: Request) {
       if (!existing) {
         return NextResponse.json({ error: "Facture introuvable." }, { status: 404 });
       }
-      if (!EDITABLE_STATUSES.has(existing.status)) {
+      if (
+        existing.status !== "draft" ||
+        existing.invoice_number !== null ||
+        existing.sequence_number !== null
+      ) {
         return NextResponse.json(
-          { error: "Seules les factures brouillon ou generees peuvent etre supprimees." },
+          {
+            error:
+              "Seul un brouillon jamais numerote peut etre supprime. Annulez une facture deja numerotee pour conserver son historique.",
+          },
           { status: 400 },
         );
       }
@@ -364,6 +371,26 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
+      if (existing.status === "paid") {
+        return NextResponse.json({ ok: true, invoice: existing, idempotent: true });
+      }
+      if (
+        !["generated", "deposited"].includes(existing.status) ||
+        !existing.invoice_number ||
+        !existing.pdf_url
+      ) {
+        return NextResponse.json(
+          { error: "Generez la facture avant de la marquer payee." },
+          { status: 400 },
+        );
+      }
+      const expectedUpdatedAt = String(body.expectedUpdatedAt ?? "").trim();
+      if (!expectedUpdatedAt || expectedUpdatedAt !== existing.updated_at) {
+        return NextResponse.json(
+          { error: "La facture a change. Actualisez la page avant de recommencer." },
+          { status: 409 },
+        );
+      }
       const now = new Date().toISOString();
       const { data, error } = await admin
         .from("lil_invoices")
@@ -378,9 +405,16 @@ export async function POST(req: Request) {
           },
         })
         .eq("id", existing.id)
+        .eq("updated_at", expectedUpdatedAt)
         .select("*")
-        .single();
+        .maybeSingle();
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (!data) {
+        return NextResponse.json(
+          { error: "La facture a change. Actualisez la page avant de recommencer." },
+          { status: 409 },
+        );
+      }
       return NextResponse.json({ ok: true, invoice: data });
     }
 
@@ -400,11 +434,21 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
+      if (existing.status === "deposited" || existing.status === "paid") {
+        return NextResponse.json({ ok: true, invoice: existing, idempotent: true });
+      }
+      const expectedUpdatedAt = String(body.expectedUpdatedAt ?? "").trim();
+      if (!expectedUpdatedAt || expectedUpdatedAt !== existing.updated_at) {
+        return NextResponse.json(
+          { error: "La facture a change. Actualisez la page avant de recommencer." },
+          { status: 409 },
+        );
+      }
       const now = new Date().toISOString();
       const { data, error } = await admin
         .from("lil_invoices")
         .update({
-          status: existing.status === "paid" ? "paid" : "deposited",
+          status: "deposited",
           deposited_at: existing.deposited_at || now,
           updated_by_email: auth.email,
           metadata: {
@@ -414,9 +458,16 @@ export async function POST(req: Request) {
           },
         })
         .eq("id", existing.id)
+        .eq("updated_at", expectedUpdatedAt)
         .select("*")
-        .single();
+        .maybeSingle();
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (!data) {
+        return NextResponse.json(
+          { error: "La facture a change. Actualisez la page avant de recommencer." },
+          { status: 409 },
+        );
+      }
       const archivedAudits = await archiveLinkedAudits(admin, data as LilInvoiceRow, auth.email);
       return NextResponse.json({ ok: true, invoice: data, archivedAudits });
     }
