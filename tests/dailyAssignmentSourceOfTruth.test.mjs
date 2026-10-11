@@ -17,7 +17,7 @@ test("les tâches Daily dérivent l’agent de l’organisme, jamais du dossier 
   assert.match(tasks, /from\("daily_organisation_assignments"\)/);
   assert.match(tasks, /assignmentByOrg/);
   assert.match(tasks, /assignment\.agent_profile_id/);
-  assert.doesNotMatch(tasks, /daily_session_dossiers/);
+  assert.match(tasks, /from\("daily_session_dossiers"\)[\s\S]*?\.select\("session_id,status"\)[\s\S]*?\.range\(from, from \+ pageSize - 1\)/);
   assert.doesNotMatch(tasks, /assigned_agent_profile_id/);
 });
 
