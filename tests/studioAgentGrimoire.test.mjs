@@ -28,12 +28,18 @@ test("le Grimoire couvre parcours, cas particuliers, FAQ, recherche et contexte"
 
 test("les liens pointent uniquement vers des écrans Studio existants", () => {
   assert.match(grimoire, /href: "\/agent\/daily\/organisations"/);
-  assert.match(grimoire, /href: "\/agent\/daily\/formations"/);
+  assert.doesNotMatch(grimoire, /href: "\/agent\/daily\/formations"/);
+  assert.match(grimoire, /href: "\/agent\/daily\/organisations"/);
   assert.match(grimoire, /href: "\/agent\/daily\/candidatures"/);
   assert.match(grimoire, /href: "\/agent\/daily\/session-dossiers"/);
   assert.match(grimoire, /href: "\/agent\/daily\/communications"/);
   assert.match(grimoire, /href: "\/agent\/daily\/reclamations"/);
   assert.doesNotMatch(grimoire, /href:\s*"https?:/);
+});
+
+test("les procédures reflètent les états réellement proposés par Studio", () => {
+  assert.match(grimoire, /Reçue, Revue par Selen, Transmise à l’organisme, puis Résolue/);
+  assert.doesNotMatch(grimoire, /Passe de Reçue à En analyse/);
 });
 
 test("le bouton reste accessible et ne masque pas le composeur email", () => {
