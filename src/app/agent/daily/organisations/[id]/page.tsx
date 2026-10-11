@@ -13,22 +13,22 @@ import { createAgentAssistanceToken } from "@/lib/server/agentAssistanceTokens";
 import { getDailyAgentTasks } from "@/lib/server/dailyAgentTasks";
 import DailyOrganisationWorkspace from "@/components/daily/DailyOrganisationWorkspace";
 import { dailyOrganisationProgramStats } from "@/lib/dailyOrganisationStatistics";
+import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 
 type PageProps = {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string }>;
 };
 
-type TabKey = "overview" | "programs" | "documents" | "checklist" | "info" | "users" | "trainers" | "validations" | "history";
+type TabKey = "overview" | "programs" | "documents" | "info" | "users" | "learners" | "trainers" | "history";
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "overview", label: "Vue d’ensemble" },
   { key: "programs", label: "Programmes de formation" },
   { key: "documents", label: "Documents client" },
-  { key: "checklist", label: "Checklist" },
   { key: "info", label: "Informations" },
   { key: "users", label: "Utilisateurs" },
+  { key: "learners", label: "Espaces apprenants" },
   { key: "trainers", label: "Formateurs" },
-  { key: "validations", label: "Validations Selen" },
   { key: "history", label: "Historique" },
 ];
 
@@ -54,12 +54,32 @@ async function currentUserId() {
   return data.user?.id ?? null;
 }
 
+async function assertOrganisationScope(email: string, organisationId: string) {
+  if (!organisationId || !await isDailyOrganisationInAgentScope(email, organisationId)) {
+    throw new Error("Organisme hors de ton périmètre Daily.");
+  }
+}
+
+type QueryError = { message: string };
+type RangeQuery<Row> = { range: (from: number, to: number) => PromiseLike<{ data: Row[] | null; error: QueryError | null }> };
+async function readAllRows<Row>(query: () => RangeQuery<Row>) {
+  const data: Row[] = [];
+  for (let offset = 0;; offset += 500) {
+    const result = await query().range(offset, offset + 499);
+    if (result.error) return { data: null, error: result.error };
+    const page = result.data ?? [];
+    data.push(...page);
+    if (page.length < 500) return { data, error: null as QueryError | null };
+  }
+}
+
 async function openAssistanceMode(formData: FormData) {
   "use server";
   const auth = await requireSupportAgent();
   if (!auth.ok) throw new Error(auth.error);
   const organisationId = String(formData.get("organisation_id") ?? "").trim();
   if (!organisationId) throw new Error("Organisme manquant pour le mode assistance.");
+  await assertOrganisationScope(auth.email, organisationId);
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -82,6 +102,7 @@ async function openPortalAssistanceMode(formData: FormData) {
   if (!organisationId || !portalAccessId) {
     throw new Error("Portail délégué incomplet.");
   }
+  await assertOrganisationScope(auth.email, organisationId);
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -102,6 +123,7 @@ async function assignAgent(formData: FormData) {
   const organisationId = String(formData.get("organisation_id") ?? "");
   const agentProfileId = String(formData.get("agent_profile_id") ?? "");
   if (!organisationId || !agentProfileId) throw new Error("Attribution incomplète.");
+  await assertOrganisationScope(auth.email, organisationId);
   const admin = createSupabaseAdminClient();
   const actor = await currentUserId();
   const { error } = await admin.from("daily_organisation_assignments").upsert({
@@ -110,28 +132,6 @@ async function assignAgent(formData: FormData) {
     assigned_by: actor,
     assigned_at: new Date().toISOString(),
   }, { onConflict: "organisation_id" });
-  if (error) throw new Error(error.message);
-  revalidatePath(`/agent/daily/organisations/${organisationId}`);
-  revalidatePath("/agent/daily/organisations");
-}
-
-async function updateChecklist(formData: FormData) {
-  "use server";
-  const auth = await requireSupportAgent();
-  if (!auth.ok) throw new Error(auth.error);
-  const organisationId = String(formData.get("organisation_id") ?? "");
-  const itemId = String(formData.get("item_id") ?? "");
-  const status = String(formData.get("status") ?? "");
-  const note = String(formData.get("note") ?? "").trim();
-  const allowed = new Set(["todo", "in_progress", "to_review", "validated", "blocked", "not_applicable"]);
-  if (!organisationId || !itemId || !allowed.has(status)) throw new Error("Mise à jour checklist invalide.");
-  const admin = createSupabaseAdminClient();
-  const actor = await currentUserId();
-  const { error } = await admin.from("daily_organisation_checklist_items").update({
-    status,
-    note: note || null,
-    validated_by: status === "validated" ? actor : null,
-  }).eq("id", itemId).eq("organisation_id", organisationId);
   if (error) throw new Error(error.message);
   revalidatePath(`/agent/daily/organisations/${organisationId}`);
   revalidatePath("/agent/daily/organisations");
@@ -147,6 +147,7 @@ async function updateMembershipStatus(formData: FormData) {
   if (!organisationId || !membershipId || !["active", "disabled", "revoked"].includes(status)) {
     throw new Error("Statut utilisateur invalide.");
   }
+  await assertOrganisationScope(auth.email, organisationId);
   const admin = createSupabaseAdminClient();
   const actor = await currentUserId();
   const { error } = await admin.from("organisation_memberships").update({
@@ -169,6 +170,7 @@ async function updateMembershipAccess(formData: FormData) {
   const roles = formData.getAll("roles").map(String);
   const blocks = formData.getAll("permission_blocks").map(String);
   if (!organisationId || !membershipId || roles.length === 0) throw new Error("Au moins un rôle est requis.");
+  await assertOrganisationScope(auth.email, organisationId);
   const admin = createSupabaseAdminClient();
   const actor = await currentUserId();
   const { error } = await admin.rpc("daily_studio_set_membership_access", {
@@ -190,6 +192,7 @@ async function reviewTrainer(formData: FormData) {
   const trainerProfileId = String(formData.get("trainer_profile_id") ?? "");
   const decision = String(formData.get("decision") ?? "");
   if (!organisationId || !trainerProfileId || !["validated", "rejected"].includes(decision)) throw new Error("Décision formateur invalide.");
+  await assertOrganisationScope(auth.email, organisationId);
   const admin = createSupabaseAdminClient();
   const actor = await currentUserId();
   const patch = decision === "validated"
@@ -201,42 +204,61 @@ async function reviewTrainer(formData: FormData) {
   revalidatePath("/agent/daily/organisations");
 }
 
-const legalChangeKeys = new Set([
-  "legal_name", "legal_form", "vat_number", "legal_representative_name", "legal_representative_email",
-  "nda_status", "nda_declared_at", "nda_number", "qualiopi_status", "qualiopi_valid_from", "qualiopi_valid_until", "qualiopi_categories",
-]);
+const editableOrganisationFields = [
+  "name", "legal_name", "legal_form", "siret", "vat_number", "administrative_email",
+  "administrative_phone", "administrative_address", "contact_name",
+  "legal_representative_name", "legal_representative_email", "nda_number",
+  "nda_status", "nda_declared_at", "qualiopi_status", "qualiopi_valid_from", "qualiopi_valid_until",
+] as const;
 
-async function reviewValidation(formData: FormData) {
+async function updateOrganisationInformation(formData: FormData) {
   "use server";
-  const auth = await requireSupportAdmin();
+  const auth = await requireSupportAgent();
   if (!auth.ok) throw new Error(auth.error);
-  const organisationId = String(formData.get("organisation_id") ?? "");
-  const requestId = String(formData.get("request_id") ?? "");
-  const decision = String(formData.get("decision") ?? "");
-  const message = String(formData.get("message") ?? "").trim();
-  if (!organisationId || !requestId || !["approved", "rejected"].includes(decision)) throw new Error("Décision invalide.");
+  const organisationId = String(formData.get("organisation_id") ?? "").trim();
+  await assertOrganisationScope(auth.email, organisationId);
+  const patch = Object.fromEntries(editableOrganisationFields.map((key) => {
+    const value = String(formData.get(key) ?? "").trim();
+    return [key, value || null];
+  }));
+  if (patch.siret && !/^\d{14}$/.test(String(patch.siret))) throw new Error("Le SIRET doit contenir 14 chiffres.");
+  for (const key of ["administrative_email", "legal_representative_email"] as const) {
+    if (patch[key] && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(patch[key]))) throw new Error("Adresse email invalide.");
+  }
   const admin = createSupabaseAdminClient();
   const actor = await currentUserId();
-  const { data: request, error: requestError } = await admin.from("daily_organisation_profile_change_requests").select("id,organisation_id,status,proposed_changes").eq("id", requestId).eq("organisation_id", organisationId).eq("status", "pending").maybeSingle();
-  if (requestError) throw new Error(requestError.message);
-  if (!request) throw new Error("Demande déjà traitée ou introuvable.");
-  if (decision === "approved") {
-    const source = (request.proposed_changes ?? {}) as Record<string, unknown>;
-    const patch = Object.fromEntries(Object.entries(source).filter(([key]) => legalChangeKeys.has(key)));
-    if (Object.keys(patch).length > 0) {
-      const { error } = await admin.from("organisations").update({ ...patch, selen_validated_at: new Date().toISOString(), selen_validated_by: actor }).eq("id", organisationId);
-      if (error) throw new Error(error.message);
-    }
-  }
-  const { error } = await admin.from("daily_organisation_profile_change_requests").update({ status: decision, reviewed_by: actor, reviewed_at: new Date().toISOString(), review_message: message || null }).eq("id", requestId);
-  if (error) throw new Error(error.message);
-  revalidatePath(`/agent/daily/organisations/${organisationId}`);
+  const [{ data: adminActor }, { data: operatorActor }] = await Promise.all([
+    admin.from("selen_admin_users").select("role").eq("email", auth.email).eq("is_active", true).maybeSingle(),
+    admin.from("agent_profiles").select("role").eq("email", auth.email).eq("is_active", true).maybeSingle(),
+  ]);
+  const auditActor = adminActor?.role === "admin"
+    ? { type: "selen_admin", role: adminActor.role }
+    : operatorActor?.role
+      ? { type: "selen_operator", role: operatorActor.role }
+      : null;
+  if (!actor || !auditActor) throw new Error("Profil agent actif requis pour historiser la modification.");
+  const { data: before, error: beforeError } = await admin.from("organisations").select(editableOrganisationFields.join(",")).eq("id", organisationId).maybeSingle();
+  if (beforeError || !before) throw new Error(beforeError?.message || "Organisme introuvable.");
+  const { data: after, error: updateError } = await admin.from("organisations").update(patch).eq("id", organisationId).select(editableOrganisationFields.join(",")).single();
+  if (updateError) throw new Error(updateError.message);
+  const { error: auditError } = await admin.from("daily_audit_logs").insert({
+    organisation_id: organisationId,
+    actor_user_id: actor,
+    actor_type: auditActor.type,
+    actor_role: auditActor.role,
+    object_type: "organisation",
+    object_id: organisationId,
+    action: "organisation_information_updated",
+    before_data: before,
+    after_data: after,
+    origin: "Studio",
+    reason: "Informations modifiées depuis le dossier organisme Studio",
+  });
+  if (auditError) throw new Error(auditError.message);
+  revalidatePath(`/agent/daily/organisations/${organisationId}?tab=info`);
   revalidatePath("/agent/daily/organisations");
 }
 
-function daysSince(value: string) {
-  return Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000));
-}
 function daysUntil(value: string) {
   const d = new Date(`${value}T00:00:00`).getTime();
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -264,30 +286,36 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p style={s.error}>{auth.error}</p></main>;
   const { id } = await params;
+  if (!await isDailyOrganisationInAgentScope(auth.email, id)) {
+    return <main style={s.page}><p style={s.error}>Organisme hors de ton périmètre Daily.</p></main>;
+  }
   const tab = safeTab((await searchParams).tab);
   const admin = createSupabaseAdminClient();
   const scopedDailyTasksPromise = getDailyAgentTasks({ id: null, role: "admin" }, { organisationId: id });
 
-  const [organisationRes, assignmentRes, agentsRes, adminAccessRes, checklistRes, membershipsRes, rolesRes, blocksRes, invitationsRes, trainersRes, certificationsRes, validationsRes, historyRes, sessionsRes, formationsStatsRes] = await Promise.all([
+  const [organisationRes, assignmentRes, agentsRes, adminAccessRes, membershipsRes, rolesRes, blocksRes, invitationsRes, trainersRes, certificationsRes, historyRes, sessionsRes, formationsStatsRes, communicationsRes, documentsRes, learnersRes, enrolmentsRes, profileRequestsRes] = await Promise.all([
     admin.from("organisations").select("*").eq("id", id).maybeSingle(),
     admin.from("daily_organisation_assignments").select("organisation_id,agent_profile_id,agent_profiles(id,email,first_name,last_name,role)").eq("organisation_id", id).maybeSingle(),
     admin.from("agent_profiles").select("id,email,first_name,last_name,role").eq("is_active", true).in("role", ["agent", "admin"]).order("first_name"),
     admin.from("selen_admin_users").select("role,is_active").eq("email", auth.email).eq("is_active", true).maybeSingle(),
-    admin.from("daily_organisation_checklist_items").select("*").eq("organisation_id", id).order("position"),
     admin.from("organisation_memberships").select("*").eq("organisation_id", id).order("created_at"),
     admin.from("organisation_membership_roles").select("membership_id,role"),
     admin.from("organisation_membership_permission_blocks").select("membership_id,permission_block,enabled,revoked_at"),
     admin.from("daily_organisation_invitations").select("*").eq("organisation_id", id).order("created_at", { ascending: false }),
     admin.from("daily_trainer_profiles").select("*").eq("organisation_id", id).order("display_name"),
     admin.from("daily_trainer_certifications").select("*").order("valid_until", { ascending: true, nullsFirst: false }),
-    admin.from("daily_organisation_profile_change_requests").select("*").eq("organisation_id", id).order("requested_at", { ascending: false }),
-    admin.from("daily_audit_logs").select("id,actor_type,actor_role,object_type,action,occurred_at,reason").eq("organisation_id", id).order("occurred_at", { ascending: false }).limit(80),
-    admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,daily_formations(title)").eq("organisation_id", id).neq("status", "archived").order("start_date", { ascending: false }).limit(50),
+    readAllRows(() => admin.from("daily_audit_logs").select("id,actor_type,actor_role,object_type,action,occurred_at,reason").eq("organisation_id", id).order("occurred_at", { ascending: false })),
+    readAllRows(() => admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,daily_formations(title)").eq("organisation_id", id).neq("status", "archived").order("start_date", { ascending: false })),
     admin.from("daily_formations").select("id,status").eq("organisation_id", id).neq("status", "archived"),
+    readAllRows(() => admin.from("daily_communications").select("id,communication_type,recipient_email,recipient_name,subject,status,sent_at,delivered_at,failed_at,failure_reason,created_at").eq("organisation_id", id).order("created_at", { ascending: false })),
+    readAllRows(() => admin.from("daily_documents").select("id,document_type,logical_name,version,status,is_current,created_at,updated_at,published_at,signed_at").eq("organisation_id", id).order("created_at", { ascending: false })),
+    readAllRows(() => admin.from("daily_learners").select("id,first_name,last_name,email,created_at").eq("organisation_id", id).order("last_name")),
+    readAllRows(() => admin.from("daily_session_enrolments").select("id,learner_id,session_id,status,created_at,updated_at").eq("organisation_id", id).order("created_at", { ascending: false })),
+    readAllRows(() => admin.from("daily_organisation_profile_change_requests").select("id,request_type,status,requested_at,reviewed_at,review_message").eq("organisation_id", id).order("requested_at", { ascending: false })),
   ]);
 
   if (organisationRes.error || !organisationRes.data) return <main style={s.page}><p style={s.error}>Organisme introuvable.</p></main>;
-  const loadingError = [assignmentRes, agentsRes, adminAccessRes, checklistRes, membershipsRes, rolesRes, blocksRes, invitationsRes, trainersRes, certificationsRes, validationsRes, historyRes, sessionsRes, formationsStatsRes]
+  const loadingError = [assignmentRes, agentsRes, adminAccessRes, membershipsRes, rolesRes, blocksRes, invitationsRes, trainersRes, certificationsRes, historyRes, sessionsRes, formationsStatsRes, communicationsRes, documentsRes, learnersRes, enrolmentsRes, profileRequestsRes]
     .map((result) => result.error)
     .find(Boolean);
   if (loadingError) return <main style={s.page}><p style={s.error}>Chargement du dossier impossible : {loadingError.message}</p></main>;
@@ -298,7 +326,6 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   } catch (error) {
     return <main style={s.page}><p style={s.error}>Chargement des tâches impossible : {error instanceof Error ? error.message : "pilotage Daily indisponible"}</p></main>;
   }
-  const checklist = checklistRes.data ?? [];
   const memberships = membershipsRes.data ?? [];
   const roles = rolesRes.data ?? [];
   const blocks = blocksRes.data ?? [];
@@ -306,8 +333,6 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const trainers = trainersRes.data ?? [];
   const trainerIds = new Set(trainers.map((trainer) => trainer.id));
   const certifications = (certificationsRes.data ?? []).filter((certification) => trainerIds.has(certification.trainer_profile_id));
-  const validations = validationsRes.data ?? [];
-  const pendingValidations = validations.filter((request) => request.status === "pending");
   const activeTrainerIds = new Set(trainers.filter((trainer) => trainer.active).map((trainer) => trainer.id));
   const expiring = certifications.filter((certification) => activeTrainerIds.has(certification.trainer_profile_id) && certification.validity_mode === "limited" && certification.valid_until && daysUntil(certification.valid_until) <= 90);
   const programStats = dailyOrganisationProgramStats(formationsStatsRes.data ?? []);
@@ -325,20 +350,45 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const profileByUser = new Map((memberProfilesRes.data ?? []).map((profile) => [profile.user_id, profile]));
   const sessions = sessionsRes.data ?? [];
   const sessionIds = sessions.map((session) => session.id);
-  const portalAccessRes = sessionIds.length
-    ? await admin
+  const [portalAccessRes, conventionSignaturesRes, sessionDossiersRes] = await Promise.all([
+    sessionIds.length
+      ? readAllRows(() => admin
         .from("daily_portal_access_tokens")
         .select("id,session_id,portal_type,entity_name,entity_email,status,expires_at,viewed_at")
         .in("session_id", sessionIds)
         .in("portal_type", ["learner", "trainer"])
         .not("status", "in", "(revoked,expired)")
-        .order("created_at", { ascending: false })
-        .limit(30)
-    : { data: [], error: null };
+        .order("created_at", { ascending: false }))
+      : Promise.resolve({ data: [], error: null }),
+    sessionIds.length
+      ? readAllRows(() => admin.from("daily_convention_signatures").select("id,session_id,signatory_type,signatory_name,signatory_email,status,viewed_at,signed_at,created_at,last_error").in("session_id", sessionIds).order("created_at", { ascending: false }))
+      : Promise.resolve({ data: [], error: null }),
+    sessionIds.length
+      ? readAllRows(() => admin.from("daily_session_dossiers").select("session_id,status,completed_at").in("session_id", sessionIds))
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (portalAccessRes.error || conventionSignaturesRes.error || sessionDossiersRes.error) {
+    return <main style={s.page}><p style={s.error}>Chargement du dossier impossible : {portalAccessRes.error?.message || conventionSignaturesRes.error?.message || sessionDossiersRes.error?.message}</p></main>;
+  }
   const activePortalAccess = (portalAccessRes.data ?? []).filter((access) =>
     !access.expires_at || new Date(access.expires_at).getTime() >= Date.now(),
   );
   const sessionById = new Map(sessions.map((session) => [session.id, session]));
+  const dossierBySessionId = new Map((sessionDossiersRes.data ?? []).map((dossier) => [dossier.session_id, dossier]));
+  const today = new Date().toISOString().slice(0, 10);
+  const openSessions = sessions.filter((session) => !["completed", "archived"].includes(String(dossierBySessionId.get(session.id)?.status)));
+  const plannedSessions = openSessions.filter((session) => !session.start_date || session.start_date > today);
+  const currentSessions = openSessions.filter((session) => session.start_date && session.start_date <= today && (!session.end_date || session.end_date >= today));
+  const sessionsToClose = openSessions.filter((session) => session.end_date && session.end_date < today);
+  const enrolments = enrolmentsRes.data ?? [];
+  const learners = learnersRes.data ?? [];
+  const timeline = [
+    ...(historyRes.data ?? []).map((event) => ({ id: `audit:${event.id}`, at: event.occurred_at, kind: "Action", title: event.action, detail: [event.object_type, event.actor_role || event.actor_type, event.reason].filter(Boolean).join(" · ") })),
+    ...(communicationsRes.data ?? []).map((event) => ({ id: `communication:${event.id}`, at: event.sent_at || event.created_at, kind: "Email", title: event.subject || event.communication_type, detail: [event.recipient_name || event.recipient_email, event.status, event.failure_reason].filter(Boolean).join(" · ") })),
+    ...(documentsRes.data ?? []).map((event) => ({ id: `document:${event.id}`, at: event.updated_at || event.created_at, kind: "Document", title: event.logical_name || event.document_type, detail: [`version ${event.version}`, event.status, event.is_current ? "version courante" : "historique"].join(" · ") })),
+    ...(conventionSignaturesRes.data ?? []).map((event) => ({ id: `signature:${event.id}`, at: event.signed_at || event.viewed_at || event.created_at, kind: "Signature", title: event.signatory_name || event.signatory_email || event.signatory_type, detail: [event.status, event.last_error].filter(Boolean).join(" · ") })),
+    ...(profileRequestsRes.data ?? []).map((event) => ({ id: `profile:${event.id}`, at: event.reviewed_at || event.requested_at, kind: "Retour OF", title: event.request_type, detail: [event.status, event.review_message].filter(Boolean).join(" · ") })),
+  ].filter((event) => event.at).sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
   return (
     <main style={s.page}>
@@ -371,7 +421,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
       <section style={s.stats}>
         <MiniStat label="Programmes validés" value={`${programStats.validated}/${programStats.total}`} detail={programStats.total === 0 ? "Aucun programme" : `${programStats.toFinalize} à finaliser · ${programStats.progress}% validés`} />
         <MiniStat label="Tâches actives" value={String(scopedDailyTasks.length)} detail="Source Pilotage Daily" tone="warn" />
-        <MiniStat label="Modifications à valider" value={String(pendingValidations.length)} detail="Profil légal de l’OF" tone="info" />
+        <MiniStat label="Sessions à clôturer" value={String(sessionsToClose.length)} detail={`${currentSessions.length} en cours · ${plannedSessions.length} à venir`} tone="info" />
         <MiniStat label="Certifications à surveiller" value={String(expiring.length)} detail="Expirées ou à ≤ 90 j" tone="danger" />
         <MiniStat label="Agent" value={assignedAgent ? ([assignedAgent.first_name, assignedAgent.last_name].filter(Boolean).join(" ") || assignedAgent.email || "Assigné") : "Non assigné"} />
       </section>
@@ -387,13 +437,17 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
           <SelenCard style={{ gridColumn: "1 / -1" }}><SelenCardTitle>Espaces apprenant et formateur délégués</SelenCardTitle><p style={s.muted}>Consultation sûre dans le contexte de cet OF. Les liens personnels ne sont pas révélés et aucune réponse, signature ou action personnelle ne peut être réalisée par l’agent.</p>{activePortalAccess.length === 0 ? <p style={s.muted}>Aucun espace actif disponible pour les sessions de cet organisme.</p> : activePortalAccess.map((access) => { const session = sessionById.get(access.session_id); const formation = Array.isArray(session?.daily_formations) ? session.daily_formations[0] : session?.daily_formations; return <div key={access.id} style={s.attentionRow}><div><strong>{access.portal_type === "learner" ? "Apprenant" : "Formateur"} · {access.entity_name || access.entity_email || "Espace sécurisé"}</strong><p style={s.mutedInline}>{formation?.title || session?.internal_reference || "Session"} · {session?.start_date || "date à préciser"}{access.viewed_at ? " · déjà ouvert par le titulaire" : " · non encore ouvert par le titulaire"}</p></div><form action={openPortalAssistanceMode}><input type="hidden" name="organisation_id" value={id} /><input type="hidden" name="portal_access_id" value={access.id} /><SelenButton type="submit" size="sm" variant="ghost">Consulter en délégation</SelenButton></form></div>; })}</SelenCard>
           <SelenCard><SelenCardTitle>Tâches de cet OF</SelenCardTitle>{scopedDailyTasks.length === 0 ? <p style={s.muted}>Aucune tâche active pour cet organisme.</p> : scopedDailyTasks.map((item) => <div key={item.id} style={s.attentionRow}><div><strong>{item.title}</strong><p style={s.mutedInline}>{item.reason} · {item.detail}</p></div><Link href={item.href} style={s.back}>Traiter →</Link></div>)}</SelenCard>
           <SelenCard><SelenCardTitle>Signaux dossier</SelenCardTitle><Signal label="NDA" value={organisation.nda_status || "unknown"} /><Signal label="Qualiopi" value={organisation.qualiopi_status || "unknown"} /><Signal label="Utilisateurs actifs" value={String(memberships.filter((m) => m.status === "active").length)} /><Signal label="Formateurs actifs" value={String(trainers.filter((t) => t.active).length)} /><Signal label="Invitations en attente" value={String(invitations.filter((i) => i.status === "pending").length)} /></SelenCard>
+          <SelenCard style={{ gridColumn: "1 / -1" }}><SelenCardTitle>Sessions de cet organisme</SelenCardTitle><div style={s.sessionGroups}><SessionGroup title="À venir" sessions={plannedSessions} /><SessionGroup title="En cours" sessions={currentSessions} /><SessionGroup title="À clôturer" sessions={sessionsToClose} /></div></SelenCard>
           <SelenCard style={{ gridColumn: "1 / -1" }}><SelenCardTitle>Échéances formateurs</SelenCardTitle>{expiring.length === 0 ? <p style={s.muted}>Aucune certification à durée limitée n’arrive à échéance dans les 90 jours.</p> : expiring.map((cert) => { const trainer = trainers.find((t) => t.id === cert.trainer_profile_id); return <div key={cert.id} style={s.attentionRow}><span>{trainer?.display_name || "Formateur"} · {cert.title}</span><SelenBadge variant={certVariant(cert.validity_mode, cert.valid_until)}>{certificationLabel(cert.validity_mode, cert.valid_until)}</SelenBadge></div>; })}</SelenCard>
         </div>
       ) : null}
 
-      {tab === "checklist" ? <SelenCard><SelenCardTitle>Checklist du dossier</SelenCardTitle><div style={s.list}>{checklist.map((item) => <form action={updateChecklist} key={item.id} style={s.checkRow}><input type="hidden" name="organisation_id" value={id} /><input type="hidden" name="item_id" value={item.id} /><div style={{ flex: 1, minWidth: 220 }}><strong>{item.label}</strong><p style={s.mutedInline}>{item.description}</p><p style={s.tiny}>Signalé il y a {daysSince(item.signaled_at)} jour(s)</p></div><select name="status" defaultValue={item.status} style={s.select}><option value="todo">À faire</option><option value="in_progress">En cours</option><option value="to_review">À vérifier</option><option value="validated">Validé</option><option value="blocked">Bloqué</option><option value="not_applicable">Non applicable</option></select><input name="note" defaultValue={item.note || ""} placeholder="Note interne" style={s.input} /><SelenButton type="submit" size="sm">Enregistrer</SelenButton></form>)}</div></SelenCard> : null}
-
-      {tab === "info" ? <div style={s.twoCols}><InfoCard title="Identité" rows={[["Nom affiché", organisation.name],["Raison sociale", organisation.legal_name],["Forme juridique", organisation.legal_form],["SIRET", organisation.siret],["TVA", organisation.vat_number]]} /><InfoCard title="Coordonnées administratives" rows={[["Email", organisation.administrative_email || organisation.email],["Téléphone", organisation.administrative_phone || organisation.phone],["Adresse", organisation.administrative_address || organisation.address],["Contact", organisation.contact_name]]} /><InfoCard title="Représentant légal" rows={[["Nom", organisation.legal_representative_name],["Email", organisation.legal_representative_email]]} /><InfoCard title="Conformité" rows={[["NDA", organisation.nda_number],["Statut NDA", organisation.nda_status],["Déclaré le", organisation.nda_declared_at],["Qualiopi", organisation.qualiopi_status],["Valide du", organisation.qualiopi_valid_from],["Valide jusqu’au", organisation.qualiopi_valid_until],["Catégories", Array.isArray(organisation.qualiopi_categories) ? organisation.qualiopi_categories.join(", ") : null]]} /></div> : null}
+      {tab === "info" ? <SelenCard><SelenCardTitle>Informations de l’organisme</SelenCardTitle><p style={s.muted}>Les modifications sont historisées. Elles ne changent ni les accès, ni les sessions, ni les inscriptions.</p><form action={updateOrganisationInformation} style={s.editForm}><input type="hidden" name="organisation_id" value={id} /><div style={s.editGrid}>{[
+        ["name", "Nom affiché", organisation.name, "text"], ["legal_name", "Raison sociale", organisation.legal_name, "text"], ["legal_form", "Forme juridique", organisation.legal_form, "text"], ["siret", "SIRET", organisation.siret, "text"], ["vat_number", "N° TVA", organisation.vat_number, "text"],
+        ["administrative_email", "Email administratif", organisation.administrative_email || organisation.email, "email"], ["administrative_phone", "Téléphone administratif", organisation.administrative_phone || organisation.phone, "tel"], ["administrative_address", "Adresse administrative", organisation.administrative_address || organisation.address, "text"], ["contact_name", "Contact principal", organisation.contact_name, "text"],
+        ["legal_representative_name", "Représentant légal", organisation.legal_representative_name, "text"], ["legal_representative_email", "Email du représentant", organisation.legal_representative_email, "email"], ["nda_number", "Numéro NDA", organisation.nda_number, "text"], ["nda_status", "Statut NDA", organisation.nda_status, "text"], ["nda_declared_at", "NDA déclaré le", organisation.nda_declared_at, "date"],
+        ["qualiopi_status", "Statut Qualiopi", organisation.qualiopi_status, "text"], ["qualiopi_valid_from", "Qualiopi valide du", organisation.qualiopi_valid_from, "date"], ["qualiopi_valid_until", "Qualiopi valide jusqu’au", organisation.qualiopi_valid_until, "date"],
+      ].map(([name, label, value, type]) => <label key={String(name)} style={s.field}><span style={s.smallLabel}>{String(label)}</span><input name={String(name)} type={String(type)} defaultValue={value == null ? "" : String(value)} style={s.inputWide} /></label>)}</div><div style={s.formFooter}><SelenButton type="submit">Enregistrer les informations</SelenButton></div></form></SelenCard> : null}
 
       {tab === "users" ? (
         <div style={s.stack}>
@@ -410,14 +464,14 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
         </div>
       ) : null}
 
+      {tab === "learners" ? <SelenCard><SelenCardTitle>Espaces apprenants</SelenCardTitle><p style={s.muted}>Tous les apprenants rattachés à cet organisme restent visibles, y compris lorsque leur inscription est clôturée ou annulée.</p>{learners.length === 0 ? <p style={s.muted}>Aucun apprenant rattaché.</p> : learners.map((learner) => { const learnerEnrolments = enrolments.filter((enrolment) => enrolment.learner_id === learner.id); return <article key={learner.id} style={s.memberCard}><div style={s.userRow}><div style={{ flex: 1 }}><strong>{[learner.first_name, learner.last_name].filter(Boolean).join(" ") || learner.email || "Apprenant"}</strong><p style={s.mutedInline}>{learner.email || "Email non renseigné"} · {learnerEnrolments.length} inscription(s)</p></div>{learnerEnrolments.length === 0 ? <SelenBadge variant="neutral">Sans session</SelenBadge> : null}</div>{learnerEnrolments.map((enrolment) => { const session = sessionById.get(enrolment.session_id); const formation = Array.isArray(session?.daily_formations) ? session?.daily_formations[0] : session?.daily_formations; return <div key={enrolment.id} style={s.attentionRow}><div><strong>{formation?.title || session?.internal_reference || "Session"}</strong><p style={s.mutedInline}>{session?.start_date || "Date à préciser"} · statut {enrolment.status}</p></div><Link href={`/agent/daily/session-dossiers/${enrolment.session_id}/full`} style={s.back}>Ouvrir le dossier →</Link></div>; })}</article>; })}</SelenCard> : null}
+
       {tab === "trainers" ? <div style={s.stack}>{trainers.length === 0 ? <SelenCard><p style={s.muted}>Aucun formateur enregistré.</p></SelenCard> : trainers.map((trainer) => {
         const trainerCerts = certifications.filter((cert) => cert.trainer_profile_id === trainer.id);
         return <SelenCard key={trainer.id}><div style={s.trainerHead}><div><SelenCardTitle>{trainer.display_name || trainer.professional_email || "Formateur"}</SelenCardTitle><p style={s.mutedInline}>{trainer.engagement_type} · {trainer.professional_email || "email non renseigné"}</p></div><div style={s.badgeLine}><SelenBadge variant={trainer.status === "validated" ? "success" : trainer.status === "pending_selen_review" ? "warn" : trainer.status === "rejected" ? "danger" : "neutral"}>{trainer.status}</SelenBadge>{isAdmin && trainer.status !== "validated" ? <form action={reviewTrainer} style={s.inlineForm}><input type="hidden" name="organisation_id" value={id} /><input type="hidden" name="trainer_profile_id" value={trainer.id} /><SelenButton type="submit" name="decision" value="validated" size="sm">Valider Selen</SelenButton><SelenButton type="submit" name="decision" value="rejected" size="sm" variant="danger">Refuser</SelenButton></form> : null}</div></div><div style={s.certList}>{trainerCerts.length === 0 ? <p style={s.mutedInline}>Aucune certification renseignée par le formateur.</p> : trainerCerts.map((cert) => <div key={cert.id} style={s.certRow}><div><strong>{cert.title}</strong><p style={s.mutedInline}>{[cert.issuer, cert.reference, cert.obtained_on ? `obtenue le ${cert.obtained_on}` : null].filter(Boolean).join(" · ")}</p></div><SelenBadge variant={certVariant(cert.validity_mode, cert.valid_until)}>{certificationLabel(cert.validity_mode, cert.valid_until)}</SelenBadge></div>)}</div><p style={s.readOnlyNotice}>Certifications en consultation uniquement dans Studio. Le formateur les ajoute, les met à jour et dépose ses justificatifs depuis son espace Daily.</p></SelenCard>;
       })}</div> : null}
 
-      {tab === "validations" ? <SelenCard><SelenCardTitle>Demandes de validation Selen</SelenCardTitle>{validations.length === 0 ? <p style={s.muted}>Aucune demande.</p> : validations.map((request) => <article key={request.id} style={s.validationRow}><div style={{ flex: 1 }}><div style={s.badgeLine}><SelenBadge variant={request.status === "pending" ? "warn" : request.status === "approved" ? "success" : "neutral"}>{request.status}</SelenBadge><strong>{request.request_type}</strong></div><pre style={s.pre}>{JSON.stringify(request.proposed_changes, null, 2)}</pre>{request.review_message ? <p style={s.mutedInline}>Décision : {request.review_message}</p> : null}</div>{request.status === "pending" && isAdmin ? <form action={reviewValidation} style={s.reviewForm}><input type="hidden" name="organisation_id" value={id} /><input type="hidden" name="request_id" value={request.id} /><textarea name="message" placeholder="Motif / commentaire" style={s.textarea} /><div style={s.badgeLine}><button type="submit" name="decision" value="approved" style={s.approveButton}>Valider</button><button type="submit" name="decision" value="rejected" style={s.rejectButton}>Refuser</button></div></form> : null}</article>)}</SelenCard> : null}
-
-      {tab === "history" ? <SelenCard><SelenCardTitle>Historique Daily</SelenCardTitle>{(historyRes.data ?? []).length === 0 ? <p style={s.muted}>Aucun événement d’audit enregistré.</p> : (historyRes.data ?? []).map((event) => <div key={event.id} style={s.historyRow}><div><strong>{event.action}</strong><p style={s.mutedInline}>{event.object_type} · {event.actor_role || event.actor_type}</p>{event.reason ? <p style={s.mutedInline}>{event.reason}</p> : null}</div><span style={s.tiny}>{new Date(event.occurred_at).toLocaleString("fr-FR")}</span></div>)}</SelenCard> : null}
+      {tab === "history" ? <SelenCard><SelenCardTitle>Historique unifié</SelenCardTitle><p style={s.muted}>Actions, emails automatiques ou manuels, retours OF, documents et signatures, sans mélange avec un autre organisme.</p>{timeline.length === 0 ? <p style={s.muted}>Aucun événement enregistré.</p> : timeline.map((event) => <div key={event.id} style={s.historyRow}><div><div style={s.badgeLine}><SelenBadge variant={event.kind === "Email" ? "info" : event.kind === "Signature" ? "success" : "neutral"}>{event.kind}</SelenBadge><strong>{event.title}</strong></div>{event.detail ? <p style={s.mutedInline}>{event.detail}</p> : null}</div><span style={s.tiny}>{new Date(event.at).toLocaleString("fr-FR")}</span></div>)}</SelenCard> : null}
     </main>
   );
 }
@@ -427,7 +481,8 @@ function MiniStat({ label, value, detail, tone = "neutral" }: { label: string; v
   return <SelenCard style={s.statCard}><span style={s.tiny}>{label}</span><strong style={{ color, fontSize: value.length > 16 ? 14 : 24 }}>{value}</strong>{detail ? <span style={s.statDetail}>{detail}</span> : null}</SelenCard>;
 }
 function Signal({ label, value }: { label: string; value: string }) { return <div style={s.signal}><span style={s.mutedInline}>{label}</span><strong>{value}</strong></div>; }
-function InfoCard({ title, rows }: { title: string; rows: Array<[string, unknown]> }) { return <SelenCard><SelenCardTitle>{title}</SelenCardTitle>{rows.map(([label, value]) => <Signal key={label} label={label} value={value == null || value === "" ? "—" : String(value)} />)}</SelenCard>; }
+type SessionSummary = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; daily_formations?: { title?: string | null } | Array<{ title?: string | null }> | null };
+function SessionGroup({ title, sessions }: { title: string; sessions: SessionSummary[] }) { return <section style={s.sessionGroup}><strong>{title} · {sessions.length}</strong>{sessions.length === 0 ? <p style={s.mutedInline}>Aucune session.</p> : sessions.map((session) => { const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations; return <Link key={session.id} href={`/agent/daily/session-dossiers/${session.id}/full`} style={s.sessionLink}>{formation?.title || session.internal_reference || "Session"}<span style={s.tiny}>{[session.start_date, session.end_date].filter(Boolean).join(" → ") || "Dates à préciser"}</span></Link>; })}</section>; }
 
 const s: Record<string, CSSProperties> = {
   page: { padding: "24px 28px 50px", maxWidth: 1180, margin: "0 auto", color: "var(--selen-text)" },
@@ -438,10 +493,12 @@ const s: Record<string, CSSProperties> = {
   headerActions: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", justifyContent: "flex-end" },
   assignmentForm: { display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }, smallLabel: { fontSize: 10, color: "var(--selen-text3)" },
   select: { background: "var(--selen-bg3)", color: "var(--selen-text)", border: "1px solid var(--selen-border)", borderRadius: 10, padding: "9px 10px", minHeight: 38 },
-  input: { background: "var(--selen-bg3)", color: "var(--selen-text)", border: "1px solid var(--selen-border)", borderRadius: 10, padding: "9px 10px", minWidth: 150 },
+  input: { background: "var(--selen-bg3)", color: "var(--selen-text)", border: "1px solid var(--selen-border)", borderRadius: 10, padding: "9px 10px", minWidth: 150 }, inputWide: { width: "100%", boxSizing: "border-box", background: "var(--selen-bg3)", color: "var(--selen-text)", border: "1px solid var(--selen-border)", borderRadius: 10, padding: "10px 11px", minHeight: 40 },
   stats: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, margin: "18px 0" }, statCard: { minHeight: 96, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 5 }, statDetail: { color: "var(--selen-text3)", fontSize: 10, lineHeight: 1.35 },
   tabs: { display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 16 }, tab: { color: "var(--selen-text2)", textDecoration: "none", fontSize: 12, border: "1px solid var(--selen-border)", borderRadius: 999, padding: "8px 12px" }, activeTab: { color: "var(--selen-ink)", background: "linear-gradient(135deg,var(--selen-gold),var(--selen-copper))", borderColor: "transparent", fontWeight: 700 },
-  twoCols: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 12 }, stack: { display: "grid", gap: 12 }, list: { display: "grid", gap: 10 }, attentionRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "1px solid var(--selen-border)" }, muted: { color: "var(--selen-text3)", fontSize: 13 }, mutedInline: { margin: "4px 0 0", color: "var(--selen-text3)", fontSize: 11, lineHeight: 1.45 }, tiny: { color: "var(--selen-text3)", fontSize: 10 }, signal: { display: "flex", justifyContent: "space-between", gap: 14, borderBottom: "1px solid var(--selen-border)", padding: "9px 0" },
+  twoCols: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 12 }, stack: { display: "grid", gap: 12 }, list: { display: "grid", gap: 10 }, attentionRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "1px solid var(--selen-border)", flexWrap: "wrap" }, muted: { color: "var(--selen-text3)", fontSize: 13 }, mutedInline: { margin: "4px 0 0", color: "var(--selen-text3)", fontSize: 11, lineHeight: 1.45 }, tiny: { color: "var(--selen-text3)", fontSize: 10 }, signal: { display: "flex", justifyContent: "space-between", gap: 14, borderBottom: "1px solid var(--selen-border)", padding: "9px 0" },
+  sessionGroups: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }, sessionGroup: { display: "grid", alignContent: "start", gap: 8, minWidth: 0, padding: 12, borderRadius: 12, background: "var(--selen-bg3)", border: "1px solid var(--selen-border)" }, sessionLink: { display: "grid", gap: 3, color: "var(--selen-text)", textDecoration: "none", padding: "8px 0", borderTop: "1px solid var(--selen-border)" },
+  editForm: { display: "grid", gap: 16, marginTop: 16 }, editGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12 }, field: { display: "grid", gap: 5, minWidth: 0 }, formFooter: { display: "flex", justifyContent: "flex-end", paddingTop: 4 },
   checkRow: { display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", padding: 12, border: "1px solid var(--selen-border)", borderRadius: 14, background: "var(--selen-bg3)" },
   memberCard: { borderTop: "1px solid var(--selen-border)", padding: "14px 0" }, userRow: { display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }, inlineForm: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }, accessForm: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, alignItems: "end", marginTop: 12, padding: 12, borderRadius: 12, background: "var(--selen-bg3)" }, fieldset: { border: "1px solid var(--selen-border)", borderRadius: 10, padding: 10, margin: 0 }, legend: { fontSize: 10, color: "var(--selen-text3)", padding: "0 4px" }, checkboxLabel: { display: "block", fontSize: 11, color: "var(--selen-text2)", margin: "5px 0" },
   trainerHead: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }, certList: { display: "grid", marginTop: 8 }, certRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", borderTop: "1px solid var(--selen-border)", padding: "10px 0" }, readOnlyNotice: { margin: "12px 0 0", paddingTop: 12, borderTop: "1px solid var(--selen-border)", color: "var(--selen-text3)", fontSize: 11, lineHeight: 1.5 },
