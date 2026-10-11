@@ -15,6 +15,7 @@ function fixture() {
     organisations: ["of-a", "of-b"].map(id => ({ id, name: id, status: "active", created_at: today })),
     daily_organisation_assignments: ["of-a", "of-b"].map(organisation_id => ({ organisation_id, agent_profile_id: organisation_id === "of-a" ? "agent-a" : "agent-b" })),
     daily_sessions: ["of-a", "of-b"].map((organisation_id, i) => ({ id: `session-${i}`, organisation_id, formation_id: `formation-${i}`, status: "active", start_date: "2026-12-01", end_date: "2026-12-02", registration_status: "summary_validated", adaptation_needed: false, updated_at: today })),
+    daily_session_dossiers: [],
     daily_formations: [0, 1].map(i => ({ id: `formation-${i}`, organisation_id: i === 0 ? "of-a" : "of-b", title: `Formation ${i}`, status: "validated", updated_at: today })),
     daily_registration_responses: [{ id: "response-1", session_id: "session-0", created_at: "2026-10-01T08:00:00Z" }],
     daily_registration_reviews: [{ session_id: "session-0", validated_at: "2026-10-01T09:00:00Z" }],
@@ -31,17 +32,19 @@ function fixture() {
 function queryClient(rows, queries) {
   return { from(table) {
     assert.ok(Object.hasOwn(rows, table), `Unexpected table: ${table}`);
-    const filters = []; const orders = [];
+    const filters = []; const orders = []; let window = null;
     const query = {
       select() { return query; },
       in(key, values) { filters.push(row => values.includes(row[key])); return query; },
       eq(key, value) { filters.push(row => row[key] === value); return query; },
       neq(key, value) { filters.push(row => row[key] !== value); return query; },
       order(key, { ascending = true } = {}) { orders.push([key, ascending]); return query; },
+      range(from, to) { window = [from, to]; return query; },
       then(resolve, reject) {
         queries.push(table);
         let data = rows[table].filter(row => filters.every(f => f(row)));
         for (const [key, ascending] of orders) data.sort((a, b) => String(a[key]).localeCompare(String(b[key])) * (ascending ? 1 : -1));
+        if (window) data = data.slice(window[0], window[1] + 1);
         return Promise.resolve({ data, error: null }).then(resolve, reject);
       },
     };
@@ -122,6 +125,19 @@ test("les tâches client, d'une session archivée ou d'une phase future ne remon
     { id: "archive", session_id: "session-1", organisation_id: "of-b", responsibility: "selen", phase: "before" },
   ].map(row => ({ ...row, item_key: "trainer_assignment", status: "todo", label: row.id, signaled_at: today }));
   assert.equal((await harness(rows).getDailyAgentTasks(adminStaff)).length, 0);
+});
+
+test("la clôture canonique du dossier retire immédiatement les tâches de Dashboard et Pilotage", async () => {
+  const rows = fixture();
+  rows.daily_session_checklist_items = [{
+    id: "closed-task", session_id: "session-0", organisation_id: "of-a", item_key: "trainer_assignment",
+    phase: "before", responsibility: "selen", label: "Tâche clôturée", status: "todo", signaled_at: today,
+  }];
+  rows.daily_session_dossiers = [{ session_id: "session-0", organisation_id: "of-a", status: "completed" }];
+  const h = harness(rows);
+  assert.equal((await h.getDailyAgentTasks(adminStaff)).length, 0);
+  assert.equal((await h.getDailyPilotageTasks()).length, 0);
+  assert.equal(rows.daily_session_checklist_items[0].status, "todo");
 });
 
 test("la préparation préformation reste absente avant l'acceptation explicite de la candidature", async () => {
