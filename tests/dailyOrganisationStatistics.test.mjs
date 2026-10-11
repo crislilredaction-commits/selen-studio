@@ -31,8 +31,8 @@ test("le dossier affiche la sémantique exacte et refuse les faux zéros de char
   assert.match(detailPage, /Programmes validés/);
   assert.match(detailPage, /Tâches actives/);
   assert.match(detailPage, /Source Pilotage Daily/);
-  assert.match(detailPage, /Modifications à valider/);
-  assert.match(detailPage, /Profil légal de l’OF/);
+  assert.match(detailPage, /Sessions à clôturer/);
+  assert.match(detailPage, /en cours ·.*à venir/);
   assert.match(detailPage, /Certifications à surveiller/);
   assert.match(detailPage, /Chargement du dossier impossible/);
   assert.match(detailPage, /Chargement des tâches impossible/);
