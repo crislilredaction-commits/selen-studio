@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import AgentSidebar from "@/components/layout/AgentSidebar";
 import StudioQuickEmail from "@/components/agent/StudioQuickEmail";
+import StudioAgentGrimoire from "@/components/agent/StudioAgentGrimoire";
 import StudioTutoiementGuard from "@/components/StudioTutoiementGuard";
 import SupportQuickCreateLink from "@/components/support/SupportQuickCreateLink";
 import StudioActionFeedback from "@/components/agent/StudioActionFeedback";
@@ -71,6 +72,7 @@ export default async function AgentLayout({ children }: { children: React.ReactN
         <SupportQuickCreateLink />
         <StudioActionFeedback />
         <StudioNavigationFeedback />
+        <StudioAgentGrimoire />
         <StudioQuickEmail />
         {children}
       </main>
