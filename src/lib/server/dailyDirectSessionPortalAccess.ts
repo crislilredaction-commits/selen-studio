@@ -27,7 +27,7 @@ export type DirectSessionPortalSource = {
 export type DirectSessionPortalDefinition = {
   session_id: string;
   user_id: string;
-  portal_type: "learner" | "enterprise";
+  portal_type: "learner" | "enterprise" | "trainer";
   entity_key: string;
   entity_name: string | null;
   entity_email: string | null;
@@ -300,4 +300,44 @@ export async function provisionDirectSessionPortalAccesses(input: ProvisionInput
   }
 
   return { created, sent, skipped, paused };
+}
+
+export async function resendExistingDailyPortalAccess(input: { supabase: SupabaseClient; accessId: string; organisationId: string; createdBy?: string | null }) {
+  const { data: access, error: accessError } = await input.supabase.from("daily_portal_access_tokens").select("id,session_id,portal_type,entity_key,entity_name,entity_email,token,status,expires_at,daily_sessions!inner(organisation_id,daily_formations(title))").eq("id", input.accessId).eq("daily_sessions.organisation_id", input.organisationId).in("portal_type", ["learner", "trainer"]).maybeSingle();
+  if (accessError) throw new Error(accessError.message);
+  if (!access) throw new Error("Accès introuvable dans cet organisme.");
+  if (["revoked", "expired"].includes(String(access.status))) throw new Error("Cet accès est clos et ne peut pas être renvoyé.");
+  if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) throw new Error("Cet accès est expiré.");
+  const email = normalizedEmail(access.entity_email);
+  if (!email || isSyntheticEmail(email)) throw new Error("Adresse réelle du destinataire manquante.");
+  const session = Array.isArray(access.daily_sessions) ? access.daily_sessions[0] : access.daily_sessions;
+  const formation = Array.isArray(session?.daily_formations) ? session.daily_formations[0] : session?.daily_formations;
+  let enrolmentId: string | null = null;
+  if (access.portal_type === "learner") {
+    const learnerId = String(access.entity_key || "").startsWith("learner:") ? String(access.entity_key).slice(8) : "";
+    let learner: { id: string; email: string | null } | null = null;
+    if (learnerId) { const { data } = await input.supabase.from("daily_learners").select("id,email").eq("id", learnerId).eq("organisation_id", input.organisationId).maybeSingle(); learner = data; }
+    else { const { data } = await input.supabase.from("daily_learners").select("id,email").eq("organisation_id", input.organisationId).ilike("email", email).limit(1).maybeSingle(); learner = data; }
+    if (!learner || normalizedEmail(learner.email) !== email) throw new Error("Le destinataire ne correspond plus à l’apprenant rattaché.");
+    const { data: enrolment, error: enrolmentError } = await input.supabase.from("daily_session_enrolments").select("id,status").eq("organisation_id", input.organisationId).eq("session_id", access.session_id).eq("learner_id", learner.id).maybeSingle();
+    if (enrolmentError) throw new Error(enrolmentError.message);
+    if (!enrolment || ["declined", "cancelled", "abandoned"].includes(String(enrolment.status))) throw new Error("L’inscription liée à cet accès n’est plus active.");
+    enrolmentId = enrolment.id;
+  }
+  const communicationType = access.portal_type === "trainer" ? "trainer_portal_access" : "learner_portal_access";
+  const cooldownStart = new Date(Date.now() - 60_000).toISOString();
+  const { data: recent, error: recentError } = await input.supabase.from("daily_communications").select("id,status,created_at").eq("organisation_id", input.organisationId).eq("session_id", access.session_id).eq("communication_type", communicationType).eq("recipient_email", email).contains("metadata", { portal_access_id: access.id, auth_protected: true }).gte("created_at", cooldownStart).in("status", ["queued", "sent", "delivered"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (recentError) throw new Error(recentError.message);
+  if (recent) return { status: "already_sent" as const, communicationId: recent.id };
+  const portalType = access.portal_type as "learner" | "trainer";
+  const authUrl = await buildDailyPortalAuthEntryUrl({ email, portalType, token: access.token });
+  const definition: DirectSessionPortalDefinition = { session_id: access.session_id, user_id: "", portal_type: "learner", entity_key: access.entity_key, entity_name: access.entity_name, entity_email: email };
+  const message = portalEmail({ ...definition, portal_type: portalType }, authUrl, formation?.title ?? null);
+  const { data: communication, error: communicationError } = await input.supabase.from("daily_communications").insert({ organisation_id: input.organisationId, session_id: access.session_id, enrolment_id: enrolmentId, communication_type: communicationType, channel: "email", recipient_email: email, recipient_name: access.entity_name, subject: message.subject, text_body: message.rendered.text, html_body: message.rendered.html, provider: "resend", status: "queued", created_by: input.createdBy ?? null, metadata: { portal_access_id: access.id, source: "studio_manual_resend", auth_protected: true } }).select("id").single();
+  if (communicationError) throw new Error(communicationError.message);
+  const delivery = await sendClientEmailWithSilence({ supabase: input.supabase, organisationId: input.organisationId, email, to: email, subject: message.subject, html: message.rendered.html, text: message.rendered.text });
+  if (delivery.sent) { const { error } = await input.supabase.from("daily_communications").update({ status: "sent", sent_at: new Date().toISOString(), provider_message_id: "resendId" in delivery ? delivery.resendId ?? null : null }).eq("id", communication.id); if (error) throw new Error(error.message); return { status: "sent" as const, communicationId: communication.id }; }
+  await input.supabase.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: delivery.error ?? "Envoi impossible." }).eq("id", communication.id);
+  if (delivery.paused) return { status: "paused" as const, communicationId: communication.id };
+  throw new Error(delivery.error ?? "Envoi impossible.");
 }
