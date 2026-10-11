@@ -151,7 +151,7 @@ export default function InvoiceForm({
 }) {
   const router = useRouter();
   const locked = Boolean(invoice && !["draft", "generated"].includes(invoice.status));
-  const canDelete = Boolean(invoice && ["draft", "generated"].includes(invoice.status));
+  const canDelete = Boolean(invoice && invoice.status === "draft");
   const formRef = useRef<HTMLFormElement>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState("");
@@ -371,7 +371,7 @@ export default function InvoiceForm({
   async function deleteInvoice() {
     if (!invoice?.id) return;
     const confirmed = window.confirm(
-      "Supprimer definitivement cette facture test ? Les audits lies seront liberes si cette facture les avait archives.",
+      "Supprimer definitivement ce brouillon jamais numerote ? Les audits lies seront liberes.",
     );
     if (!confirmed) return;
     setBusy("delete");
@@ -407,6 +407,7 @@ export default function InvoiceForm({
         action,
         id: invoice.id,
         invoiceType,
+        expectedUpdatedAt: invoice.updated_at,
       }),
     });
     const result = await response.json().catch(() => ({}));

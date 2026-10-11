@@ -91,6 +91,15 @@ export type LilInvoiceRow = {
   updated_at: string;
 };
 
+export type LilInvoiceSequenceState = {
+  lastNumber: number;
+  nextNumber: number;
+  maxAssignedSequence: number;
+  minimumSafeNextNumber: number;
+  canCloseTrailingGap: boolean;
+  updatedAt: string;
+};
+
 export const INVOICE_STORAGE_BUCKET = "selen-documents";
 export const GOOGLE_DRIVE_INVOICE_FOLDER =
   "https://drive.google.com/drive/folders/1DawT2mz4m6pwRR3yvgWQVpJA5iU7R9Zi?usp=sharing";
@@ -189,8 +198,36 @@ export async function reserveNextInvoiceNumber() {
   };
 }
 
-function pdfText(value?: string | null) {
-  return value?.trim() || "-";
+export async function getLilInvoiceSequenceState(): Promise<LilInvoiceSequenceState> {
+  const admin = createSupabaseAdminClient();
+  const [{ data: sequence, error: sequenceError }, { data: latest, error: latestError }] =
+    await Promise.all([
+      admin
+        .from("lil_invoice_sequence")
+        .select("last_number,updated_at")
+        .eq("id", true)
+        .single(),
+      admin
+        .from("lil_invoices")
+        .select("sequence_number")
+        .not("sequence_number", "is", null)
+        .order("sequence_number", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+  if (sequenceError) throw new Error(sequenceError.message);
+  if (latestError) throw new Error(latestError.message);
+
+  const lastNumber = Number(sequence?.last_number ?? 415);
+  const maxAssignedSequence = Number(latest?.sequence_number ?? 415);
+  return {
+    lastNumber,
+    nextNumber: lastNumber + 1,
+    maxAssignedSequence,
+    minimumSafeNextNumber: maxAssignedSequence + 1,
+    canCloseTrailingGap: lastNumber > maxAssignedSequence,
+    updatedAt: String(sequence?.updated_at ?? ""),
+  };
 }
 
 function formatDateFr(value: string) {

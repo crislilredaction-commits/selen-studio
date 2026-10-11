@@ -1,20 +1,38 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
-import type { LilInvoiceSettings } from "@/lib/server/lilInvoices";
+import SelenButton from "@/components/ui/SelenButton";
+import type {
+  LilInvoiceSequenceState,
+  LilInvoiceSettings,
+} from "@/lib/server/lilInvoices";
 
 function euroValue(cents: number) {
   return String((cents / 100).toFixed(2)).replace(".", ",");
 }
 
-export default function SettingsForm({ settings }: { settings: LilInvoiceSettings }) {
+export default function SettingsForm({
+  settings,
+  sequenceState,
+}: {
+  settings: LilInvoiceSettings;
+  sequenceState: LilInvoiceSequenceState;
+}) {
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [sequenceBusy, setSequenceBusy] = useState(false);
+  const [sequenceNotice, setSequenceNotice] = useState("");
+  const [sequenceError, setSequenceError] = useState("");
+  const [nextNumber, setNextNumber] = useState(String(sequenceState.nextNumber));
+  const [reason, setReason] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
 
   function scheduleAutosave() {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
@@ -42,8 +60,38 @@ export default function SettingsForm({ settings }: { settings: LilInvoiceSetting
     setNotice("Sauvegarde OK.");
   }
 
+  async function adjustSequence() {
+    setSequenceBusy(true);
+    setSequenceNotice("Verification et enregistrement...");
+    setSequenceError("");
+    const response = await fetch("/agent/api/gestion/invoices/sequence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nextNumber: Number(nextNumber),
+        expectedCurrentNextNumber: sequenceState.nextNumber,
+        reason,
+        confirmed,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    setSequenceBusy(false);
+    if (!response.ok) {
+      setSequenceNotice("");
+      setSequenceError(result.error ?? "Ajustement impossible.");
+      return;
+    }
+    setSequenceNotice(
+      result.sequence?.adjusted
+        ? "Compteur ajuste et trace dans l'historique."
+        : "Compteur deja coherent, aucune modification effectuee.",
+    );
+    router.refresh();
+  }
+
   return (
-    <SelenCard>
+    <>
+      <SelenCard>
       <SelenCardTitle>Parametres de facturation Lil</SelenCardTitle>
       {notice ? <div style={s.notice}>{notice}</div> : null}
       {error ? <div style={s.error}>Erreur : {error}</div> : null}
@@ -90,7 +138,72 @@ export default function SettingsForm({ settings }: { settings: LilInvoiceSetting
           <span style={s.saveState}>{busy ? "Sauvegarde..." : notice || "Sauvegarde automatique"}</span>
         </div>
       </form>
-    </SelenCard>
+      </SelenCard>
+      <SelenCard>
+        <SelenCardTitle>Numerotation des factures</SelenCardTitle>
+        <p style={s.sequenceHelp}>
+          Dernier numero reserve : F{String(sequenceState.lastNumber).padStart(6, "0")}.
+          Le prochain numero est F{String(sequenceState.nextNumber).padStart(6, "0")}.
+          Le dernier numero encore attribue a une facture est F
+          {String(sequenceState.maxAssignedSequence).padStart(6, "0")}.
+        </p>
+        <p style={s.sequenceHelp}>
+          Ce reglage peut uniquement fermer un ecart final non attribue. Il refuse un numero
+          deja utilise, toute avance creant un trou et toute modification concurrente.
+        </p>
+        {sequenceState.canCloseTrailingGap ? (
+          <div style={s.sequenceForm}>
+            <label style={s.field}>
+              <span>Prochain numero</span>
+              <input
+                type="number"
+                min={sequenceState.minimumSafeNextNumber}
+                max={sequenceState.nextNumber}
+                value={nextNumber}
+                onChange={(event) => setNextNumber(event.target.value)}
+                style={s.input}
+              />
+            </label>
+            <label style={s.fieldFull}>
+              <span>Motif de l&apos;ajustement</span>
+              <input
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="Ex : suppression d'un brouillon jamais emis"
+                style={s.input}
+              />
+            </label>
+            <label style={s.confirmation}>
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(event) => setConfirmed(event.target.checked)}
+              />
+              <span>
+                Je confirme qu&apos;aucune facture emise ne porte le numero demande.
+              </span>
+            </label>
+            <div style={s.actions}>
+              <SelenButton
+                type="button"
+                variant="secondary"
+                disabled={sequenceBusy || !confirmed || reason.trim().length < 8}
+                onClick={() => void adjustSequence()}
+              >
+                {sequenceBusy ? "Verification..." : "Ajuster le prochain numero"}
+              </SelenButton>
+            </div>
+          </div>
+        ) : (
+          <p style={s.sequenceOk}>
+            Compteur coherent : aucun ecart final a corriger. La valeur reste consultable mais
+            ne doit pas etre modifiee.
+          </p>
+        )}
+        {sequenceNotice ? <div style={s.notice}>{sequenceNotice}</div> : null}
+        {sequenceError ? <div style={s.error}>Erreur : {sequenceError}</div> : null}
+      </SelenCard>
+    </>
   );
 }
 
@@ -128,6 +241,22 @@ const s: Record<string, CSSProperties> = {
   },
   actions: { gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" },
   saveState: { color: "var(--selen-text2)", fontSize: 12 },
+  sequenceHelp: { color: "var(--selen-text2)", fontSize: 13, lineHeight: 1.6 },
+  sequenceForm: { display: "grid", gap: 12, marginTop: 12 },
+  confirmation: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    color: "var(--selen-text2)",
+    fontSize: 12,
+  },
+  sequenceOk: {
+    padding: 10,
+    borderRadius: "var(--radius-sm)",
+    background: "var(--selen-success-bg)",
+    color: "var(--selen-success)",
+    fontSize: 13,
+  },
   notice: { padding: 10, borderRadius: "var(--radius-sm)", background: "var(--selen-success-bg)", color: "var(--selen-success)", marginBottom: 12 },
   error: { padding: 10, borderRadius: "var(--radius-sm)", background: "var(--selen-danger-bg)", color: "var(--selen-danger)", marginBottom: 12 },
 };

@@ -99,6 +99,7 @@ export default async function LilInvoicesPage() {
                     invoiceId={invoice.id}
                     invoiceType={invoice.invoice_type}
                     status={invoice.status}
+                    updatedAt={invoice.updated_at}
                   />
                   {invoice.pdf_url ? (
                     <a href={invoice.pdf_url} target="_blank" rel="noreferrer" style={s.link}>
