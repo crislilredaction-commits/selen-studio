@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { dailyPrerequisiteContract } from "@/lib/server/dailyStudioPrerequisiteEvidence";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
@@ -9,10 +10,11 @@ export default async function DailyCandidaturesPage() {
   const admin = createSupabaseAdminClient();
   const organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
   const { data: formations, error: formationError } = organisationIds.length
-    ? await admin.from("daily_formations").select("id").in("organisation_id", organisationIds).neq("status", "archived")
+    ? await admin.from("daily_formations").select("id,prerequisite_mode,prerequisite_requirements").in("organisation_id", organisationIds).neq("status", "archived")
     : { data: [], error: null };
   if (formationError) return <main style={{padding:28}}>Chargement impossible.</main>;
   const formationIds = (formations ?? []).map(row => row.id);
+  const formationById = new Map((formations ?? []).map(row => [row.id, row]));
   const { data, error } = formationIds.length ? await admin.from("daily_formation_registration_requests")
     .select("id,formation_id,respondent_first_name,respondent_last_name,respondent_email,company_name,response_type,submitted_at,decision_status,prerequisite_contract,daily_formations(title)")
     .in("formation_id", formationIds).in("decision_status", ["pending","ready_for_of"]).order("submitted_at",{ascending:true}) : { data: [], error: null };
@@ -47,8 +49,8 @@ export default async function DailyCandidaturesPage() {
     <p style={{color:"var(--selen-text2)"}}>Selen analyse le dossier avant toute décision de l’organisme. Une analyse terminée devient ensuite visible côté OF pour acceptation ou refus.</p>
     <div style={{display:"grid",gap:10,marginTop:18}}>
       {prioritizedRows.map((row)=>{ const label=row.company_name || [row.respondent_first_name,row.respondent_last_name].filter(Boolean).join(" ") || row.respondent_email || "Candidat";
-        const contract = row.prerequisite_contract;
-        const requiresEvidence = contract?.version === 1 && contract.mode === "required";
+        const contract = dailyPrerequisiteContract(row.prerequisite_contract, formationById.get(row.formation_id) ?? {});
+        const requiresEvidence = contract.mode === "required" && Array.isArray(contract.requirements) && contract.requirements.some((requirement) => requirement && typeof requirement === "object" && requirement.required !== false);
         const counts = evidenceByRequest.get(row.id) ?? { submitted: 0, rejected: 0, verified: 0 };
         const prerequisiteParts = [
           counts.submitted ? counts.submitted + " à vérifier" : "",
