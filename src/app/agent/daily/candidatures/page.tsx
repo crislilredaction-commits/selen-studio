@@ -43,11 +43,14 @@ export default async function DailyCandidaturesPage() {
         const contract = row.prerequisite_contract;
         const requiresEvidence = contract?.version === 1 && contract.mode === "required";
         const counts = evidenceByRequest.get(row.id) ?? { submitted: 0, rejected: 0, verified: 0 };
-        const prerequisiteLabel = !requiresEvidence ? null : counts.submitted
-          ? counts.submitted + " justificatif(s) à vérifier"
-          : counts.rejected ? counts.rejected + " justificatif(s) refusé(s)"
-          : counts.verified ? counts.verified + " justificatif(s) validé(s)"
-          : "Justificatifs non déposés";
+        const prerequisiteParts = [
+          counts.submitted ? counts.submitted + " à vérifier" : "",
+          counts.rejected ? counts.rejected + " refusé(s)" : "",
+          counts.verified ? counts.verified + " vérifié(s)" : "",
+        ].filter(Boolean);
+        const prerequisiteLabel = !requiresEvidence ? null
+          : prerequisiteParts.length ? prerequisiteParts.join(" · ") + " · Vérifier la couverture complète dans le dossier"
+          : "Aucun justificatif reçu · Vérifier les pièces attendues dans le dossier";
         return <article key={row.id} style={{padding:16,border:"1px solid var(--selen-border)",borderRadius:12,background:"var(--selen-bg2)"}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><strong>{label}</strong><span>{row.decision_status==="ready_for_of"?"Analyse terminée · décision OF attendue":"Analyse à réaliser"}</span></div>
           <p style={{margin:"6px 0",color:"var(--selen-text2)"}}>{row.daily_formations?.title || "Formation"} · {row.submitted_at?new Date(row.submitted_at).toLocaleString("fr-FR"):"date inconnue"}</p>
