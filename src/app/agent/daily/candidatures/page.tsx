@@ -64,7 +64,7 @@ export default async function DailyCandidaturesPage() {
           <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><strong>{label}</strong><span>{row.decision_status==="ready_for_of"?"Analyse terminée · décision OF attendue":"Analyse à réaliser"}</span></div>
           <p style={{margin:"6px 0",color:"var(--selen-text2)"}}>{row.daily_formations?.title || "Formation"} · {row.submitted_at?new Date(row.submitted_at).toLocaleString("fr-FR"):"date inconnue"}</p>
           {prerequisiteLabel ? <p style={{margin:"6px 0",fontWeight:700,color:"var(--selen-gold2)"}}>Prérequis : {prerequisiteLabel}</p> : null}
-          <Link href={`/agent/daily/candidatures/${row.id}`} style={{fontWeight:800,color:"var(--selen-gold2)"}}>{row.decision_status==="ready_for_of"?"Consulter l’analyse →":"Analyser le dossier →"}</Link>
+          <Link href={`/agent/daily/candidatures/${row.id}${counts.submitted && row.decision_status === "pending" ? "#prerequis" : ""}`} style={{fontWeight:800,color:"var(--selen-gold2)"}}>{counts.submitted && row.decision_status === "pending" ? "Vérifier les justificatifs →" : row.decision_status === "ready_for_of" ? "Consulter l’analyse →" : "Analyser le dossier →"}</Link>
         </article>; })}
       {!rows.length?<p>Aucune candidature à analyser ou en attente de décision OF.</p>:null}
     </div>
