@@ -21,10 +21,11 @@ type PageProps = {
   searchParams: Promise<{ tab?: string; access_status?: string; access_error?: string }>;
 };
 
-type TabKey = "overview" | "programs" | "documents" | "info" | "users" | "learners" | "trainers" | "history";
+type TabKey = "overview" | "programs" | "applications" | "documents" | "info" | "users" | "learners" | "trainers" | "history";
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "overview", label: "Vue d’ensemble" },
   { key: "programs", label: "Programmes de formation" },
+  { key: "applications", label: "Dossiers d’inscription" },
   { key: "documents", label: "Documents client" },
   { key: "info", label: "Informations" },
   { key: "users", label: "Utilisateurs" },
@@ -304,6 +305,14 @@ function certVariant(mode: string, validUntil: string | null) {
   return "success" as const;
 }
 
+function candidatureStatus(decisionStatus: string | null, status: string | null) {
+  if (decisionStatus === "accepted") return { label: "Accepté", variant: "success" as const };
+  if (decisionStatus === "refused") return { label: "Refusé", variant: "danger" as const };
+  if (decisionStatus === "ready_for_of") return { label: "Décision OF attendue", variant: "info" as const };
+  if (decisionStatus === "pending") return { label: status === "attached" ? "Dossier reçu · analyse à faire" : "Analyse à faire", variant: "warn" as const };
+  return { label: status || decisionStatus || "État inconnu", variant: "neutral" as const };
+}
+
 export default async function DailyOrganisationPage({ params, searchParams }: PageProps) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p style={s.error}>{auth.error}</p></main>;
@@ -329,7 +338,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
     admin.from("daily_trainer_certifications").select("*").order("valid_until", { ascending: true, nullsFirst: false }),
     readAllRows(() => admin.from("daily_audit_logs").select("id,actor_type,actor_role,object_type,action,occurred_at,reason").eq("organisation_id", id).order("occurred_at", { ascending: false })),
     readAllRows(() => admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,daily_formations(title)").eq("organisation_id", id).neq("status", "archived").order("start_date", { ascending: false })),
-    admin.from("daily_formations").select("id,status").eq("organisation_id", id).neq("status", "archived"),
+    admin.from("daily_formations").select("id,title,status").eq("organisation_id", id).neq("status", "archived"),
     readAllRows(() => admin.from("daily_communications").select("id,communication_type,recipient_email,recipient_name,subject,status,sent_at,delivered_at,failed_at,failure_reason,created_at,metadata").eq("organisation_id", id).order("created_at", { ascending: false })),
     readAllRows(() => admin.from("daily_documents").select("id,document_type,logical_name,version,status,is_current,created_at,updated_at,published_at,signed_at").eq("organisation_id", id).order("created_at", { ascending: false })),
     readAllRows(() => admin.from("daily_learners").select("id,first_name,last_name,email,created_at").eq("organisation_id", id).order("last_name")),
@@ -342,6 +351,14 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
     .map((result) => result.error)
     .find(Boolean);
   if (loadingError) return <main style={s.page}><p style={s.error}>Chargement du dossier impossible : {loadingError.message}</p></main>;
+  const formationIds = (formationsStatsRes.data ?? []).map((formation) => formation.id);
+  const candidaturesRes = formationIds.length
+    ? await readAllRows(() => admin.from("daily_formation_registration_requests")
+      .select("id,formation_id,attached_session_id,response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,status,decision_status,submitted_at,signature_signed_at,agent_analysis_completed_at")
+      .in("formation_id", formationIds)
+      .order("submitted_at", { ascending: false }))
+    : { data: [], error: null };
+  if (candidaturesRes.error) return <main style={s.page}><p style={s.error}>Chargement des dossiers d’inscription impossible : {candidaturesRes.error.message}</p></main>;
   const organisation = organisationRes.data;
   let scopedDailyTasks;
   try {
@@ -359,6 +376,9 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const activeTrainerIds = new Set(trainers.filter((trainer) => trainer.active).map((trainer) => trainer.id));
   const expiring = certifications.filter((certification) => activeTrainerIds.has(certification.trainer_profile_id) && certification.validity_mode === "limited" && certification.valid_until && daysUntil(certification.valid_until) <= 90);
   const programStats = dailyOrganisationProgramStats(formationsStatsRes.data ?? []);
+  const formationById = new Map((formationsStatsRes.data ?? []).map((formation) => [formation.id, formation]));
+  const candidatures = candidaturesRes.data ?? [];
+  const activeCandidatures = candidatures.filter((candidature) => ["pending", "ready_for_of"].includes(String(candidature.decision_status)));
   const assignment = assignmentRes.data as { agent_profile_id?: string; agent_profiles?: { first_name?: string | null; last_name?: string | null; email?: string } | null } | null;
   const assignedAgent = assignment?.agent_profiles;
   const isAdmin = adminAccessRes.data?.role === "admin" || (agentsRes.data ?? []).some((agent) => agent.email === auth.email && agent.role === "admin");
@@ -447,6 +467,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
 
       <section style={s.stats}>
         <MiniStat label="Programmes validés" value={`${programStats.validated}/${programStats.total}`} detail={programStats.total === 0 ? "Aucun programme" : `${programStats.toFinalize} à finaliser · ${programStats.progress}% validés`} />
+        <MiniStat label="Dossiers reçus" value={String(candidatures.length)} detail={`${activeCandidatures.length} à traiter · historique conservé`} tone={activeCandidatures.length ? "warn" : "neutral"} />
         <MiniStat label="Tâches actives" value={String(scopedDailyTasks.length)} detail="Source Pilotage Daily" tone="warn" />
         <MiniStat label="Sessions à clôturer" value={String(sessionsToClose.length)} detail={`${currentSessions.length} en cours · ${plannedSessions.length} à venir`} tone="info" />
         <MiniStat label="Certifications à surveiller" value={String(expiring.length)} detail="Expirées ou à ≤ 90 j" tone="danger" />
@@ -460,6 +481,7 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
       {tab === "overview" ? (
         <div style={s.twoCols}>
           <SelenCard><SelenCardTitle>Programmes de formation</SelenCardTitle><p style={s.muted}>Modifie et valide les programmes, puis consulte leurs questionnaires.</p><Link href={`/agent/daily/organisations/${id}?tab=programs`} style={{ color: "var(--selen-gold)", fontWeight: 700 }}>Voir les programmes →</Link></SelenCard>
+          <SelenCard><SelenCardTitle>Dossiers d’inscription</SelenCardTitle><p style={s.muted}>{candidatures.length} dossier(s) rempli(s), dont {activeCandidatures.length} à traiter. Les dossiers décidés restent consultables dans l’historique.</p><Link href={`/agent/daily/organisations/${id}?tab=applications`} style={{ color: "var(--selen-gold)", fontWeight: 700 }}>Voir les dossiers et réponses →</Link></SelenCard>
           <SelenCard><SelenCardTitle>Documents client</SelenCardTitle><p style={s.muted}>Ouvre les fichiers et justificatifs déposés dans l’espace Daily de cet organisme.</p><Link href={`/agent/daily/organisations/${id}?tab=documents`} style={{ color: "var(--selen-gold)", fontWeight: 700 }}>Consulter les documents →</Link></SelenCard>
           <SelenCard><SelenCardTitle>Tâches de cet OF</SelenCardTitle>{scopedDailyTasks.length === 0 ? <p style={s.muted}>Aucune tâche active pour cet organisme.</p> : scopedDailyTasks.map((item) => <div key={item.id} style={s.attentionRow}><div><strong>{item.title}</strong><p style={s.mutedInline}>{item.reason} · {item.detail}</p></div><Link href={item.href} style={s.back}>Traiter →</Link></div>)}</SelenCard>
           <SelenCard><SelenCardTitle>Signaux dossier</SelenCardTitle><Signal label="NDA" value={organisation.nda_status || "unknown"} /><Signal label="Qualiopi" value={organisation.qualiopi_status || "unknown"} /><Signal label="Utilisateurs actifs" value={String(memberships.filter((m) => m.status === "active").length)} /><Signal label="Formateurs actifs" value={String(trainers.filter((t) => t.active).length)} /><Signal label="Invitations en attente" value={String(invitations.filter((i) => i.status === "pending").length)} /></SelenCard>
@@ -467,6 +489,8 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
           <SelenCard style={{ gridColumn: "1 / -1" }}><SelenCardTitle>Échéances formateurs</SelenCardTitle>{expiring.length === 0 ? <p style={s.muted}>Aucune certification à durée limitée n’arrive à échéance dans les 90 jours.</p> : expiring.map((cert) => { const trainer = trainers.find((t) => t.id === cert.trainer_profile_id); return <div key={cert.id} style={s.attentionRow}><span>{trainer?.display_name || "Formateur"} · {cert.title}</span><SelenBadge variant={certVariant(cert.validity_mode, cert.valid_until)}>{certificationLabel(cert.validity_mode, cert.valid_until)}</SelenBadge></div>; })}</SelenCard>
         </div>
       ) : null}
+
+      {tab === "applications" ? <SelenCard><SelenCardTitle>Dossiers d’inscription</SelenCardTitle><p style={s.muted}>Liste complète et historisée des dossiers signés depuis Daily. Chaque ligne reste rattachée à son programme et, lorsqu’elle est choisie, à sa session.</p>{candidatures.length === 0 ? <p style={s.muted}>Aucun dossier rempli pour cet organisme.</p> : candidatures.map((candidature) => { const formation = formationById.get(candidature.formation_id); const session = candidature.attached_session_id ? sessionById.get(candidature.attached_session_id) : null; const identity = candidature.company_name || [candidature.respondent_first_name, candidature.respondent_last_name].filter(Boolean).join(" ") || candidature.respondent_email || "Candidat"; const state = candidatureStatus(candidature.decision_status, candidature.status); return <article key={candidature.id} style={s.memberCard}><div style={s.userRow}><div style={{ flex: 1, minWidth: 220 }}><strong>{identity}</strong><p style={s.mutedInline}>{formation?.title || "Formation"} · {session ? [session.start_date, session.end_date].filter(Boolean).join(" → ") || session.internal_reference || "Session rattachée" : "Session à planifier"} · {candidature.signature_signed_at ? "dossier signé" : "signature absente"}</p><p style={s.tiny}>{candidature.submitted_at ? `Reçu le ${new Date(candidature.submitted_at).toLocaleString("fr-FR")}` : "Date de réception inconnue"}{candidature.agent_analysis_completed_at ? " · analyse Selen enregistrée" : ""}</p></div><SelenBadge variant={state.variant}>{state.label}</SelenBadge></div><div style={{ ...s.badgeLine, marginTop: 10 }}><Link href={`/agent/daily/candidatures/${candidature.id}`} style={s.back}>Ouvrir les réponses et justificatifs →</Link>{session ? <Link href={`/agent/daily/session-dossiers/${session.id}/full`} style={s.back}>Ouvrir la session →</Link> : null}</div></article>; })}</SelenCard> : null}
 
       {tab === "info" ? <SelenCard><SelenCardTitle>Informations de l’organisme</SelenCardTitle><p style={s.muted}>Les modifications sont historisées. Elles ne changent ni les accès, ni les sessions, ni les inscriptions.</p><form action={updateOrganisationInformation} style={s.editForm}><input type="hidden" name="organisation_id" value={id} /><div style={s.editGrid}>{[
         ["name", "Nom affiché", organisation.name, "text"], ["legal_name", "Raison sociale", organisation.legal_name, "text"], ["legal_form", "Forme juridique", organisation.legal_form, "text"], ["siret", "SIRET", organisation.siret, "text"], ["vat_number", "N° TVA", organisation.vat_number, "text"],
