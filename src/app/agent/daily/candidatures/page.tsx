@@ -34,12 +34,19 @@ export default async function DailyCandidaturesPage() {
     if (item.status === "verified") counts.verified++;
     evidenceByRequest.set(item.registration_request_id, counts);
   }
+  const prioritizedRows = [...rows].sort((a, b) => {
+    const aReview = a.decision_status === "pending" && (evidenceByRequest.get(a.id)?.submitted ?? 0) > 0;
+    const bReview = b.decision_status === "pending" && (evidenceByRequest.get(b.id)?.submitted ?? 0) > 0;
+    if (aReview !== bReview) return aReview ? -1 : 1;
+    if (a.decision_status !== b.decision_status) return a.decision_status === "pending" ? -1 : 1;
+    return String(a.submitted_at ?? "").localeCompare(String(b.submitted_at ?? ""));
+  });
   return <main style={{maxWidth:1080,margin:"0 auto",padding:"28px"}}>
     <p style={{fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"var(--selen-gold2)"}}>Selen Daily · Candidatures</p>
     <h1>Analyse des dossiers</h1>
     <p style={{color:"var(--selen-text2)"}}>Selen analyse le dossier avant toute décision de l’organisme. Une analyse terminée devient ensuite visible côté OF pour acceptation ou refus.</p>
     <div style={{display:"grid",gap:10,marginTop:18}}>
-      {rows.map((row)=>{ const label=row.company_name || [row.respondent_first_name,row.respondent_last_name].filter(Boolean).join(" ") || row.respondent_email || "Candidat";
+      {prioritizedRows.map((row)=>{ const label=row.company_name || [row.respondent_first_name,row.respondent_last_name].filter(Boolean).join(" ") || row.respondent_email || "Candidat";
         const contract = row.prerequisite_contract;
         const requiresEvidence = contract?.version === 1 && contract.mode === "required";
         const counts = evidenceByRequest.get(row.id) ?? { submitted: 0, rejected: 0, verified: 0 };
