@@ -24,7 +24,7 @@ export async function GET() {
   const auth = await requireSupportAgent();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
-  if (organisationIds.length === 0) return NextResponse.json({ documents: [] });
+  if (organisationIds.length === 0) return NextResponse.json({ documents: [], sessions: [] });
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("daily_documents")
@@ -34,7 +34,14 @@ export async function GET() {
     .eq("is_current", true)
     .order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ documents: data ?? [] });
+  const { data: sessions, error: sessionsError } = await admin
+    .from("daily_sessions")
+    .select("id,organisation_id,internal_reference,start_date,daily_formations(title)")
+    .in("organisation_id", organisationIds)
+    .not("status", "in", "(archived,cancelled)")
+    .order("start_date", { ascending: false });
+  if (sessionsError) return NextResponse.json({ error: sessionsError.message }, { status: 500 });
+  return NextResponse.json({ documents: data ?? [], sessions: sessions ?? [] });
 }
 
 export async function POST(req: Request) {

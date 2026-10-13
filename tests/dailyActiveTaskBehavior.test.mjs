@@ -140,18 +140,23 @@ test("la clôture canonique du dossier retire immédiatement les tâches de Dash
   assert.equal(rows.daily_session_checklist_items[0].status, "todo");
 });
 
-test("la préparation préformation reste absente avant l'acceptation explicite de la candidature", async () => {
+test("la décision OF ouvre la préparation sans seconde validation du formulaire hérité", async () => {
   const rows = fixture();
   rows.daily_session_checklist_items = [{ id: "pretraining", session_id: "session-0", organisation_id: "of-a", item_key: "pretraining_documents", phase: "before", responsibility: "selen", label: "Préparer", status: "todo", signaled_at: today }];
   rows.daily_formation_registration_requests[0].decision_status = "ready_for_of";
+  rows.daily_registration_responses = []; rows.daily_registration_reviews = [];
   const h = harness(rows);
   assert.equal((await h.getDailyAgentTasks(adminStaff)).length, 0);
 
   rows.daily_formation_registration_requests[0].decision_status = "accepted";
   assert.deepEqual(Array.from(await h.getDailyPilotageTasks(), task => task.id), ["daily-session-checklist-pretraining"]);
 
+  assert.equal((await h.getDailyPilotageTasks())[0].href, "/agent/daily/pretraining-documents?session=session-0");
   rows.daily_registration_responses.push({ id: "response-new", session_id: "session-0", created_at: today });
-  assert.deepEqual(Array.from(await h.getDailyPilotageTasks(), task => task.id), ["daily-registration-session-0"]);
+  assert.deepEqual(Array.from(await h.getDailyPilotageTasks(), task => task.id).sort(), ["daily-registration-session-0", "daily-session-checklist-pretraining"]);
+  rows.daily_formation_registration_requests[0].decision_status = "pending";
+  rows.daily_registration_reviews = [{ session_id: "session-0", validated_at: today }];
+  assert.equal((await h.getDailyPilotageTasks()).length, 0, "Une revue héritée ne remplace pas la décision OF.");
 });
 
 test("la visibilité et les droits de traitement conservent l'assignation et l'escalade existantes", async () => {

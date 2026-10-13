@@ -141,7 +141,7 @@ export function getDailySessionTaskHref(itemKey: string, sessionId: string) {
   const encodedSessionId = encodeURIComponent(sessionId);
   switch (itemKey) {
     case "pretraining_documents":
-      return "/agent/daily/pretraining-documents";
+      return `/agent/daily/pretraining-documents?session=${encodedSessionId}`;
     case "trainer_assignment":
       return `/agent/daily/sessions/${encodedSessionId}`;
     case "training_ready":
@@ -289,11 +289,9 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
     const formation = formationById.get(session.formation_id);
     if (!formation || formation.organisation_id !== organisation.id) continue;
     if (item.item_key === "pretraining_documents") {
+      // Formation candidatures have their own Selen analysis and final OF
+      // decision. A second review of the legacy session form is not required.
       if (!acceptedSessionIds.has(session.id)) continue;
-      const registrationResponses = responsesBySession.get(session.id) ?? [];
-      const latestRegistrationResponse = registrationResponses[registrationResponses.length - 1];
-      const review = reviewBySession.get(session.id);
-      if (!registrationReviewIsCurrent(review, latestRegistrationResponse)) continue;
     }
     if (item.item_key === "training_ready" && formation?.status === "review") continue;
 
