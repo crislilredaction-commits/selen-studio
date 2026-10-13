@@ -1,0 +1,51 @@
+name: Studio Avant formation checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/pretraining-check.yml'
+      - 'src/lib/server/dailyAgentTasks.ts'
+      - 'src/app/agent/**/daily/pretraining-documents/**'
+      - 'src/app/agent/daily/pretraining-documents/**'
+      - 'supabase/migrations/*pretraining*.sql'
+      - 'tests/daily*Pretraining*.test.mjs'
+      - 'tests/dailyActiveTaskBehavior.test.mjs'
+      - 'tests/dailySessionTaskAggregation.test.mjs'
+      - 'package*.json'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pretraining-check.yml'
+      - 'src/lib/server/dailyAgentTasks.ts'
+      - 'src/app/agent/**/daily/pretraining-documents/**'
+      - 'src/app/agent/daily/pretraining-documents/**'
+      - 'supabase/migrations/*pretraining*.sql'
+      - 'tests/daily*Pretraining*.test.mjs'
+      - 'tests/dailyActiveTaskBehavior.test.mjs'
+      - 'tests/dailySessionTaskAggregation.test.mjs'
+      - 'package*.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-pretraining-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://build-only.invalid
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: build-only-placeholder
+      SUPABASE_SERVICE_ROLE_KEY: build-only-placeholder
+    steps:
+      - uses: actions/checkout@v5
+      - run: npm ci
+      - name: Tests, typecheck and build without production credentials
+        run: |
+          npm test
+          npm run typecheck
+          npm run build
