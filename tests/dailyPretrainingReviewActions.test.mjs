@@ -11,7 +11,7 @@ const changedAt = "2026-10-03T12:01:00.000Z";
 
 function fixture() {
   const document = { id: docId, organisation_id: ofId, document_type: "convocation", logical_name: "Convocation", version: 1, status: "to_check", is_current: true, updated_at: openedAt, metadata: { preserved: "Original" } };
-  const rows = { daily_documents: [document], organisations: [{ id: ofId, name: "OF exemple", email: "of@example.test" }] };
+  const rows = { daily_documents: [document], organisations: [{ id: ofId, name: "OF exemple", email: "of@example.test" }], daily_sessions: [{id:"session-empty",organisation_id:ofId,status:"ready",daily_formations:{title:"Formation exemple"}},{id:"session-foreign",organisation_id:"other-of",status:"ready"},{id:"session-archived",organisation_id:ofId,status:"archived"}] };
   const writes = []; const emails = []; const publicationCalls = [];
   const flags = { beforeUpdate: null, auth: { ok: true, email: "agent@example.test", status: 200 }, scope: [ofId], updateError: null, emailResult: { sent: true, resendId: "test-provider-id" } };
   const admin = { from(table) {
@@ -21,6 +21,7 @@ function fixture() {
       select() { return query; }, order() { return query; },
       eq(key, value) { filters.push(row => row[key] === value); return query; },
       in(key, values) { filters.push(row => values.includes(row[key])); return query; },
+      not(key, op, values) { assert.equal(op,"in"); filters.push(row=>!values.slice(1,-1).split(",").includes(row[key])); return query; },
       single() { single = true; return query; }, maybeSingle() { single = true; return query; },
       update(value) { patch = value; return query; },
       then(resolve, reject) {
@@ -50,6 +51,15 @@ function fixture() {
   const patch = (action, extras = {}) => route.PATCH(new Request("https://studio.example.test/review", { method: "PATCH", body: JSON.stringify({ id: docId, action, note: "À revoir", expected_updated_at: openedAt, ...extras }) }));
   return { document, rows, writes, emails, publicationCalls, flags, patch, route };
 }
+
+test("les sessions à préparer restent accessibles dans Studio sans document, dans le seul périmètre agent", async()=>{
+  const f=fixture(); f.rows.daily_documents=[];
+  const result=await f.route.GET(); assert.equal(result.status,200);
+  const body=await result.json(); assert.deepEqual(body.documents,[]);
+  assert.deepEqual(body.sessions.map(session=>session.id),["session-empty"]);
+  assert.equal(f.writes.length,0);assert.equal(f.emails.length,0);
+  f.flags.scope=[]; assert.deepEqual(await (await f.route.GET()).json(),{documents:[],sessions:[]});
+});
 
 test("la revue valide ou demande une correction sur la version ouverte, sans email", async () => {
   for (const action of ["validate", "request_correction"]) {

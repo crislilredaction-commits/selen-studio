@@ -30,7 +30,7 @@ test("la source commune agrège les tâches de session ouvertes attribuées à S
 });
 
 test("les tâches de session ouvrent directement leur écran métier", () => {
-  assert.match(tasks, /case "pretraining_documents"[\s\S]*return "\/agent\/daily\/pretraining-documents"/);
+  assert.match(tasks, /case "pretraining_documents"[\s\S]*`\/agent\/daily\/pretraining-documents\?session=\$\{encodedSessionId\}`/);
   assert.match(tasks, /case "trainer_assignment"[\s\S]*`\/agent\/daily\/sessions\/\$\{encodedSessionId\}`/);
   assert.match(tasks, /case "training_ready"[\s\S]*`\/agent\/daily\/session-dossiers\/\$\{encodedSessionId\}`/);
   assert.match(tasks, /case "attendance_followup"[\s\S]*`\/agent\/daily\/sessions\/\$\{encodedSessionId\}`/);
@@ -127,13 +127,13 @@ test("le Studio expose les champs métier du programme client modifiables avant 
 });
 
 
-test("la préparation préformation n'apparaît qu'après validation courante de l'inscription", () => {
+test("la préparation préformation attend la décision OF sans imposer le formulaire hérité", () => {
   assert.match(tasks, /from\("daily_formation_registration_requests"\)/);
   assert.match(tasks, /\.eq\("decision_status", "accepted"\)/);
   assert.match(tasks, /if \(!acceptedSessionIds\.has\(session\.id\)\) continue/);
   assert.match(tasks, /item\.item_key === "pretraining_documents"/);
-  assert.match(tasks, /const registrationResponses = responsesBySession\.get\(session\.id\) \?\? \[\]/);
-  assert.match(tasks, /if \(!registrationReviewIsCurrent\(review, latestRegistrationResponse\)\) continue/);
+  const preparationGuard = tasks.slice(tasks.indexOf('if (item.item_key === "pretraining_documents")'), tasks.indexOf('if (item.item_key === "training_ready"'));
+  assert.doesNotMatch(preparationGuard, /registrationReviewIsCurrent/);
 });
 
 test("les notifications A11 suivent les parents métier et la décision de candidature", () => {
