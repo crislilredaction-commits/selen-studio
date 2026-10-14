@@ -20,7 +20,7 @@ test('état documentaire canonique : préparation, relecture, publication et tâ
  create function daily_a11_organisation_is_active(uuid) returns boolean language sql as 'select false';
  create function daily_session_checklist_phase_available(uuid,text) returns boolean language sql as 'select false';
  `);
- const sql=await readFile(new URL('../supabase/migrations/20261014003923_daily_pretraining_publication_progress.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261014073931_daily_pretraining_publication_progress.sql',import.meta.url),'utf8');
  // The notification routine has the live table contract; no notification is sent.
  await db.exec(sql);
  const progress=async()=> (await db.query('select daily_pretraining_document_progress($1) as state',[session])).rows[0].state;

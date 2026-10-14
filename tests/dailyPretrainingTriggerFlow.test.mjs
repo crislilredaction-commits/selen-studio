@@ -39,7 +39,7 @@ test('les vrais déclencheurs documentaires synchronisent tâche, publication et
  create trigger daily_documents_sync_pretraining_checklist after insert or update or delete on daily_documents for each row execute function daily_sync_pretraining_document_checklist_trigger();
  create trigger daily_documents_validate_pretraining_scope before insert or update of organisation_id,document_type,linked_object_type,linked_object_id on daily_documents for each row execute function daily_validate_pretraining_document_scope();`);
  const beforeMigration=(await db.query('select * from daily_session_checklist_items')).rows;
- const migration=await read('20261014003923_daily_pretraining_publication_progress.sql');
+ const migration=await read('20261014073931_daily_pretraining_publication_progress.sql');
  await db.exec(migration);await db.exec(migration);
  assert.deepEqual((await db.query('select * from daily_session_checklist_items')).rows,beforeMigration,'Appliquer le DDL ne recalcule et ne réécrit aucune tâche cliente.');
  const item=async()=> (await db.query("select * from daily_session_checklist_items where item_key='pretraining_documents'")).rows[0];
