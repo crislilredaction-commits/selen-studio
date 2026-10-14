@@ -30,7 +30,7 @@ function fixture() {
 }
 
 function queryClient(rows, queries) {
-  return { from(table) {
+  return { async rpc(name,args){assert.equal(name,"daily_pretraining_document_progress");const item=rows.daily_session_checklist_items.find(item=>item.session_id===args.p_session_id&&item.item_key==="pretraining_documents");return{data:{status:item?.status??"validated"},error:null};}, from(table) {
     assert.ok(Object.hasOwn(rows, table), `Unexpected table: ${table}`);
     const filters = []; const orders = []; let window = null;
     const query = {

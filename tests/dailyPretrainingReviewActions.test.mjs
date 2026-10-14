@@ -48,7 +48,7 @@ function fixture() {
     "@/app/agent/api/support/_utils": { requireSupportAgent: async () => flags.auth },
     "@/lib/server/dailyDocumentPublication": { publishDailyDocumentAndNotify: async input => { publicationCalls.push(input); return publication.publishDailyDocumentAndNotify(input); } },
   });
-  const patch = (action, extras = {}) => route.PATCH(new Request("https://studio.example.test/review", { method: "PATCH", body: JSON.stringify({ id: docId, action, note: "À revoir", expected_updated_at: openedAt, ...extras }) }));
+  const patch = (action, extras = {}) => route.PATCH(new Request("https://studio.example.test/review", { method: "PATCH", body: JSON.stringify({ id: docId, action, confirm_reviewed:true, note: "À revoir", expected_updated_at: openedAt, ...extras }) }));
   return { document, rows, writes, emails, publicationCalls, flags, patch, route };
 }
 
@@ -68,6 +68,14 @@ test("la revue valide ou demande une correction sur la version ouverte, sans ema
     assert.equal(f.document.status, action === "validate" ? "validated" : "correction_requested");
     assert.equal(f.document.metadata.preserved, "Original"); assert.equal(f.document.metadata.reviewed_by_email, "agent@example.test");
     assert.equal(f.writes.length, 1); assert.equal(f.emails.length, 0);
+  }
+});
+
+test("la validation exige une relecture explicite et un modèle complété, sans écriture ni email",async()=>{
+  for(const change of [f=>{},f=>{f.document.metadata.requires_template_completion=true;}]){
+    const f=fixture();change(f);
+    assert.equal((await f.patch("validate",{confirm_reviewed:!f.document.metadata.requires_template_completion?false:true})).status,400);
+    assert.equal(f.writes.length,0);assert.equal(f.emails.length,0);
   }
 });
 
@@ -194,7 +202,7 @@ test("un conflit recharge l’état courant et conserve le message de relecture"
   const f = uiFixture(); f.document.status = "to_check";
   f.flags.responseStatus = 409; f.flags.response = { error: "Relisez la pièce avant de réessayer." };
   f.flags.onPatch = () => { f.document.status = "published"; f.document.updated_at = changedAt; };
-  const tree = await f.mount(); await button(tree, "Valider").props.onClick();
+  const tree = await f.mount(); await button(tree,"Prévisualiser").props.onClick(); await button(f.render(), "Valider").props.onClick();
   const after = f.render(); assert.ok(visibleText(after).includes("Relisez la pièce"));
   assert.ok(!walk(after).some(node => node.type === "button" && ["Valider", "Publier et notifier", "Demander une correction"].includes(node.props.children)));
 });
@@ -203,6 +211,15 @@ test("annuler la demande de correction ne modifie pas le dossier", async () => {
   const f = uiFixture(); f.document.status = "to_check"; f.flags.prompt = null;
   const tree = await f.mount(); await button(tree, "Demander une correction").props.onClick();
   assert.equal(f.requests.length, 0);
+});
+
+test("l’interface impose l’ouverture de la version avant validation et ne publie pas durant la relecture",async()=>{
+ const f=uiFixture();f.document.status="to_check";
+ let tree=await f.mount();assert.equal(button(tree,"Valider").props.disabled,true);
+ await button(tree,"Valider").props.onClick();assert.equal(f.requests.length,0);
+ await button(f.render(),"Prévisualiser").props.onClick();tree=f.render();assert.equal(button(tree,"Valider").props.disabled,false);
+ assert.ok(walk(tree).some(node=>node.type==="iframe"&&node.props.sandbox===""));
+ await button(tree,"Valider").props.onClick();assert.equal(f.requests.length,1);assert.equal(f.requests[0].confirm_reviewed,true);assert.equal(f.requests[0].action,"validate");
 });
 
 test("la preuve d’envoi enregistrée reste visible après rechargement, sans inventer une réception", async () => {
