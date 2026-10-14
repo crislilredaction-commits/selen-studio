@@ -46,12 +46,18 @@ export async function POST(req: Request) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return NextResponse.json({error:auth.error}, {status:auth.status});
   const body = await req.json().catch(() => ({}));
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({error:"Demande documentaire invalide."}, {status:400});
   if (body.confirm_prepare !== true || typeof body.session_id !== "string") return NextResponse.json({error:"Session et confirmation de préparation requises."}, {status:400});
+  const targeted = Object.hasOwn(body,"enrolment_id");
+  if (targeted && (typeof body.enrolment_id !== "string" || !body.enrolment_id.trim() || typeof body.expected_enrolment_updated_at !== "string" || !body.expected_enrolment_updated_at.trim())) return NextResponse.json({error:"Inscription et version ouverte requises."}, {status:400});
   try {
     const preparation = await loadDailyPretrainingPreparation(createSupabaseAdminClient(), body.session_id, await getDailyOrganisationIdsForAgent(auth.email));
     if (!preparation) return NextResponse.json({error:"Session inaccessible."}, {status:404});
-    if (!preparation.ready) return NextResponse.json({error:preparation.enrolments.length ? "Complétez les parties contractantes ci-dessous avant de générer les documents." : "Aucune inscription active dans cette session.", preparation}, {status:400});
-    return await callDaily(req, auth, preparation.organisation_id, "/api/client/daily/pretraining-documents", "POST", {session_id:preparation.session_id, only_missing:true, confirm_delegated:true});
+    const selected = targeted ? preparation.enrolments.find((row:{id:string})=>row.id===body.enrolment_id.trim()) : null;
+    if (targeted && !selected) return NextResponse.json({error:"Inscription inaccessible dans cette session."}, {status:404});
+    if (selected && selected.updated_at !== body.expected_enrolment_updated_at) return NextResponse.json({error:"L’inscription a changé. Rechargez le dossier avant de préparer ses documents."}, {status:409});
+    if (selected?.issue || !targeted && !preparation.ready) return NextResponse.json({error:selected?.issue ?? (preparation.enrolments.length ? "Complétez les parties contractantes ci-dessous avant de générer les documents." : "Aucune inscription active dans cette session."), preparation}, {status:400});
+    return await callDaily(req, auth, preparation.organisation_id, "/api/client/daily/pretraining-documents", "POST", {session_id:preparation.session_id, only_missing:true, confirm_delegated:true, ...(selected ? {enrolment_id:selected.id,expected_enrolment_updated_at:selected.updated_at} : {})});
   } catch (cause) { return NextResponse.json({error:cause instanceof Error ? cause.message : "Préparation indisponible."}, {status:500}); }
 }
 
