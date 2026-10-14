@@ -67,7 +67,7 @@ export async function POST(req: Request) {
   const { error: uploadError } = await admin.storage.from("documents").upload(storagePath, bytes, { contentType: file.type, upsert: false });
   if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
   const cleanupStorage = async () => { await admin.storage.from("documents").remove([storagePath]); };
-  const metadata = { ...(current.metadata ?? {}), source: "studio_agent_replacement", original_filename: file.name, replaced_document_id: current.id, replaced_by_email: auth.email, replaced_at: new Date().toISOString() };
+  const metadata = { ...(current.metadata ?? {}), requires_template_completion:false, missing_template_variables:[], source: "studio_agent_replacement", original_filename: file.name, replaced_document_id: current.id, replaced_by_email: auth.email, replaced_at: new Date().toISOString() };
   const { data: replacement, error: insertError } = await admin.from("daily_documents").insert({
     id: replacementId, organisation_id: current.organisation_id, formation_id: current.formation_id, session_id: current.session_id,
     learner_id: current.learner_id, enrolment_id: current.enrolment_id, document_type: current.document_type,
@@ -122,6 +122,8 @@ export async function PATCH(req: Request) {
   if (current.updated_at !== expectedUpdatedAt) {
     return NextResponse.json({ error: conflictMessage }, { status: 409 });
   }
+
+  if(action==="validate" && (body.confirm_reviewed!==true || current.metadata?.requires_template_completion===true))return NextResponse.json({error:current.metadata?.requires_template_completion===true?"Complétez le modèle personnalisé et remplacez la pièce avant validation.":"Prévisualisez et confirmez la relecture de cette version avant validation."},{status:400});
 
   if (action === "publish") {
     const publication = await publishDailyDocumentAndNotify({

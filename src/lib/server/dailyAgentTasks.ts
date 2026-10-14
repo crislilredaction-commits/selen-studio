@@ -189,7 +189,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
 
   const sessionIds = sessions.map((row) => row.id);
   const [formationRes, responseRes, reviewRes, decisionRes, checklistRes, organisationChecklistRes, satisfactionEnrolmentRes, satisfactionResponseRes] = await Promise.all([
-    admin.from("daily_formations").select("id,organisation_id,creation_mode,detailed_program_document_url,title,status,agent_review_signaled_at,created_at,updated_at").in("organisation_id", organisationIds).neq("status", "archived"),
+    admin.from("daily_formations").select("id,organisation_id,creation_mode,detailed_program_document_url,title,status,agent_review_signaled_at,created_at,updated_at").in("organisation_id", organisationIds),
     sessionIds.length ? admin.from("daily_registration_responses").select("id,session_id,created_at").in("session_id", sessionIds).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_registration_reviews").select("session_id,validated_at").in("session_id", sessionIds) : Promise.resolve({ data: [], error: null }),
     sessionIds.length ? admin.from("daily_formation_registration_requests").select("attached_session_id").in("attached_session_id", sessionIds).eq("decision_status", "accepted") : Promise.resolve({ data: [], error: null }),
@@ -200,12 +200,18 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
   ]);
   if (formationRes.error || responseRes.error || reviewRes.error || decisionRes.error || checklistRes.error || organisationChecklistRes.error || satisfactionEnrolmentRes.error || satisfactionResponseRes.error) throw new Error(formationRes.error?.message ?? responseRes.error?.message ?? reviewRes.error?.message ?? decisionRes.error?.message ?? checklistRes.error?.message ?? organisationChecklistRes.error?.message ?? satisfactionEnrolmentRes.error?.message ?? satisfactionResponseRes.error?.message ?? "Erreur Daily");
 
-  const formations = ((formationRes.data ?? []) as Formation[]).filter((row) => isDailyTaskParentActive(row.status));
+  const allFormations = (formationRes.data ?? []) as Formation[];
+  const formations = allFormations.filter((row) => isDailyTaskParentActive(row.status));
   const responses = (responseRes.data ?? []) as Response[];
   const reviews = (reviewRes.data ?? []) as RegistrationReview[];
   const acceptedSessionIds = new Set(((decisionRes.data ?? []) as RegistrationDecision[]).map((row) => row.attached_session_id).filter((value): value is string => Boolean(value)));
-  const checklistItems = (checklistRes.data ?? []) as SessionChecklistItem[];
-  const formationById = new Map(formations.map((row) => [row.id, row]));
+  const historicPreparation=acceptedSessionIds.size?await admin.from("daily_session_checklist_items").select("id,session_id,organisation_id,item_key,phase,responsibility,label,description,status,signaled_at").in("session_id",[...acceptedSessionIds]).eq("item_key","pretraining_documents").in("responsibility",["selen","shared"]):{data:[],error:null};
+  if(historicPreparation.error)throw new Error(historicPreparation.error.message);
+  const preparationItems=new Map<string,SessionChecklistItem>(([...(checklistRes.data??[]),...(historicPreparation.data??[])] as SessionChecklistItem[]).map(item=>[item.id,item]));
+  const progressRows=await Promise.all([...acceptedSessionIds].map(async sessionId=>{const result=await admin.rpc("daily_pretraining_document_progress",{p_session_id:sessionId});if(result.error)throw new Error("État documentaire indisponible : "+result.error.message);return[sessionId,result.data] as const;}));
+  const progressBySession=new Map(progressRows);
+  const checklistItems = [...preparationItems.values()].map(item=>item.status!=="not_applicable" && item.item_key==="pretraining_documents" && progressBySession.has(item.session_id)?{...item,status:String(progressBySession.get(item.session_id)?.status??item.status)}:item).filter(item=>["todo","in_progress","to_review","blocked"].includes(item.status));
+  const formationById = new Map(allFormations.map((row) => [row.id, row]));
   const sessionById = new Map(sessions.map((row) => [row.id, row]));
   const satisfactionEnrolmentById = new Map(((satisfactionEnrolmentRes.data ?? []) as SatisfactionEnrolment[]).map((row) => [row.id, row]));
   const satisfiedEnrolmentIds = new Set(((satisfactionResponseRes.data ?? []) as SatisfactionResponse[]).map((row) => row.enrolment_id));
@@ -284,10 +290,10 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
     const assignment = assignmentByOrg.get(item.organisation_id);
     if (!session || !organisation || session.organisation_id !== organisation.id) continue;
     const currentPhase = getDailySessionPhase(session);
-    if (!isAvailablePhaseItem(item.phase, currentPhase)) continue;
+    if (item.item_key!=="pretraining_documents" && !isAvailablePhaseItem(item.phase, currentPhase)) continue;
 
     const formation = formationById.get(session.formation_id);
-    if (!formation || formation.organisation_id !== organisation.id) continue;
+    if (!formation || formation.organisation_id !== organisation.id || (!isDailyTaskParentActive(formation.status) && !(formation.status==="archived" && item.item_key==="pretraining_documents" && acceptedSessionIds.has(session.id)))) continue;
     if (item.item_key === "pretraining_documents") {
       // Formation candidatures have their own Selen analysis and final OF
       // decision. A second review of the legacy session form is not required.
