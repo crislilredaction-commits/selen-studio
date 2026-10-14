@@ -33,7 +33,8 @@ test("le dossier complet est une synthèse métier et non une checklist", () => 
   const full = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
   assert.match(full, /À faire maintenant/);
   assert.match(full, /En attente d'une inscription/);
-  assert.match(full, /Inscriptions reçues/);
+  assert.match(full, /Candidatures reçues/);
+  assert.match(full, /Formulaires de session reçus/);
   assert.match(full, /Présences, évaluations & satisfaction/);
   assert.doesNotMatch(full, /daily_session_checklist_items/);
   assert.doesNotMatch(full, /updateItem/);
