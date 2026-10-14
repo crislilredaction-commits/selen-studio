@@ -31,15 +31,70 @@ $$;
 revoke all on function public.daily_pretraining_document_progress(uuid) from public,anon,authenticated;
 grant execute on function public.daily_pretraining_document_progress(uuid) to service_role;
 
+-- Keep generic completed tasks monotone. Only the server may recompute the
+-- document task from actual publication, retaining prior completion evidence.
+create or replace function public.daily_maintain_session_checklist_timestamps()
+returns trigger language plpgsql security invoker set search_path='' as $$
+declare document_sync boolean:=false;
+begin
+  new.updated_at:=now();
+  if new.item_key='pretraining_documents' and new.status<>'not_applicable' then
+    if current_user in ('postgres','supabase_admin','service_role') then
+      new.status:=public.daily_pretraining_document_progress(new.session_id)->>'status';
+      document_sync:=true;
+    elsif new.status='validated' then
+      raise exception 'document publication workflow required' using errcode='42501';
+    end if;
+  end if;
+  if tg_op='INSERT' then
+    if new.signaled_at is null then new.signaled_at:=now(); end if;
+    if new.status='in_progress' and new.started_at is null then new.started_at:=now(); end if;
+    if new.status in ('validated','not_applicable') then
+      if new.completed_at is null then new.completed_at:=now(); end if;
+      new.validated_by:=coalesce(new.validated_by,auth.uid());
+    end if;
+    return new;
+  end if;
+  if old.status in ('validated','not_applicable') and new.status not in ('validated','not_applicable') then
+    new.completed_at:=old.completed_at;
+    new.validated_by:=old.validated_by;
+    new.signaled_at:=old.signaled_at;
+    if not (document_sync and old.status='validated' and old.item_key='pretraining_documents'
+      and new.session_id=old.session_id and new.organisation_id=old.organisation_id) then
+      new.status:=old.status;
+      return new;
+    end if;
+  end if;
+  if new.status is distinct from old.status then
+    if new.status='in_progress' and new.started_at is null then new.started_at:=now(); end if;
+    if new.status in ('validated','not_applicable') then
+      new.completed_at:=coalesce(old.completed_at,now());
+      new.validated_by:=coalesce(new.validated_by,auth.uid(),old.validated_by);
+    end if;
+  elsif new.status in ('validated','not_applicable') then
+    new.completed_at:=coalesce(new.completed_at,old.completed_at,now());
+    new.validated_by:=coalesce(new.validated_by,old.validated_by,auth.uid());
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.daily_maintain_session_checklist_timestamps() from public,anon,authenticated;
+grant execute on function public.daily_maintain_session_checklist_timestamps() to service_role;
+
 create or replace function public.daily_sync_session_pretraining_checklist(p_session_id uuid)
 returns void language plpgsql security definer set search_path='' as $$
-declare v_progress jsonb;
+declare v_progress jsonb; v_item_id uuid;
 begin
  if p_session_id is null then return; end if;
  v_progress:=public.daily_pretraining_document_progress(p_session_id);
  update public.daily_session_checklist_items set status=v_progress->>'status', signaled_at=coalesce(signaled_at,clock_timestamp()),
  note=(v_progress->>'published_count')||'/'||(v_progress->>'expected_count')||' documents préformation publiés ; '||(v_progress->>'reviewed_count')||' relus et validés.'
  where session_id=p_session_id and item_key='pretraining_documents' and status<>'not_applicable';
+ -- The live checklist table has no automatic notification trigger. Keep the
+ -- notice and task transition in the same document transaction.
+ for v_item_id in select id from public.daily_session_checklist_items where session_id=p_session_id and item_key='pretraining_documents' loop
+   perform public.daily_sync_session_checklist_notification(v_item_id);
+ end loop;
 end;
 $$;
 revoke all on function public.daily_sync_session_pretraining_checklist(uuid) from public,anon,authenticated;
@@ -54,6 +109,26 @@ select case
 $$;
 revoke all on function public.daily_pretraining_document_session_id(text,text,uuid) from public,anon,authenticated;
 grant execute on function public.daily_pretraining_document_session_id(text,text,uuid) to service_role;
+
+create or replace function public.daily_validate_pretraining_document_scope()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare linked_org uuid;
+begin
+  if new.document_type not in ('training_program','training_agreement','training_contract','convocation','registration_positioning','welcome_booklet','internal_regulations') then return new; end if;
+  if new.document_type in ('training_program','training_agreement','welcome_booklet','internal_regulations') then
+    if new.linked_object_type is distinct from 'session' or new.linked_object_id is null then raise exception 'Daily session pretraining document must link to a session'; end if;
+    select s.organisation_id into linked_org from public.daily_sessions s where s.id=new.linked_object_id;
+  else
+    if new.linked_object_type is distinct from 'enrolment' or new.linked_object_id is null then raise exception 'Daily learner pretraining document must link to an enrolment'; end if;
+    select e.organisation_id into linked_org from public.daily_session_enrolments e where e.id=new.linked_object_id;
+  end if;
+  if linked_org is null then raise exception 'Daily pretraining linked object not found'; end if;
+  if linked_org<>new.organisation_id then raise exception 'Daily pretraining document organisation mismatch'; end if;
+  return new;
+end;
+$$;
+revoke all on function public.daily_validate_pretraining_document_scope() from public,anon,authenticated;
+grant execute on function public.daily_validate_pretraining_document_scope() to service_role;
 
 -- Preserve the notification circuit and its history for accepted historical sessions.
 CREATE OR REPLACE FUNCTION public.daily_sync_session_checklist_notification(p_item_id uuid)

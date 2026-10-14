@@ -7,16 +7,18 @@ const org='20000000-0000-4000-8000-000000000001',session='20000000-0000-4000-800
 test('état documentaire canonique : préparation, relecture, publication et tâche',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec(`create role anon;create role authenticated;create role service_role;
- create table daily_sessions(id uuid primary key,organisation_id uuid);
+ create table daily_sessions(id uuid primary key,organisation_id uuid,formation_id uuid,status text);
  create table daily_session_enrolments(id uuid primary key,organisation_id uuid,session_id uuid,status text,contracting_party_type text,company_name text);
  create table daily_documents(id uuid default gen_random_uuid(),organisation_id uuid,document_type text,linked_object_type text,linked_object_id uuid,is_current boolean,status text,version int default 1,created_at timestamptz default now(),metadata jsonb);
- create table daily_session_checklist_items(id uuid default gen_random_uuid(),session_id uuid,item_key text,status text,note text,signaled_at timestamptz);
+ create table daily_session_checklist_items(id uuid default gen_random_uuid(),session_id uuid,organisation_id uuid,item_key text,phase text,responsibility text,label text,description text,status text,note text,signaled_at timestamptz);
  insert into daily_sessions values('${session}','${org}');insert into daily_session_enrolments values('${enrolment}','${org}','${session}','pending','individual',null);
  insert into daily_session_checklist_items(session_id,item_key,status)values('${session}','pretraining_documents','todo');
  create table daily_formations(id uuid,organisation_id uuid,status text,title text);
  create table daily_formation_registration_requests(id uuid,attached_session_id uuid,formation_id uuid,decision_status text);
  create table organisations(id uuid,name text);create table daily_organisation_assignments(organisation_id uuid,agent_profile_id uuid);create table agent_profiles(id uuid,user_id uuid,is_active boolean);
  create table notifications(type text,title text,content text,organisation_name text,link_path text,target_role text,target_user_id uuid,target_agent_profile_id uuid,pinned boolean,read_at timestamptz,dismissed_at timestamptz,escalation_at timestamptz,created_at timestamptz,source_key text,source_kind text);
+ create function daily_a11_organisation_is_active(uuid) returns boolean language sql as 'select false';
+ create function daily_session_checklist_phase_available(uuid,text) returns boolean language sql as 'select false';
  `);
  const sql=await readFile(new URL('../supabase/migrations/20261014003923_daily_pretraining_publication_progress.sql',import.meta.url),'utf8');
  // The notification routine has the live table contract; no notification is sent.
