@@ -8,7 +8,7 @@ function walk(node,out=[]){if(Array.isArray(node))node.forEach(n=>walk(n,out));e
 function button(tree,label){const result=walk(tree).find(n=>n.type==='button'&&n.props.children===label);assert.ok(result,label);return result;}
 function fixture(){
  const session='historical-session',rows=[{id:'a',learner_id:'learner-a',name:'Alice QA',updated_at:'2026-10-14T08:00:00Z',contracting_party_type:null,company_name:null},{id:'b',learner_id:'learner-b',name:'Bob QA',updated_at:'2026-10-14T08:00:00Z',contracting_party_type:'individual',company_name:null}];
- const requests=[],flags={confirm:true,pending:null,fail:false};const documents=[];
+ const requests=[],flags={confirm:true,pending:null,fail:false,unconfirmed:false};const documents=[];
  const states=[],refs=[],effects=[],callbacks=[];let stateIndex=0,refIndex=0,effectIndex=0,callbackIndex=0,pendingEffects=[];
  const preparation=()=>({session_id:session,companies:['Entreprise QA'],enrolments:rows.map(row=>({...row,issue:row.contracting_party_type?null:'Choisissez qui signe : particulier ou entreprise commanditaire.'})),ready:rows.every(row=>row.contracting_party_type)});
  const page=isolatedTsModule('src/app/agent/daily/pretraining-documents/page.tsx',{
@@ -19,6 +19,7 @@ function fixture(){
   if(!options?.method)return Response.json(String(url).includes('/generate?')?{preparation:preparation()}:{documents,sessions:[{id:session,organisation_id:'of-a',start_date:'2026-10-12',daily_formations:{title:'Formation historique'}}]});
   const body=JSON.parse(options.body);requests.push({method:options.method,body});if(flags.pending)await flags.pending;
   if(flags.fail)return Response.json({error:'Délégation expirée.'},{status:403});
+  if(flags.unconfirmed)return Response.json({ok:true});
   if(options.method==='PATCH'){const row=rows.find(r=>r.id===body.enrolment_id);Object.assign(row,{contracting_party_type:body.contracting_party_type,company_name:body.company_name,updated_at:'2026-10-14T09:00:00Z'});return Response.json({enrolment:row});}
   documents.push({id:'contract-a',organisation_id:'of-a',session_id:session,document_type:'training_contract',status:'to_check',logical_name:'contrat',version:1,updated_at:'2026-10-14T09:00:00Z',metadata:{learner_name:'Alice QA',learner_id:'learner-a'}});return Response.json({documents,count:1});
  }});
@@ -53,4 +54,16 @@ test('une entreprise doit être choisie avant enregistrement et les choix non en
  const select=walk(tree).find(n=>n.type==='select'&&n.props['aria-label']==='Entreprise commanditaire de Alice QA');select.props.onChange({target:{value:'Entreprise QA'}});tree=f.render();assert.equal(button(tree,'Enregistrer le choix de Alice QA').props.disabled,false);assert.equal(button(tree,'Générer les documents manquants').props.disabled,true);
  f.submit(tree);tree=await f.settle();assert.equal(f.requests[0].body.company_name,'Entreprise QA');assert.equal(f.requests[0].body.contracting_party_type,'company');assert.equal(button(tree,'Générer les documents manquants').props.disabled,false);
  f.choose(tree,'individual');tree=f.render();assert.equal(button(tree,'Générer les documents manquants').props.disabled,true);assert.equal(f.rows[0].contracting_party_type,'company');
+});
+
+test('enregistrer une inscription conserve les choix non enregistrés des autres participantes',async()=>{
+ const f=fixture();f.rows[1].contracting_party_type=null;let tree=await f.settle();
+ f.choose(tree,'individual');tree=f.render();walk(tree).find(n=>n.type==='select'&&n.props['aria-label']==='Partie contractante de Bob QA').props.onChange({target:{value:'company'}});
+ tree=f.render();f.submit(tree);tree=await f.settle();
+ assert.equal(walk(tree).find(n=>n.type==='select'&&n.props['aria-label']==='Partie contractante de Bob QA').props.value,'company');assert.equal(f.rows[1].contracting_party_type,null);assert.equal(button(tree,'Générer les documents manquants').props.disabled,true);
+});
+
+test('HTTP 200 sans inscription confirmée ne débloque ni la génération ni un message de succès',async()=>{
+ const f=fixture();let tree=await f.settle();f.choose(tree,'individual');f.flags.unconfirmed=true;f.submit(f.render());tree=await f.settle();
+ assert.ok(renderHtml(tree).includes('L’enregistrement n’est pas confirmé.'));assert.ok(!renderHtml(tree).includes('Partie contractante enregistrée pour Alice QA'));assert.equal(button(tree,'Générer les documents manquants').props.disabled,true);
 });
