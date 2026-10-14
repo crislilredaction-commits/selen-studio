@@ -1,4 +1,4 @@
-const PRODUCTION_VITRINE_URL = "https://selen-editions.fr";
+const PRODUCTION_VITRINE_URL = "https://www.selen-editions.fr";
 
 type VitrineUrlOptions = {
   allowLocalhost?: boolean;
@@ -7,7 +7,9 @@ type VitrineUrlOptions = {
 function normalizeBaseUrl(value?: string | null) {
   const trimmed = value?.trim();
   if (!trimmed || trimmed === "undefined") return null;
-  return trimmed.replace(/\/+$/, "");
+  // Vercel redirects the apex to www (308). Server bridges deliberately refuse
+  // redirects so their assistance header cannot reach another origin.
+  return trimmed.replace(/\/+$/, "").replace(/^https:\/\/selen-editions\.fr(?=\/|$)/i, PRODUCTION_VITRINE_URL);
 }
 
 function isLocalUrl(value: string) {
