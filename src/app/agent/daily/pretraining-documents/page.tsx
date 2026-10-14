@@ -71,12 +71,22 @@ export default function DailyPretrainingReviewPage(){
     }catch(c){setError(c instanceof Error?c.message:"Action impossible.");}
     finally{actionPending.current=false;setPendingId("");}
   }
-  async function generate(){
+  async function generate(row?:ContractualEnrolment){
     if(actionPending.current || !preparationSession)return;
-    if(!preparation?.ready || preparation.session_id!==preparationSession.id || unsavedChoices){setError("Enregistrez les parties contractantes de cette session avant de générer les documents.");return;}
-    if(!window.confirm("Préparer les documents manquants de cette session pour l’organisme ? Les pièces existantes seront conservées. Aucune publication ni notification ne sera déclenchée."))return;
-    actionPending.current=true;setPendingId("generation");setError("");setMessage("");
-    try{const response=await fetch("/agent/api/daily/pretraining-documents/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:preparationSession.id,confirm_prepare:true})});const body=await response.json().catch(()=>({}));if(!response.ok){if(body.preparation)setPreparationRevision(value=>value+1);throw new Error(body.error||"Préparation impossible.");}setMessage("Documents préparés. Prévisualisez chaque pièce, vérifiez ses destinataires puis validez-la avant publication.");await load();}catch(cause){setError(cause instanceof Error?cause.message:"Préparation impossible.");}finally{actionPending.current=false;setPendingId("");}
+    const selected=row?preparation?.enrolments.find(item=>item.id===row.id):null;
+    const draft=selected?partyDrafts[selected.id]:null;
+    const selectedReady=selected&&!selected.issue&&draft?.party===selected.contracting_party_type&&(draft.party!=="company"||draft.company===selected.company_name);
+    if(preparation?.session_id!==preparationSession.id || (row?!selectedReady:!preparation.ready||unsavedChoices)){setError(row?"Enregistrez la partie contractante de cette inscription avant de préparer ses documents.":"Enregistrez les parties contractantes de cette session avant de générer les documents.");return;}
+    const confirmation=selected?`Préparer les documents manquants de ${selected.name} et les pièces communes de la session ? Les documents existants seront conservés. Aucune publication ni notification ne sera déclenchée.`:"Préparer les documents manquants de cette session pour l’organisme ? Les pièces existantes seront conservées. Aucune publication ni notification ne sera déclenchée.";
+    if(!window.confirm(confirmation))return;
+    actionPending.current=true;setPendingId(selected?`generation:${selected.id}`:"generation");setError("");setMessage("");
+    try{
+      const response=await fetch("/agent/api/daily/pretraining-documents/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:preparationSession.id,confirm_prepare:true,...(selected?{enrolment_id:selected.id,expected_enrolment_updated_at:selected.updated_at}:{})})});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok){if(body.preparation||response.status===409)setPreparationRevision(value=>value+1);throw new Error(body.error||"Préparation impossible.");}
+      if(!Array.isArray(body.documents)||!body.documents.length||selected&&body.enrolment_id!==selected.id){await load();throw new Error("La préparation n’est pas confirmée. Vérifiez les pièces chargées avant une nouvelle tentative.");}
+      setMessage(`${selected?`Documents préparés pour ${selected.name}.`:"Documents préparés."} Prévisualisez chaque pièce, vérifiez ses destinataires puis validez-la avant publication.`);await load();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Préparation impossible.");}finally{actionPending.current=false;setPendingId("");}
   }
   async function saveParty(row:ContractualEnrolment){
     if(actionPending.current || !preparationSession || preparation?.session_id!==preparationSession.id)return;
@@ -107,12 +117,12 @@ export default function DailyPretrainingReviewPage(){
       {preparationLoading?<p>Chargement des inscriptions…</p>:null}
       {preparationError?<div role="alert">{preparationError} <button onClick={()=>setPreparationRevision(value=>value+1)}>Recharger les inscriptions</button></div>:null}
       {preparation?.session_id===preparationSession.id?<>
-        <p>{preparation.ready?"Toutes les parties contractantes sont renseignées.":preparation.enrolments.length?`${preparation.enrolments.filter(row=>row.issue).length} inscription(s) à compléter avant génération.`:"Aucune inscription active dans cette session."}</p>
+        <p>{preparation.ready?"Toutes les parties contractantes sont renseignées.":preparation.enrolments.length?`${preparation.enrolments.filter(row=>row.issue).length} inscription(s) à compléter avant génération de toute la session. Vous pouvez préparer séparément les inscriptions déjà renseignées.`:"Aucune inscription active dans cette session."}</p>
         {preparation.enrolments.map(row=>{const draft=partyDrafts[row.id]??{party:"",company:""};const changed=draft.party!==(row.contracting_party_type??"")||(draft.party==="company"&&draft.company!==(row.company_name??""));return <form key={row.id} onSubmit={event=>{event.preventDefault();void saveParty(row);}} style={{borderTop:"1px solid var(--selen-border)",padding:"14px 0",display:"grid",gap:8}}>
           <strong>{row.name}</strong>{row.issue?<p style={{margin:0}}>{row.issue}</p>:null}
           <label>Partie contractante de {row.name}<select aria-label={`Partie contractante de ${row.name}`} value={draft.party} disabled={Boolean(pendingId)} onChange={event=>setPartyDrafts(current=>({...current,[row.id]:{...draft,party:event.target.value}}))} style={{display:"block",padding:8,minWidth:240}}><option value="">Choisir explicitement</option><option value="individual">Particulier — contrat individuel</option><option value="company">Entreprise commanditaire — convention</option></select></label>
           {draft.party==="company"?<><label>Entreprise commanditaire de {row.name}<select aria-label={`Entreprise commanditaire de ${row.name}`} value={draft.company} disabled={Boolean(pendingId)} onChange={event=>setPartyDrafts(current=>({...current,[row.id]:{...draft,company:event.target.value}}))} style={{display:"block",padding:8,minWidth:240}}><option value="">Choisir une entreprise de la session</option>{preparation.companies.map(company=><option key={company} value={company}>{company}</option>)}</select></label>{!preparation.companies.length?<p>Aucune entreprise commanditaire n’est enregistrée. Ajoutez-la dans l’organisation de la session Daily depuis <a href={`/agent/daily/organisations/${encodeURIComponent(preparationSession.organisation_id)}`}>la fiche de l’organisme</a>, puis <button type="button" onClick={()=>setPreparationRevision(value=>value+1)}>Recharger les inscriptions</button>.</p>:null}</>:null}
-          <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}><button type="submit" disabled={Boolean(pendingId)||!changed||!draft.party||draft.party==="company"&&!preparation.companies.includes(draft.company)}>{pendingId===row.id?"Enregistrement…":`Enregistrer le choix de ${row.name}`}</button><a href={`/agent/daily/learners/${encodeURIComponent(row.learner_id)}?session=${encodeURIComponent(preparationSession.id)}`}>Consulter le dossier apprenant</a></div>
+          <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}><button type="submit" disabled={Boolean(pendingId)||!changed||!draft.party||draft.party==="company"&&!preparation.companies.includes(draft.company)}>{pendingId===row.id?"Enregistrement…":`Enregistrer le choix de ${row.name}`}</button><button type="button" disabled={Boolean(pendingId)||Boolean(row.issue)||changed} onClick={()=>void generate(row)}>{pendingId===`generation:${row.id}`?"Préparation…":`Préparer les documents de ${row.name}`}</button><a href={`/agent/daily/learners/${encodeURIComponent(row.learner_id)}?session=${encodeURIComponent(preparationSession.id)}`}>Consulter le dossier apprenant</a></div>
         </form>;})}
       </>:null}
       {unsavedChoices?<p>Enregistrez les choix modifiés avant de générer les documents.</p>:null}

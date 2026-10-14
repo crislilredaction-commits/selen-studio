@@ -21,7 +21,8 @@ function fixture(){
   if(flags.fail)return Response.json({error:'Délégation expirée.'},{status:403});
   if(flags.unconfirmed)return Response.json({ok:true});
   if(options.method==='PATCH'){const row=rows.find(r=>r.id===body.enrolment_id);Object.assign(row,{contracting_party_type:body.contracting_party_type,company_name:body.company_name,updated_at:'2026-10-14T09:00:00Z'});return Response.json({enrolment:row});}
-  documents.push({id:'contract-a',organisation_id:'of-a',session_id:session,document_type:'training_contract',status:'to_check',logical_name:'contrat',version:1,updated_at:'2026-10-14T09:00:00Z',metadata:{learner_name:'Alice QA',learner_id:'learner-a'}});return Response.json({documents,count:1});
+  const recipient=rows.find(row=>row.id===body.enrolment_id)??rows[0];
+  documents.push({id:`contract-${recipient.id}`,organisation_id:'of-a',session_id:session,document_type:'training_contract',status:'to_check',logical_name:'contrat',version:1,updated_at:'2026-10-14T09:00:00Z',metadata:{learner_name:recipient.name,learner_id:recipient.learner_id}});return Response.json({documents,count:1,enrolment_id:body.enrolment_id??null});
  }});
  const render=()=>{stateIndex=0;refIndex=0;effectIndex=0;callbackIndex=0;return page.default();};
  const settle=async()=>{let tree;for(let i=0;i<5;i++){tree=render();const batch=pendingEffects;pendingEffects=[];for(const fn of batch)fn();await new Promise(resolve=>setImmediate(resolve));}return render();};
@@ -66,4 +67,23 @@ test('enregistrer une inscription conserve les choix non enregistrés des autres
 test('HTTP 200 sans inscription confirmée ne débloque ni la génération ni un message de succès',async()=>{
  const f=fixture();let tree=await f.settle();f.choose(tree,'individual');f.flags.unconfirmed=true;f.submit(f.render());tree=await f.settle();
  assert.ok(renderHtml(tree).includes('L’enregistrement n’est pas confirmé.'));assert.ok(!renderHtml(tree).includes('Partie contractante enregistrée pour Alice QA'));assert.equal(button(tree,'Générer les documents manquants').props.disabled,true);
+});
+
+test('le bouton personnel prépare le dossier prêt, sans modifier l’autre inscription ni déclarer la session terminée',async()=>{
+ const f=fixture();let tree=await f.settle();
+ assert.equal(button(tree,'Générer les documents manquants').props.disabled,true);
+ assert.equal(button(tree,'Préparer les documents de Alice QA').props.disabled,true);
+ assert.equal(button(tree,'Préparer les documents de Bob QA').props.disabled,false);
+ button(tree,'Préparer les documents de Bob QA').props.onClick();tree=await f.settle();
+ assert.deepEqual(f.requests.map(r=>r.method),['POST']);assert.deepEqual(f.requests[0].body,{session_id:'historical-session',confirm_prepare:true,enrolment_id:'b',expected_enrolment_updated_at:'2026-10-14T08:00:00Z'});
+ assert.equal(f.rows[0].contracting_party_type,null);assert.equal(button(tree,'Générer les documents manquants').props.disabled,true);
+ const html=renderHtml(tree);assert.ok(html.includes('Documents préparés pour Bob QA.'));assert.ok(html.includes('1 inscription(s) à compléter'));assert.ok(html.includes('Contrat individuel'));assert.equal(button(tree,'Valider').props.disabled,true);
+});
+
+test('la préparation ciblée refuse une saisie non enregistrée et ne donne aucun succès sans preuve',async()=>{
+ const f=fixture();let tree=await f.settle();
+ const select=walk(tree).find(n=>n.type==='select'&&n.props['aria-label']==='Partie contractante de Bob QA');select.props.onChange({target:{value:'company'}});tree=f.render();
+ assert.equal(button(tree,'Préparer les documents de Bob QA').props.disabled,true);button(tree,'Préparer les documents de Bob QA').props.onClick();tree=await f.settle();assert.equal(f.requests.length,0);
+ walk(tree).find(n=>n.type==='select'&&n.props['aria-label']==='Partie contractante de Bob QA').props.onChange({target:{value:'individual'}});f.flags.unconfirmed=true;
+ button(f.render(),'Préparer les documents de Bob QA').props.onClick();tree=await f.settle();assert.ok(renderHtml(tree).includes('La préparation n’est pas confirmée.'));assert.ok(!renderHtml(tree).includes('Documents préparés pour Bob QA.'));
 });

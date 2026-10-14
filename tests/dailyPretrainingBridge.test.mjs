@@ -77,6 +77,30 @@ test('incohérence de rattachement apprenant ou échec lecture : pas de généra
  const f=fixture();f.rows.daily_session_enrolments[0].daily_learners.organisation_id='foreign';
  assert.equal((await f.post()).status,500);assert.equal(f.issued.length,0);assert.equal(f.requests.length,0);
 });
+
+test('une inscription prête peut être préparée quand une autre partie contractante reste inconnue',async()=>{
+ const f=fixture(),ready=f.rows.daily_session_enrolments[0];
+ f.rows.daily_session_enrolments.push({...ready,id:'missing-party',contracting_party_type:null});
+ assert.equal((await f.post()).status,400);assert.equal(f.issued.length,0);
+ const response=await f.post({enrolment_id:ready.id,expected_enrolment_updated_at:ready.updated_at,only_missing:false});
+ assert.equal(response.status,200);
+ assert.deepEqual(JSON.parse(f.requests[0].options.body),{session_id:session,only_missing:true,confirm_delegated:true,enrolment_id:ready.id,expected_enrolment_updated_at:ready.updated_at});
+ assert.equal(f.rows.daily_session_enrolments[1].contracting_party_type,null);
+ assert.equal(f.rows.selen_agent_assistance_tokens[0].status,'revoked');
+});
+
+test('préparation ciblée : cible inconnue, partie manquante ou version périmée refusées avant délégation',async()=>{
+ const f=fixture(),row=f.rows.daily_session_enrolments[0];
+ for(const [extra,status]of[
+  [{enrolment_id:null},400],
+  [{enrolment_id:''},400],
+  [{enrolment_id:row.id},400],
+  [{enrolment_id:'foreign',expected_enrolment_updated_at:row.updated_at},404],
+  [{enrolment_id:row.id,expected_enrolment_updated_at:'stale'},409],
+ ])assert.equal((await f.post(extra)).status,status);
+ row.contracting_party_type=null;assert.equal((await f.post({enrolment_id:row.id,expected_enrolment_updated_at:row.updated_at})).status,400);
+ assert.equal(f.issued.length,0);assert.equal(f.requests.length,0);assert.equal(f.writes.length,0);
+});
 test('absence d’authentification, de confirmation, session étrangère ou archivée : aucune délégation ni appel Daily',async()=>{
  for(const [change,body,status]of[[f=>{f.flags.auth={ok:false,status:401,error:'Connexion requise'};},{},401],[f=>{f.flags.scope=[];},{},404],[f=>{f.rows.daily_sessions[0].status='archived';},{},404],[()=>{}, {confirm_prepare:false},400]]){
   const f=fixture();change(f);assert.equal((await f.post(body)).status,status);assert.equal(f.issued.length,0);assert.equal(f.requests.length,0);
