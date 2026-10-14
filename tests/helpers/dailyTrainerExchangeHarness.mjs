@@ -14,8 +14,8 @@ export function exchangeHarness(options={}) {
   daily_attendance_slots:[{id:"slot",organisation_id:ids.org,session_id:ids.session,slot_date:"2026-10-12",starts_at:"09:00",ends_at:"12:00",status:"closed"}],
   daily_attendance_records:[{id:"record",organisation_id:ids.org,session_id:ids.session,slot_id:"slot",enrolment_id:"enrolment",status:"present",signed_at:"2026-10-12T10:00:00Z",signature_storage_path:"private-proof"},
    {id:"historical",organisation_id:ids.org,session_id:ids.session,slot_id:"slot",enrolment_id:"cancelled-enrolment",status:"present",signed_at:"2026-10-12T10:00:00Z"}],
-  organisations:[{id:ids.org,name:"Organisme exemple"}],daily_formations:[{id:"formation",title:"Formation exemple",status:"validated",version:1}],
-  daily_registration_responses:[],daily_communications:[],daily_session_followup_entries:[],daily_learning_assessments:[],daily_learner_feedback_responses:[],daily_session_dossiers:[]};
+  organisations:[{id:ids.org,name:"Organisme exemple"}],daily_formations:[{id:"formation",organisation_id:ids.org,title:"Formation exemple",status:"validated",version:1}],
+  daily_registration_responses:[],daily_formation_registration_requests:[],daily_communications:[],daily_session_followup_entries:[],daily_learning_assessments:[],daily_learner_feedback_responses:[],daily_session_dossiers:[]};
  const reads=[],logs=[],scopes=[],effects=[],redirects=[];
  function project(row,columns) {
   if(!columns||columns==="*")return structuredClone(row);
