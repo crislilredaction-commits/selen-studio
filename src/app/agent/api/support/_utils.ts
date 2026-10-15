@@ -17,7 +17,7 @@ export async function requireSupportAgent() {
     .maybeSingle();
 
   if (adminUser && ["agent", "admin"].includes(adminUser.role)) {
-    return { ok: true as const, email, userId };
+    return { ok: true as const, email, userId, role: adminUser.role, actorType: "selen_admin" as const };
   }
 
   const { data: profile, error } = await supabase
@@ -32,7 +32,7 @@ export async function requireSupportAgent() {
     return { ok: false as const, error: "Acces agent requis.", status: 403 };
   }
 
-  return { ok: true as const, email, userId };
+  return { ok: true as const, email, userId, role: profile.role, actorType: "selen_operator" as const };
 }
 
 export async function requireSupportAdmin() {
