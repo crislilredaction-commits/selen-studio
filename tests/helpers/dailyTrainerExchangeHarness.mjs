@@ -15,7 +15,7 @@ export function exchangeHarness(options={}) {
   daily_attendance_records:[{id:"record",organisation_id:ids.org,session_id:ids.session,slot_id:"slot",enrolment_id:"enrolment",status:"present",signed_at:"2026-10-12T10:00:00Z",signature_storage_path:"private-proof"},
    {id:"historical",organisation_id:ids.org,session_id:ids.session,slot_id:"slot",enrolment_id:"cancelled-enrolment",status:"present",signed_at:"2026-10-12T10:00:00Z"}],
   organisations:[{id:ids.org,name:"Organisme exemple"}],daily_formations:[{id:"formation",organisation_id:ids.org,title:"Formation exemple",status:"validated",version:1}],
-  daily_registration_responses:[],daily_formation_registration_requests:[],daily_communications:[],daily_session_followup_entries:[],daily_learning_assessments:[],daily_learner_feedback_responses:[],daily_session_dossiers:[]};
+  daily_registration_responses:[],daily_formation_registration_requests:[],daily_communications:[],daily_session_followup_entries:[],daily_learning_assessments:[],daily_learner_feedback_responses:[],daily_session_dossiers:[],daily_portal_access_tokens:[]};
  const reads=[],logs=[],scopes=[],effects=[],redirects=[];
  function project(row,columns) {
   if(!columns||columns==="*")return structuredClone(row);
@@ -48,13 +48,15 @@ export function exchangeHarness(options={}) {
    "@/lib/server/clientNdaAccess":{getAdminSupabase:()=>admin},
    "@/lib/server/agentAssistance":{logAgentAssistanceAction:async input=>logs.push(input)},
    "@/lib/server/dailyAttendance":{attendanceParisClock:()=>({date:"2026-10-13",minutes:900})},
+   "@/components/agent/AttendanceRegularizationLink":{__esModule:true,default:()=>null},
+   "@/lib/vitrineLinks":{getVitrineBaseUrl:()=>"https://www.selen-editions.fr"},
    "@/lib/server/supabaseAdmin":{createSupabaseAdminClient:()=>admin},
    "@/app/agent/api/support/_utils":{requireSupportAgent:async()=>({ok:true,email:"agent@example.test"})},
    "@/lib/server/dailyOrganisationScope":{isDailyOrganisationInAgentScope:async(email,org)=>{scopes.push({email,org});return options.outOfScope!==true&&org===ids.org;}},
    ...extra};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,"utf8"),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{
    module,exports:module.exports,URL,Date,Intl,Error,console,window:options.window,fetch(){throw Error("Real network forbidden");},
-   require(name){if(Object.hasOwn(dependencies,name))return dependencies[name];if(name==="@/lib/server/dailyAssistedTrainerWorkspace")return load("lib/server/dailyAssistedTrainerWorkspace.ts");if(name==="@/lib/dailyAttendanceState")return load("lib/dailyAttendanceState.ts");throw Error("Unexpected dependency "+name);}
+   require(name){if(Object.hasOwn(dependencies,name))return dependencies[name];if(name==="@/lib/server/dailyAssistedTrainerWorkspace")return load("lib/server/dailyAssistedTrainerWorkspace.ts");if(name==="@/lib/dailyAttendanceState")return load("lib/dailyAttendanceState.ts");if(name==="@/lib/daily/attendanceRegularizationLink")return load("src/lib/daily/attendanceRegularizationLink.ts");throw Error("Unexpected dependency "+name);}
   },{filename:path});
   if(!Object.keys(extra).length)cache[path]=module.exports;return module.exports;
  }
