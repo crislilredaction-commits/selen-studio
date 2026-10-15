@@ -16,6 +16,7 @@ test("A9: la liste Studio respecte le périmètre réel de l'agent", () => {
 test("A9: la page session affiche uniquement ses inscrits cohérents", () => {
   assert.match(session, /daily_sessions[\s\S]*\.in\("organisation_id", organisationIds\)/);
   assert.match(session, /daily_session_enrolments[\s\S]*\.eq\("organisation_id", session\.organisation_id\)[\s\S]*\.eq\("session_id", id\)/);
+  assert.match(session, /\.not\("status", "in", "\(declined,cancelled,abandoned\)"\)/);
   assert.match(session, /learner\?\.organisation_id === session\.organisation_id/);
   assert.match(session, /Apprenants inscrits/);
   assert.match(session, /Ouvrir la fiche apprenant/);
