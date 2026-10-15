@@ -38,6 +38,7 @@
     "test:daily-delegated-document-upload": "node --test tests/dailyDelegatedDocumentUpload.test.mjs",
     "test:daily-positioning-followup": "node --test tests/dailyPositioningFollowupStudio.test.mjs",
     "test:daily-attendance-followup": "node --test tests/dailyAttendanceFollowupStudio.test.mjs",
+    "test:daily-attendance-regularization": "node --test tests/dailyAttendanceRegularizationQueue.test.mjs",
     "test:daily-direct-session-access": "node --test tests/dailyDirectSessionPortalAccess.test.mjs",
     "test:support-manual-ticket": "node --test tests/supportManualTicket.test.mjs",
     "test:auth-recovery": "node --test tests/passwordRecoveryFlow.test.mjs",
