@@ -21,6 +21,7 @@ export default async function SessionPreparationPage({ params }: { params: Promi
     .select("id,learner_id,status,positioning_status,prerequisites_status,daily_learners(id,organisation_id,first_name,last_name,email)")
     .eq("organisation_id", session.organisation_id)
     .eq("session_id", id)
+    .not("status", "in", "(declined,cancelled,abandoned)")
     .order("created_at");
   if (error) throw new Error("Lecture des inscrits indisponible.");
   const safeEnrolments = (enrolments ?? []).filter((enrolment) => {
