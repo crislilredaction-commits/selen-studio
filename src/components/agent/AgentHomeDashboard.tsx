@@ -6,6 +6,7 @@ import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import { isOwnerLil } from "@/lib/ownerLil";
 import { presentDailyTask, type DailyTaskPresentation } from "@/lib/dailyTaskPresentation";
 import { getDailyAgentTasks } from "@/lib/server/dailyAgentTasks";
+import { getDailyAttendanceRegularizations } from "@/lib/server/dailyAttendanceRegularizations";
 import { getStudioClientFollowups } from "@/lib/server/studioClientFollowups";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { createClient } from "@/lib/supabase/server";
@@ -73,9 +74,10 @@ export default async function AgentHomeDashboard() {
   const admin = createSupabaseAdminClient();
   const canAccessGestionLil = isOwnerLil(staff.email);
   const greeting = staff.first_name?.trim() || staff.email?.split("@")[0] || "agent";
-  const [sessionDossiers, followups] = await Promise.all([
+  const [sessionDossiers, followups, attendanceRegularizations] = await Promise.all([
     dailySessionDossiers(staff),
     getStudioClientFollowups({ id: staff.id, role: staff.role }),
+    getDailyAttendanceRegularizations({ id: staff.id, role: staff.role }),
   ]);
 
   const assignedIds = new Set<string>();
@@ -118,6 +120,7 @@ export default async function AgentHomeDashboard() {
     ...assigned.map(dossierItem),
     ...preauditTasks,
   ]);
+  const regularizations = attendanceRegularizations.map((row) => ({ id: row.id, title: row.title, subtitle: row.detail, href: row.href, date: row.slotEndedAt }));
   const visibleAdminLinks = adminLinks.filter((item) => item.href === "/agent/gestion" ? canAccessGestionLil : staff.role === "admin");
 
   return <main style={{ padding: "24px 28px", maxWidth: 1180, margin: "0 auto", color: "var(--selen-text)" }}>
@@ -128,6 +131,7 @@ export default async function AgentHomeDashboard() {
 
     <section style={grid}>
       <TaskCard icon="⚡" title="Tâches à faire" count={actionDossiers.length} emptyText="Aucune action immédiate détectée." items={actionDossiers} />
+      <TaskCard icon="✍️" title="En attente de régularisation" count={regularizations.length} emptyText="Aucun émargement échu à régulariser." items={regularizations} />
       <TaskCard icon="📨" title="Clients à relancer" count={clientFollowups.length} emptyText="Aucune relance client détectée." items={clientFollowups} footerHref="/agent/relances" footerLabel="Ouvrir les relances" />
       <TaskCard icon="🧾" title="Audits blancs Review" count={audits.length} emptyText="Aucun audit blanc Review actif à suivre." items={audits} footerHref="/agent/audits-blancs" footerLabel="Ouvrir les audits blancs" />
       <TaskCard icon="🛟" title="Support à traiter" count={tickets.length} emptyText="Aucun ticket support à traiter." items={tickets} footerHref="/agent/support" footerLabel="Ouvrir le support" />
