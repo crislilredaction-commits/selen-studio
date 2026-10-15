@@ -29,6 +29,17 @@ test("une clé stable étrangère ne peut pas être contournée par le même ema
   assert.equal(helper.resolveLearnerAttendanceAccess({ accesses: [{ ...access, entity_key: null }], sessionId: "session", learnerId: "learner", learnerEmail: "LEARNER@example.test", now })?.token, access.token);
 });
 
+test("le modèle d’email cible le créneau et conserve explicitement l’horodatage réel", () => {
+  const email = helper.buildAttendanceRegularizationEmail({ learnerName: "Alice Exemple", slotLabel: "12/10/2026 · 09:00 à 12:00", url: "https://example.test/personal", expiresAt: "2026-10-20T00:00:00Z" });
+  assert.match(email.subject, /régulariser votre émargement/);
+  assert.match(email.body, /Alice Exemple/);
+  assert.match(email.body, /12\/10\/2026 · 09:00 à 12:00/);
+  assert.match(email.body, /https:\/\/example\.test\/personal/);
+  assert.match(email.body, /date et son heure réelles/);
+  assert.match(email.body, /ne modifiera pas rétroactivement/);
+  assert.equal(helper.buildAttendanceRegularizationEmail({ learnerName: "Alice", slotLabel: "créneau", url: null }), null);
+});
+
 test("Studio ne résout le jeton que dans le dossier authentifié et borné à la session", () => {
   assert.match(page, /isDailyOrganisationInAgentScope/);
   assert.match(page, /daily_portal_access_tokens/);
@@ -36,5 +47,7 @@ test("Studio ne résout le jeton que dans le dossier authentifié et borné à l
   assert.match(page, /resolveLearnerAttendanceAccess/);
   assert.match(page, /phase==="closed"/);
   assert.match(component, /navigator\.clipboard\.writeText/);
+  assert.match(component, /Copier l’email de relance/);
+  assert.match(component, /Aucun email n’est envoyé automatiquement/);
   assert.match(component, /rel="noreferrer"/);
 });

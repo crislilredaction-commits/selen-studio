@@ -48,3 +48,33 @@ export function buildAttendanceRegularizationUrl(baseUrl: string, access: Learne
   if (!base || !token || !slot) return null;
   return `${base}/daily/portail/learner/${encodeURIComponent(token)}/presence/${encodeURIComponent(slot)}/rattrapage`;
 }
+
+export function buildAttendanceRegularizationEmail(input: {
+  learnerName: string;
+  slotLabel: string;
+  url: string | null;
+  expiresAt?: string | null;
+}) {
+  if (!input.url) return null;
+  const learnerName = input.learnerName.trim() || "Madame, Monsieur";
+  const slotLabel = input.slotLabel.trim() || "le créneau concerné";
+  const expiry = input.expiresAt
+    ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" }).format(new Date(input.expiresAt))
+    : null;
+  const subject = "Action requise : régulariser votre émargement";
+  const body = [
+    `Bonjour ${learnerName},`,
+    "",
+    `Votre émargement reste à régulariser pour ${slotLabel}.`,
+    "Utilisez le lien personnel et sécurisé ci-dessous :",
+    input.url,
+    expiry ? `Ce lien est valable jusqu’au ${expiry}.` : null,
+    "",
+    "La signature conservera sa date et son heure réelles. Elle ne modifiera pas rétroactivement la date du créneau de formation.",
+    "Si vous avez déjà régularisé cet émargement, vous pouvez ignorer ce message.",
+    "",
+    "Cordialement,",
+    "L’équipe Selen",
+  ].filter((line): line is string => line !== null).join("\n");
+  return { subject, body, clipboard: `Objet : ${subject}\n\n${body}` };
+}
