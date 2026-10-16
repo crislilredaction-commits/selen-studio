@@ -25,6 +25,7 @@ type CommunicationRow = {
   status: string;
   sent_at: string | null;
   created_at: string;
+  communication_type: string;
   metadata: Record<string, unknown> | null;
 };
 type EnrolmentRow = { id: string; session_id: string; status: string | null; daily_learners: unknown };
@@ -52,6 +53,12 @@ function reviewState(record: RecordRow | undefined) {
   const metadata = record?.evidence_metadata && typeof record.evidence_metadata === "object" ? record.evidence_metadata : {};
   const review = metadata.late_review && typeof metadata.late_review === "object" ? metadata.late_review as Record<string, unknown> : {};
   return text(review.state);
+}
+function reviewCycle(record: RecordRow | undefined) {
+  const metadata = record?.evidence_metadata && typeof record.evidence_metadata === "object" ? record.evidence_metadata : {};
+  const review = metadata.late_review && typeof metadata.late_review === "object" ? metadata.late_review as Record<string, unknown> : {};
+  const version = Number(review.version);
+  return reviewState(record) === "rejected" ? `rejected:v${Number.isFinite(version) && version > 0 ? version : 1}` : "initial";
 }
 function parisLabel(value: string) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(value));
@@ -99,11 +106,20 @@ export function buildDailyAttendanceClientFollowups({
   const sessionById = new Map(sessions.map((row) => [row.id, row]));
   const recordByTarget = new Map(records.map((row) => [`${row.slot_id}:${row.enrolment_id}`, row]));
   const latestByTarget = new Map<string, CommunicationRow>();
+  const sentCyclesByTarget = new Map<string, Set<string>>();
 
   for (const communication of communications) {
     const slotId = slotIdOf(communication);
     if (!slotId || !["sent", "delivered"].includes(communication.status)) continue;
     const key = `${slotId}:${communication.enrolment_id}`;
+    if (communication.communication_type === "attendance_regularization_followup") {
+      const cycle = text(communication.metadata?.review_cycle) || "initial";
+      const sentCycles = sentCyclesByTarget.get(key) ?? new Set<string>();
+      sentCycles.add(cycle);
+      sentCyclesByTarget.set(key, sentCycles);
+      continue;
+    }
+    if (communication.communication_type !== "attendance_reminder") continue;
     const previous = latestByTarget.get(key);
     if (!previous || Date.parse(communicationAt(previous)) < Date.parse(communicationAt(communication))) latestByTarget.set(key, communication);
   }
@@ -124,6 +140,7 @@ export function buildDailyAttendanceClientFollowups({
     if (!session || INACTIVE_SESSION_STATUSES.has(text(session.status).toLowerCase())) return [];
     if (record && RESOLVED_ATTENDANCE_STATUSES.has(text(record.status).toLowerCase())) return [];
     if (reviewState(record) === "awaiting_validation") return [];
+    if (sentCyclesByTarget.get(`${slotId}:${communication.enrolment_id}`)?.has(reviewCycle(record))) return [];
 
     const learner = relation<LearnerRow>(enrolment.daily_learners);
     const formation = relation<FormationRow>(session.daily_formations);
@@ -134,7 +151,7 @@ export function buildDailyAttendanceClientFollowups({
       id: `attendance-followup-${communication.id}`,
       title: learnerName,
       detail: `${sessionLabel} · relance d’émargement ${rejected ? "à reprendre après rejet" : "restée sans régularisation"} depuis le ${parisLabel(lastSentAt)}`,
-      href: `/agent/daily/session-dossiers/${encodeURIComponent(communication.session_id)}/full`,
+      href: `/agent/daily/session-dossiers/${encodeURIComponent(communication.session_id)}/full#attendance-${encodeURIComponent(slotId)}-${encodeURIComponent(communication.enrolment_id)}`,
       dueAt: lastSentAt,
       assignedAgentProfileId,
       overdueShared: false,
@@ -162,9 +179,9 @@ export async function getDailyAttendanceClientFollowups(staff: AttendanceFollowu
 
   const { data: communicationData, error: communicationError } = await admin
     .from("daily_communications")
-    .select("id,organisation_id,session_id,enrolment_id,recipient_email,recipient_name,status,sent_at,created_at,metadata")
+    .select("id,organisation_id,session_id,enrolment_id,recipient_email,recipient_name,status,sent_at,created_at,communication_type,metadata")
     .in("organisation_id", visibleOrganisationIds)
-    .eq("communication_type", "attendance_reminder")
+    .in("communication_type", ["attendance_reminder", "attendance_regularization_followup"])
     .in("status", ["sent", "delivered"])
     .order("sent_at", { ascending: false, nullsFirst: false })
     .limit(500);
