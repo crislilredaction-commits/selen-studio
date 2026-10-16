@@ -1,4 +1,5 @@
 import { isOverdueAfterBusinessHours } from "@/lib/franceBusinessTime";
+import { getDailyAttendanceClientFollowups } from "@/lib/server/dailyAttendanceClientFollowups";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 export type FollowupStaff = { id: string | null; role: "agent" | "admin" };
@@ -38,14 +39,18 @@ function followupHref(row:ReminderRow,isDaily:boolean){
 }
 export async function getStudioClientFollowups(staff:FollowupStaff,options?:{dailyOnly?:boolean}){
  const admin=createSupabaseAdminClient();
- const{data,error}=await admin.from("client_reminders").select("id,client_email,dossier_id,reminder_type,status,subject,due_at,metadata").in("status",["draft","ready","postponed"]).order("due_at",{ascending:true}).limit(100);
+ const[{data,error},attendanceFollowups]=await Promise.all([
+  admin.from("client_reminders").select("id,client_email,dossier_id,reminder_type,status,subject,due_at,metadata").in("status",["draft","ready","postponed"]).order("due_at",{ascending:true}).limit(100),
+  getDailyAttendanceClientFollowups(staff),
+ ]);
  if(error)throw new Error(error.message);
  const rows=(data??[]) as ReminderRow[];
- return rows.flatMap((row):StudioClientFollowup[]=>{
+ const reminderFollowups=rows.flatMap((row):StudioClientFollowup[]=>{
   if(row.reminder_type===SIGNATURE_REMINDER&&[SIGNATURE_J3_STAGE,SIGNATURE_J6_STAGE].includes(followupStage(row)))return[];
   if(!isDue(row.due_at))return[];
   const overdueShared=isOverdue(queuedAt(row)),isDaily=dailyReminder(row);
   if((options?.dailyOnly&&!isDaily)||!visible(row,staff,overdueShared))return[];
   return[{id:row.id,title:row.client_email||"Partie prenante à relancer",detail:text(row.metadata?.expected_action||row.metadata?.reason)||row.subject||"Relance à traiter",href:followupHref(row,isDaily),dueAt:row.due_at,assignedAgentProfileId:assignedAgent(row.metadata),overdueShared,reminderType:row.reminder_type,isDaily}];
  });
+ return [...reminderFollowups,...attendanceFollowups].filter((row)=>!options?.dailyOnly||row.isDaily).sort((left,right)=>Date.parse(left.dueAt??"")-Date.parse(right.dueAt??""));
 }
