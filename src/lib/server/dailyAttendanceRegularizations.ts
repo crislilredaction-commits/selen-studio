@@ -2,11 +2,11 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
 
 export type AttendanceRegularizationStaff = { id: string | null; role: "agent" | "admin" };
-export type DailyAttendanceRegularization = { id: string; sessionId: string; title: string; detail: string; href: string; slotEndedAt: string };
+export type DailyAttendanceRegularization = { id: string; sessionId: string; title: string; detail: string; href: string; slotEndedAt: string; reviewState: string | null };
 
 type SlotRow = { id: string; organisation_id: string; session_id: string; slot_date: string; starts_at: string; ends_at: string; status: string | null; daily_sessions: unknown };
 type EnrolmentRow = { id: string; organisation_id: string; session_id: string; status: string | null; daily_learners: unknown };
-type RecordRow = { slot_id: string; enrolment_id: string; status: string | null };
+type RecordRow = { slot_id: string; enrolment_id: string; status: string | null; evidence_metadata: Record<string, unknown> | null };
 type OrganisationRow = { id: string; name: string | null; legal_name: string | null };
 type AssignmentRow = { organisation_id: string; agent_profile_id: string };
 type FormationRow = { title?: string | null };
@@ -39,6 +39,11 @@ function slotTimestamp(slot: SlotRow) {
   return `${slot.slot_date}T${String(slot.ends_at).slice(0, 5)}:00`;
 }
 
+function lateReview(record?: RecordRow) {
+  const metadata = record?.evidence_metadata && typeof record.evidence_metadata === "object" ? record.evidence_metadata : {};
+  return metadata.late_review && typeof metadata.late_review === "object" ? metadata.late_review as Record<string, unknown> : {};
+}
+
 export async function getDailyAttendanceRegularizations(staff: AttendanceRegularizationStaff): Promise<DailyAttendanceRegularization[]> {
   const admin = createSupabaseAdminClient();
   const activeOrganisationIds = await getActiveDailyOrganisationIds();
@@ -62,7 +67,7 @@ export async function getDailyAttendanceRegularizations(staff: AttendanceRegular
   const slotIds = slots.map((slot) => slot.id);
   const [enrolmentRes, recordRes] = await Promise.all([
     admin.from("daily_session_enrolments").select("id,organisation_id,session_id,status,daily_learners(first_name,last_name,email)").in("organisation_id", [...visibleOrganisationIds]).in("session_id", sessionIds),
-    admin.from("daily_attendance_records").select("slot_id,enrolment_id,status").in("slot_id", slotIds),
+    admin.from("daily_attendance_records").select("slot_id,enrolment_id,status,evidence_metadata").in("slot_id", slotIds),
   ]);
   if (enrolmentRes.error || recordRes.error) throw new Error(`File de régularisation indisponible : ${enrolmentRes.error?.message ?? recordRes.error?.message}`);
 
@@ -85,7 +90,14 @@ export async function getDailyAttendanceRegularizations(staff: AttendanceRegular
       const learner = relation<LearnerRow>(enrolment.daily_learners);
       const learnerName = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant";
       const organisationName = organisation?.legal_name || organisation?.name || "Organisme Daily";
-      return [{ id: `attendance-regularization-${slot.id}-${enrolment.id}`, sessionId: slot.session_id, title: learnerName, detail: `${organisationName} · ${sessionTitle} · ${slot.slot_date} de ${String(slot.starts_at).slice(0, 5)} à ${String(slot.ends_at).slice(0, 5)}`, href: `/agent/daily/session-dossiers/${encodeURIComponent(slot.session_id)}/full`, slotEndedAt: slotTimestamp(slot) }];
+      const review = lateReview(record);
+      const reviewState = String(review.state ?? "").trim() || null;
+      const reviewDetail = reviewState === "awaiting_validation"
+        ? ` · preuve v${Number(review.version) || 1} à valider`
+        : reviewState === "rejected"
+          ? ` · preuve v${Number(review.version) || 1} rejetée, resoumission requise`
+          : "";
+      return [{ id: `attendance-regularization-${slot.id}-${enrolment.id}`, sessionId: slot.session_id, title: learnerName, detail: `${organisationName} · ${sessionTitle} · ${slot.slot_date} de ${String(slot.starts_at).slice(0, 5)} à ${String(slot.ends_at).slice(0, 5)}${reviewDetail}`, href: `/agent/daily/session-dossiers/${encodeURIComponent(slot.session_id)}/full`, slotEndedAt: slotTimestamp(slot), reviewState }];
     });
   });
 }

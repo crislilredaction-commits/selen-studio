@@ -33,3 +33,11 @@ test("le tableau de bord ouvre le détail authentifié sans exposer de jeton ni 
   assert.match(queue, /\/agent\/daily\/session-dossiers\/\$\{encodeURIComponent\(slot\.session_id\)\}\/full/);
   assert.doesNotMatch(queue, /daily_portal_access_tokens|signature_storage_path|ip_address|user_agent/);
 });
+
+test("la file Studio reflète le cycle de revue conservé par Daily", () => {
+  assert.match(queue, /evidence_metadata/);
+  assert.match(queue, /late_review/);
+  assert.match(queue, /awaiting_validation/);
+  assert.match(queue, /rejected/);
+  assert.match(queue, /resoumission requise/);
+});
