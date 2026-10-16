@@ -13,7 +13,7 @@ const { buildDailyAttendanceClientFollowups } = isolatedTsModule(path, {
 
 const now = new Date("2026-10-16T10:00:00.000Z");
 const base = {
-  communications: [{ id: "communication", organisation_id: "of", session_id: "session", enrolment_id: "enrolment", recipient_email: "ada@example.test", recipient_name: "Ada Test", status: "sent", sent_at: "2026-10-14T09:00:00.000Z", created_at: "2026-10-14T08:59:00.000Z", metadata: { attendance_slot_id: "slot" } }],
+  communications: [{ id: "communication", organisation_id: "of", session_id: "session", enrolment_id: "enrolment", recipient_email: "ada@example.test", recipient_name: "Ada Test", communication_type: "attendance_reminder", status: "sent", sent_at: "2026-10-14T09:00:00.000Z", created_at: "2026-10-14T08:59:00.000Z", metadata: { attendance_slot_id: "slot" } }],
   enrolments: [{ id: "enrolment", session_id: "session", status: "confirmed", daily_learners: { first_name: "Ada", last_name: "Test", email: "ada@example.test" } }],
   slots: [{ id: "slot", session_id: "session", status: "closed", slot_date: "2026-10-13", starts_at: "09:00", ends_at: "12:00" }],
   records: [{ slot_id: "slot", enrolment_id: "enrolment", status: "pending", evidence_metadata: {} }],
@@ -28,7 +28,7 @@ test("AR1 place une relance d’émargement réellement envoyée dans Clients à
   assert.equal(rows.length, 1);
   assert.equal(rows[0].title, "Ada Test");
   assert.equal(rows[0].reminderType, "daily_attendance_regularization_followup");
-  assert.equal(rows[0].href, "/agent/daily/session-dossiers/session/full");
+  assert.equal(rows[0].href, "/agent/daily/session-dossiers/session/full#attendance-slot-enrolment");
 });
 
 test("AR1 n’assimile jamais une communication en attente à un email envoyé", () => {
@@ -75,6 +75,15 @@ test("AR1 conserve la reprise après rejet et ne garde que la dernière communic
   assert.equal(rows.length, 1);
   assert.equal(rows[0].id, "attendance-followup-latest");
   assert.match(rows[0].detail, /après rejet/);
+});
+
+test("AR1 ferme chaque cycle envoyé et rouvre un nouveau cycle après rejet", () => {
+  const sentInitial = { ...base.communications[0], id: "followup-initial", communication_type: "attendance_regularization_followup", metadata: { attendance_slot_id: "slot", review_cycle: "initial" } };
+  assert.equal(buildDailyAttendanceClientFollowups({ ...base, communications: [base.communications[0], sentInitial] }).length, 0);
+  const rejectedRecords = [{ ...base.records[0], evidence_metadata: { late_review: { state: "rejected", version: 2 } } }];
+  assert.equal(buildDailyAttendanceClientFollowups({ ...base, communications: [base.communications[0], sentInitial], records: rejectedRecords }).length, 1);
+  const sentRejected = { ...sentInitial, id: "followup-rejected", metadata: { attendance_slot_id: "slot", review_cycle: "rejected:v2" } };
+  assert.equal(buildDailyAttendanceClientFollowups({ ...base, communications: [base.communications[0], sentInitial, sentRejected], records: rejectedRecords }).length, 0);
 });
 
 test("AR1 borne les relances à l’agent assigné et aux tables canoniques", () => {

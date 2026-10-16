@@ -36,6 +36,7 @@ type ReminderRow = {
 
 const typeLabels: Record<string, string> = {
   attendance_reminder: "Relance d’émargement",
+  attendance_regularization_followup: "Relance ciblée de régularisation d’émargement",
   convocation: "Convocation",
   satisfaction_request: "Questionnaire de satisfaction",
   completion_certificate: "Certificat de réalisation",
