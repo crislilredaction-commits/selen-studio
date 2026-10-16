@@ -51,3 +51,12 @@ test("Studio ne résout le jeton que dans le dossier authentifié et borné à l
   assert.match(component, /Aucun email n’est envoyé automatiquement/);
   assert.match(component, /rel="noreferrer"/);
 });
+
+test("Studio suspend la relance pendant la validation et la rouvre après rejet", () => {
+  assert.match(page, /lateReview/);
+  assert.match(page, /reviewState==="awaiting_validation"/);
+  assert.match(page, /return\[\]/);
+  assert.match(page, /reviewState==="rejected"/);
+  assert.match(page, /À resoumettre/);
+  assert.match(page, /Motif du rejet/);
+});
