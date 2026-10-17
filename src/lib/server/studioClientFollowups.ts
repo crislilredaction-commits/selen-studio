@@ -40,15 +40,16 @@ function canonicalDailyReminderActive(row:ReminderRow,state:DailyReminderCanonic
  if(row.reminder_type===SIGNATURE_REMINDER&&(!sessionId||!signatureId||!conventionId))return false;
  if(sessionId){
   const session=state.sessions.get(sessionId);
-  if(!session||TERMINAL_SESSION_STATUSES.has(normalizedStatus(session.status)))return false;
+  if(!session||!normalizedStatus(session.status)||TERMINAL_SESSION_STATUSES.has(normalizedStatus(session.status)))return false;
  }
  if(enrolmentId){
   const enrolment=state.enrolments.get(enrolmentId);
-  if(!enrolment||TERMINAL_ENROLMENT_STATUSES.has(normalizedStatus(enrolment.status))||(sessionId&&enrolment.session_id!==sessionId))return false;
+  if(!enrolment||!normalizedStatus(enrolment.status)||TERMINAL_ENROLMENT_STATUSES.has(normalizedStatus(enrolment.status))||(sessionId&&enrolment.session_id!==sessionId))return false;
  }
  if(signatureId){
   const signature=state.signatures.get(signatureId);
-  if(!signature||isSignatureTerminal(signature.status,signature.signed_at)||(sessionId&&signature.session_id!==sessionId)||(conventionId&&signature.convention_id!==conventionId))return false;
+  if(!signature||!normalizedStatus(signature.status)||isSignatureTerminal(signature.status,signature.signed_at)||(sessionId&&signature.session_id!==sessionId)||(conventionId&&signature.convention_id!==conventionId))return false;
+  if(enrolmentId&&state.enrolments.get(enrolmentId)?.session_id!==signature.session_id)return false;
  }
  return true;
 }
