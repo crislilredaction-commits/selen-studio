@@ -135,9 +135,9 @@ export function buildDailyAttendanceClientFollowups({
     const slot = slotById.get(slotId);
     const session = sessionById.get(communication.session_id);
     const record = recordByTarget.get(`${slotId}:${communication.enrolment_id}`);
-    if (!enrolment || enrolment.session_id !== communication.session_id || INACTIVE_ENROLMENT_STATUSES.has(text(enrolment.status).toLowerCase())) return [];
-    if (!slot || slot.session_id !== communication.session_id || INACTIVE_SLOT_STATUSES.has(text(slot.status).toLowerCase()) || !slotHasEnded(slot, now)) return [];
-    if (!session || INACTIVE_SESSION_STATUSES.has(text(session.status).toLowerCase())) return [];
+    if (!enrolment || enrolment.session_id !== communication.session_id || (!text(enrolment.status) || INACTIVE_ENROLMENT_STATUSES.has(text(enrolment.status).toLowerCase()))) return [];
+    if (!slot || slot.session_id !== communication.session_id || (!text(slot.status) || INACTIVE_SLOT_STATUSES.has(text(slot.status).toLowerCase())) || !slotHasEnded(slot, now)) return [];
+    if (!session || (!text(session.status) || INACTIVE_SESSION_STATUSES.has(text(session.status).toLowerCase()))) return [];
     if (record && RESOLVED_ATTENDANCE_STATUSES.has(text(record.status).toLowerCase())) return [];
     if (reviewState(record) === "awaiting_validation") return [];
     if (sentCyclesByTarget.get(`${slotId}:${communication.enrolment_id}`)?.has(reviewCycle(record))) return [];

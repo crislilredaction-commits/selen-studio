@@ -92,3 +92,11 @@ test("AR1 borne les relances à l’agent assigné et aux tables canoniques", ()
   assert.match(source, /\.in\("status", \["sent", "delivered"\]\)/);
   assert.doesNotMatch(source, /\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
 });
+
+test("AR1 masque les relances lorsque le statut canonique d'un parent est absent", () => {
+  for (const status of [null, "", "   "]) {
+    assert.equal(buildDailyAttendanceClientFollowups({ ...base, enrolments: [{ ...base.enrolments[0], status }] }).length, 0);
+    assert.equal(buildDailyAttendanceClientFollowups({ ...base, slots: [{ ...base.slots[0], status }] }).length, 0);
+    assert.equal(buildDailyAttendanceClientFollowups({ ...base, sessions: [{ ...base.sessions[0], status }] }).length, 0);
+  }
+});
