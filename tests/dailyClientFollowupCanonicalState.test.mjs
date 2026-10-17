@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
 
 const { buildStudioReminderFollowups } = isolatedTsModule(
@@ -124,4 +125,11 @@ test("une inscription et une signature de sessions différentes ne créent pas d
   const noSessionId = { ...reminder, metadata: { ...reminder.metadata } };
   delete noSessionId.metadata.session_id;
   assert.deepEqual(buildStudioReminderFollowups([noSessionId], staff, state), []);
+});
+
+test("AR1 lit les rappels clients par pages ordonnées, sans plafond de 100", async () => {
+  const source = await readFile(new URL("../src/lib/server/studioClientFollowups.ts", import.meta.url), "utf8");
+  assert.match(source, /\.range\(offset,offset\+FOLLOWUP_PAGE_SIZE-1\)/);
+  assert.match(source, /\.order\("due_at",\{ascending:true\}\)\.order\("id",\{ascending:true\}\)/);
+  assert.doesNotMatch(source, /\.limit\(100\)/);
 });
