@@ -100,3 +100,9 @@ test("AR1 masque les relances lorsque le statut canonique d'un parent est absent
     assert.equal(buildDailyAttendanceClientFollowups({ ...base, sessions: [{ ...base.sessions[0], status }] }).length, 0);
   }
 });
+
+test("AR1 parcourt les communications par pages sans limite silencieuse", () => {
+  assert.match(source, /\.range\(offset, offset \+ pageSize - 1\)/);
+  assert.match(source, /\.order\("id", \{ ascending: true \}\)/);
+  assert.doesNotMatch(source, /\.limit\(500\)/);
+});
