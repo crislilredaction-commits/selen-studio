@@ -102,3 +102,26 @@ test("les étapes email automatiques restent absentes de la file humaine", () =>
     assert.deepEqual(buildStudioReminderFollowups([reminder], staff, canonical()), []);
   }
 });
+
+test("les parents canoniques sans statut ne permettent pas de relance", () => {
+  const missingSessionStatus = canonical();
+  missingSessionStatus.sessions.get("session-1").status = null;
+  assert.deepEqual(buildStudioReminderFollowups([signatureReminder], staff, missingSessionStatus), []);
+  const missingSignatureStatus = canonical();
+  missingSignatureStatus.signatures.get("signature-1").status = null;
+  assert.deepEqual(buildStudioReminderFollowups([signatureReminder], staff, missingSignatureStatus), []);
+  const withEnrolment = { ...signatureReminder, metadata: { ...signatureReminder.metadata, enrolment_id: "enrolment-1" } };
+  const missingEnrolmentStatus = canonical({ enrolmentStatus: "active" });
+  missingEnrolmentStatus.enrolments.get("enrolment-1").status = null;
+  assert.deepEqual(buildStudioReminderFollowups([withEnrolment], staff, missingEnrolmentStatus), []);
+});
+
+test("une inscription et une signature de sessions différentes ne créent pas de relance", () => {
+  const reminder = { ...signatureReminder, metadata: { ...signatureReminder.metadata, enrolment_id: "enrolment-1" } };
+  const state = canonical({ enrolmentStatus: "active" });
+  state.enrolments.get("enrolment-1").session_id = "session-2";
+  assert.deepEqual(buildStudioReminderFollowups([reminder], staff, state), []);
+  const noSessionId = { ...reminder, metadata: { ...reminder.metadata } };
+  delete noSessionId.metadata.session_id;
+  assert.deepEqual(buildStudioReminderFollowups([noSessionId], staff, state), []);
+});
