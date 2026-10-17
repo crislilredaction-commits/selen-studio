@@ -83,14 +83,27 @@ export function buildStudioReminderFollowups(rows:ReminderRow[],staff:FollowupSt
 }
 function uniqueMetadataIds(rows:ReminderRow[],key:string,alternateKey?:string){return [...new Set(rows.map((row)=>metadataId(row,key,alternateKey)).filter(Boolean))]}
 function byId<T extends {id:string}>(rows:T[]|null){return new Map((rows??[]).map((row)=>[row.id,row]))}
+const FOLLOWUP_PAGE_SIZE=500;
+async function fetchAllClientReminders(admin:ReturnType<typeof createSupabaseAdminClient>):Promise<ReminderRow[]>{
+ const rows:ReminderRow[]=[];
+ for(let offset=0;;offset+=FOLLOWUP_PAGE_SIZE){
+  const {data,error}=await admin.from("client_reminders")
+   .select("id,client_email,dossier_id,reminder_type,status,subject,due_at,metadata")
+   .in("status",["draft","ready","postponed"])
+   .order("due_at",{ascending:true}).order("id",{ascending:true})
+   .range(offset,offset+FOLLOWUP_PAGE_SIZE-1);
+  if(error)throw new Error(`Relances clients indisponibles : ${error.message}`);
+  const page=(data??[]) as ReminderRow[];
+  rows.push(...page);
+  if(page.length<FOLLOWUP_PAGE_SIZE)return rows;
+ }
+}
 export async function getStudioClientFollowups(staff:FollowupStaff,options?:{dailyOnly?:boolean}){
  const admin=createSupabaseAdminClient();
- const[{data,error},attendanceFollowups]=await Promise.all([
-  admin.from("client_reminders").select("id,client_email,dossier_id,reminder_type,status,subject,due_at,metadata").in("status",["draft","ready","postponed"]).order("due_at",{ascending:true}).limit(100),
+ const [rows,attendanceFollowups]=await Promise.all([
+  fetchAllClientReminders(admin),
   getDailyAttendanceClientFollowups(staff),
  ]);
- if(error)throw new Error(error.message);
- const rows=(data??[]) as ReminderRow[];
  const dailyRows=rows.filter(dailyReminder);
  const sessionIds=uniqueMetadataIds(dailyRows,"session_id");
  const enrolmentIds=uniqueMetadataIds(dailyRows,"enrolment_id","enrollment_id");
