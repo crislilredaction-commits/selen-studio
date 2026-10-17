@@ -177,16 +177,23 @@ export async function getDailyAttendanceClientFollowups(staff: AttendanceFollowu
     : assignments.filter((row) => row.agent_profile_id === staff.id).map((row) => row.organisation_id);
   if (!visibleOrganisationIds.length) return [];
 
-  const { data: communicationData, error: communicationError } = await admin
-    .from("daily_communications")
-    .select("id,organisation_id,session_id,enrolment_id,recipient_email,recipient_name,status,sent_at,created_at,communication_type,metadata")
-    .in("organisation_id", visibleOrganisationIds)
-    .in("communication_type", ["attendance_reminder", "attendance_regularization_followup"])
-    .in("status", ["sent", "delivered"])
-    .order("sent_at", { ascending: false, nullsFirst: false })
-    .limit(500);
-  if (communicationError) throw new Error(`Relances d’émargement indisponibles : ${communicationError.message}`);
-  const communications = (communicationData ?? []) as CommunicationRow[];
+  const communications: CommunicationRow[] = [];
+  const pageSize = 500;
+  for (let offset = 0;; offset += pageSize) {
+    const { data, error } = await admin
+      .from("daily_communications")
+      .select("id,organisation_id,session_id,enrolment_id,recipient_email,recipient_name,status,sent_at,created_at,communication_type,metadata")
+      .in("organisation_id", visibleOrganisationIds)
+      .in("communication_type", ["attendance_reminder", "attendance_regularization_followup"])
+      .in("status", ["sent", "delivered"])
+      .order("sent_at", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw new Error(`Relances d’émargement indisponibles : ${error.message}`);
+    const page = (data ?? []) as CommunicationRow[];
+    communications.push(...page);
+    if (page.length < pageSize) break;
+  }
   if (!communications.length) return [];
 
   const sessionIds = [...new Set(communications.map((row) => row.session_id))];
