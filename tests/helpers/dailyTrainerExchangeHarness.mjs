@@ -15,7 +15,7 @@ export function exchangeHarness(options={}) {
   daily_attendance_records:[{id:"record",organisation_id:ids.org,session_id:ids.session,slot_id:"slot",enrolment_id:"enrolment",status:"present",signed_at:"2026-10-12T10:00:00Z",signature_storage_path:"private-proof"},
    {id:"historical",organisation_id:ids.org,session_id:ids.session,slot_id:"slot",enrolment_id:"cancelled-enrolment",status:"present",signed_at:"2026-10-12T10:00:00Z"}],
   organisations:[{id:ids.org,name:"Organisme exemple"}],daily_formations:[{id:"formation",organisation_id:ids.org,title:"Formation exemple",status:"validated",version:1}],
-  daily_registration_responses:[],daily_formation_registration_requests:[],daily_communications:[],daily_session_followup_entries:[],daily_learning_assessments:[],daily_learner_feedback_responses:[],daily_session_dossiers:[],daily_portal_access_tokens:[]};
+  daily_registration_responses:[],daily_formation_registration_requests:[],daily_documents:[],daily_communications:[],daily_session_followup_entries:[],daily_learning_assessments:[],daily_learner_feedback_responses:[],daily_session_dossiers:[],daily_portal_access_tokens:[]};
  const reads=[],logs=[],scopes=[],effects=[],redirects=[];
  function project(row,columns) {
   if(!columns||columns==="*")return structuredClone(row);
@@ -28,7 +28,7 @@ export function exchangeHarness(options={}) {
   assert.ok(Object.hasOwn(db,table),"Unexpected table "+table);let filters=[],one=false,columns;
   const q={select(v){columns=v;return q;},eq(k,v){filters.push(r=>r[k]===v);return q;},neq(k,v){filters.push(r=>r[k]!==v);return q;},
    in(k,v){filters.push(r=>v.includes(r[k]));return q;},not(k,op,v){assert.equal(op,"in");filters.push(r=>!v.slice(1,-1).split(",").includes(r[k]));return q;},
-   order(){return q;},maybeSingle(){one=true;return q;},single(){one=true;return q;},
+   order(){return q;},limit(){return q;},maybeSingle(){one=true;return q;},single(){one=true;return q;},
    insert(){throw Error("Business write forbidden");},update(){throw Error("Business write forbidden");},upsert(){throw Error("Business write forbidden");},delete(){throw Error("Business write forbidden");},
    then(resolve,reject){return Promise.resolve().then(()=>{reads.push({table,columns});if(options.failTable===table)return{data:null,error:{message:"fixture read failure"}};
     let rows=db[table].filter(r=>filters.every(f=>f(r))).map(r=>table==="daily_attendance_slots"?{...r,daily_attendance_records:db.daily_attendance_records.filter(v=>v.slot_id===r.id)}:r);
