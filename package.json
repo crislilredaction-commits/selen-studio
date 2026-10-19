@@ -33,7 +33,7 @@
     "test:daily-enrolment-processing": "node --test tests/dailyEnrolmentProcessingOverview.test.mjs tests/dailyCandidatureAnalysis.test.mjs",
     "test:daily-signature-reminders": "node --test tests/dailySignatureReminder24h.test.mjs",
     "test:daily-learners-scope": "node --test tests/dailyLearnersActiveScope.test.mjs tests/dailyMobileDetailViews.test.mjs",
-    "test:daily-document-scope": "node --test tests/dailyDocumentActiveScope.test.mjs",
+    "test:daily-document-scope": "node --test tests/dailyDocumentActiveScope.test.mjs tests/dailySessionPretrainingWorkspace.test.mjs",
     "test:daily-document-publication": "node --test tests/dailyDocumentPublication.test.mjs",
     "test:daily-delegated-document-upload": "node --test tests/dailyDelegatedDocumentUpload.test.mjs",
     "test:daily-positioning-followup": "node --test tests/dailyPositioningFollowupStudio.test.mjs",
