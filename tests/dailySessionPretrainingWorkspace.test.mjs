@@ -20,6 +20,7 @@ test("la liste documentaire reste bornée à la session et à l'organisme", () =
   assert.match(query, /\.eq\("session_id",id\)/);
   assert.match(query, /\.eq\("is_current",true\)/);
   assert.match(query, /\.in\("document_type",pretrainingDocumentTypes\)/);
+  assert.doesNotMatch(query, /\.limit\(100\)/, "le filtrage client ne doit pas tronquer les documents actifs plus anciens");
 });
 
 test("les documents des inscriptions closes restent historiques sans action active", () => {
