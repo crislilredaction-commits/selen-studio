@@ -37,7 +37,7 @@
     "test:daily-document-publication": "node --test tests/dailyDocumentPublication.test.mjs",
     "test:daily-delegated-document-upload": "node --test tests/dailyDelegatedDocumentUpload.test.mjs",
     "test:daily-positioning-followup": "node --test tests/dailyPositioningFollowupStudio.test.mjs",
-    "test:daily-attendance-followup": "node --test tests/dailyAttendanceFollowupStudio.test.mjs",
+    "test:daily-attendance-followup": "node --test tests/dailyAttendanceFollowupStudio.test.mjs tests/dailyAttendanceDownload.test.mjs",
     "test:daily-attendance-regularization": "node --test tests/dailyAttendanceRegularizationQueue.test.mjs",
     "test:daily-attendance-targeted-link": "node --test tests/dailyAttendanceTargetedLink.test.mjs",
     "test:daily-attendance-reminder-simulation": "node --test tests/dailyAttendanceReminderSimulation.test.mjs tests/dailyAttendanceReminderSend.test.mjs",
