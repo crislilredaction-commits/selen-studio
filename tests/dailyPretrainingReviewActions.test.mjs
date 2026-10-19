@@ -141,10 +141,10 @@ function walk(node, result = []) {
   else if (node?.props) { result.push(node); walk(node.props.children, result); }
   return result;
 }
-function uiFixture() {
+function uiFixture({ scoped = true } = {}) {
   const states = []; const refs = []; let stateIndex = 0; let refIndex = 0; let effectsEnabled = true;
   const effects = []; const requests = [];
-  const document = { id: docId, organisation_id: ofId, document_type: "convocation", logical_name: "Convocation", version: 1, status: "validated", updated_at: openedAt, metadata: {} };
+  const document = { id: docId, organisation_id: ofId, session_id: "session-review", document_type: "convocation", logical_name: "Convocation", version: 1, status: "validated", updated_at: openedAt, metadata: {} };
   const flags = { response: { document, notification: { sent: false, deduplicated: true } }, responseStatus: 200, onPatch: null, fail: false, prompt: "Note", pending: null };
   const page = isolatedTsModule("src/app/agent/daily/pretraining-documents/page.tsx", {
     "react/jsx-runtime": jsx,
@@ -153,11 +153,12 @@ function uiFixture() {
       useRef(initial) { const i = refIndex++; if (!(i in refs)) refs[i] = { current: initial }; return refs[i]; },
       useCallback: callback => callback, useMemo: callback => callback(), useEffect: callback => { if (effectsEnabled) effects.push(callback); },
     },
-    "next/navigation": { useSearchParams: () => new URLSearchParams() },
+    "next/navigation": { useSearchParams: () => new URLSearchParams(scoped ? { session: "session-review" } : {}) },
+    "next/link": { default: props => jsx.jsx("a", props) },
   }, {
     Error,
     fetch: async (_url, options) => {
-      if (!options?.method) return Response.json({ documents: [document] });
+      if (!options?.method) return Response.json({ documents: [document], sessions: [{ id: "session-review", organisation_id: ofId, internal_reference: "SESSION-REVIEW" }] });
       requests.push(JSON.parse(options.body));
       if (flags.pending) await flags.pending;
       if (flags.fail) throw Error("Réseau indisponible");
@@ -172,6 +173,14 @@ function uiFixture() {
 }
 function button(tree, label) { const found = walk(tree).find(node => node.type === "button" && node.props.children === label); assert.ok(found, label); return found; }
 function visibleText(tree) { return require("react-dom/server").renderToStaticMarkup(tree); }
+
+test("la file globale oriente vers la session sans exposer les actions documentaires", async () => {
+  const f = uiFixture({ scoped: false }); const tree = await f.mount(); const html = visibleText(tree);
+  assert.ok(html.includes("Traiter dans la session"));
+  assert.ok(html.includes("session=session-review"));
+  assert.ok(!walk(tree).some(node => node.type === "button" && ["Prévisualiser", "Publier et notifier", "Valider", "Demander une correction"].includes(node.props.children)));
+  assert.equal(f.requests.length, 0);
+});
 
 test("l’écran distingue une notification reprise d’un nouvel email confirmé", async () => {
   for (const [notification, expected] of [

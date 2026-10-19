@@ -13,3 +13,13 @@ test("la revue documentaire Daily propose les filtres apprenant et session", asy
   assert.match(source, /learnerKey\(d\)===learnerFilter/);
   assert.match(source, /sessionKey\(d\)===sessionFilter/);
 });
+
+test("la file globale délègue les actions à une vue verrouillée sur la session", async () => {
+  const source = await readFile(pageUrl, "utf8");
+  assert.match(source, /requestedSession==="all"/);
+  assert.match(source, /aria-label="Sessions à traiter"/);
+  assert.match(source, /Traiter dans la session/);
+  assert.match(source, /requestedSession!=="all"&&preparationSession/);
+  assert.match(source, /requestedSession!=="all"&&preview/);
+  assert.match(source, /pièce\(s\) sans session/);
+});

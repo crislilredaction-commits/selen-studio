@@ -15,6 +15,7 @@ function fixture(){
   'react/jsx-runtime':jsx,
   react:{useState(initial){const i=stateIndex++;if(!(i in states))states[i]=initial;return[states[i],value=>{states[i]=typeof value==='function'?value(states[i]):value;}];},useRef(initial){const i=refIndex++;if(!(i in refs))refs[i]={current:initial};return refs[i];},useMemo:fn=>fn(),useCallback(fn,deps){const i=callbackIndex++;if(!callbacks[i]||deps.some((v,j)=>v!==callbacks[i].deps[j]))callbacks[i]={fn,deps};return callbacks[i].fn;},useEffect(fn,deps){const i=effectIndex++;if(!effects[i]||deps.some((v,j)=>v!==effects[i].deps[j])){const old=effects[i];effects[i]={deps,cleanup:old?.cleanup};pendingEffects.push(()=>{effects[i].cleanup?.();effects[i].cleanup=fn();});}}},
   'next/navigation':{useSearchParams:()=>new URLSearchParams({session})},
+  'next/link':{default:props=>jsx.jsx('a',props)},
  },{window:{confirm:()=>flags.confirm},fetch:async(url,options)=>{
   if(!options?.method)return Response.json(String(url).includes('/generate?')?{preparation:preparation()}:{documents,sessions:[{id:session,organisation_id:'of-a',start_date:'2026-10-12',daily_formations:{title:'Formation historique'}}]});
   const body=JSON.parse(options.body);requests.push({method:options.method,body});if(flags.pending)await flags.pending;
