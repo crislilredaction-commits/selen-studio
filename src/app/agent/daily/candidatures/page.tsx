@@ -4,13 +4,16 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 export const dynamic = "force-dynamic";
-export default async function DailyCandidaturesPage() {
+export default async function DailyCandidaturesPage({ searchParams }: { searchParams: Promise<{ organisation?: string }> }) {
+  const { organisation: requestedOrganisation } = await searchParams;
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={{padding:28}}>Accès refusé.</main>;
   const admin = createSupabaseAdminClient();
   const organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
-  const { data: formations, error: formationError } = organisationIds.length
-    ? await admin.from("daily_formations").select("id,prerequisite_mode,prerequisite_requirements").in("organisation_id", organisationIds).neq("status", "archived")
+  const scopedOrganisationIds = requestedOrganisation && organisationIds.includes(requestedOrganisation) ? [requestedOrganisation] : organisationIds;
+  if (requestedOrganisation && !organisationIds.includes(requestedOrganisation)) return <main style={{padding:28}}>Organisme inaccessible.</main>;
+  const { data: formations, error: formationError } = scopedOrganisationIds.length
+    ? await admin.from("daily_formations").select("id,prerequisite_mode,prerequisite_requirements").in("organisation_id", scopedOrganisationIds).neq("status", "archived")
     : { data: [], error: null };
   if (formationError) return <main style={{padding:28}}>Chargement impossible.</main>;
   const formationIds = (formations ?? []).map(row => row.id);
@@ -46,6 +49,7 @@ export default async function DailyCandidaturesPage() {
   return <main style={{maxWidth:1080,margin:"0 auto",padding:"28px"}}>
     <p style={{fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"var(--selen-gold2)"}}>Selen Daily · Candidatures</p>
     <h1>Analyse des dossiers</h1>
+    {requestedOrganisation ? <p><Link href="/agent/daily/candidatures">← Toutes les candidatures</Link></p> : null}
     <p style={{color:"var(--selen-text2)"}}>Selen analyse le dossier avant toute décision de l’organisme. Une analyse terminée devient ensuite visible côté OF pour acceptation ou refus.</p>
     <div style={{display:"grid",gap:10,marginTop:18}}>
       {prioritizedRows.map((row)=>{ const label=row.company_name || [row.respondent_first_name,row.respondent_last_name].filter(Boolean).join(" ") || row.respondent_email || "Candidat";

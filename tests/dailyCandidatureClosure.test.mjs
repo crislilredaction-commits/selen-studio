@@ -94,7 +94,7 @@ test("les candidatures décidées quittent la liste active et restent en lecture
     const tree = await h.render(); const elements = walk(tree);
     assert.ok(elements.filter(node => node.type === "textarea").every(node => node.props.disabled));
     assert.ok(!elements.some(node => node.type === "button"));
-    const html = require("react-dom/server").renderToStaticMarkup(await h.list.default());
+    const html = require("react-dom/server").renderToStaticMarkup(await h.list.default({ searchParams: Promise.resolve({}) }));
     assert.ok(!html.includes(`/agent/daily/candidatures/${ids.request}`));
     assert.ok(html.includes("Aucune candidature")); assert.equal(h.emails.length, 0); assert.equal(h.f.writes.length, 0);
   }

@@ -57,7 +57,7 @@ test("le dossier affiche les téléchargements vérifiés, sans JSON de référe
 test("l'agent hors OF ne lit pas le dossier ni les copies et ne voit pas sa candidature dans la liste", async () => {
   const f = pageFixture(); f.auth.value.email = "agent-b@example.test";
   await assert.rejects(f.render(), /NOT_FOUND/);
-  const list = await f.list.default();
+  const list = await f.list.default({ searchParams: Promise.resolve({}) });
   assert.doesNotMatch(visibleText(list), /learner@example.test|Ada Test/);
   assert.equal(f.downloads.length, 0); assert.equal(f.emailCalls.length, 0);
 });
