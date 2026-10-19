@@ -23,6 +23,8 @@ test("le PDF contient les statuts canoniques, la preuve et les signatures dispon
 });
 
 test("le téléchargement est privé, borné et proposé depuis les présences", () => {
+  assert.match(route, /runtime = "nodejs"/);
+  assert.match(route, /dynamic = "force-dynamic"/);
   assert.match(route, /Content-Disposition/);
   assert.match(route, /Cache-Control": "private, no-store/);
   assert.match(route, /X-Content-Type-Options": "nosniff/);
