@@ -53,6 +53,19 @@ function normalizedEmail(value?: string | null) {
   return value?.trim().toLowerCase() || "";
 }
 
+const INACTIVE_LEARNER_ENROLMENT_STATUSES = new Set([
+  "declined",
+  "cancelled",
+  "canceled",
+  "abandoned",
+]);
+
+export function isDailyLearnerEnrolmentActive(status: unknown) {
+  return !INACTIVE_LEARNER_ENROLMENT_STATUSES.has(
+    String(status ?? "").trim().toLowerCase(),
+  );
+}
+
 function fullName(first?: string | null, last?: string | null) {
   return [first, last].map((value) => value?.trim()).filter(Boolean).join(" ");
 }
@@ -321,7 +334,7 @@ export async function resendExistingDailyPortalAccess(input: { supabase: Supabas
     if (!learner || normalizedEmail(learner.email) !== email) throw new Error("Le destinataire ne correspond plus à l’apprenant rattaché.");
     const { data: enrolment, error: enrolmentError } = await input.supabase.from("daily_session_enrolments").select("id,status").eq("organisation_id", input.organisationId).eq("session_id", access.session_id).eq("learner_id", learner.id).maybeSingle();
     if (enrolmentError) throw new Error(enrolmentError.message);
-    if (!enrolment || ["declined", "cancelled", "abandoned"].includes(String(enrolment.status))) throw new Error("L’inscription liée à cet accès n’est plus active.");
+    if (!enrolment || !isDailyLearnerEnrolmentActive(enrolment.status)) throw new Error("L’inscription liée à cet accès n’est plus active.");
     enrolmentId = enrolment.id;
   }
   const communicationType = access.portal_type === "trainer" ? "trainer_portal_access" : "learner_portal_access";

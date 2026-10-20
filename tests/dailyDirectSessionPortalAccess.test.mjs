@@ -44,3 +44,25 @@ test("existing session page is preserved and only summary validation is overridd
   assert.match(sessionPage, /element\.props\.value === "summary_validated"/);
   assert.match(sessionPage, /formAction: summaryValidatedAction/);
 });
+
+test("manual learner access resend normalizes the canonical enrolment status before side effects", () => {
+  const inactiveStatusBlock = helper.match(/const INACTIVE_LEARNER_ENROLMENT_STATUSES = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+  const inactiveStatuses = [...inactiveStatusBlock.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  const isActive = (status) => !new Set(inactiveStatuses).has(String(status ?? "").trim().toLowerCase());
+
+  for (const status of ["declined", "cancelled", "canceled", "abandoned", " CANCELLED ", "CaNcElEd"]) {
+    assert.equal(isActive(status), false, `expected ${JSON.stringify(status)} to be inactive`);
+  }
+  for (const status of ["completed", "pending", null]) {
+    assert.equal(isActive(status), true, `expected ${JSON.stringify(status)} to remain eligible`);
+  }
+
+  const resend = helper.slice(helper.indexOf("export async function resendExistingDailyPortalAccess"));
+  const guardIndex = resend.indexOf("!isDailyLearnerEnrolmentActive(enrolment.status)");
+  const communicationInsertIndex = resend.indexOf('.from("daily_communications").insert');
+  const sendIndex = resend.indexOf("sendClientEmailWithSilence");
+
+  assert.ok(guardIndex >= 0, "canonical status guard must be present");
+  assert.ok(communicationInsertIndex > guardIndex, "status guard must run before communication creation");
+  assert.ok(sendIndex > guardIndex, "status guard must run before email delivery");
+});
