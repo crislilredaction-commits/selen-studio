@@ -46,7 +46,7 @@
     "test:auth-recovery": "node --test tests/passwordRecoveryFlow.test.mjs",
     "test:studio-quick-email": "node --test tests/studioQuickEmail.test.mjs",
     "test:studio-agent-grimoire": "node --test tests/studioAgentGrimoire.test.mjs",
-    "test:daily-organisation-unified": "node --test tests/dailyOrganisationUnifiedDossier.test.mjs",
+    "test:daily-organisation-unified": "node --test tests/dailyOrganisationUnifiedDossier.test.mjs tests/dailyOrganisationLearnerAccess.test.mjs",
     "test:lil-invoice-management": "node --test tests/lilInvoiceManagement.test.mjs"
   },
   "dependencies": {
