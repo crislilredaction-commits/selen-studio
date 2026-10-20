@@ -274,6 +274,26 @@ test("une session annulée ou supprimée retire immédiatement ses tâches et ac
   assert.equal((await h.getDailyAgentTasks(adminStaff)).length, 0);
 });
 
+test("une désinscription retire la relance satisfaction, Dashboard, Pilotage et compteur sans effacer l'historique", async () => {
+  for (const status of ["declined", "cancelled", "canceled", "abandoned", " CANCELLED "]) {
+    const rows = fixture();
+    rows.daily_session_enrolments[0].status = status;
+    rows.daily_quality_actions = [{ id: "quality", organisation_id: "of-a", session_id: "session-0", source_id: "enrolment-0", title: "Action historique", status: "open", source_type: "satisfaction_phone_followup", created_at: today }];
+    const h = harness(rows);
+
+    assert.equal((await h.getDailyAgentTasks(adminStaff)).filter(task => task.kind === "satisfaction").length, 0, status);
+    assert.equal((await h.getDailyPilotageTasks()).filter(task => task.kind === "satisfaction").length, 0, status);
+    assert.equal(rows.daily_quality_actions.length, 1, "l'action historique est conservée");
+    assert.equal(rows.daily_session_enrolments[0].status, status, "l'état canonique n'est pas réécrit");
+  }
+
+  const rows = fixture();
+  rows.daily_quality_actions = [{ id: "quality", organisation_id: "of-a", session_id: "session-0", source_id: "enrolment-0", title: "Relance après formation", status: "open", source_type: "satisfaction_phone_followup", created_at: today }];
+  const h = harness(rows);
+  const visible = (await h.getDailyAgentTasks(adminStaff)).filter(task => task.kind === "satisfaction");
+  assert.equal(visible.length, 1, "une inscription completed reste éligible à la satisfaction post-formation");
+});
+
 test("une formation supprimée rend les tâches de sa session sans objet", async () => {
   const rows = fixture();
   rows.daily_session_checklist_items = [{ id: "orphan", organisation_id: "of-a", session_id: "session-0", item_key: "trainer_assignment", phase: "before", responsibility: "selen", status: "todo", label: "Orpheline", signaled_at: today }];

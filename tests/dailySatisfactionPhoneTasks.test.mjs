@@ -13,7 +13,9 @@ test("les relances téléphoniques satisfaction utilisent les actions qualité e
   assert.match(tasks, /daily_session_enrolments/);
   assert.match(tasks, /daily_learner_feedback_responses/);
   assert.match(tasks, /satisfiedEnrolmentIds\.has\(enrolment\.id\)/);
-  assert.match(tasks, /\["declined", "cancelled", "abandoned"\]/);
+  assert.match(tasks, /INACTIVE_SATISFACTION_ENROLMENT_STATUSES/);
+  assert.match(tasks, /"declined", "cancelled", "canceled", "abandoned"/);
+  assert.match(tasks, /trim\(\)\.toLowerCase\(\)/);
 });
 
 test("l'assignation reste celle de l'organisme avec partage après 24 h ouvrées", () => {
@@ -35,4 +37,5 @@ test("une réponse ou un parent satisfaction caduc disparaît aussi avant le pro
   assert.match(tasks, /enrolment\.organisation_id !== action\.organisation_id/);
   assert.match(tasks, /enrolment\.session_id !== action\.session_id/);
   assert.match(tasks, /satisfiedEnrolmentIds\.has\(enrolment\.id\)/);
+  assert.match(tasks, /!isDailySatisfactionEnrolmentActive\(enrolment\.status\)/);
 });
