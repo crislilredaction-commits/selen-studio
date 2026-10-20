@@ -35,7 +35,7 @@ test("existing unconfigured auth user still receives recovery activation", () =>
 test("summary validation provisions direct-session learner and enterprise access", () => {
   assert.match(sessionPage, /provisionDirectSessionPortalAccesses/);
   assert.match(sessionPage, /summaryValidatedAction/);
-  assert.match(sessionPage, /buildDirectSessionPortalDefinitions\(session\)/);
+  assert.match(sessionPage, /await buildCanonicalDirectSessionPortalDefinitions\(\{ supabase: admin, session \}\)/);
   assert.match(sessionPage, /registration_status: "summary_validated"/);
 });
 
@@ -65,4 +65,34 @@ test("manual learner access resend normalizes the canonical enrolment status bef
   assert.ok(guardIndex >= 0, "canonical status guard must be present");
   assert.ok(communicationInsertIndex > guardIndex, "status guard must run before communication creation");
   assert.ok(sendIndex > guardIndex, "status guard must run before email delivery");
+});
+
+test("automatic provisioning uses canonical active enrolments before token creation or email", () => {
+  const canonicalBuilder = helper.slice(
+    helper.indexOf("export async function buildCanonicalDirectSessionPortalDefinitions"),
+    helper.indexOf("function isSyntheticEmail"),
+  );
+  const provisioner = helper.slice(
+    helper.indexOf("export async function provisionDirectSessionPortalAccesses"),
+    helper.indexOf("export async function resendExistingDailyPortalAccess"),
+  );
+
+  assert.match(canonicalBuilder, /\.from\("daily_session_enrolments"\)/);
+  assert.match(canonicalBuilder, /\.filter\(\(enrolment\) => isDailyLearnerEnrolmentActive\(enrolment\.status\)\)/);
+  assert.match(canonicalBuilder, /\.from\("daily_learners"\)/);
+  assert.match(canonicalBuilder, /Identité canonique de l’apprenant introuvable ; aucun accès n’a été créé\./);
+  assert.match(helper, /entity_key: `learner:\$\{learner\.learner_id\}`/);
+  assert.doesNotMatch(
+    helper.slice(helper.indexOf("export function buildDirectSessionPortalDefinitions"), helper.indexOf("function isSyntheticEmail")),
+    /individual_beneficiaries|participants\(session\./,
+  );
+
+  const canonicalCall = sessionPage.indexOf("await buildCanonicalDirectSessionPortalDefinitions");
+  const provisionCall = sessionPage.indexOf("await provisionDirectSessionPortalAccesses");
+  const tokenWrite = provisioner.indexOf('.from("daily_portal_access_tokens")');
+  const sendCall = provisioner.indexOf("sendClientEmailWithSilence");
+
+  assert.ok(canonicalCall >= 0 && provisionCall > canonicalCall, "canonical enrolments must be loaded before provisioning");
+  assert.ok(tokenWrite >= 0, "token persistence must remain inside the guarded provisioner");
+  assert.ok(sendCall > tokenWrite, "email delivery must remain after token persistence");
 });
