@@ -85,9 +85,16 @@ const TERMINAL_PARENT_STATUSES = new Set([
   "archived", "cancelled", "canceled", "deleted", "removed", "obsolete",
   "abandoned", "completed", "done", "closed",
 ]);
+const INACTIVE_SATISFACTION_ENROLMENT_STATUSES = new Set([
+  "declined", "cancelled", "canceled", "abandoned",
+]);
 
 export function isDailyTaskParentActive(status: string | null | undefined) {
   return !status || !TERMINAL_PARENT_STATUSES.has(status.toLowerCase());
+}
+
+export function isDailySatisfactionEnrolmentActive(status: string | null | undefined) {
+  return !INACTIVE_SATISFACTION_ENROLMENT_STATUSES.has(String(status ?? "").trim().toLowerCase());
 }
 
 function priorityFor(status: string, overdueShared: boolean): DailyAgentTask["priority"] {
@@ -250,7 +257,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
       if (!enrolment
         || enrolment.organisation_id !== action.organisation_id
         || enrolment.session_id !== action.session_id
-        || ["declined", "cancelled", "abandoned"].includes(enrolment.status ?? "")
+        || !isDailySatisfactionEnrolmentActive(enrolment.status)
         || satisfiedEnrolmentIds.has(enrolment.id)) continue;
     }
     if (action.session_id) {
