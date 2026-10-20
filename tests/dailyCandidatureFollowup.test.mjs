@@ -19,13 +19,18 @@ test('seven analysis fields feed only the linked active inscription, without raw
     f.rows.daily_formation_registration_requests[0].agent_analysis_summary.observations = 'Note actualisée';
     assert.equal((await read(f.admin, 'of', 'session'))[0].sections[6].value, 'Note actualisée');
 });
-for (const status of ['cancelled', 'declined', 'abandoned'])
+for (const status of ['cancelled', 'canceled', 'declined', 'abandoned', ' CANCELLED ', 'AbAnDoNeD'])
     test(`inactive inscription ${status} does not expose the dossier`, async () => {
         const f = fixture();
         f.rows.daily_session_enrolments[0].status = status;
         assert.equal((await read(f.admin, 'of', 'session')).length, 0);
         assert.ok(!f.reads.some(r => r.table === 'daily_formation_registration_requests'));
     });
+test('completed inscription remains available for historical candidature follow-up', async () => {
+    const f = fixture();
+    f.rows.daily_session_enrolments[0].status = ' completed ';
+    assert.equal((await read(f.admin, 'of', 'session')).length, 1);
+});
 for (const [field, value] of [['formation_id', 'other-formation'], ['attached_session_id', 'other-session'], ['decision_status', 'pending'], ['decision_status', 'refused']])
     test(`foreign or unaccepted request ${field}=${value} is excluded`, async () => {
         const f = fixture();
