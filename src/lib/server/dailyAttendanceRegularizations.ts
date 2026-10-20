@@ -17,6 +17,22 @@ const INACTIVE_ENROLMENT_STATUSES = new Set(["declined", "cancelled", "canceled"
 const RESOLVED_ATTENDANCE_STATUSES = new Set(["present", "absent", "excused"]);
 const INACTIVE_SESSION_STATUSES = new Set(["cancelled", "canceled", "deleted", "removed"]);
 
+function normalizedStatus(status: unknown) {
+  return String(status ?? "").trim().toLowerCase();
+}
+
+export function isDailyAttendanceRegularizationEnrolmentActive(status: unknown) {
+  return !INACTIVE_ENROLMENT_STATUSES.has(normalizedStatus(status));
+}
+
+export function isDailyAttendanceRegularizationResolved(status: unknown) {
+  return RESOLVED_ATTENDANCE_STATUSES.has(normalizedStatus(status));
+}
+
+export function isDailyAttendanceRegularizationSessionInactive(status: unknown) {
+  return INACTIVE_SESSION_STATUSES.has(normalizedStatus(status));
+}
+
 function relation<T>(value: unknown): T | null {
   if (Array.isArray(value)) return (value[0] as T | undefined) ?? null;
   return value && typeof value === "object" ? value as T : null;
@@ -72,7 +88,7 @@ export async function getDailyAttendanceRegularizations(staff: AttendanceRegular
   if (enrolmentRes.error || recordRes.error) throw new Error(`File de régularisation indisponible : ${enrolmentRes.error?.message ?? recordRes.error?.message}`);
 
   const organisations = new Map(((organisationRes.data ?? []) as OrganisationRow[]).map((row) => [row.id, row]));
-  const enrolments = ((enrolmentRes.data ?? []) as unknown as EnrolmentRow[]).filter((row) => !INACTIVE_ENROLMENT_STATUSES.has(String(row.status ?? "").toLowerCase()));
+  const enrolments = ((enrolmentRes.data ?? []) as unknown as EnrolmentRow[]).filter((row) => isDailyAttendanceRegularizationEnrolmentActive(row.status));
   const records = (recordRes.data ?? []) as RecordRow[];
   const recordBySlotAndEnrolment = new Map(records.map((row) => [`${row.slot_id}:${row.enrolment_id}`, row]));
   const enrolmentsBySession = new Map<string, EnrolmentRow[]>();
@@ -80,13 +96,13 @@ export async function getDailyAttendanceRegularizations(staff: AttendanceRegular
 
   return slots.flatMap((slot) => {
     const session = relation<SessionRow>(slot.daily_sessions);
-    if (!session || INACTIVE_SESSION_STATUSES.has(String(session.status ?? "").toLowerCase())) return [];
+    if (!session || isDailyAttendanceRegularizationSessionInactive(session.status)) return [];
     const formation = relation<FormationRow>(session?.daily_formations);
     const organisation = organisations.get(slot.organisation_id);
     const sessionTitle = formation?.title || session?.internal_reference || "Session Daily";
     return (enrolmentsBySession.get(slot.session_id) ?? []).flatMap((enrolment): DailyAttendanceRegularization[] => {
       const record = recordBySlotAndEnrolment.get(`${slot.id}:${enrolment.id}`);
-      if (record && RESOLVED_ATTENDANCE_STATUSES.has(String(record.status ?? "").toLowerCase())) return [];
+      if (record && isDailyAttendanceRegularizationResolved(record.status)) return [];
       const learner = relation<LearnerRow>(enrolment.daily_learners);
       const learnerName = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant";
       const organisationName = organisation?.legal_name || organisation?.name || "Organisme Daily";
