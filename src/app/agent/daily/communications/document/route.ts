@@ -59,8 +59,9 @@ export async function GET(req: Request) {
     return Response.json({ error: "Le fichier exact associé à cette preuve est indisponible dans le stockage." }, { status: 404 });
   }
 
-  const storageName = snapshot.storage_path.split("/").pop() || snapshot.logical_name || document.logical_name || "document";
-  const filename = safeFilename(storageName);
+  const filename = safeFilename(
+    snapshot.logical_name || document.logical_name || snapshot.storage_path.split("/").pop() || "document",
+  );
   const buffer = Buffer.from(await file.arrayBuffer());
 
   return new Response(buffer, {

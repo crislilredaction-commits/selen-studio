@@ -17,6 +17,7 @@ type ClientEmailInput = SilenceLookup & {
   subject: string;
   html: string;
   text?: string | null;
+  attachments?: { filename: string; content: Buffer; contentType: string }[];
 };
 
 function cleanEmail(value?: string | null) {
@@ -107,6 +108,7 @@ export async function sendClientEmailWithSilence(input: ClientEmailInput) {
     subject: input.subject,
     html: input.html,
     text: input.text,
+    attachments: input.attachments,
   });
 
   return { ...result, paused: false };
