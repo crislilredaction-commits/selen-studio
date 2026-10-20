@@ -21,6 +21,7 @@ export async function GET(req: Request) {
     .from("daily_conventions")
     .select("id,session_id,document_name,storage_path")
     .eq("id", id)
+    .eq("status", "generated")
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
