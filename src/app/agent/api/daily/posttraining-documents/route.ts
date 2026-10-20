@@ -9,7 +9,7 @@ const types=["attendance_summary","completion_certificate"];
 
 async function fallbackSyncChecklist(admin:ReturnType<typeof createSupabaseAdminClient>,sessionId:string){
   const [{data:enrolments},{data:slots},{data:records},{data:docs}]=await Promise.all([
-    admin.from("daily_session_enrolments").select("id,status").eq("session_id",sessionId).not("status","in",'(declined,cancelled)'),
+    admin.from("daily_session_enrolments").select("id,status").eq("session_id",sessionId).not("status","in",'(declined,cancelled,abandoned)'),
     admin.from("daily_attendance_slots").select("id,status").eq("session_id",sessionId).neq("status","cancelled"),
     admin.from("daily_attendance_records").select("enrolment_id,slot_id,status").eq("session_id",sessionId),
     admin.from("daily_documents").select("document_type,linked_object_type,linked_object_id,status").in("document_type",types).eq("is_current",true),
