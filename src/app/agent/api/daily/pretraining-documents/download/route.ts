@@ -17,6 +17,7 @@ export async function GET(req:Request) {
     .from("daily_documents")
     .select("bucket,storage_path,document_type,organisation_id")
     .eq("id",id)
+    .eq("is_current",true)
     .in("organisation_id",organisationIds)
     .in("document_type",["training_program","training_agreement","training_contract","convocation","registration_positioning","welcome_booklet","internal_regulations"])
     .single();

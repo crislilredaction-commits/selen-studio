@@ -36,6 +36,12 @@ for (const [label, source] of [["préformation", pretrainingDownload], ["fin de 
   });
 }
 
+test("le téléchargement préformation refuse une version documentaire remplacée", () => {
+  const lookup = pretrainingDownload.split('.from("daily_documents")')[1] ?? "";
+  assert.match(lookup, /\.eq\("id",\s*id\)[\s\S]*\.eq\("is_current",\s*true\)[\s\S]*\.in\("organisation_id",\s*organisationIds\)/);
+  assert.match(pretrainingDownload, /Document introuvable/);
+});
+
 test("Studio demande explicitement d'ouvrir la pièce avant décision", () => {
   for (const page of [pretrainingPage, posttrainingPage]) {
     assert.match(page, /Ouvrir la pièce/);
