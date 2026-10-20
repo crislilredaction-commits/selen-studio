@@ -43,3 +43,14 @@ test("Studio demande explicitement d'ouvrir la pièce avant décision", () => {
     assert.match(page, /Valider|valider/);
   }
 });
+
+test("le recalcul de secours Après ignore toutes les inscriptions terminales", () => {
+  const fallbackSource = posttrainingRoute
+    .split("async function fallbackSyncChecklist")[1]
+    ?.split("async function syncChecklist")[0] ?? "";
+
+  assert.match(
+    fallbackSource,
+    /\.from\("daily_session_enrolments"\)[\s\S]*\.not\("status","in",'\(declined,cancelled,abandoned\)'\)/,
+  );
+});
