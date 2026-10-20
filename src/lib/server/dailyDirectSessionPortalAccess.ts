@@ -5,7 +5,10 @@ import { buildDailyPortalAuthEntryUrl } from "@/lib/server/dailyPortalAuthEntry"
 
 type JsonRecord = Record<string, unknown>;
 
-type DirectParticipant = {
+export type CanonicalDirectLearner = {
+  enrolment_id: string;
+  learner_id: string;
+  status?: unknown;
   first_name?: string | null;
   last_name?: string | null;
   email?: string | null;
@@ -70,27 +73,30 @@ function fullName(first?: string | null, last?: string | null) {
   return [first, last].map((value) => value?.trim()).filter(Boolean).join(" ");
 }
 
-function participants(value: unknown): DirectParticipant[] {
-  return Array.isArray(value) ? value as DirectParticipant[] : [];
-}
-
 function companies(value: unknown): DirectCompany[] {
   return Array.isArray(value) ? value as DirectCompany[] : [];
 }
 
-export function buildDirectSessionPortalDefinitions(session: DirectSessionPortalSource) {
-  const learners = [
-    ...participants(session.individual_beneficiaries),
-    ...participants(session.beneficiaries),
-  ].map((participant, index) => ({
-    session_id: session.id,
-    user_id: session.user_id,
-    portal_type: "learner" as const,
-    entity_key: normalizedEmail(participant.email) || `learner_${index + 1}`,
-    entity_name: fullName(participant.first_name, participant.last_name) || null,
-    entity_email: normalizedEmail(participant.email) || null,
-    metadata: { participant, source: "studio_summary_validated" },
-  }));
+export function buildDirectSessionPortalDefinitions(
+  session: DirectSessionPortalSource,
+  canonicalLearners: CanonicalDirectLearner[] = [],
+) {
+  const learners = canonicalLearners
+    .filter((learner) => isDailyLearnerEnrolmentActive(learner.status))
+    .map((learner) => ({
+      session_id: session.id,
+      user_id: session.user_id,
+      portal_type: "learner" as const,
+      entity_key: `learner:${learner.learner_id}`,
+      entity_name: fullName(learner.first_name, learner.last_name) || null,
+      entity_email: normalizedEmail(learner.email) || null,
+      metadata: {
+        learner_id: learner.learner_id,
+        enrolment_id: learner.enrolment_id,
+        enrolment_status: learner.status ?? null,
+        source: "studio_summary_validated",
+      },
+    }));
 
   const enterprises = companies(session.companies).map((company, index) => ({
     session_id: session.id,
@@ -103,6 +109,58 @@ export function buildDirectSessionPortalDefinitions(session: DirectSessionPortal
   }));
 
   return [...learners, ...enterprises] satisfies DirectSessionPortalDefinition[];
+}
+
+export async function buildCanonicalDirectSessionPortalDefinitions(input: {
+  supabase: SupabaseClient;
+  session: DirectSessionPortalSource;
+}) {
+  const { data: enrolmentRows, error: enrolmentError } = await input.supabase
+    .from("daily_session_enrolments")
+    .select("id,learner_id,status")
+    .eq("session_id", input.session.id);
+  if (enrolmentError) throw new Error(enrolmentError.message);
+
+  const activeEnrolments = (enrolmentRows ?? [])
+    .filter((enrolment) => isDailyLearnerEnrolmentActive(enrolment.status)) as Array<{
+      id: string;
+      learner_id: string;
+      status?: unknown;
+    }>;
+  const learnerIds = [...new Set(activeEnrolments.map((enrolment) => enrolment.learner_id).filter(Boolean))];
+
+  let learnerRows: Array<{
+    id: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    email?: string | null;
+  }> = [];
+  if (learnerIds.length) {
+    const { data, error } = await input.supabase
+      .from("daily_learners")
+      .select("id,first_name,last_name,email")
+      .in("id", learnerIds);
+    if (error) throw new Error(error.message);
+    learnerRows = data ?? [];
+  }
+
+  const learnersById = new Map(learnerRows.map((learner) => [learner.id, learner]));
+  const canonicalLearners = activeEnrolments.map((enrolment) => {
+    const learner = learnersById.get(enrolment.learner_id);
+    if (!learner) {
+      throw new Error("Identité canonique de l’apprenant introuvable ; aucun accès n’a été créé.");
+    }
+    return {
+      enrolment_id: enrolment.id,
+      learner_id: enrolment.learner_id,
+      status: enrolment.status,
+      first_name: learner.first_name,
+      last_name: learner.last_name,
+      email: learner.email,
+    } satisfies CanonicalDirectLearner;
+  });
+
+  return buildDirectSessionPortalDefinitions(input.session, canonicalLearners);
 }
 
 function isSyntheticEmail(value?: string | null) {
