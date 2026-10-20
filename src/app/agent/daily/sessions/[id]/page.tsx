@@ -5,7 +5,7 @@ import LegacyAgentDailySessionPage from "./legacyPage";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import {
-  buildDirectSessionPortalDefinitions,
+  buildCanonicalDirectSessionPortalDefinitions,
   provisionDirectSessionPortalAccesses,
   type DirectSessionPortalSource,
 } from "@/lib/server/dailyDirectSessionPortalAccess";
@@ -63,7 +63,7 @@ async function summaryValidatedAction(formData: FormData) {
   const blocked = validationBlockReason(session.registration_status, responseCount ?? 0, review, prerequisiteDossier.complete);
   if (blocked) throw new Error(blocked);
   if (session.registration_status === "summary_validated") return;
-  const definitions = buildDirectSessionPortalDefinitions(session);
+  const definitions = await buildCanonicalDirectSessionPortalDefinitions({ supabase: admin, session });
   await provisionDirectSessionPortalAccesses({ supabase: admin, sessionId: session.id, formationTitle: session.daily_formations?.title ?? null, definitions });
   const now = new Date().toISOString();
   const { error: updateError } = await admin.from("daily_sessions").update({ registration_status: "summary_validated", registration_summary_validated_at: now }).eq("id", session.id).eq("registration_status", "summary_to_review");
