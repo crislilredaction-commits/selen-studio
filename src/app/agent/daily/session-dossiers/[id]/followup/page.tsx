@@ -14,12 +14,18 @@ const INACTIVE_ENROLMENTS = new Set(["cancelled", "declined", "abandoned", "comp
 const newRequestId = () => globalThis.crypto?.randomUUID?.() ?? "00000000-0000-4000-8000-000000000000";
 
 async function refreshFollowupChecklist(admin: ReturnType<typeof createSupabaseAdminClient>, organisationId: string, sessionId: string) {
-  const [{ data: enrolments }, { data: slots }, { data: records }, { count: openEntries }] = await Promise.all([
+  const [
+    { data: enrolments, error: enrolmentsError },
+    { data: slots, error: slotsError },
+    { data: records, error: recordsError },
+    { count: openEntries, error: openEntriesError },
+  ] = await Promise.all([
     admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", organisationId).eq("session_id", sessionId),
     admin.from("daily_attendance_slots").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
     admin.from("daily_attendance_records").select("enrolment_id,status").eq("organisation_id", organisationId).eq("session_id", sessionId),
     admin.from("daily_session_followup_entries").select("id", { count: "exact", head: true }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("status", "open"),
   ]);
+  if (enrolmentsError || slotsError || recordsError || openEntriesError) return;
   const activeEnrolmentIds = new Set((enrolments ?? [])
     .filter((enrolment) => !INACTIVE_ENROLMENTS.has(enrolment.status))
     .map((enrolment) => enrolment.id));

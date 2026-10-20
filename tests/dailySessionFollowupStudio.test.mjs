@@ -45,6 +45,16 @@ test("la checklist de suivi ignore les présences des inscriptions terminales", 
   assert.match(refreshSource, /resolveAttendanceFollowupStatus/);
 });
 
+test("un échec de lecture du périmètre laisse la checklist inchangée", () => {
+  const refreshSource = sessionFollowupPage
+    .split("async function refreshFollowupChecklist")[1]
+    ?.split("async function requireScopedSession")[0] ?? "";
+
+  assert.match(refreshSource, /error: enrolmentsError/);
+  assert.match(refreshSource, /if \(enrolmentsError \|\| slotsError \|\| recordsError \|\| openEntriesError\) return;/);
+  assert.ok(refreshSource.indexOf("enrolmentsError") < refreshSource.indexOf("resolveAttendanceFollowupStatus"));
+});
+
 test("la checklist se clôture quand il ne reste aucun inscrit actif", () => {
   assert.equal(resolveAttendanceFollowupStatus({
     activeEnrolmentCount: 0,
