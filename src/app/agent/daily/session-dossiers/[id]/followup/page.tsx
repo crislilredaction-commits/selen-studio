@@ -7,21 +7,35 @@ import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationS
 import { isSignatureTerminal } from "@/lib/daily/signatureReminder24h";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
+import { resolveAttendanceFollowupStatus } from "@/lib/daily/attendanceFollowupStatus";
 
 type Props = { params: Promise<{ id: string }> };
 const INACTIVE_ENROLMENTS = new Set(["cancelled", "declined", "abandoned", "completed"]);
 const newRequestId = () => globalThis.crypto?.randomUUID?.() ?? "00000000-0000-4000-8000-000000000000";
 
 async function refreshFollowupChecklist(admin: ReturnType<typeof createSupabaseAdminClient>, organisationId: string, sessionId: string) {
-  const [{ data: slots }, { data: records }, { count: openEntries }] = await Promise.all([
+  const [
+    { data: enrolments, error: enrolmentsError },
+    { data: slots, error: slotsError },
+    { data: records, error: recordsError },
+    { count: openEntries, error: openEntriesError },
+  ] = await Promise.all([
+    admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", organisationId).eq("session_id", sessionId),
     admin.from("daily_attendance_slots").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
-    admin.from("daily_attendance_records").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
+    admin.from("daily_attendance_records").select("enrolment_id,status").eq("organisation_id", organisationId).eq("session_id", sessionId),
     admin.from("daily_session_followup_entries").select("id", { count: "exact", head: true }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("status", "open"),
   ]);
-  const allSlotsClosed = (slots ?? []).length > 0 && (slots ?? []).every((slot) => ["closed", "cancelled"].includes(slot.status));
-  const allRecordsDecided = (records ?? []).length > 0 && (records ?? []).every((record) => record.status !== "pending");
-  const hasAttendanceActivity = (slots ?? []).some((slot) => slot.status !== "draft") || (records ?? []).some((record) => record.status !== "pending");
-  const status = (openEntries ?? 0) === 0 && allSlotsClosed && allRecordsDecided ? "to_review" : ((openEntries ?? 0) > 0 || hasAttendanceActivity ? "in_progress" : "todo");
+  if (enrolmentsError || slotsError || recordsError || openEntriesError) return;
+  const activeEnrolmentIds = new Set((enrolments ?? [])
+    .filter((enrolment) => !INACTIVE_ENROLMENTS.has(enrolment.status))
+    .map((enrolment) => enrolment.id));
+  const activeRecords = (records ?? []).filter((record) => activeEnrolmentIds.has(record.enrolment_id));
+  const status = resolveAttendanceFollowupStatus({
+    activeEnrolmentCount: activeEnrolmentIds.size,
+    slotStatuses: (slots ?? []).map((slot) => slot.status),
+    activeRecordStatuses: activeRecords.map((record) => record.status),
+    openEntryCount: openEntries ?? 0,
+  });
   await admin.from("daily_session_checklist_items").update({ status }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("item_key", "attendance_followup").neq("status", "not_applicable");
 }
 
