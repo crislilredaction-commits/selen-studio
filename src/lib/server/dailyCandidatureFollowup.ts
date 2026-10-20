@@ -16,6 +16,8 @@ export type CandidatureFollowup = {
     }>;
 };
 const value = (v: unknown) => typeof v === "string" ? v.trim() : "";
+const inactiveEnrolmentStatuses = new Set(["cancelled", "canceled", "declined", "abandoned"]);
+const isActiveEnrolment = (status: unknown) => !inactiveEnrolmentStatuses.has(value(status).toLowerCase());
 async function readAll(query: () => any) {
     const rows: any[] = [];
     for (let offset = 0;; offset += 200) {
@@ -44,7 +46,7 @@ export async function loadDailyCandidatureFollowup(admin: Admin, organisationId:
         throw new Error("Session introuvable.");
     const enrolments = (await readAll(() => admin.from("daily_session_enrolments").select("id,learner_id,status")
         .eq("organisation_id", organisationId).eq("session_id", sessionId).order("id")))
-        .filter(row => !["cancelled", "declined", "abandoned"].includes(row.status));
+        .filter(row => isActiveEnrolment(row.status));
     if (!enrolments.length)
         return [];
     const [learners, mappings] = await Promise.all([
