@@ -33,6 +33,7 @@ function pageFixture(allowed = true) {
         "@/app/agent/api/support/_utils": { requireSupportAgent: async () => ({ ok: true, email: "agent@example.test" }) },
         "@/lib/server/dailyOrganisationScope": { isDailyOrganisationInAgentScope: async (_email, org) => allowed && org === "of" },
         "@/lib/server/dailyCandidatureFollowup": reader,
+        "@/lib/daily/attendanceFollowupStatus": { resolveAttendanceFollowupStatus: () => "todo" },
         "@/lib/server/dailySignatureReminders": { sendManualDailySignatureReminder() { throw Error("Email forbidden"); } },
         "@/lib/daily/signatureReminder24h": { isSignatureTerminal: () => false },
         "@/components/ui/SelenCard": { default: "section", SelenCardTitle: "h2" }, "@/components/ui/SelenButton": { default: "button" }
