@@ -142,11 +142,13 @@ export async function sendSelenEmail({
   subject,
   html,
   text,
+  attachments,
 }: {
   to: string;
   subject: string;
   html: string;
   text?: string | null;
+  attachments?: { filename: string; content: Buffer; contentType: string }[];
 }) {
   const resendApiKey = process.env.RESEND_API_KEY;
   const from =
@@ -172,6 +174,7 @@ export async function sendSelenEmail({
     subject,
     html,
     text: text || undefined,
+    attachments,
   });
 
   if (result.error) {
