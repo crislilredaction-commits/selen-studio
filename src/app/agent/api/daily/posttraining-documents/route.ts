@@ -148,7 +148,7 @@ export async function PATCH(req:Request){
     if(!publication.ok)return NextResponse.json({error:publication.error},{status:publication.status});
     const sessionId=typeof current.metadata?.session_id==="string"?current.metadata.session_id:"";
     if(sessionId)await syncChecklist(admin,sessionId);
-    return NextResponse.json({document:publication.document,notification:{sent:true}});
+    return NextResponse.json({document:publication.document,notification:publication.notification});
   }
 
   if(["published","signed","archived"].includes(current.status))return NextResponse.json({error:"Ce document n’est plus modifiable dans ce circuit de revue."},{status:400});

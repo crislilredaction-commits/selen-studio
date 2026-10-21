@@ -35,6 +35,7 @@ function fixture() {
     }; return query;
   } };
   const publication = isolatedTsModule("src/lib/server/dailyDocumentPublication.ts", {
+    "node:crypto": { randomUUID: () => "cccccccc-cccc-4ccc-8ccc-cccccccccccc" },
     "@/lib/server/clientNotificationSilence": { sendClientEmailWithSilence: async input => { emails.push(input); return flags.emailResult; } },
     "@/lib/server/selenEmailLayout": { renderSelenEmailFromText: () => ({ html: "<p>Test</p>", text: "Test" }) },
     "@/lib/vitrineLinks": { getVitrineBaseUrl: () => "https://daily.example.test" },
@@ -122,12 +123,22 @@ test("un nouvel envoi confirmé conserve son identifiant et sa preuve avant publ
   assert.equal(response.status, 200); assert.equal(result.notification.sent, true);
   assert.equal(result.notification.resendId, "test-provider-id"); assert.equal(f.emails.length, 1);
   assert.equal(result.document.metadata.publication_notification_resend_id, "test-provider-id");
-  assert.equal(f.writes[0].patch.status, undefined); assert.equal(f.writes[1].patch.status, "published");
+  assert.equal(f.writes[0].patch.metadata.publication_notification_claim_id, "cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+  assert.equal(f.writes[1].patch.status, undefined); assert.equal(f.writes[2].patch.status, "published");
+});
+
+test("deux publications concurrentes ne produisent qu’un seul email", async () => {
+  const f = fixture(); f.document.status = "validated";
+  const responses = await Promise.all([f.patch("publish"), f.patch("publish")]);
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 409]);
+  assert.equal(f.emails.length, 1);
+  assert.equal(f.document.status, "published");
 });
 
 test("une erreur email ou un document hors périmètre n’est jamais un succès", async () => {
   const f = fixture(); f.document.status = "validated"; f.flags.emailResult = { sent: false, paused: true };
-  assert.equal((await f.patch("publish")).status, 409); assert.equal(f.document.status, "validated"); assert.equal(f.writes.length, 0);
+  assert.equal((await f.patch("publish")).status, 409); assert.equal(f.document.status, "validated"); assert.equal(f.writes.length, 2);
+  assert.equal(f.document.metadata.publication_notification_claim_id, undefined); assert.equal(f.emails.length, 1);
   for (const deny of [f => { f.flags.scope = []; }, f => { f.document.organisation_id = "other-of"; }, f => { f.document.is_current = false; }]) {
     const f = fixture(); deny(f); assert.equal((await f.patch("validate")).status, 404); assert.equal(f.writes.length, 0); assert.equal(f.emails.length, 0);
   }

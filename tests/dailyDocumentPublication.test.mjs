@@ -41,12 +41,28 @@ test("la publication trace document version valideur destinataire et espace cibl
 });
 
 test("la publication relit l'état canonique et ne renvoie pas un email déjà publié", () => {
-  assert.match(publication, /select\("id,organisation_id,status,metadata,is_current"\)/);
+  assert.match(publication, /select\("id,organisation_id,status,metadata,is_current,updated_at"\)/);
   assert.match(publication, /current\.status === "published"/);
   assert.match(publication, /deduplicated: true/);
   const canonicalRead = publication.indexOf('.from("daily_documents")');
   const sendPosition = publication.indexOf("sendClientEmailWithSilence({");
   assert.ok(canonicalRead >= 0 && sendPosition > canonicalRead);
+});
+
+test("une réservation optimiste précède l'email et empêche deux publications concurrentes", () => {
+  assert.match(publication, /publication_notification_claim_id: claimId/);
+  assert.match(publication, /hasActivePublicationClaim\(currentMetadata\)/);
+  assert.match(publication, /\.eq\("updated_at", current\.updated_at\)/);
+  assert.match(publication, /if \(!claimed\)/);
+  const claimPosition = publication.indexOf("publication_notification_claim_id: claimId");
+  const sendPosition = publication.indexOf("sendClientEmailWithSilence({");
+  assert.ok(claimPosition >= 0 && sendPosition > claimPosition);
+});
+
+test("un échec d'envoi libère la réservation sans écraser une écriture concurrente", () => {
+  assert.match(publication, /withoutPublicationClaim\(currentMetadata\)/);
+  assert.match(publication, /La notification n’a pas été envoyée et la réservation n’a pas pu être libérée/);
+  assert.match(publication, /\.eq\("updated_at", publicationUpdatedAt\)/);
 });
 
 test("la preuve d'envoi est persistée avant le passage published pour rendre un retry idempotent", () => {
@@ -63,5 +79,8 @@ test("Studio expose explicitement l'action Publier et notifier après validation
     assert.match(page, /doc\.status==="validated"/);
     assert.match(page, /Publier et notifier/);
     assert.match(page, /action:\s*"validate"\|"request_correction"\|"publish"/);
+  }
+  for (const route of [preRoute, postRoute]) {
+    assert.match(route, /notification:\s*publication\.notification/);
   }
 });
