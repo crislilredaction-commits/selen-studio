@@ -1,6 +1,48 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const AUTH_LOOKUP_TIMEOUT_MS = 5_000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error("studio_auth_lookup_timeout")),
+      timeoutMs,
+    );
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function authUnavailableResponse() {
+  return NextResponse.json(
+    { error: "Service d'authentification temporairement indisponible." },
+    {
+      status: 503,
+      headers: {
+        "Cache-Control": "no-store",
+        "Retry-After": "5",
+      },
+    },
+  );
+}
+
+function isRetryableAuthError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+
+  const candidate = error as { name?: unknown; status?: unknown };
+  return (
+    candidate.name === "AuthRetryableFetchError" ||
+    (typeof candidate.status === "number" && candidate.status >= 500)
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({
     request,
@@ -24,9 +66,30 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+
+  try {
+    const authResult = await withTimeout(
+      supabase.auth.getUser(),
+      AUTH_LOOKUP_TIMEOUT_MS,
+    );
+
+    if (isRetryableAuthError(authResult.error)) {
+      console.warn("[studio-auth] Authentication service returned a retryable error", {
+        reason: authResult.error?.name ?? "upstream_error",
+        pathname: request.nextUrl.pathname,
+      });
+      return authUnavailableResponse();
+    }
+
+    user = authResult.data.user;
+  } catch (error) {
+    console.warn("[studio-auth] Authentication lookup unavailable", {
+      reason: error instanceof Error ? error.message : "unknown_error",
+      pathname: request.nextUrl.pathname,
+    });
+    return authUnavailableResponse();
+  }
 
   const isAgentPage = request.nextUrl.pathname.startsWith("/agent");
 
