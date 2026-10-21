@@ -33,6 +33,16 @@ function authUnavailableResponse() {
   );
 }
 
+function isRetryableAuthError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+
+  const candidate = error as { name?: unknown; status?: unknown };
+  return (
+    candidate.name === "AuthRetryableFetchError" ||
+    (typeof candidate.status === "number" && candidate.status >= 500)
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({
     request,
@@ -63,6 +73,15 @@ export async function middleware(request: NextRequest) {
       supabase.auth.getUser(),
       AUTH_LOOKUP_TIMEOUT_MS,
     );
+
+    if (isRetryableAuthError(authResult.error)) {
+      console.warn("[studio-auth] Authentication service returned a retryable error", {
+        reason: authResult.error?.name ?? "upstream_error",
+        pathname: request.nextUrl.pathname,
+      });
+      return authUnavailableResponse();
+    }
+
     user = authResult.data.user;
   } catch (error) {
     console.warn("[studio-auth] Authentication lookup unavailable", {
