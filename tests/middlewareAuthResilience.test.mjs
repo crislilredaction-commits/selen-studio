@@ -30,6 +30,16 @@ test("une panne réseau échoue fermée sans exposer la page agent", () => {
   assert.match(middleware, /"Retry-After": "5"/);
 });
 
+test("une erreur réseau Supabase résolue reste un 503 réessayable", () => {
+  assert.match(middleware, /candidate\.name === "AuthRetryableFetchError"/);
+  assert.match(middleware, /candidate\.status >= 500/);
+  assert.match(middleware, /isRetryableAuthError\(authResult\.error\)/);
+  assert.match(
+    middleware,
+    /if \(isRetryableAuthError\(authResult\.error\)\)[\s\S]*?return authUnavailableResponse\(\)/,
+  );
+});
+
 test("l'absence de session continue de rediriger vers la connexion", () => {
   assert.match(middleware, /if \(isAgentPage && !user\)/);
   assert.match(middleware, /redirectUrl\.pathname = "\/login"/);
