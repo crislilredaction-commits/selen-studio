@@ -102,7 +102,10 @@ export async function PATCH(req:Request){
   const id=String(body.id??"");
   const action=String(body.action??"");
   const note=typeof body.note==="string"?body.note.trim():"";
-  if(!id||!["validate","request_correction","publish"].includes(action))return NextResponse.json({error:"Action invalide."},{status:400});
+  const expectedUpdatedAt=typeof body.expected_updated_at==="string"?body.expected_updated_at:"";
+  const expectedStatus=typeof body.expected_status==="string"?body.expected_status:"";
+  const expectedVersion=Number(body.expected_version);
+  if(!id||!["validate","request_correction","publish"].includes(action)||!expectedUpdatedAt||!expectedStatus||!Number.isInteger(expectedVersion))return NextResponse.json({error:"Action invalide ou version affichée manquante."},{status:400});
   const supabase=await createClient();
   const {data:userData}=await supabase.auth.getUser();
   const userId=userData.user?.id;
@@ -112,13 +115,16 @@ export async function PATCH(req:Request){
   const admin=createSupabaseAdminClient();
   const {data:current,error:readError}=await admin
     .from("daily_documents")
-    .select("id,status,metadata,organisation_id,document_type,logical_name,version,linked_object_type,linked_object_id")
+    .select("id,status,metadata,organisation_id,document_type,logical_name,version,linked_object_type,linked_object_id,updated_at,sha256")
     .eq("id",id)
     .in("organisation_id",organisationIds)
     .in("document_type",types)
     .eq("is_current",true)
     .single();
   if(readError||!current)return NextResponse.json({error:"Document introuvable."},{status:404});
+  if(current.updated_at!==expectedUpdatedAt||current.status!==expectedStatus||current.version!==expectedVersion){
+    return NextResponse.json({error:"La pièce a changé depuis son affichage. Recharge la file puis ouvre de nouveau la version courante."},{status:409});
+  }
 
   let parentActive=false;
   if(current.document_type==="attendance_summary"&&current.linked_object_type==="session"){
@@ -142,10 +148,25 @@ export async function PATCH(req:Request){
   }
 
   if(["published","signed","archived"].includes(current.status))return NextResponse.json({error:"Ce document n’est plus modifiable dans ce circuit de revue."},{status:400});
+  const openedVersion=Number(current.metadata?.review_opened_version);
+  const openedSha=typeof current.metadata?.review_opened_sha256==="string"?current.metadata.review_opened_sha256:"";
+  const openedBy=typeof current.metadata?.review_opened_by_email==="string"?current.metadata.review_opened_by_email.toLowerCase():"";
+  if(openedVersion!==current.version||openedSha!==current.sha256||openedBy!==auth.email.toLowerCase()){
+    return NextResponse.json({error:"Ouvre cette version de la pièce dans Studio avant de la valider ou de demander une correction."},{status:409});
+  }
   const metadata={...(current.metadata??{}),review_note:note||null,reviewed_at:new Date().toISOString(),reviewed_by_email:auth.email};
   const updates=action==="validate"?{status:"validated",validated_by:userId,validated_at:new Date().toISOString(),updated_by:userId,metadata}:{status:"correction_requested",validated_by:null,validated_at:null,updated_by:userId,metadata};
-  const {data,error}=await admin.from("daily_documents").update(updates).eq("id",id).in("organisation_id",organisationIds).select("*").single();
+  const {data,error}=await admin.from("daily_documents").update(updates)
+    .eq("id",id)
+    .in("organisation_id",organisationIds)
+    .eq("is_current",true)
+    .eq("updated_at",expectedUpdatedAt)
+    .eq("status",expectedStatus)
+    .eq("version",expectedVersion)
+    .select("*")
+    .maybeSingle();
   if(error)return NextResponse.json({error:error.message},{status:400});
+  if(!data)return NextResponse.json({error:"La pièce a changé pendant le contrôle. Recharge la file puis recommence sur la version courante."},{status:409});
   const sessionId=typeof metadata.session_id==="string"?metadata.session_id:"";
   if(sessionId)await syncChecklist(admin,sessionId);
   return NextResponse.json({document:data});
