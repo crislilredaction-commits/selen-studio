@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
 import { renderSelenEmailFromText } from "@/lib/server/selenEmailLayout";
 import { getVitrineBaseUrl } from "@/lib/vitrineLinks";
@@ -24,6 +25,7 @@ const DOCUMENT_LABELS: Record<string, string> = {
 };
 
 const DAILY_CLIENT_DOCUMENTS_TARGET = "client_daily_documents";
+const PUBLICATION_CLAIM_TTL_MS = 5 * 60 * 1000;
 
 function labelFor(document: DailyDocumentForPublication) {
   return DOCUMENT_LABELS[document.document_type] || document.logical_name || "Document";
@@ -36,6 +38,20 @@ function clientDocumentUrl(documentId: string) {
 
 function hasPublicationNotification(metadata?: Record<string, unknown> | null) {
   return Boolean(metadata?.publication_notification_sent_at);
+}
+
+function withoutPublicationClaim(metadata: Record<string, unknown>) {
+  const cleaned = { ...metadata };
+  delete cleaned.publication_notification_claim_id;
+  delete cleaned.publication_notification_claimed_at;
+  delete cleaned.publication_notification_claimed_by;
+  return cleaned;
+}
+
+function hasActivePublicationClaim(metadata: Record<string, unknown>) {
+  const claimId = String(metadata.publication_notification_claim_id ?? "");
+  const claimedAt = Date.parse(String(metadata.publication_notification_claimed_at ?? ""));
+  return Boolean(claimId && Number.isFinite(claimedAt) && Date.now() - claimedAt < PUBLICATION_CLAIM_TTL_MS);
 }
 
 export async function publishDailyDocumentAndNotify(params: {
@@ -54,7 +70,7 @@ export async function publishDailyDocumentAndNotify(params: {
   // jamais déclencher un second email.
   const { data: current, error: currentError } = await admin
     .from("daily_documents")
-    .select("id,organisation_id,status,metadata,is_current")
+    .select("id,organisation_id,status,metadata,is_current,updated_at")
     .eq("id", document.id)
     .eq("organisation_id", document.organisation_id)
     .eq("is_current", true)
@@ -74,6 +90,9 @@ export async function publishDailyDocumentAndNotify(params: {
 
   const currentMetadata = (current.metadata ?? {}) as Record<string, unknown>;
   const notificationAlreadySent = hasPublicationNotification(currentMetadata);
+  if (!notificationAlreadySent && hasActivePublicationClaim(currentMetadata)) {
+    return { ok: false as const, status: 409, error: "La publication de ce document est déjà en cours." };
+  }
 
   const { data: organisation, error: organisationError } = await admin
     .from("organisations")
@@ -108,10 +127,36 @@ export async function publishDailyDocumentAndNotify(params: {
   let notification: Awaited<ReturnType<typeof sendClientEmailWithSilence>> | { sent: false; deduplicated: true };
   let publishedAt = String(currentMetadata.publication_notification_sent_at ?? "") || new Date().toISOString();
   let metadata = currentMetadata;
+  let publicationUpdatedAt = current.updated_at;
 
   if (notificationAlreadySent) {
     notification = { sent: false, deduplicated: true };
   } else {
+    const claimId = randomUUID();
+    const claimMetadata = {
+      ...withoutPublicationClaim(currentMetadata),
+      publication_notification_claim_id: claimId,
+      publication_notification_claimed_at: new Date().toISOString(),
+      publication_notification_claimed_by: publishedBy,
+    };
+    const { data: claimed, error: claimError } = await admin
+      .from("daily_documents")
+      .update({ metadata: claimMetadata, updated_by: publishedBy })
+      .eq("id", document.id)
+      .eq("organisation_id", document.organisation_id)
+      .eq("status", "validated")
+      .eq("is_current", true)
+      .eq("updated_at", current.updated_at)
+      .select("id,updated_at")
+      .maybeSingle();
+    if (claimError) {
+      return { ok: false as const, status: 500, error: claimError.message };
+    }
+    if (!claimed) {
+      return { ok: false as const, status: 409, error: "La publication de ce document a déjà été prise en charge." };
+    }
+    publicationUpdatedAt = claimed.updated_at;
+
     notification = await sendClientEmailWithSilence({
       supabase: admin,
       organisationId: document.organisation_id,
@@ -122,16 +167,29 @@ export async function publishDailyDocumentAndNotify(params: {
       text: rendered.text,
     });
     if (!notification.sent) {
+      const releasedMetadata = withoutPublicationClaim(currentMetadata);
+      const { error: releaseError } = await admin
+        .from("daily_documents")
+        .update({ metadata: releasedMetadata, updated_by: publishedBy })
+        .eq("id", document.id)
+        .eq("organisation_id", document.organisation_id)
+        .eq("status", "validated")
+        .eq("is_current", true)
+        .eq("updated_at", publicationUpdatedAt);
       return {
         ok: false as const,
-        status: "paused" in notification && notification.paused ? 409 : 502,
-        error: "error" in notification && notification.error ? notification.error : "La notification email n’a pas pu être envoyée.",
+        status: releaseError ? 500 : "paused" in notification && notification.paused ? 409 : 502,
+        error: releaseError
+          ? `La notification n’a pas été envoyée et la réservation n’a pas pu être libérée : ${releaseError.message}`
+          : "error" in notification && notification.error
+            ? notification.error
+            : "La notification email n’a pas pu être envoyée.",
       };
     }
 
     publishedAt = new Date().toISOString();
     metadata = {
-      ...currentMetadata,
+      ...withoutPublicationClaim(claimMetadata),
       publication_document_id: document.id,
       publication_document_version: document.version ?? null,
       published_by_email: publishedByEmail ?? null,
@@ -145,20 +203,24 @@ export async function publishDailyDocumentAndNotify(params: {
     // Persiste d'abord la preuve d'envoi tout en gardant l'état validated. Ainsi,
     // si la finalisation échoue ensuite, un retry termine la publication sans
     // renvoyer l'email déjà parti.
-    const { error: proofError } = await admin
+    const { data: proof, error: proofError } = await admin
       .from("daily_documents")
       .update({ metadata, updated_by: publishedBy })
       .eq("id", document.id)
       .eq("organisation_id", document.organisation_id)
       .eq("status", "validated")
-      .eq("is_current", true);
-    if (proofError) {
+      .eq("is_current", true)
+      .eq("updated_at", publicationUpdatedAt)
+      .select("id,updated_at")
+      .maybeSingle();
+    if (proofError || !proof) {
       return {
         ok: false as const,
         status: 500,
-        error: `L’email a été envoyé mais sa preuve n’a pas pu être enregistrée : ${proofError.message}`,
+        error: `L’email a été envoyé mais sa preuve n’a pas pu être enregistrée${proofError ? ` : ${proofError.message}` : "."}`,
       };
     }
+    publicationUpdatedAt = proof.updated_at;
   }
 
   const { data: updated, error: updateError } = await admin
@@ -173,6 +235,7 @@ export async function publishDailyDocumentAndNotify(params: {
     .eq("organisation_id", document.organisation_id)
     .eq("status", "validated")
     .eq("is_current", true)
+    .eq("updated_at", publicationUpdatedAt)
     .select("*")
     .single();
 
