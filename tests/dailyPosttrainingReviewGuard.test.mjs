@@ -39,8 +39,8 @@ test("Studio UI opens through the audited endpoint and disables decisions until 
 });
 
 test("Studio keeps post-training tracking complete after publication",()=>{
-  assert.match(reviewRoute,/\\["validated","published","signed","active"\\]\\.includes\\(doc\\.status\\)/);
+  assert.match(reviewRoute,/\["validated","published","signed","active"\]\.includes\(doc\.status\)/);
   assert.match(reviewRoute,/reviewed<expectedDocuments/);
-  assert.doesNotMatch(reviewRoute,/doc\\.status==="validated"/);
+  assert.doesNotMatch(reviewRoute,/doc\.status==="validated"/);
   assert.match(reviewRoute,/Impossible de synchroniser le suivi des documents de fin/);
 });
