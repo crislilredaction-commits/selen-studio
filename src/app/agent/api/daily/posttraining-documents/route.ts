@@ -27,7 +27,10 @@ async function fallbackSyncChecklist(admin:ReturnType<typeof createSupabaseAdmin
     (doc.document_type==="attendance_summary"&&doc.linked_object_type==="session"&&doc.linked_object_id===sessionId)||
     (doc.document_type==="completion_certificate"&&doc.linked_object_type==="enrolment"&&eligibleIds.has(doc.linked_object_id)),
   );
-  // A published (or subsequently signed/activated) document has already passed\n  // review. The fallback must preserve the validated checklist state if the RPC\n  // is temporarily unavailable instead of reopening work after publication.\n  const reviewed=current.filter((doc)=>["validated","published","signed","active"].includes(doc.status)).length;
+  // A published (or subsequently signed/activated) document has already passed
+  // review. The fallback must preserve the validated checklist state if the RPC
+  // is temporarily unavailable instead of reopening work after publication.
+  const reviewed=current.filter((doc)=>["validated","published","signed","active"].includes(doc.status)).length;
   let status="todo";
   let note="Aucun créneau de présence disponible pour préparer les documents de fin.";
   if(activeSlots.length>0&&expectedRecords>0&&settledRecords<expectedRecords){
@@ -45,7 +48,8 @@ async function fallbackSyncChecklist(admin:ReturnType<typeof createSupabaseAdmin
     status="validated";
     note=`${expectedDocuments} document(s) de fin validé(s).`;
   }
-  const {error}=await admin.from("daily_session_checklist_items").update({status,note}).eq("session_id",sessionId).eq("item_key","posttraining_documents").neq("status","not_applicable");\n  if(error)throw new Error(`Impossible de synchroniser le suivi des documents de fin : ${error.message}`);
+  const {error}=await admin.from("daily_session_checklist_items").update({status,note}).eq("session_id",sessionId).eq("item_key","posttraining_documents").neq("status","not_applicable");
+  if(error)throw new Error(`Impossible de synchroniser le suivi des documents de fin : ${error.message}`);
 }
 
 async function syncChecklist(admin:ReturnType<typeof createSupabaseAdminClient>,sessionId:string){
