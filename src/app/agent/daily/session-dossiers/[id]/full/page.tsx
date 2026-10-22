@@ -1,3 +1,4 @@
+import SessionStageNavigation from "./SessionStageNavigation";
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
@@ -53,12 +54,7 @@ export default async function FullSessionDossierPage({params}:Props){
  <Link href="/agent/daily/organisations" style={s.back}>Organismes</Link><span>›</span>
  <Link href={`/agent/daily/organisations/${encodeURIComponent(typedSession.organisation_id)}`} style={s.back}>{organisation}</Link><span>›</span><span aria-current="page">Session</span>
  </nav>
-  <nav aria-label="Étapes de la session" style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
- <a href="#vue-ensemble" style={s.primary}>Vue d'ensemble</a>
- <a href="#documents-avant-formation" style={s.primary}>Avant</a>
- <a href="#pendant-formation" style={s.primary}>Pendant</a>
- <a href="#apres-formation" style={s.primary}>Après</a>
- </nav>
+  <SessionStageNavigation />
 <section id="vue-ensemble" style={s.nowCard}><div><p style={s.eyebrow}>À faire maintenant</p><h2 style={s.h2}>{currentTitle}</h2><p style={s.lead}>{currentText}</p></div>{currentHref&&currentAction?<Link href={currentHref} style={s.primary}>{currentAction}</Link>:<span style={s.rest}>Rien à traiter ✓</span>}</section>
  <details id="documents-avant-formation" style={s.details} open={accepted.length>0&&(Boolean(documentProgress.error)||documentProgress.data?.status!=="validated")}><summary style={s.summary}>Avant la formation · Documents à préparer et à contrôler{documentProgress.error?" · état indisponible":accepted.length===0?" · en attente de candidature":documentProgress.data?.status==="validated"?" · validés":" · à traiter"}</summary>
  <div style={s.textBlock}><p style={s.lead}>Contrôler les versions et les destinataires avant validation et publication. Les pièces d’une inscription annulée ou abandonnée restent dans l’historique, sans être présentées comme une action active.</p>{pretrainingDocumentsError?<p style={s.small}>Liste documentaire momentanément indisponible. Vérifier les pièces dans le traitement documentaire.</p>:visiblePretrainingDocuments.length?<div style={s.list}>{visiblePretrainingDocuments.map(doc=><div key={doc.id} style={s.row}><div><strong>{doc.logical_name||doc.document_type}</strong><p style={s.small}>Version {doc.version} · {documentStatusLabels[doc.status]||doc.status}</p></div><span style={s.small}>{formatDate(doc.updated_at)}</span></div>)}</div>:<p style={s.small}>Aucun document courant à traiter pour les inscriptions actives de cette session.</p>}
