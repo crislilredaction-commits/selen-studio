@@ -187,8 +187,8 @@ function visibleText(tree) { return require("react-dom/server").renderToStaticMa
 
 test("la file globale oriente vers la session sans exposer les actions documentaires", async () => {
   const f = uiFixture({ scoped: false }); const tree = await f.mount(); const html = visibleText(tree);
-  assert.ok(html.includes("Traiter dans la session"));
-  assert.ok(html.includes("session=session-review"));
+  assert.ok(html.includes("Ouvrir le dossier de session"));
+  assert.ok(html.includes("/agent/daily/session-dossiers/session-review/full"));
   assert.ok(!walk(tree).some(node => node.type === "button" && ["Prévisualiser", "Publier et notifier", "Valider", "Demander une correction"].includes(node.props.children)));
   assert.equal(f.requests.length, 0);
 });

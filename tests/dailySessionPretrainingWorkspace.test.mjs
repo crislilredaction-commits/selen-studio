@@ -6,6 +6,30 @@ const source = readFileSync(
   new URL("../src/app/agent/daily/session-dossiers/[id]/full/page.tsx", import.meta.url),
   "utf8",
 );
+const navigation = readFileSync(
+  new URL("../src/app/agent/daily/session-dossiers/[id]/full/SessionStageNavigation.tsx", import.meta.url),
+  "utf8",
+);
+
+test("la fiche session expose quatre onglets chronologiques sans dupliquer les traitements", () => {
+  for (const stage of ["overview", "before", "during", "after"]) {
+    assert.match(navigation, new RegExp(`id: "${stage}"`));
+    assert.match(source, new RegExp(`data-session-stage="${stage}"`));
+  }
+  assert.match(navigation, /querySelectorAll<HTMLElement>\("\[data-session-stage\]"\)/);
+  assert.match(navigation, /panel\.hidden = panel\.dataset\.sessionStage !== activeStage/);
+  assert.match(source, /Participants & inscriptions/);
+  assert.match(source, /Documents à traiter/);
+  assert.match(source, /Communications & preuves/);
+});
+
+test("les liens profonds ouvrent le bon onglet et conservent les détails ciblés", () => {
+  assert.match(navigation, /window\.addEventListener\("hashchange", activateHash\)/);
+  assert.match(navigation, /target\?\.closest<HTMLElement>\("\[data-session-stage\]"\)/);
+  assert.match(navigation, /target instanceof HTMLDetailsElement/);
+  assert.match(navigation, /target\.scrollIntoView/);
+  assert.match(source, /id="participants-session" data-session-stage="before"/);
+});
 
 test("la fiche session devient le point d'entrée des documents préformation", () => {
   assert.match(source, /id="documents-avant-formation"/);
