@@ -146,7 +146,7 @@ export default function DailyPretrainingReviewPage(){
     @media (max-width: 640px) { .selen-pretraining-review { padding: 14px !important; } }
   `}</style><p style={{fontSize:12,fontWeight:700,color:"var(--selen-text2)"}}>SELEN DAILY</p><h1>Documents préformation</h1><p style={{color:"var(--selen-text2)",maxWidth:760}}>Contrôle des programmes, conventions, convocations, livrets d’accueil, règlements intérieurs et documents d’inscription/positionnement générés depuis les dossiers Daily. Ouvrez la pièce dans Studio avant toute validation ou demande de correction. Filtrez par apprenant et par session pour travailler sur le bon dossier sans mélanger les pièces.</p>
     {requestedSession !== "all" ? <nav aria-label="Fil d’Ariane" style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",margin:"12px 0"}}>
-      <Link href="/agent/daily/organisations">Organismes</Link><span aria-hidden="true">›</span>
+      <Link href="/agent/daily/pretraining-documents">Tous les documents</Link><span aria-hidden="true">›</span>
       <Link href={`/agent/daily/session-dossiers/${encodeURIComponent(requestedSession)}/full`}>Dossier de session</Link><span aria-hidden="true">›</span>
       <span aria-current="page">Documents préformation</span>
     </nav> : null}
