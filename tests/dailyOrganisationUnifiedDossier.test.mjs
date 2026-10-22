@@ -31,6 +31,17 @@ test("l’interface retire checklist et validation Selen sans toucher aux donné
   assert.doesNotMatch(page, /tab === "validations"/);
 });
 
+test("la fiche organisme garde une navigation compacte et renvoie vers les écrans de traitement", () => {
+  assert.match(page, /const primaryTabs = tabs\.filter/);
+  assert.match(page, /\["overview", "info", "history"\]/);
+  assert.match(page, /label: tab\.key === "overview" \? "Synthèse"/);
+  assert.match(page, /Rubriques principales du dossier organisme/);
+  assert.match(page, /Revenir à la synthèse/);
+  assert.match(page, /Traiter les candidatures/);
+  assert.match(page, /Ouvrir le répertoire apprenants/);
+  assert.match(page, /Voir l’historique exhaustif/);
+});
+
 test("la vue d’ensemble classe les sessions canoniques", () => {
   assert.match(page, /async function readAllRows/);
   assert.match(page, /const plannedSessions =/);
@@ -42,6 +53,8 @@ test("la vue d’ensemble classe les sessions canoniques", () => {
   assert.match(page, /title="En cours" sessions=\{currentSessions\}/);
   assert.match(page, /title="À clôturer" sessions=\{sessionsToClose\}/);
   assert.match(page, /\/agent\/daily\/session-dossiers\/\$\{session\.id\}\/full/);
+  assert.match(page, /<details style=\{s\.sessionGroup\}/);
+  assert.match(page, /open=\{sessions\.length <= 3\}/);
 });
 
 test("les espaces apprenants conservent les inscriptions closes et leur identité stable", () => {
