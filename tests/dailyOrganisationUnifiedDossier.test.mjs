@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const page = readFileSync(new URL("../src/app/agent/daily/organisations/[id]/page.tsx", import.meta.url), "utf8");
+const layout = readFileSync(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
 
 test("le dossier et toutes ses mutations restent bornés au périmètre de l’agent", () => {
   assert.match(page, /isDailyOrganisationInAgentScope\(auth\.email, id\)/);
@@ -31,15 +32,16 @@ test("l’interface retire checklist et validation Selen sans toucher aux donné
   assert.doesNotMatch(page, /tab === "validations"/);
 });
 
-test("la fiche organisme garde une navigation compacte et renvoie vers les écrans de traitement", () => {
-  assert.match(page, /const primaryTabs = tabs\.filter/);
-  assert.match(page, /\["overview", "info", "history"\]/);
-  assert.match(page, /label: tab\.key === "overview" \? "Synthèse"/);
-  assert.match(page, /Rubriques principales du dossier organisme/);
-  assert.match(page, /Revenir à la synthèse/);
-  assert.match(page, /Traiter les candidatures/);
-  assert.match(page, /Ouvrir le répertoire apprenants/);
-  assert.match(page, /Voir l’historique exhaustif/);
+test("les outils spécialisés restent accessibles sans surcharger la synthèse", () => {
+  assert.match(layout, /<details/);
+  assert.match(layout, /Actions complémentaires/);
+  assert.doesNotMatch(layout, /\?tab=programs/);
+  assert.doesNotMatch(layout, /\?tab=documents/);
+  for (const route of ["onboarding-documents", "import-document", "qualiopi-cycle", "trainer-certification-proofs"]) {
+    assert.match(layout, new RegExp(`/\\$\\{id\\}/${route}`));
+  }
+  assert.match(layout, /Importer en délégation/);
+  assert.match(layout, /daily\/organisation-assignment/);
 });
 
 test("la vue d’ensemble classe les sessions canoniques", () => {
@@ -53,8 +55,6 @@ test("la vue d’ensemble classe les sessions canoniques", () => {
   assert.match(page, /title="En cours" sessions=\{currentSessions\}/);
   assert.match(page, /title="À clôturer" sessions=\{sessionsToClose\}/);
   assert.match(page, /\/agent\/daily\/session-dossiers\/\$\{session\.id\}\/full/);
-  assert.match(page, /<details style=\{s\.sessionGroup\}/);
-  assert.match(page, /open=\{sessions\.length <= 3\}/);
 });
 
 test("les espaces apprenants conservent les inscriptions closes et leur identité stable", () => {
