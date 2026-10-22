@@ -18,7 +18,7 @@ test("la file globale délègue les actions à une vue verrouillée sur la sessi
   const source = await readFile(pageUrl, "utf8");
   assert.match(source, /requestedSession==="all"/);
   assert.match(source, /aria-label="Sessions à traiter"/);
-  assert.match(source, /Traiter dans la session/);
+  assert.match(source, /Ouvrir le dossier de session/);
   assert.match(source, /requestedSession!=="all"&&preparationSession/);
   assert.match(source, /requestedSession!=="all"&&preview/);
   assert.match(source, /pièce\(s\) sans session/);
