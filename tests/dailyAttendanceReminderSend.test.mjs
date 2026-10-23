@@ -18,18 +18,41 @@ test("l’envoi exige habilitation et double confirmation humaine", () => {
 });
 
 test("les gardes canoniques sont partagées puis revérifiées juste avant transport", () => {
-  assert.equal(route.match(/prepareAttendanceRegularizationReminder/g)?.length, 3);
+  assert.equal(route.match(/prepareAttendanceRegularizationReminder/g)?.length, 4);
   assert.match(route, /rechecked\.cycle !== prepared\.cycle/);
   for (const table of ["daily_sessions", "daily_session_enrolments", "daily_attendance_slots", "daily_attendance_records", "daily_portal_access_tokens"]) assert.match(canonical, new RegExp(table));
   assert.match(canonical, /awaiting_validation/);
+});
+
+test("un rejet reçoit un nouveau lien Daily individuel et versionné avant l’envoi", () => {
+  assert.match(route, /createAttendanceCorrectionAccess/);
+  assert.match(route, /daily_attendance_access_tokens/);
+  assert.match(route, /status: "revoked"/);
+  assert.match(route, /access_type: "individual"/);
+  assert.match(route, /channel: "link"/);
+  assert.match(route, /buildDirectAttendanceCorrectionUrl/);
+  assert.match(route, /review_version: String\(finalState\.correction\.version\)/);
+  assert.match(route, /correction_reason: finalState\.correction\.reason/);
+  assert.match(route, /attendance_access_token_id: correctionAccessId/);
+  assert.match(route, /token_expires_at: correctionAccessExpiresAt/);
+  assert.match(canonical, /expiresAt\.setUTCDate\(expiresAt\.getUTCDate\(\) \+ 7\)/);
+});
+
+test("le lien de correction est révoqué si l’état change ou si le transport échoue", () => {
+  assert.match(route, /finalCheck\.cycle !== rechecked\.cycle/);
+  assert.match(route, /finalCheck\.canonicalEmail !== rechecked\.canonicalEmail/);
+  assert.match(route, /finalCheck\.correction\?\.reason !== rechecked\.correction\.reason/);
+  assert.match(route, /revokeCorrectionAccess/);
+  assert.match(route, /Aucun email envoyé/);
 });
 
 test("la preuve complète est réservée avant le transport et sans jeton dans les métadonnées", () => {
   const evidenceAt = route.indexOf('.from("daily_communications").insert(evidence)');
   const sendAt = route.indexOf("sendClientEmailWithSilence({");
   assert.ok(evidenceAt > 0 && sendAt > evidenceAt);
-  assert.match(route, /text_body: prepared\.email\.body/);
-  assert.match(route, /html_body: emailHtml\(prepared\.email\.body\)/);
+  assert.match(route, /text_body: initialEmail\.body/);
+  assert.match(route, /html_body: emailHtml\(initialEmail\.body\)/);
+  assert.match(route, /text_body: deliveryEmail\.body/);
   const metadata = route.match(/metadata: \{[^}]+\}/s)?.[0] ?? "";
   assert.doesNotMatch(metadata, /url|token/);
 });
@@ -62,4 +85,8 @@ test("Studio trace la demande de correction Daily dans le dossier et ses preuves
   for (const source of [dossier, communications, communicationProof]) assert.match(source, /attendance_correction_request/);
   assert.match(communications, /Demande de correction d’émargement/);
   assert.match(communicationProof, /Demande de correction d’émargement/);
+});
+
+test("Studio autorise la régularisation post-session d’une inscription completed", () => {
+  assert.doesNotMatch(canonical, /CLOSED_ENROLMENT_STATUSES[^\n]+completed/);
 });

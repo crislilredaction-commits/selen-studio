@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { buildAttendanceRegularizationEmail } from "@/lib/daily/attendanceRegularizationLink";
 
-export default function AttendanceRegularizationLink({ url, expiresAt, learnerName, learnerEmail, slotLabel, sessionId, enrolmentId, slotId }: { url: string | null; expiresAt?: string | null; learnerName: string; learnerEmail?: string | null; slotLabel: string; sessionId: string; enrolmentId: string; slotId: string }) {
+export default function AttendanceRegularizationLink({ url, expiresAt, learnerName, learnerEmail, slotLabel, sessionId, enrolmentId, slotId, correction }: { url: string | null; expiresAt?: string | null; learnerName: string; learnerEmail?: string | null; slotLabel: string; sessionId: string; enrolmentId: string; slotId: string; correction?: { version: number; reason?: string | null } | null }) {
   const [feedback, setFeedback] = useState("");
   const [recipientEmail, setRecipientEmail] = useState(learnerEmail ?? "");
   const [confirmedRecipient, setConfirmedRecipient] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [sending, setSending] = useState(false);
-  const email = buildAttendanceRegularizationEmail({ learnerName, slotLabel, url, expiresAt });
+  const email = buildAttendanceRegularizationEmail({ learnerName, slotLabel, url, expiresAt, correction });
 
   async function copy(value: string, success: string) {
     try {
@@ -51,14 +51,14 @@ export default function AttendanceRegularizationLink({ url, expiresAt, learnerNa
     }
   }
 
-  if (!url) return <p style={{ margin: "5px 0 0", fontSize: 11, color: "var(--selen-text3)" }}>Accès apprenant inactif, expiré ou sans échéance : renouvelle d’abord son accès personnel.</p>;
+  if (!url && !correction) return <p style={{ margin: "5px 0 0", fontSize: 11, color: "var(--selen-text3)" }}>Accès apprenant inactif, expiré ou sans échéance : renouvelle d’abord son accès personnel.</p>;
 
   return <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 7 }}>
-    <button type="button" onClick={() => void copy(url, "Lien copié. Vérifie le destinataire avant de l’envoyer.")} style={{ minHeight: 34 }}>Copier le lien personnel</button>
+    {url ? <button type="button" onClick={() => void copy(url, "Lien copié. Vérifie le destinataire avant de l’envoyer.")} style={{ minHeight: 34 }}>Copier le lien personnel</button> : null}
     {email ? <button type="button" onClick={() => void copy(email.clipboard, "Modèle d’email copié. Vérifie le destinataire et le contenu avant envoi.")} style={{ minHeight: 34 }}>Copier l’email de relance</button> : null}
-    <a href={url} target="_blank" rel="noreferrer" style={{ color: "var(--selen-gold2)", fontSize: 12, fontWeight: 700 }}>Vérifier le lien</a>
+    {url ? <a href={url} target="_blank" rel="noreferrer" style={{ color: "var(--selen-gold2)", fontSize: 12, fontWeight: 700 }}>Vérifier le lien</a> : null}
     {expiresAt ? <span style={{ fontSize: 11, color: "var(--selen-text3)" }}>Expire le {new Intl.DateTimeFormat("fr-FR", { dateStyle: "short" }).format(new Date(expiresAt))}</span> : null}
-    <span style={{ flexBasis: "100%", fontSize: 11, color: "var(--selen-text3)" }}>Aucun email n’est envoyé automatiquement. Le destinataire doit être vérifié par un acteur habilité ; l’envoi réel exige une seconde confirmation.</span>
+    <span style={{ flexBasis: "100%", fontSize: 11, color: "var(--selen-text3)" }}>{correction ? "L’envoi réel crée un nouveau lien individuel valable 7 jours et révoque les anciens accès d’émargement actifs. " : ""}Aucun email n’est envoyé automatiquement. Le destinataire doit être vérifié par un acteur habilité ; l’envoi réel exige une seconde confirmation.</span>
     {learnerEmail ? <div style={{ flexBasis: "100%", display: "grid", gap: 7, padding: 9, border: "1px solid var(--selen-border)", borderRadius: 8 }}>
       <label style={{ display: "grid", gap: 4, fontSize: 11 }}>Destinataire à vérifier<input aria-label="Destinataire de la simulation" type="email" value={recipientEmail} onChange={(event) => { setRecipientEmail(event.target.value); setConfirmedRecipient(false); }} /></label>
       <label style={{ display: "flex", gap: 7, alignItems: "flex-start", fontSize: 11 }}><input type="checkbox" checked={confirmedRecipient} onChange={(event) => setConfirmedRecipient(event.target.checked)} />Je confirme que cette adresse est celle de l’apprenant concerné.</label>

@@ -54,6 +54,7 @@ export function buildAttendanceRegularizationEmail(input: {
   slotLabel: string;
   url: string | null;
   expiresAt?: string | null;
+  correction?: { version: number; reason?: string | null } | null;
 }) {
   if (!input.url) return null;
   const learnerName = input.learnerName.trim() || "Madame, Monsieur";
@@ -61,11 +62,18 @@ export function buildAttendanceRegularizationEmail(input: {
   const expiry = input.expiresAt
     ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" }).format(new Date(input.expiresAt))
     : null;
-  const subject = "Action requise : régulariser votre émargement";
+  const correctionReason = String(input.correction?.reason ?? "").trim();
+  const subject = input.correction
+    ? "Action requise : corriger votre émargement"
+    : "Action requise : régulariser votre émargement";
   const body = [
     `Bonjour ${learnerName},`,
     "",
-    `Votre émargement reste à régulariser pour ${slotLabel}.`,
+    input.correction
+      ? `La preuve d’émargement transmise pour ${slotLabel} doit être corrigée.`
+      : `Votre émargement reste à régulariser pour ${slotLabel}.`,
+    input.correction ? `Version de la demande : ${input.correction.version}.` : null,
+    input.correction && correctionReason ? `Motif indiqué par l’organisme de formation : ${correctionReason}` : null,
     "Utilisez le lien personnel et sécurisé ci-dessous :",
     input.url,
     expiry ? `Ce lien est valable jusqu’au ${expiry}.` : null,
@@ -77,4 +85,11 @@ export function buildAttendanceRegularizationEmail(input: {
     "L’équipe Selen",
   ].filter((line): line is string => line !== null).join("\n");
   return { subject, body, clipboard: `Objet : ${subject}\n\n${body}` };
+}
+
+export function buildDirectAttendanceCorrectionUrl(baseUrl: string, token: string) {
+  const base = baseUrl.trim().replace(/\/+$/, "");
+  const value = token.trim();
+  if (!base || !value) return null;
+  return `${base}/daily-emargement/${encodeURIComponent(value)}`;
 }
