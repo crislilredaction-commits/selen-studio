@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { STUDIO_NAVIGATION_EVENT, type StudioNavigationEventDetail } from "@/lib/studioNavigation";
+import { isStudioSamePageNavigation, STUDIO_NAVIGATION_EVENT, type StudioNavigationEventDetail } from "@/lib/studioNavigation";
 
 type FeedbackKind = "loading" | "success" | "error";
 
@@ -282,6 +282,11 @@ export function StudioNavigationFeedback() {
   const activeRef = useRef<HTMLElement | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const counterRef = useRef(0);
+  const locationRef = useRef({ pathname, searchParams: searchParams.toString() });
+
+  useEffect(() => {
+    locationRef.current = { pathname, searchParams: searchParams.toString() };
+  }, [pathname, searchParams]);
 
   useEffect(() => {
     const releaseActiveElement = () => {
@@ -328,7 +333,8 @@ export function StudioNavigationFeedback() {
       const url = new URL(link.href, window.location.href);
       if (url.origin !== window.location.origin || !url.pathname.startsWith("/agent")) return;
       // A same-page anchor is immediate and does not wait for the App Router.
-      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      const currentLocation = locationRef.current;
+      if (isStudioSamePageNavigation(currentLocation.pathname, currentLocation.searchParams, url)) return;
       if (activeRef.current === link) {
         event.preventDefault();
         return;
@@ -353,7 +359,17 @@ export function StudioNavigationFeedback() {
       begin(null, detail?.label ? cleanLabel(detail.label) : undefined);
     };
 
-    const onPopState = () => begin(null, "la page précédente");
+    const onPopState = () => {
+      // Browsers also emit popstate while moving through same-page hashes.
+      // Session stage tabs are immediate: announcing a page load here leaves a
+      // false pending state and eventually reports a timeout that never happened.
+      const currentLocation = locationRef.current;
+      if (isStudioSamePageNavigation(currentLocation.pathname, currentLocation.searchParams, window.location)) {
+        clear();
+        return;
+      }
+      begin(null, "la page précédente");
+    };
     const onNavigationError = () => {
       if (!activeRef.current && !timeoutRef.current) return;
       releaseActiveElement();

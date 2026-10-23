@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
 
 const component = await readFile(
   new URL("../src/components/agent/StudioActionFeedback.tsx", import.meta.url),
@@ -10,6 +11,7 @@ const helperSource = await readFile(
   new URL("../src/lib/studioNavigation.ts", import.meta.url),
   "utf8",
 );
+const navigation = isolatedTsModule("src/lib/studioNavigation.ts", {}, { URL });
 const css = await readFile(new URL("../src/app/globals.css", import.meta.url), "utf8");
 
 test("la navigation Studio publie un retour immédiat avant la réponse réseau", () => {
@@ -45,6 +47,34 @@ test("retour arrière, erreur et navigation lente ont un état visible", () => {
   assert.match(component, /window\.addEventListener\("unhandledrejection", onNavigationError\)/);
   assert.match(component, /15_000/);
   assert.match(component, /La page tarde à s’ouvrir/);
+});
+
+test("un changement d’onglet interne ne simule pas une navigation lente", () => {
+  assert.equal(
+    navigation.isStudioSamePageNavigation(
+      "/agent/daily/session-dossiers/session-a/full",
+      "focus=active",
+      {
+        pathname: "/agent/daily/session-dossiers/session-a/full",
+        search: "?focus=active",
+      },
+    ),
+    true,
+  );
+  assert.equal(
+    navigation.isStudioSamePageNavigation(
+      "/agent/daily/session-dossiers/session-a/full",
+      "focus=active",
+      {
+        pathname: "/agent/daily/session-dossiers/session-a/full",
+        search: "?focus=history",
+      },
+    ),
+    false,
+  );
+  assert.match(component, /useEffect\(\(\) => \{\s*locationRef\.current = \{ pathname, searchParams: searchParams\.toString\(\) \}/);
+  assert.match(component, /isStudioSamePageNavigation\(currentLocation\.pathname, currentLocation\.searchParams, window\.location\)/);
+  assert.match(component, /false pending state/);
 });
 
 test("le contraste, le mobile et la réduction des animations sont explicitement traités", () => {

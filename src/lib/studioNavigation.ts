@@ -11,6 +11,21 @@ type StudioRouter = {
   replace: (href: string) => void;
 };
 
+type StudioLocation = {
+  pathname: string;
+  search: string;
+};
+
+/** Returns true when navigation only changes the fragment of the current page. */
+export function isStudioSamePageNavigation(
+  pathname: string,
+  searchParams: string,
+  destination: StudioLocation,
+) {
+  const search = searchParams ? `?${searchParams.replace(/^\?/, "")}` : "";
+  return destination.pathname === pathname && destination.search === search;
+}
+
 /** Publishes visible feedback in the same turn, before router navigation. */
 export function navigateWithStudioFeedback(
   router: StudioRouter,
