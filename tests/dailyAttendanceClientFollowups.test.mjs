@@ -51,10 +51,11 @@ test("AR1 exclut les créneaux futurs ou annulés même si une communication exi
   }
 });
 
-test("AR1 retire les inscriptions closes et les présences qualifiées", () => {
-  for (const status of ["declined", "cancelled", "abandoned", "completed"]) {
+test("AR1 retire les inscriptions closes mais conserve une session terminée à régulariser", () => {
+  for (const status of ["declined", "cancelled", "abandoned"]) {
     assert.equal(buildDailyAttendanceClientFollowups({ ...base, enrolments: [{ ...base.enrolments[0], status }] }).length, 0);
   }
+  assert.equal(buildDailyAttendanceClientFollowups({ ...base, enrolments: [{ ...base.enrolments[0], status: "completed" }] }).length, 1);
   for (const status of ["present", "absent", "excused"]) {
     assert.equal(buildDailyAttendanceClientFollowups({ ...base, records: [{ ...base.records[0], status }] }).length, 0);
   }
@@ -67,29 +68,38 @@ test("AR1 suspend les relances pendant la validation d’une preuve tardive", ()
 
 test("AR1 conserve la reprise après rejet et ne garde que la dernière communication", () => {
   const communications = [
-    base.communications[0],
-    { ...base.communications[0], id: "latest", sent_at: "2026-10-15T08:00:00.000Z" },
+    { ...base.communications[0], id: "old-correction", communication_type: "attendance_correction_request", metadata: { attendance_slot_id: "slot", review_version: "1" } },
+    { ...base.communications[0], id: "latest", communication_type: "attendance_correction_request", sent_at: "2026-10-15T08:00:00.000Z", metadata: { attendance_slot_id: "slot", review_version: "2" } },
   ];
-  const records = [{ ...base.records[0], evidence_metadata: { late_review: { state: "rejected" } } }];
+  const records = [{ ...base.records[0], evidence_metadata: { late_review: { state: "rejected", version: 2 } } }];
   const rows = buildDailyAttendanceClientFollowups({ ...base, communications, records });
   assert.equal(rows.length, 1);
   assert.equal(rows[0].id, "attendance-followup-latest");
   assert.match(rows[0].detail, /après rejet/);
 });
 
+test("AR1 ne transforme pas une ancienne demande de correction en faux positif d’un nouveau cycle", () => {
+  const communication = { ...base.communications[0], communication_type: "attendance_correction_request", metadata: { attendance_slot_id: "slot", review_version: "1" } };
+  const records = [{ ...base.records[0], evidence_metadata: { late_review: { state: "rejected", version: 2 } } }];
+  assert.equal(buildDailyAttendanceClientFollowups({ ...base, communications: [communication], records }).length, 0);
+});
+
 test("AR1 ferme chaque cycle envoyé et rouvre un nouveau cycle après rejet", () => {
   const sentInitial = { ...base.communications[0], id: "followup-initial", communication_type: "attendance_regularization_followup", metadata: { attendance_slot_id: "slot", review_cycle: "initial" } };
   assert.equal(buildDailyAttendanceClientFollowups({ ...base, communications: [base.communications[0], sentInitial] }).length, 0);
   const rejectedRecords = [{ ...base.records[0], evidence_metadata: { late_review: { state: "rejected", version: 2 } } }];
-  assert.equal(buildDailyAttendanceClientFollowups({ ...base, communications: [base.communications[0], sentInitial], records: rejectedRecords }).length, 1);
+  assert.equal(buildDailyAttendanceClientFollowups({ ...base, communications: [base.communications[0], sentInitial], records: rejectedRecords }).length, 0);
+  const correctionRequest = { ...base.communications[0], id: "correction-v2", communication_type: "attendance_correction_request", metadata: { attendance_slot_id: "slot", review_version: "2" } };
+  assert.equal(buildDailyAttendanceClientFollowups({ ...base, communications: [base.communications[0], sentInitial, correctionRequest], records: rejectedRecords }).length, 1);
   const sentRejected = { ...sentInitial, id: "followup-rejected", metadata: { attendance_slot_id: "slot", review_cycle: "rejected:v2" } };
-  assert.equal(buildDailyAttendanceClientFollowups({ ...base, communications: [base.communications[0], sentInitial, sentRejected], records: rejectedRecords }).length, 0);
+  assert.equal(buildDailyAttendanceClientFollowups({ ...base, communications: [base.communications[0], sentInitial, correctionRequest, sentRejected], records: rejectedRecords }).length, 0);
 });
 
 test("AR1 borne les relances à l’agent assigné et aux tables canoniques", () => {
   assert.equal(buildDailyAttendanceClientFollowups({ ...base, staff: { id: "autre", role: "agent" } }).length, 0);
   for (const table of ["daily_communications", "daily_session_enrolments", "daily_attendance_slots", "daily_attendance_records", "daily_sessions", "daily_organisation_assignments"]) assert.match(source, new RegExp(table));
   assert.match(source, /\.in\("status", \["sent", "delivered"\]\)/);
+  assert.match(source, /"attendance_correction_request"/);
   assert.doesNotMatch(source, /\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
 });
 

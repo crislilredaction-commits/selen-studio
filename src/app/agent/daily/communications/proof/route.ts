@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 
 const typeLabels: Record<string, string> = {
   attendance_reminder: "Relance d’émargement",
+  attendance_correction_request: "Demande de correction d’émargement",
   attendance_regularization_followup: "Relance ciblée de régularisation d’émargement",
   convocation: "Envoi de convocation",
   satisfaction_request: "Questionnaire de satisfaction",
