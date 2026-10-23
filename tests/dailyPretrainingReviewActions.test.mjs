@@ -64,6 +64,20 @@ test("les sessions à préparer restent accessibles dans Studio sans document, d
   f.flags.scope=[]; assert.deepEqual(await (await f.route.GET()).json(),{documents:[],sessions:[]});
 });
 
+test("les pièces d’une session terminale quittent la file active sans effacer leur historique", async()=>{
+  const f=fixture();
+  f.rows.daily_documents=[
+    {...f.document,session_id:"session-empty"},
+    {...f.document,id:"doc-terminal",session_id:"session-terminal-0"},
+    {...f.document,id:"doc-orphan",session_id:"session-missing"},
+  ];
+  const result=await f.route.GET();assert.equal(result.status,200);
+  const body=await result.json();
+  assert.deepEqual(body.documents.map(document=>document.id),[docId,"doc-orphan"]);
+  assert.equal(f.rows.daily_documents.length,3,"l’historique reste intact");
+  assert.equal(f.writes.length,0);assert.equal(f.emails.length,0);
+});
+
 test("la revue valide ou demande une correction sur la version ouverte, sans email", async () => {
   for (const action of ["validate", "request_correction"]) {
     const f = fixture(); const response = await f.patch(action);
