@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
 
   const prepared = await prepareAttendanceRegularizationReminder({ agentEmail: auth.email, sessionId, enrolmentId, slotId, recipientEmail });
   if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: prepared.status });
+  if (!prepared.email) return NextResponse.json({ error: "La simulation nécessite un accès portail actif ; aucun email envoyé." }, { status: 409 });
   const idempotencyKey = `attendance-regularization-reminder-simulation:v2:${sessionId}:${enrolmentId}:${slotId}:${prepared.canonicalEmail}:${prepared.cycle}`;
   const auditLogId = deterministicAttendanceFollowupId(idempotencyKey);
   const { error: auditError } = await prepared.admin.from("daily_audit_logs").insert({

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { buildAttendanceRegularizationEmail, buildDirectAttendanceCorrectionUrl } from "@/lib/daily/attendanceRegularizationLink";
 import { sendClientEmailWithSilence } from "@/lib/server/clientNotificationSilence";
-import { deterministicAttendanceFollowupId, normalizeAttendanceReminderEmail, prepareAttendanceRegularizationReminder } from "@/lib/server/dailyAttendanceRegularizationReminder";
+import { createAttendanceCorrectionAccess, deterministicAttendanceFollowupId, normalizeAttendanceReminderEmail, prepareAttendanceRegularizationReminder } from "@/lib/server/dailyAttendanceRegularizationReminder";
+import { getVitrineBaseUrl } from "@/lib/vitrineLinks";
 
 export const runtime = "nodejs";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -26,6 +28,10 @@ export async function POST(request: NextRequest) {
   if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: prepared.status });
   const idempotencyKey = `attendance-regularization-followup:v1:${sessionId}:${enrolmentId}:${slotId}:${prepared.canonicalEmail}:${prepared.cycle}`;
   const communicationId = deterministicAttendanceFollowupId(idempotencyKey);
+  const initialEmail = prepared.email ?? {
+    subject: "Action requise : corriger votre émargement",
+    body: "Préparation du lien individuel de correction en cours.",
+  };
   const evidence = {
     id: communicationId,
     organisation_id: prepared.session.organisation_id,
@@ -35,13 +41,13 @@ export async function POST(request: NextRequest) {
     channel: "email",
     recipient_email: prepared.canonicalEmail,
     recipient_name: prepared.learnerName,
-    subject: prepared.email.subject,
-    text_body: prepared.email.body,
-    html_body: emailHtml(prepared.email.body),
+    subject: initialEmail.subject,
+    text_body: initialEmail.body,
+    html_body: emailHtml(initialEmail.body),
     provider: "resend",
     status: "queued",
     created_by: auth.userId,
-    metadata: { attendance_slot_id: slotId, review_cycle: prepared.cycle, idempotency_key: idempotencyKey, template_version: 1, manual: true },
+    metadata: { attendance_slot_id: slotId, review_cycle: prepared.cycle, idempotency_key: idempotencyKey, template_version: prepared.correction ? 2 : 1, manual: true },
   };
   const { error: evidenceError } = await prepared.admin.from("daily_communications").insert(evidence);
   if (evidenceError?.code === "23505") {
@@ -61,28 +67,88 @@ export async function POST(request: NextRequest) {
     await prepared.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: reason }).eq("id", communicationId).eq("status", "queued");
     return NextResponse.json({ error: `${reason} Aucun email envoyé.` }, { status: 409 });
   }
-  const { data: refreshedEvidence, error: refreshError } = await prepared.admin.from("daily_communications").update({
-    recipient_name: rechecked.learnerName,
-    subject: rechecked.email.subject,
-    text_body: rechecked.email.body,
-    html_body: emailHtml(rechecked.email.body),
-    metadata: { attendance_slot_id: slotId, review_cycle: rechecked.cycle, idempotency_key: idempotencyKey, template_version: 1, manual: true },
+  let finalState = rechecked;
+  let deliveryEmail = rechecked.email;
+  let correctionAccessId: string | null = null;
+  let correctionAccessExpiresAt: string | null = null;
+  if (rechecked.correction) {
+    const access = createAttendanceCorrectionAccess();
+    const { error: revokeError } = await rechecked.admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("organisation_id", rechecked.session.organisation_id).eq("slot_id", slotId).eq("enrolment_id", enrolmentId).eq("status", "active");
+    if (revokeError) {
+      await rechecked.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: revokeError.message }).eq("id", communicationId).eq("status", "queued");
+      return NextResponse.json({ error: "Les anciens accès d’émargement n’ont pas pu être révoqués ; aucun email envoyé." }, { status: 503 });
+    }
+    const { data: createdAccess, error: accessError } = await rechecked.admin.from("daily_attendance_access_tokens").insert({
+      organisation_id: rechecked.session.organisation_id,
+      session_id: sessionId,
+      slot_id: slotId,
+      enrolment_id: enrolmentId,
+      token_hash: access.tokenHash,
+      access_type: "individual",
+      channel: "link",
+      status: "active",
+      expires_at: access.expiresAt,
+      created_by: auth.userId,
+    }).select("id").single();
+    const directUrl = buildDirectAttendanceCorrectionUrl(getVitrineBaseUrl(), access.token);
+    deliveryEmail = directUrl ? buildAttendanceRegularizationEmail({ learnerName: rechecked.learnerName, slotLabel: rechecked.slotLabel, url: directUrl, expiresAt: access.expiresAt, correction: rechecked.correction }) : null;
+    if (accessError || !createdAccess || !deliveryEmail) {
+      if (createdAccess) await rechecked.admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("id", createdAccess.id).eq("status", "active");
+      await rechecked.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: accessError?.message ?? "Lien de correction impossible à créer." }).eq("id", communicationId).eq("status", "queued");
+      return NextResponse.json({ error: "Le lien individuel de correction n’a pas pu être créé ; aucun email envoyé." }, { status: 503 });
+    }
+    correctionAccessId = createdAccess.id;
+    correctionAccessExpiresAt = access.expiresAt;
+    const finalCheck = await prepareAttendanceRegularizationReminder({ agentEmail: auth.email, sessionId, enrolmentId, slotId, recipientEmail });
+    if (!finalCheck.ok || finalCheck.cycle !== rechecked.cycle || finalCheck.canonicalEmail !== rechecked.canonicalEmail || finalCheck.correction?.version !== rechecked.correction.version || finalCheck.correction?.reason !== rechecked.correction.reason) {
+      const reason = !finalCheck.ok ? finalCheck.error : "Le cycle ou le destinataire a changé avant l’envoi.";
+      await Promise.all([
+        rechecked.admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("id", createdAccess.id).eq("status", "active"),
+        rechecked.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: reason }).eq("id", communicationId).eq("status", "queued"),
+      ]);
+      return NextResponse.json({ error: `${reason} Aucun email envoyé.` }, { status: 409 });
+    }
+    finalState = finalCheck;
+  }
+  if (!deliveryEmail) {
+    await prepared.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: "Modèle d’email indisponible." }).eq("id", communicationId).eq("status", "queued");
+    return NextResponse.json({ error: "Le modèle d’email est indisponible ; aucun email envoyé." }, { status: 503 });
+  }
+  const revokeCorrectionAccess = async () => {
+    if (correctionAccessId) await finalState.admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("id", correctionAccessId).eq("status", "active");
+  };
+  const { data: refreshedEvidence, error: refreshError } = await finalState.admin.from("daily_communications").update({
+    recipient_name: finalState.learnerName,
+    subject: deliveryEmail.subject,
+    text_body: deliveryEmail.body,
+    html_body: emailHtml(deliveryEmail.body),
+    metadata: {
+      attendance_slot_id: slotId,
+      review_cycle: finalState.cycle,
+      idempotency_key: idempotencyKey,
+      template_version: finalState.correction ? 2 : 1,
+      manual: true,
+      ...(finalState.correction ? { review_version: String(finalState.correction.version), correction_reason: finalState.correction.reason, attendance_access_token_id: correctionAccessId, token_expires_at: correctionAccessExpiresAt } : {}),
+    },
   }).eq("id", communicationId).eq("status", "queued").select("id").maybeSingle();
   if (refreshError || !refreshedEvidence) {
+    await revokeCorrectionAccess();
     await prepared.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: "La preuve exacte n’a pas pu être rafraîchie avant transport." }).eq("id", communicationId).eq("status", "queued");
     return NextResponse.json({ error: "La preuve exacte n’a pas pu être rafraîchie ; aucun email envoyé." }, { status: 503 });
   }
 
   let delivery: Awaited<ReturnType<typeof sendClientEmailWithSilence>>;
   try {
-    delivery = await sendClientEmailWithSilence({ supabase: rechecked.admin, organisationId: rechecked.session.organisation_id, email: rechecked.canonicalEmail, to: rechecked.canonicalEmail, subject: rechecked.email.subject, html: emailHtml(rechecked.email.body), text: rechecked.email.body });
+    delivery = await sendClientEmailWithSilence({ supabase: finalState.admin, organisationId: finalState.session.organisation_id, email: finalState.canonicalEmail, to: finalState.canonicalEmail, subject: deliveryEmail.subject, html: emailHtml(deliveryEmail.body), text: deliveryEmail.body });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Échec du transport email.";
+    await revokeCorrectionAccess();
     await prepared.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: reason }).eq("id", communicationId);
     return NextResponse.json({ error: reason }, { status: 502 });
   }
   if (!delivery.sent) {
     const reason = delivery.error ?? "Email non envoyé.";
+    await revokeCorrectionAccess();
     await prepared.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: reason }).eq("id", communicationId);
     return NextResponse.json({ error: reason, paused: delivery.paused }, { status: delivery.paused ? 409 : 502 });
   }

@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { buildAttendanceRegularizationEmail, buildAttendanceRegularizationUrl, resolveLearnerAttendanceAccess } from "@/lib/daily/attendanceRegularizationLink";
 import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getVitrineBaseUrl } from "@/lib/vitrineLinks";
 
-const CLOSED_ENROLMENT_STATUSES = new Set(["declined", "cancelled", "canceled", "abandoned", "completed"]);
+const CLOSED_ENROLMENT_STATUSES = new Set(["declined", "cancelled", "canceled", "abandoned"]);
 const QUALIFIED_ATTENDANCE_STATUSES = new Set(["present", "absent", "excused"]);
 type LearnerRow = { first_name?: string | null; last_name?: string | null; email?: string | null };
 
@@ -33,12 +33,26 @@ export function attendanceRegularizationCycle(record: { evidence_metadata?: Reco
   const version = Number(row.version);
   return text(row.state) === "rejected" ? `rejected:v${Number.isFinite(version) && version > 0 ? version : 1}` : "initial";
 }
+export function attendanceCorrectionReview(record: { evidence_metadata?: Record<string, unknown> | null } | null) {
+  const review = record?.evidence_metadata?.late_review;
+  if (!review || typeof review !== "object") return null;
+  const row = review as Record<string, unknown>;
+  const version = Number(row.version);
+  if (text(row.state) !== "rejected" || !Number.isInteger(version) || version < 1) return null;
+  return { version, reason: text(row.rejection_reason) || null };
+}
 export function deterministicAttendanceFollowupId(key: string) {
   const chars = createHash("sha256").update(key).digest("hex").slice(0, 32).split("");
   chars[12] = "5";
   chars[16] = (["8", "9", "a", "b"] as const)[Number.parseInt(chars[16], 16) % 4];
   const value = chars.join("");
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
+}
+export function createAttendanceCorrectionAccess(now = new Date()) {
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(now);
+  expiresAt.setUTCDate(expiresAt.getUTCDate() + 7);
+  return { token, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: expiresAt.toISOString() };
 }
 
 export async function prepareAttendanceRegularizationReminder(input: { agentEmail: string; sessionId: string; enrolmentId: string; slotId: string; recipientEmail: string }) {
@@ -69,7 +83,8 @@ export async function prepareAttendanceRegularizationReminder(input: { agentEmai
   const url = buildAttendanceRegularizationUrl(getVitrineBaseUrl(), access, input.slotId);
   const learnerName = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || canonicalEmail;
   const slotLabel = `${new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeZone: "Europe/Paris" }).format(new Date(slot.slot_date))} · ${String(slot.starts_at).slice(0, 5)} à ${String(slot.ends_at).slice(0, 5)}`;
-  const email = buildAttendanceRegularizationEmail({ learnerName, slotLabel, url, expiresAt: access?.expires_at });
-  if (!access || !email) return { ok: false as const, status: 409, error: "Le lien personnel est absent, expiré ou révoqué." };
-  return { ok: true as const, admin, session, record, canonicalEmail, learnerName, email, cycle: attendanceRegularizationCycle(record) };
+  const correction = attendanceCorrectionReview(record);
+  const email = buildAttendanceRegularizationEmail({ learnerName, slotLabel, url, expiresAt: access?.expires_at, correction });
+  if (!correction && (!access || !email)) return { ok: false as const, status: 409, error: "Le lien personnel est absent, expiré ou révoqué." };
+  return { ok: true as const, admin, session, enrolment, slot, record, canonicalEmail, learnerName, slotLabel, email, correction, cycle: attendanceRegularizationCycle(record) };
 }

@@ -40,6 +40,16 @@ test("le modèle d’email cible le créneau et conserve explicitement l’horod
   assert.equal(helper.buildAttendanceRegularizationEmail({ learnerName: "Alice", slotLabel: "créneau", url: null }), null);
 });
 
+test("le modèle de correction porte le motif, la version et le lien Daily dédié", () => {
+  const url = helper.buildDirectAttendanceCorrectionUrl("https://www.selen-editions.fr/", "secret/token");
+  assert.equal(url, "https://www.selen-editions.fr/daily-emargement/secret%2Ftoken");
+  const email = helper.buildAttendanceRegularizationEmail({ learnerName: "Alice Exemple", slotLabel: "12/10/2026 · 09:00 à 12:00", url, expiresAt: "2026-10-30T00:00:00Z", correction: { version: 2, reason: "Photo illisible" } });
+  assert.match(email.subject, /corriger votre émargement/);
+  assert.match(email.body, /Version de la demande : 2/);
+  assert.match(email.body, /Motif indiqué par l’organisme de formation : Photo illisible/);
+  assert.match(email.body, /daily-emargement/);
+});
+
 test("Studio ne résout le jeton que dans le dossier authentifié et borné à la session", () => {
   assert.match(page, /isDailyOrganisationInAgentScope/);
   assert.match(page, /daily_portal_access_tokens/);
@@ -59,4 +69,6 @@ test("Studio suspend la relance pendant la validation et la rouvre après rejet"
   assert.match(page, /reviewState==="rejected"/);
   assert.match(page, /À resoumettre/);
   assert.match(page, /Motif du rejet/);
+  assert.match(page, /reviewVersion/);
+  assert.match(component, /nouveau lien individuel valable 7 jours/);
 });
