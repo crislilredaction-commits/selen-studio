@@ -4,6 +4,7 @@ import test from "node:test";
 
 const learnersPage = readFileSync(new URL("../src/app/agent/daily/learners/page.tsx", import.meta.url), "utf8");
 const communicationsPage = readFileSync(new URL("../src/app/agent/daily/communications/page.tsx", import.meta.url), "utf8");
+const pretrainingPage = readFileSync(new URL("../src/app/agent/daily/pretraining-documents/page.tsx", import.meta.url), "utf8");
 
 test("la vue apprenants garde une largeur fluide et évite les débordements de contenu", () => {
   assert.match(learnersPage, /padding:\s*"clamp\(16px, 4vw, 28px\)"/);
@@ -22,4 +23,12 @@ test("les preuves de communication restent lisibles avec des identifiants longs"
 test("les actions des vues détaillées restent repliables plutôt que forcées sur une ligne", () => {
   assert.match(learnersPage, /flexWrap:"wrap"/);
   assert.match(communicationsPage, /flexWrap:\s*"wrap"/);
+});
+
+test("la préparation préformation reste tactile et fluide sur mobile", () => {
+  assert.match(pretrainingPage, /@media \(max-width: 640px\)/);
+  assert.match(pretrainingPage, /overflow-wrap:\s*anywhere/);
+  assert.match(pretrainingPage, /label:has\(> select\)[\s\S]*?width:\s*100%[\s\S]*?min-width:\s*0/);
+  assert.match(pretrainingPage, /select\s*\{[\s\S]*?min-width:\s*0 !important[\s\S]*?min-height:\s*44px/);
+  assert.match(pretrainingPage, /iframe\s*\{[\s\S]*?height:\s*min\(70vh, 560px\) !important/);
 });
