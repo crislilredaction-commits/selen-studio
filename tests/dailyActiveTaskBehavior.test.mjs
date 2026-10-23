@@ -260,18 +260,20 @@ test("A6 une checklist session incohérente ne mélange pas les OF", async () =>
   assert.equal((await harness(rows).getDailyAgentTasks(adminStaff)).filter(x => x.kind === "session").length, 0);
 });
 
-test("une session annulée ou supprimée retire immédiatement ses tâches et actions liées", async () => {
+test("une session terminée, annulée ou supprimée retire immédiatement ses tâches et actions liées", async () => {
+  for (const status of ["archived", "cancelled", "canceled", "deleted", "removed", "obsolete", "completed", "done", "closed", " CANCELLED "]) {
+    const rows = fixture();
+    rows.daily_session_checklist_items = [{ id: "ghost", organisation_id: "of-a", session_id: "session-0", item_key: "trainer_assignment", phase: "before", responsibility: "selen", status: "todo", label: "Fantôme", signaled_at: today }];
+    rows.daily_quality_actions = [{ id: "quality", organisation_id: "of-a", session_id: "session-0", source_id: "enrolment-0", title: "Action liée", status: "open", source_type: "satisfaction_phone_followup", created_at: today }];
+    const h = harness(rows);
+    assert.deepEqual(Array.from(await h.getDailyPilotageTasks(), task => task.id).sort(), ["daily-satisfaction-quality", "daily-session-checklist-ghost"]);
+    rows.daily_sessions[0].status = status;
+    assert.equal((await h.getDailyPilotageTasks()).length, 0, status);
+  }
+
   const rows = fixture();
-  rows.daily_session_checklist_items = [{ id: "ghost", organisation_id: "of-a", session_id: "session-0", item_key: "trainer_assignment", phase: "before", responsibility: "selen", status: "todo", label: "Fantôme", signaled_at: today }];
-  rows.daily_quality_actions = [{ id: "quality", organisation_id: "of-a", session_id: "session-0", source_id: "enrolment-0", title: "Action liée", status: "open", source_type: "satisfaction_phone_followup", created_at: today }];
-  const h = harness(rows);
-  assert.deepEqual(Array.from(await h.getDailyPilotageTasks(), task => task.id).sort(), ["daily-satisfaction-quality", "daily-session-checklist-ghost"]);
-
-  rows.daily_sessions[0].status = "cancelled";
-  assert.equal((await h.getDailyPilotageTasks()).length, 0);
-
   rows.daily_sessions.splice(0, 1);
-  assert.equal((await h.getDailyAgentTasks(adminStaff)).length, 0);
+  assert.equal((await harness(rows).getDailyAgentTasks(adminStaff)).length, 0);
 });
 
 test("une désinscription retire la relance satisfaction, Dashboard, Pilotage et compteur sans effacer l'historique", async () => {
