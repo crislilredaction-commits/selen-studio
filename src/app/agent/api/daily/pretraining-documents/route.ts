@@ -41,6 +41,10 @@ export async function GET() {
     .in("organisation_id", organisationIds)
     .order("start_date", { ascending: false });
   if (sessionsError) return NextResponse.json({ error: sessionsError.message }, { status: 500 });
+  const terminalSessionIds = new Set(
+    (sessions ?? []).filter((session) => !isDailyTaskParentActive(session.status)).map((session) => session.id),
+  );
+  const activeDocuments = (data ?? []).filter((document) => !document.session_id || !terminalSessionIds.has(document.session_id));
   const activeSessions = (sessions ?? [])
     .filter((session) => isDailyTaskParentActive(session.status))
     .map((session) => ({
@@ -50,7 +54,7 @@ export async function GET() {
       start_date: session.start_date,
       daily_formations: session.daily_formations,
     }));
-  return NextResponse.json({ documents: data ?? [], sessions: activeSessions });
+  return NextResponse.json({ documents: activeDocuments, sessions: activeSessions });
 }
 
 export async function POST(req: Request) {
