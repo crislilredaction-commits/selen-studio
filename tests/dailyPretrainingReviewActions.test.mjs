@@ -80,6 +80,13 @@ test("la validation exige une relecture explicite et un modèle complété, sans
   }
 });
 
+test("une correction sans motif est refusée avant toute écriture", async () => {
+  for (const note of [undefined, "", "   "]) {
+    const f = fixture(); const response = await f.patch("request_correction", { note });
+    assert.equal(response.status, 400); assert.equal(f.writes.length, 0); assert.equal(f.emails.length, 0);
+  }
+});
+
 test("un écran périmé ne peut ni valider, ni corriger, ni publier", async () => {
   for (const action of ["validate", "request_correction", "publish"]) {
     const f = fixture(); f.document.updated_at = changedAt; f.document.status = action === "publish" ? "validated" : "to_check";
@@ -231,6 +238,13 @@ test("annuler la demande de correction ne modifie pas le dossier", async () => {
   const f = uiFixture(); f.document.status = "to_check"; f.flags.prompt = null;
   const tree = await f.mount(); await button(tree, "Demander une correction").props.onClick();
   assert.equal(f.requests.length, 0);
+});
+
+test("un motif de correction vide reste à l’écran et ne déclenche aucune requête", async () => {
+  const f = uiFixture(); f.document.status = "to_check"; f.flags.prompt = "   ";
+  const tree = await f.mount(); await button(tree, "Demander une correction").props.onClick();
+  assert.equal(f.requests.length, 0);
+  assert.ok(visibleText(f.render()).includes("Indiquez le motif de la correction"));
 });
 
 test("l’interface impose l’ouverture de la version avant validation et ne publie pas durant la relecture",async()=>{
