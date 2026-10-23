@@ -37,7 +37,7 @@ type LearnerRow = { first_name?: string | null; last_name?: string | null; email
 type FormationRow = { title?: string | null };
 
 const FOLLOWUP_AFTER_BUSINESS_HOURS = 24;
-const INACTIVE_ENROLMENT_STATUSES = new Set(["declined", "cancelled", "canceled", "abandoned", "completed"]);
+const INACTIVE_ENROLMENT_STATUSES = new Set(["declined", "cancelled", "canceled", "abandoned"]);
 const INACTIVE_SESSION_STATUSES = new Set(["archived", "cancelled", "canceled", "deleted", "removed"]);
 const INACTIVE_SLOT_STATUSES = new Set(["cancelled", "canceled"]);
 const RESOLVED_ATTENDANCE_STATUSES = new Set(["present", "absent", "excused"]);
@@ -59,6 +59,12 @@ function reviewCycle(record: RecordRow | undefined) {
   const review = metadata.late_review && typeof metadata.late_review === "object" ? metadata.late_review as Record<string, unknown> : {};
   const version = Number(review.version);
   return reviewState(record) === "rejected" ? `rejected:v${Number.isFinite(version) && version > 0 ? version : 1}` : "initial";
+}
+function requestCycle(communication: CommunicationRow) {
+  if (communication.communication_type === "attendance_reminder") return "initial";
+  if (communication.communication_type !== "attendance_correction_request") return null;
+  const version = Number(communication.metadata?.review_version);
+  return Number.isInteger(version) && version > 0 ? `rejected:v${version}` : null;
 }
 function parisLabel(value: string) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(value));
@@ -105,7 +111,7 @@ export function buildDailyAttendanceClientFollowups({
   const slotById = new Map(slots.map((row) => [row.id, row]));
   const sessionById = new Map(sessions.map((row) => [row.id, row]));
   const recordByTarget = new Map(records.map((row) => [`${row.slot_id}:${row.enrolment_id}`, row]));
-  const latestByTarget = new Map<string, CommunicationRow>();
+  const latestByTargetAndCycle = new Map<string, CommunicationRow>();
   const sentCyclesByTarget = new Map<string, Set<string>>();
 
   for (const communication of communications) {
@@ -119,12 +125,14 @@ export function buildDailyAttendanceClientFollowups({
       sentCyclesByTarget.set(key, sentCycles);
       continue;
     }
-    if (communication.communication_type !== "attendance_reminder") continue;
-    const previous = latestByTarget.get(key);
-    if (!previous || Date.parse(communicationAt(previous)) < Date.parse(communicationAt(communication))) latestByTarget.set(key, communication);
+    const cycle = requestCycle(communication);
+    if (!cycle) continue;
+    const cycleKey = `${key}:${cycle}`;
+    const previous = latestByTargetAndCycle.get(cycleKey);
+    if (!previous || Date.parse(communicationAt(previous)) < Date.parse(communicationAt(communication))) latestByTargetAndCycle.set(cycleKey, communication);
   }
 
-  return [...latestByTarget.values()].flatMap((communication): DailyAttendanceClientFollowup[] => {
+  return [...latestByTargetAndCycle.values()].flatMap((communication): DailyAttendanceClientFollowup[] => {
     const assignedAgentProfileId = assignmentByOrganisation.get(communication.organisation_id) ?? null;
     if (staff.role !== "admin" && (!assignedAgentProfileId || assignedAgentProfileId !== staff.id)) return [];
     const lastSentAt = communicationAt(communication);
@@ -140,6 +148,7 @@ export function buildDailyAttendanceClientFollowups({
     if (!session || (!text(session.status) || INACTIVE_SESSION_STATUSES.has(text(session.status).toLowerCase()))) return [];
     if (record && RESOLVED_ATTENDANCE_STATUSES.has(text(record.status).toLowerCase())) return [];
     if (reviewState(record) === "awaiting_validation") return [];
+    if (requestCycle(communication) !== reviewCycle(record)) return [];
     if (sentCyclesByTarget.get(`${slotId}:${communication.enrolment_id}`)?.has(reviewCycle(record))) return [];
 
     const learner = relation<LearnerRow>(enrolment.daily_learners);
@@ -184,7 +193,7 @@ export async function getDailyAttendanceClientFollowups(staff: AttendanceFollowu
       .from("daily_communications")
       .select("id,organisation_id,session_id,enrolment_id,recipient_email,recipient_name,status,sent_at,created_at,communication_type,metadata")
       .in("organisation_id", visibleOrganisationIds)
-      .in("communication_type", ["attendance_reminder", "attendance_regularization_followup"])
+      .in("communication_type", ["attendance_reminder", "attendance_correction_request", "attendance_regularization_followup"])
       .in("status", ["sent", "delivered"])
       .order("sent_at", { ascending: false, nullsFirst: false })
       .order("id", { ascending: true })

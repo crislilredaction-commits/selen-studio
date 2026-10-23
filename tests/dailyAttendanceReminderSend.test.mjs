@@ -6,6 +6,9 @@ const route = await readFile(new URL("../src/app/agent/api/daily/attendance-regu
 const canonical = await readFile(new URL("../src/lib/server/dailyAttendanceRegularizationReminder.ts", import.meta.url), "utf8");
 const component = await readFile(new URL("../src/components/agent/AttendanceRegularizationLink.tsx", import.meta.url), "utf8");
 const queue = await readFile(new URL("../src/lib/server/dailyAttendanceClientFollowups.ts", import.meta.url), "utf8");
+const dossier = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/full/page.tsx", import.meta.url), "utf8");
+const communications = await readFile(new URL("../src/app/agent/daily/communications/page.tsx", import.meta.url), "utf8");
+const communicationProof = await readFile(new URL("../src/app/agent/daily/communications/proof/route.ts", import.meta.url), "utf8");
 
 test("l’envoi exige habilitation et double confirmation humaine", () => {
   assert.match(route, /requireSupportAgent/);
@@ -48,8 +51,15 @@ test("silence client, erreurs et succès conservent un état explicite", () => {
 });
 
 test("la file Clients à relancer consomme les suivis réels et le cycle de rejet", () => {
+  assert.match(queue, /attendance_correction_request/);
   assert.match(queue, /attendance_regularization_followup/);
   assert.match(queue, /review_cycle/);
   assert.match(queue, /rejected:v/);
   assert.match(queue, /#attendance-/);
+});
+
+test("Studio trace la demande de correction Daily dans le dossier et ses preuves", () => {
+  for (const source of [dossier, communications, communicationProof]) assert.match(source, /attendance_correction_request/);
+  assert.match(communications, /Demande de correction d’émargement/);
+  assert.match(communicationProof, /Demande de correction d’émargement/);
 });
