@@ -97,6 +97,9 @@ export async function PATCH(req: Request) {
   if (!id || !["validate", "request_correction", "publish"].includes(action)) {
     return NextResponse.json({ error: "Action invalide." }, { status: 400 });
   }
+  if (action === "request_correction" && !note) {
+    return NextResponse.json({ error: "Indiquez le motif de la correction demandée." }, { status: 400 });
+  }
   if (!expectedUpdatedAt || !Number.isFinite(new Date(expectedUpdatedAt).getTime())) {
     return NextResponse.json({ error: "Rechargez la liste pour relire la version courante du document." }, { status: 400 });
   }
