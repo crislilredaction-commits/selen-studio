@@ -58,8 +58,10 @@ export default function DailyPretrainingReviewPage(){
     if(!doc?.updated_at){setError("Rechargez la liste pour relire la version courante du document.");return;}
     if(action==="validate" && (openedVersions[doc.id]!==doc.updated_at || doc.metadata?.requires_template_completion===true)){setError("Prévisualisez et complétez cette version avant de confirmer sa relecture.");return;}
     if(action==="validate" && !window.confirm("Confirmez-vous avoir relu cette version et vérifié ses destinataires avant validation ?"))return;
-    const note=action==="request_correction"?window.prompt("Motif ou correction demandée :",""):"";
-    if(note===null)return;
+    const noteInput=action==="request_correction"?window.prompt("Motif ou correction demandée :",""):"";
+    if(noteInput===null)return;
+    const note=noteInput.trim();
+    if(action==="request_correction"&&!note){setError("Indiquez le motif de la correction avant de l’envoyer.");return;}
     if(action==="publish"&&!window.confirm("Publier ce document dans Selen Daily et envoyer l’email au client ?"))return;
     actionPending.current=true;setPendingId(id);setError("");setMessage("");
     try{
