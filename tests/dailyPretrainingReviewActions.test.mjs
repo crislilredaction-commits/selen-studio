@@ -223,10 +223,10 @@ function walk(node, result = []) {
   else if (node?.props) { result.push(node); walk(node.props.children, result); }
   return result;
 }
-function uiFixture({ scoped = true } = {}) {
+function uiFixture({ scoped = true, orphan = false } = {}) {
   const states = []; const refs = []; let stateIndex = 0; let refIndex = 0; let effectsEnabled = true;
   const effects = []; const requests = [];
-  const document = { id: docId, organisation_id: ofId, session_id: "session-review", document_type: "convocation", logical_name: "Convocation", version: 1, status: "validated", updated_at: openedAt, metadata: {} };
+  const document = { id: docId, organisation_id: ofId, session_id: orphan ? "session-missing" : "session-review", document_type: "convocation", logical_name: "Convocation", version: 1, status: "validated", updated_at: openedAt, metadata: {} };
   const flags = { response: { document, notification: { sent: false, deduplicated: true } }, responseStatus: 200, onPatch: null, fail: false, prompt: "Note", pending: null };
   const page = isolatedTsModule("src/app/agent/daily/pretraining-documents/page.tsx", {
     "react/jsx-runtime": jsx,
@@ -235,12 +235,12 @@ function uiFixture({ scoped = true } = {}) {
       useRef(initial) { const i = refIndex++; if (!(i in refs)) refs[i] = { current: initial }; return refs[i]; },
       useCallback: callback => callback, useMemo: callback => callback(), useEffect: callback => { if (effectsEnabled) effects.push(callback); },
     },
-    "next/navigation": { useSearchParams: () => new URLSearchParams(scoped ? { session: "session-review" } : {}) },
+    "next/navigation": { useSearchParams: () => new URLSearchParams(scoped ? { session: orphan ? "session-missing" : "session-review" } : {}) },
     "next/link": { default: props => jsx.jsx("a", props) },
   }, {
     Error,
     fetch: async (_url, options) => {
-      if (!options?.method) return Response.json({ documents: [document], sessions: [{ id: "session-review", organisation_id: ofId, internal_reference: "SESSION-REVIEW" }] });
+      if (!options?.method) return Response.json({ documents: [document], sessions: orphan ? [] : [{ id: "session-review", organisation_id: ofId, internal_reference: "SESSION-REVIEW" }] });
       requests.push(JSON.parse(options.body));
       if (flags.pending) await flags.pending;
       if (flags.fail) throw Error("Réseau indisponible");
@@ -262,6 +262,19 @@ test("la file globale oriente vers la session sans exposer les actions documenta
   assert.ok(html.includes("/agent/daily/session-dossiers/session-review/full"));
   assert.ok(!walk(tree).some(node => node.type === "button" && ["Prévisualiser", "Publier et notifier", "Valider", "Demander une correction"].includes(node.props.children)));
   assert.equal(f.requests.length, 0);
+});
+
+test("une pièce à la session canonique introuvable reste consultable sans faux dossier ni mutation", async () => {
+  for (const scoped of [false, true]) {
+    const f = uiFixture({ scoped, orphan: true }); const tree = await f.mount(); const html = visibleText(tree);
+    assert.ok(html.includes("Rattachement session à vérifier"));
+    assert.ok(html.includes("Ouvrir la pièce"));
+    assert.ok(walk(tree).some(node => node.type === "button" && node.props.children === "Prévisualiser"));
+    assert.ok(!html.includes("/agent/daily/session-dossiers/session-missing/full"));
+    assert.ok(!walk(tree).some(node => node.type === "button" && ["Publier et notifier", "Valider", "Demander une correction"].includes(node.props.children)));
+    assert.ok(!html.includes("Remplacer la version"));
+    assert.equal(f.requests.length, 0);
+  }
 });
 
 test("l’écran distingue une notification reprise d’un nouvel email confirmé", async () => {
