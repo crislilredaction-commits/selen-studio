@@ -8,7 +8,7 @@ type PreparationSession = { id:string; organisation_id:string; internal_referenc
 type ContractualEnrolment = {id:string;learner_id:string;name:string;updated_at:string;contracting_party_type:"individual"|"company"|null;company_name:string|null;issue:string|null};
 type Preparation = {session_id:string;companies:string[];enrolments:ContractualEnrolment[];ready:boolean};
 type PartyDraft = {party:string;company:string};
-type DocumentRow = { id:string; organisation_id:string; session_id?:string|null; document_type:string; status:string; version:number; logical_name:string; created_at:string; updated_at:string; metadata?:Record<string,unknown>|null; organisations?:{name?:string|null}|null };
+type DocumentRow = { id:string; organisation_id:string; formation_id?:string|null; session_id?:string|null; document_type:string; status:string; version:number; logical_name:string; created_at:string; updated_at:string; metadata?:Record<string,unknown>|null; organisations?:{name?:string|null}|null };
 type SessionQueue = {id:string;label:string;organisation:string;documents:DocumentRow[];empty:boolean};
 const labels:Record<string,string>={training_program:"Programme",training_agreement:"Convention",training_contract:"Contrat individuel",convocation:"Convocation",registration_positioning:"Inscription & positionnement",welcome_booklet:"Livret d’accueil",internal_regulations:"Règlement intérieur"};
 const statusLabels:Record<string,string>={to_check:"À vérifier",to_validate:"À valider",validated:"Validé",correction_requested:"Correction demandée",published:"Publié",signed:"Signé",draft:"Brouillon",active:"Actif",archived:"Archivé"};
@@ -18,6 +18,8 @@ function learnerLabel(doc:DocumentRow){return metaText(doc,"learner_name","learn
 function sessionKey(doc:DocumentRow){return doc.session_id?.trim()||metaText(doc,"session_id","session_name","session_title")}
 function sessionLabel(doc:DocumentRow){return metaText(doc,"session_name","session_title")||doc.session_id?.trim()||metaText(doc,"session_id")||"Sans session"}
 function hasUnavailableCanonicalSession(doc:DocumentRow,knownSessionIds:Set<string>){const sessionId=doc.session_id?.trim();return Boolean(sessionId&&!knownSessionIds.has(sessionId));}
+function contextHref(doc:DocumentRow){const formationId=doc.formation_id?.trim();return formationId?`/agent/daily/formations/${encodeURIComponent(formationId)}`:`/agent/daily/organisations/${encodeURIComponent(doc.organisation_id)}?tab=documents`;}
+function contextLabel(doc:DocumentRow){return doc.formation_id?.trim()?"Ouvrir la formation":"Ouvrir les documents de l’organisme";}
 function notificationDate(doc:DocumentRow){const value=metaText(doc,"publication_notification_sent_at");const date=new Date(value);return value&&Number.isFinite(date.getTime())?date.toLocaleString("fr-FR",{timeZone:"Europe/Paris"}):""}
 
 export default function DailyPretrainingReviewPage(){
@@ -126,6 +128,7 @@ export default function DailyPretrainingReviewPage(){
   }
   function reviewDocumentCard(doc:DocumentRow){
     const unavailableSession=hasUnavailableCanonicalSession(doc,knownSessionIds);
+    const withoutSession=!sessionKey(doc);
     const mutableStatus=!['published','signed','archived'].includes(doc.status);
     return <article key={doc.id} aria-label={unavailableSession?`${labels[doc.document_type]??doc.document_type} — rattachement session à vérifier`:undefined} style={{border:`1px solid ${unavailableSession?'#b24c3d':'var(--selen-border)'}`,borderRadius:12,padding:16,background:"var(--selen-bg2)"}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
@@ -133,11 +136,13 @@ export default function DailyPretrainingReviewPage(){
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <button onClick={()=>{setPreview(doc);setOpenedVersions(current=>({...current,[doc.id]:doc.updated_at}));}}>Prévisualiser</button>
           <a href={`/agent/api/daily/pretraining-documents/download?id=${encodeURIComponent(doc.id)}`} target="_blank" rel="noreferrer">Ouvrir la pièce</a>
+          {withoutSession?<Link href={contextHref(doc)}>{contextLabel(doc)}</Link>:null}
           {!unavailableSession&&mutableStatus?<label style={{cursor:"pointer"}}>Remplacer la version<input hidden type="file" accept="application/pdf,.pdf,.doc,.docx" disabled={Boolean(pendingId)} onChange={(event)=>{const file=event.target.files?.[0];if(file)void replaceDocument(doc,file);event.currentTarget.value="";}}/></label>:null}
           {!unavailableSession&&doc.status==="validated"?<button disabled={Boolean(pendingId)} onClick={()=>review(doc.id,"publish")}>Publier et notifier</button>:!unavailableSession&&doc.status!=="correction_requested"&&mutableStatus?<><button disabled={Boolean(pendingId)||openedVersions[doc.id]!==doc.updated_at||doc.metadata?.requires_template_completion===true} onClick={()=>review(doc.id,"validate")}>Valider</button><button disabled={Boolean(pendingId)} onClick={()=>review(doc.id,"request_correction")}>Demander une correction</button></>:null}
         </div>
       </div>
       {unavailableSession?<p role="status" style={{marginBottom:0,color:"#b24c3d",fontWeight:700}}>Rattachement session à vérifier — cette pièce reste consultable, mais aucune mutation n’est disponible tant que sa session canonique est introuvable.</p>:null}
+      {withoutSession?<p role="status" style={{marginBottom:0,color:"var(--selen-text2)"}}>Pièce légitime sans session — traitez-la au niveau de sa {doc.formation_id?.trim()?"formation":"fiche organisme"}. Les actions documentaires autorisées restent disponibles ici.</p>:null}
       {!unavailableSession&&doc.status==="correction_requested"?<p>Remplacez la pièce corrigée : une nouvelle version devra être relue avant validation.</p>:null}
       {doc.metadata?.requires_template_completion===true?<p>Ce modèle personnalisé doit être complété puis remplacé avant validation.</p>:null}
       {typeof doc.metadata?.review_note==="string"&&doc.metadata.review_note?<p style={{marginTop:10,fontSize:12}}>Note : {doc.metadata.review_note}</p>:null}
@@ -225,7 +230,7 @@ export default function DailyPretrainingReviewPage(){
       {globalQueues.length===0&&documentsWithoutSession.length===0&&orphanSessionDocuments.length===0?<div style={{padding:18,border:"1px solid var(--selen-border)",borderRadius:12}}>Aucune session dans cette vue pour les filtres sélectionnés.</div>:null}
       {globalQueues.map(queue=><article key={queue.id} style={{border:"1px solid var(--selen-border)",borderRadius:12,padding:16,background:"var(--selen-bg2)",display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div><strong>{queue.label}</strong><div style={{fontSize:12,color:"var(--selen-text2)",marginTop:4}}>{queue.organisation||"Organisme à confirmer"} · {queue.documents.length?`${queue.documents.length} pièce(s) dans cette vue`:"Aucune pièce générée"}</div></div><Link href={`/agent/daily/session-dossiers/${encodeURIComponent(queue.id)}/full`}>Ouvrir le dossier de session</Link></article>)}
       {orphanSessionDocuments.map(doc=><article key={doc.id} aria-label={`${labels[doc.document_type]??doc.document_type} — rattachement session à vérifier`} style={{padding:16,border:"1px solid #b24c3d",borderRadius:12,background:"var(--selen-bg2)",display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{minWidth:0}}><strong>Rattachement session à vérifier</strong><div style={{fontSize:12,marginTop:4,overflowWrap:"anywhere"}}>{labels[doc.document_type]??doc.document_type} · {doc.organisations?.name??"Organisme"} · session {doc.session_id} · v{doc.version}</div><p style={{marginBottom:0}}>La pièce reste consultable, mais aucune mutation n’est disponible tant que sa session canonique est introuvable.</p></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={()=>setPreview(doc)}>Prévisualiser</button><a href={`/agent/api/daily/pretraining-documents/download?id=${encodeURIComponent(doc.id)}`} target="_blank" rel="noreferrer">Ouvrir la pièce</a></div></article>)}
-      {documentsWithoutSession.length?<div role="alert" style={{padding:16,border:"1px solid #b24c3d",borderRadius:12}}>{documentsWithoutSession.length} pièce(s) sans session restent visibles dans l’historique mais se traitent depuis leur contexte formation ou organisme.</div>:null}
+      {documentsWithoutSession.length?<section aria-label="Pièces sans session" style={{display:"grid",gap:12,padding:16,border:"1px solid var(--selen-border)",borderRadius:12}}><div><h2 style={{margin:"0 0 6px"}}>Pièces au niveau formation ou organisme</h2><p style={{margin:0,color:"var(--selen-text2)"}}>{documentsWithoutSession.length} pièce(s) légitime(s) sans session. Ouvrez leur contexte canonique ou utilisez ici les actions documentaires autorisées.</p></div>{documentsWithoutSession.map(reviewDocumentCard)}</section>:null}
     </section>:<section aria-busy={Boolean(pendingId)} style={{display:"grid",gap:12}}>{visible.length===0?<div style={{padding:18,border:"1px solid var(--selen-border)",borderRadius:12}}>Aucun document dans cette vue pour les filtres sélectionnés.{preparationSession?<p>Utilisez « Générer les documents manquants » pour préparer les pièces de cette session. Elles apparaîtront ici pour relecture avant publication. <a href={`/agent/daily/organisations/${encodeURIComponent(preparationSession.organisation_id)}`}>Ouvrir l’organisme</a></p>:null}</div>:visible.map(reviewDocumentCard)}</section>}
   </main>;
 }

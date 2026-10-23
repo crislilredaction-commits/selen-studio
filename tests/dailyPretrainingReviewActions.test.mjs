@@ -223,10 +223,10 @@ function walk(node, result = []) {
   else if (node?.props) { result.push(node); walk(node.props.children, result); }
   return result;
 }
-function uiFixture({ scoped = true, orphan = false } = {}) {
+function uiFixture({ scoped = true, orphan = false, withoutSession = false, formationContext = true } = {}) {
   const states = []; const refs = []; let stateIndex = 0; let refIndex = 0; let effectsEnabled = true;
   const effects = []; const requests = [];
-  const document = { id: docId, organisation_id: ofId, session_id: orphan ? "session-missing" : "session-review", document_type: "convocation", logical_name: "Convocation", version: 1, status: "validated", updated_at: openedAt, metadata: {} };
+  const document = { id: docId, organisation_id: ofId, formation_id: withoutSession&&formationContext ? "formation-review" : null, session_id: withoutSession ? null : orphan ? "session-missing" : "session-review", document_type: "convocation", logical_name: "Convocation", version: 1, status: "validated", updated_at: openedAt, metadata: {} };
   const flags = { response: { document, notification: { sent: false, deduplicated: true } }, responseStatus: 200, onPatch: null, fail: false, prompt: "Note", pending: null };
   const page = isolatedTsModule("src/app/agent/daily/pretraining-documents/page.tsx", {
     "react/jsx-runtime": jsx,
@@ -240,7 +240,7 @@ function uiFixture({ scoped = true, orphan = false } = {}) {
   }, {
     Error,
     fetch: async (_url, options) => {
-      if (!options?.method) return Response.json({ documents: [document], sessions: orphan ? [] : [{ id: "session-review", organisation_id: ofId, internal_reference: "SESSION-REVIEW" }] });
+      if (!options?.method) return Response.json({ documents: [document], sessions: orphan||withoutSession ? [] : [{ id: "session-review", organisation_id: ofId, internal_reference: "SESSION-REVIEW" }] });
       requests.push(JSON.parse(options.body));
       if (flags.pending) await flags.pending;
       if (flags.fail) throw Error("Réseau indisponible");
@@ -275,6 +275,25 @@ test("une pièce à la session canonique introuvable reste consultable sans faux
     assert.ok(!html.includes("Remplacer la version"));
     assert.equal(f.requests.length, 0);
   }
+});
+
+test("une pièce légitime sans session ouvre son contexte formation et conserve ses mutations autorisées", async () => {
+  const f = uiFixture({ scoped: false, withoutSession: true }); const tree = await f.mount(); const html = visibleText(tree);
+  assert.ok(html.includes("Pièces au niveau formation ou organisme"));
+  assert.ok(html.includes("/agent/daily/formations/formation-review"));
+  assert.ok(html.includes("Ouvrir la formation"));
+  assert.ok(walk(tree).some(node => node.type === "button" && node.props.children === "Publier et notifier"));
+  assert.ok(!html.includes("Rattachement session à vérifier"));
+  assert.equal(f.requests.length, 0);
+});
+
+test("une pièce sans formation ouvre les documents de son organisme sans faux rattachement", async () => {
+  const f = uiFixture({ scoped: false, withoutSession: true, formationContext: false }); const tree = await f.mount(); const html = visibleText(tree);
+  assert.ok(html.includes(`/agent/daily/organisations/${ofId}?tab=documents`));
+  assert.ok(html.includes("Ouvrir les documents de l’organisme"));
+  assert.ok(html.includes("fiche organisme"));
+  assert.ok(!html.includes("Rattachement session à vérifier"));
+  assert.equal(f.requests.length, 0);
 });
 
 test("l’écran distingue une notification reprise d’un nouvel email confirmé", async () => {
