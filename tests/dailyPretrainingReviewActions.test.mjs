@@ -99,6 +99,26 @@ test("une session devenue terminale bloque remplacement, revue et publication av
   }
 });
 
+test("une pièce à la session introuvable reste historisée mais bloque toute mutation", async()=>{
+  for (const action of ["replace", "validate", "request_correction", "publish"]) {
+    const f=fixture();
+    f.document.session_id="session-missing";
+    if(action==="publish") f.document.status="validated";
+    let response;
+    if(action==="replace"){
+      const form=new FormData();
+      form.set("id",docId);form.set("expected_updated_at",openedAt);
+      form.set("file",new File(["document isolé"],"convocation.pdf",{type:"application/pdf"}));
+      response=await f.route.POST(new Request("https://studio.example.test/review",{method:"POST",body:form}));
+    }else response=await f.patch(action);
+    assert.equal(response.status,409,action);
+    assert.match((await response.json()).error,/session liée.*introuvable/i);
+    assert.equal(f.writes.length,0,action);assert.equal(f.emails.length,0,action);
+    assert.equal(f.publicationCalls.length,0,action);
+    assert.equal(f.rows.daily_documents.length,1,"l’historique reste intact");
+  }
+});
+
 test("la revue valide ou demande une correction sur la version ouverte, sans email", async () => {
   for (const action of ["validate", "request_correction"]) {
     const f = fixture(); const response = await f.patch(action);

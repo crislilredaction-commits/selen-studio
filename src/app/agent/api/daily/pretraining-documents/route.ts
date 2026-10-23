@@ -21,7 +21,7 @@ const MAX_REPLACEMENT_SIZE = 10 * 1024 * 1024;
 const replacementMimeTypes = new Set(["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]);
 function safeFileName(value: string) { return value.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").slice(-120) || "document"; }
 
-async function rejectTerminalDocumentSession(
+async function rejectUnavailableDocumentSession(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   document: { organisation_id: string; session_id?: string | null },
 ) {
@@ -33,7 +33,13 @@ async function rejectTerminalDocumentSession(
     .eq("organisation_id", document.organisation_id)
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (session && !isDailyTaskParentActive(session.status)) {
+  if (!session) {
+    return NextResponse.json(
+      { error: "La session liée à ce document est introuvable. Rechargez la file et vérifiez son rattachement." },
+      { status: 409 },
+    );
+  }
+  if (!isDailyTaskParentActive(session.status)) {
     return NextResponse.json(
       { error: "Cette session n’est plus active. Rechargez la file avant toute action documentaire." },
       { status: 409 },
@@ -92,8 +98,8 @@ export async function POST(req: Request) {
   const admin = createSupabaseAdminClient();
   const { data: current, error: readError } = await admin.from("daily_documents").select("*").eq("id", id).in("organisation_id", organisationIds).in("document_type", types).eq("is_current", true).maybeSingle();
   if (readError || !current) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
-  const terminalSessionResponse = await rejectTerminalDocumentSession(admin, current);
-  if (terminalSessionResponse) return terminalSessionResponse;
+  const unavailableSessionResponse = await rejectUnavailableDocumentSession(admin, current);
+  if (unavailableSessionResponse) return unavailableSessionResponse;
   if (["published", "signed", "archived"].includes(current.status)) return NextResponse.json({ error: "Ce document a déjà été émis et ne peut plus être remplacé dans ce circuit." }, { status: 409 });
   if (current.updated_at !== expectedUpdatedAt) return NextResponse.json({ error: "Le document a changé depuis son ouverture. Rechargez et relisez la pièce." }, { status: 409 });
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -157,8 +163,8 @@ export async function PATCH(req: Request) {
     .eq("is_current", true)
     .single();
   if (readError || !current) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
-  const terminalSessionResponse = await rejectTerminalDocumentSession(admin, current);
-  if (terminalSessionResponse) return terminalSessionResponse;
+  const unavailableSessionResponse = await rejectUnavailableDocumentSession(admin, current);
+  if (unavailableSessionResponse) return unavailableSessionResponse;
   const conflictMessage = "Le document a changé depuis son ouverture. Rechargez la liste et relisez la pièce avant de réessayer.";
   if (current.updated_at !== expectedUpdatedAt) {
     return NextResponse.json({ error: conflictMessage }, { status: 409 });
