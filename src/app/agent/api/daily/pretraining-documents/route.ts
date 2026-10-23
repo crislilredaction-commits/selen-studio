@@ -126,6 +126,10 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: conflictMessage }, { status: 409 });
   }
 
+  if (action === "validate" && current.status === "correction_requested") {
+    return NextResponse.json({ error: "Remplacez la pièce corrigée avant de valider une nouvelle version." }, { status: 409 });
+  }
+
   if(action==="validate" && (body.confirm_reviewed!==true || current.metadata?.requires_template_completion===true))return NextResponse.json({error:current.metadata?.requires_template_completion===true?"Complétez le modèle personnalisé et remplacez la pièce avant validation.":"Prévisualisez et confirmez la relecture de cette version avant validation."},{status:400});
 
   if (action === "publish") {

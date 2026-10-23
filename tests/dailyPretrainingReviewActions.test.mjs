@@ -87,6 +87,13 @@ test("une correction sans motif est refusée avant toute écriture", async () =>
   }
 });
 
+test("une version en correction ne peut pas être revalidée sans remplacement", async () => {
+  const f = fixture(); f.document.status = "correction_requested";
+  const response = await f.patch("validate");
+  assert.equal(response.status, 409); assert.equal(f.writes.length, 0); assert.equal(f.emails.length, 0);
+  assert.match((await response.json()).error, /Remplacez la pièce corrigée/);
+});
+
 test("un écran périmé ne peut ni valider, ni corriger, ni publier", async () => {
   for (const action of ["validate", "request_correction", "publish"]) {
     const f = fixture(); f.document.updated_at = changedAt; f.document.status = action === "publish" ? "validated" : "to_check";
@@ -245,6 +252,14 @@ test("un motif de correction vide reste à l’écran et ne déclenche aucune re
   const tree = await f.mount(); await button(tree, "Demander une correction").props.onClick();
   assert.equal(f.requests.length, 0);
   assert.ok(visibleText(f.render()).includes("Indiquez le motif de la correction"));
+});
+
+test("une version en correction exige un remplacement avant toute nouvelle validation", async () => {
+  const f = uiFixture(); f.document.status = "correction_requested"; f.document.metadata.review_note = "Corriger la date";
+  const tree = await f.mount(); const html = visibleText(tree);
+  assert.ok(html.includes("Remplacez la pièce corrigée")); assert.ok(html.includes("Corriger la date"));
+  assert.ok(!walk(tree).some(node => node.type === "button" && ["Valider", "Demander une correction", "Publier et notifier"].includes(node.props.children)));
+  assert.equal(f.requests.length, 0);
 });
 
 test("l’interface impose l’ouverture de la version avant validation et ne publie pas durant la relecture",async()=>{
