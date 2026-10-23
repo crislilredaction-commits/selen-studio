@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { publishDailyDocumentAndNotify } from "@/lib/server/dailyDocumentPublication";
+import { isDailyTaskParentActive } from "@/lib/server/dailyAgentTasks";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 
 const types = [
@@ -36,12 +37,20 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const { data: sessions, error: sessionsError } = await admin
     .from("daily_sessions")
-    .select("id,organisation_id,internal_reference,start_date,daily_formations(title)")
+    .select("id,organisation_id,internal_reference,start_date,status,daily_formations(title)")
     .in("organisation_id", organisationIds)
-    .not("status", "in", "(archived,cancelled)")
     .order("start_date", { ascending: false });
   if (sessionsError) return NextResponse.json({ error: sessionsError.message }, { status: 500 });
-  return NextResponse.json({ documents: data ?? [], sessions: sessions ?? [] });
+  const activeSessions = (sessions ?? [])
+    .filter((session) => isDailyTaskParentActive(session.status))
+    .map((session) => ({
+      id: session.id,
+      organisation_id: session.organisation_id,
+      internal_reference: session.internal_reference,
+      start_date: session.start_date,
+      daily_formations: session.daily_formations,
+    }));
+  return NextResponse.json({ documents: data ?? [], sessions: activeSessions });
 }
 
 export async function POST(req: Request) {

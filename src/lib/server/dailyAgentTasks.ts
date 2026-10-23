@@ -90,7 +90,7 @@ const INACTIVE_SATISFACTION_ENROLMENT_STATUSES = new Set([
 ]);
 
 export function isDailyTaskParentActive(status: string | null | undefined) {
-  return !status || !TERMINAL_PARENT_STATUSES.has(status.toLowerCase());
+  return !status || !TERMINAL_PARENT_STATUSES.has(status.trim().toLowerCase());
 }
 
 export function isDailySatisfactionEnrolmentActive(status: string | null | undefined) {
