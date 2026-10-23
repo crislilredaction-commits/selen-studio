@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
+import { File } from "node:buffer";
 import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
 
 const docId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -49,7 +50,7 @@ function fixture() {
     "@/lib/server/dailyAgentTasks": { isDailyTaskParentActive: status => !["archived","cancelled","canceled","deleted","removed","obsolete","abandoned","completed","done","closed"].includes(String(status??"").trim().toLowerCase()) },
     "@/app/agent/api/support/_utils": { requireSupportAgent: async () => flags.auth },
     "@/lib/server/dailyDocumentPublication": { publishDailyDocumentAndNotify: async input => { publicationCalls.push(input); return publication.publishDailyDocumentAndNotify(input); } },
-  });
+  }, { File });
   const patch = (action, extras = {}) => route.PATCH(new Request("https://studio.example.test/review", { method: "PATCH", body: JSON.stringify({ id: docId, action, confirm_reviewed:true, note: "À revoir", expected_updated_at: openedAt, ...extras }) }));
   return { document, rows, writes, emails, publicationCalls, flags, patch, route };
 }
@@ -76,6 +77,26 @@ test("les pièces d’une session terminale quittent la file active sans effacer
   assert.deepEqual(body.documents.map(document=>document.id),[docId,"doc-orphan"]);
   assert.equal(f.rows.daily_documents.length,3,"l’historique reste intact");
   assert.equal(f.writes.length,0);assert.equal(f.emails.length,0);
+});
+
+test("une session devenue terminale bloque remplacement, revue et publication avant tout effet", async()=>{
+  for (const action of ["replace", "validate", "request_correction", "publish"]) {
+    const f=fixture();
+    f.document.session_id="session-terminal-0";
+    if(action==="publish") f.document.status="validated";
+    let response;
+    if(action==="replace"){
+      const form=new FormData();
+      form.set("id",docId);form.set("expected_updated_at",openedAt);
+      form.set("file",new File(["document isolé"],"convocation.pdf",{type:"application/pdf"}));
+      response=await f.route.POST(new Request("https://studio.example.test/review",{method:"POST",body:form}));
+    }else response=await f.patch(action);
+    assert.equal(response.status,409,action);
+    assert.match((await response.json()).error,/session n’est plus active/i);
+    assert.equal(f.writes.length,0,action);assert.equal(f.emails.length,0,action);
+    assert.equal(f.publicationCalls.length,0,action);
+    assert.equal(f.rows.daily_documents.length,1,"l’historique reste intact");
+  }
 });
 
 test("la revue valide ou demande une correction sur la version ouverte, sans email", async () => {
