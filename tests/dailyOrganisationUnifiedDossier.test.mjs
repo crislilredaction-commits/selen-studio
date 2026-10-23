@@ -57,6 +57,16 @@ test("la vue d’ensemble classe les sessions canoniques", () => {
   assert.match(page, /\/agent\/daily\/session-dossiers\/\$\{session\.id\}\/full/);
 });
 
+test("la synthèse replie les longues listes de tâches sans perdre leur ordre ni leurs liens", () => {
+  assert.match(page, /const visibleOrganisationTasks = scopedDailyTasks\.slice\(0, 5\)/);
+  assert.match(page, /const additionalOrganisationTasks = scopedDailyTasks\.slice\(5\)/);
+  assert.match(page, /visibleOrganisationTasks\.map/);
+  assert.match(page, /additionalOrganisationTasks\.length > 0/);
+  assert.match(page, /Afficher \{additionalOrganisationTasks\.length\} autres tâches actives/);
+  assert.match(page, /additionalOrganisationTasks\.map/);
+  assert.ok((page.match(/href=\{item\.href\}/g) ?? []).length >= 2);
+});
+
 test("les espaces apprenants conservent les inscriptions closes et leur identité stable", () => {
   assert.match(page, /key: "learners", label: "Espaces apprenants"/);
   assert.match(page, /learner_id,session_id,status/);
