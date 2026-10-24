@@ -26,7 +26,7 @@ test("seules les tâches explicitement manuelles peuvent être terminées par St
 });
 
 test("la timeline utilise l'horodatage réel des émargements", () => {
-  assert.match(timelinePage, /daily_attendance_records\(id,status,signed_at\)/);
+  assert.match(timelinePage, /daily_attendance_records\(id,enrolment_id,status,signed_at,evidence_metadata\)/);
   assert.match(timelinePage, /record\.status === "present" && Boolean\(record\.signed_at\)/);
   assert.match(timelinePage, /Dernier émargement/);
   assert.match(timelinePage, /timeZone: "Europe\/Paris"/);

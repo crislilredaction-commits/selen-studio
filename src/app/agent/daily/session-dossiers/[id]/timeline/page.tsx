@@ -10,6 +10,7 @@ import {
   type DailySessionPhase,
 } from "@/lib/daily/sessionPhase";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import { attendanceReviewStateLabel, getAttendanceReviewHistory } from "@/lib/daily/attendanceReviewHistory";
 
 type Props = { params: Promise<{ id: string }> };
 type Phase = DailySessionPhase;
@@ -134,11 +135,11 @@ export default async function DailySessionTimelinePage({ params }: Props) {
     admin.from("daily_formations").select("title,status").eq("id", session.formation_id).maybeSingle(),
     admin.from("daily_session_dossiers").select("status,completed_at").eq("session_id", id).maybeSingle(),
     admin.from("daily_session_checklist_items").select("id,item_key,phase,label,description,status,due_at,note,completed_at,updated_at").eq("session_id", id).order("position", { ascending: true }),
-    admin.from("daily_session_enrolments").select("id,status").eq("session_id", id),
+    admin.from("daily_session_enrolments").select("id,status,daily_learners(first_name,last_name,email)").eq("session_id", id),
     admin.from("daily_documents").select("id,document_type,logical_name,status,is_current,published_at,signed_at,updated_at").eq("session_id", id).order("updated_at", { ascending: false }),
     admin.from("daily_communications").select("id,communication_type,recipient_name,recipient_email,status,sent_at,delivered_at,failed_at,failure_reason,created_at").eq("session_id", id).order("created_at", { ascending: false }),
     admin.from("daily_convention_signatures").select("id,signatory_type,signatory_name,signatory_email,status,viewed_at,signed_at,expires_at,last_error,updated_at").eq("session_id", id).order("updated_at", { ascending: false }),
-    admin.from("daily_attendance_slots").select("id,daily_attendance_records(id,status,signed_at)").eq("session_id", id),
+    admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,daily_attendance_records(id,enrolment_id,status,signed_at,evidence_metadata)").eq("session_id", id),
     admin.from("daily_learning_assessments").select("id,outcome").eq("session_id", id),
     admin.from("daily_learner_feedback_responses").select("id,submitted_at").eq("session_id", id),
   ]);
@@ -168,6 +169,22 @@ export default async function DailySessionTimelinePage({ params }: Props) {
     .map((record) => record.signed_at)
     .filter((value): value is string => Boolean(value))
     .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
+  const learnerNames = new Map((enrolmentsRes.data ?? []).map((enrolment) => {
+    const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
+    const name = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant";
+    return [enrolment.id, name] as const;
+  }));
+  const attendanceReviewHistory = (attendanceRes.data ?? []).flatMap((slot) =>
+    (slot.daily_attendance_records ?? []).flatMap((record) =>
+      getAttendanceReviewHistory(record).map((entry) => ({
+        ...entry,
+        recordId: record.id,
+        enrolmentId: record.enrolment_id,
+        learnerName: learnerNames.get(record.enrolment_id) || "Apprenant",
+        slotLabel: `${formatDate(slot.slot_date)} · ${String(slot.starts_at).slice(0, 5)}–${String(slot.ends_at).slice(0, 5)}`,
+      })),
+    ),
+  ).sort((a, b) => new Date(b.decidedAt || b.submittedAt || 0).getTime() - new Date(a.decidedAt || a.submittedAt || 0).getTime());
   const assessments = assessmentsRes.data ?? [];
   const completedAssessments = assessments.filter((item) => item.outcome && item.outcome !== "pending").length;
   const feedbacks = feedbackRes.data ?? [];
@@ -220,12 +237,30 @@ export default async function DailySessionTimelinePage({ params }: Props) {
                   </div>
                 ) : null}
                 {itemPhase === "during" ? (
-                  <div style={s.phaseStats}>
-                    <Info label="Émargements" value={`${signedAttendance}/${attendanceRecords.length} présence(s) enregistrée(s)`} />
-                    <Info label="Dernier émargement" value={latestAttendanceSignedAt ? formatDateTime(latestAttendanceSignedAt) : "Aucun émargement signé"} />
-                    <Info label="Début" value={formatDate(session.start_date)} />
-                    <Info label="Fin" value={formatDate(session.end_date)} />
-                  </div>
+                  <>
+                    <div style={s.phaseStats}>
+                      <Info label="Émargements" value={`${signedAttendance}/${attendanceRecords.length} présence(s) enregistrée(s)`} />
+                      <Info label="Dernier émargement" value={latestAttendanceSignedAt ? formatDateTime(latestAttendanceSignedAt) : "Aucun émargement signé"} />
+                      <Info label="Début" value={formatDate(session.start_date)} />
+                      <Info label="Fin" value={formatDate(session.end_date)} />
+                    </div>
+                    {attendanceReviewHistory.length ? (
+                      <div style={s.column}>
+                        <strong style={s.subhead}>Historique des revues d’émargement ({attendanceReviewHistory.length})</strong>
+                        {attendanceReviewHistory.map((entry) => (
+                          <div key={`${entry.recordId}:${entry.version}`} style={s.row}>
+                            <div style={{ minWidth: 0 }}>
+                              <strong>{entry.learnerName} · preuve v{entry.version}</strong>
+                              <div style={s.small}>{entry.slotLabel} · {attendanceReviewStateLabel(entry.state)}</div>
+                              {entry.submittedAt ? <div style={s.small}>Transmise le {formatDateTime(entry.submittedAt)}</div> : null}
+                              {entry.decidedAt ? <div style={s.small}>Décision enregistrée le {formatDateTime(entry.decidedAt)}</div> : null}
+                              {entry.reason ? <div style={s.note}>Motif : {entry.reason}</div> : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
                 ) : null}
                 {itemPhase === "after" ? (
                   <div style={s.phaseStats}>
