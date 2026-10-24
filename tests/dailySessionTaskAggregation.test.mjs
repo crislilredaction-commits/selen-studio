@@ -162,3 +162,24 @@ test("le Dashboard Studio rafraîchit la source canonique après retour ou repri
   assert.match(dashboardFreshness,/addEventListener\("visibilitychange"/);
 });
 test("la source canonique accepte un filtre strict par organisme",()=>{assert.match(tasks,/options\?: \{ organisationId\?: string \| null \}/);assert.match(tasks,/activeOrganisationIds\.filter\(\(id\) => id === requestedOrganisationId\)/);});
+
+test("la timeline et son action checklist refusent les sessions hors périmètre de l'agent", () => {
+  const actionStart = sessionTimeline.indexOf("async function completeChecklistItemAction(");
+  const pageStart = sessionTimeline.indexOf("export default async function DailySessionTimelinePage(");
+  assert.ok(actionStart >= 0 && pageStart > actionStart);
+  const action = sessionTimeline.slice(actionStart, pageStart);
+  const page = sessionTimeline.slice(pageStart);
+
+  // Le layout vérifie l'accès lors de l'affichage, mais ne protège pas une
+  // invocation directe de Server Action utilisant le client service-role.
+  assert.match(sessionTimeline, /import \{ isDailyOrganisationInAgentScope \} from/);
+  assert.match(action, /\.from\("daily_sessions"\)[\s\S]*?\.select\("organisation_id"\)[\s\S]*?\.eq\("id", sessionId\)/);
+  assert.match(action, /!scopedSession\?\.organisation_id \|\| !\(await isDailyOrganisationInAgentScope\(auth\.email, scopedSession\.organisation_id\)\)/);
+  assert.match(action, /throw new Error\("Accès refusé à cette session\."\)/);
+  assert.ok(action.indexOf("isDailyOrganisationInAgentScope(auth.email, scopedSession.organisation_id)") < action.indexOf('.from("daily_session_checklist_items")'));
+
+  // Aucune lecture des dossiers, signatures ou tâches d'un autre organisme.
+  assert.match(page, /isDailyOrganisationInAgentScope\(auth\.email, session\.organisation_id\)/);
+  assert.match(page, /return <main style=\{s\.page\}>Accès refusé\.<\/main>/);
+  assert.ok(page.indexOf("isDailyOrganisationInAgentScope(auth.email, session.organisation_id)") < page.indexOf("const [organisationRes"));
+});
