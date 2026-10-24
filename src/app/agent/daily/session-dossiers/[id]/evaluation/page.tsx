@@ -43,7 +43,7 @@ export default async function DailyEvaluationPage({ params }: Props) {
   const submitted = enrolments.filter((row) => responses.has(row.id) || evidence.has(row.id)).length;
 
   return <main style={{ maxWidth: 1080, margin: "0 auto", padding: 28 }}>
-    <Link href={`/agent/daily/session-dossiers/${id}`} style={{ color: "var(--selen-text2)" }}>← Retour au dossier de session</Link>
+    <Link href={`/agent/daily/session-dossiers/${id}/full#apres-formation`} style={{ color: "var(--selen-text2)" }}>← Retour à l’étape Après</Link>
     <h1 style={{ marginBottom: 4 }}>Évaluation finale des acquis</h1>
     <p style={{ marginTop: 0, color: "var(--selen-text2)" }}>{formationRes.data?.title ?? "Formation"} · {session.internal_reference || "Sans référence"} · mode {formationRes.data?.learning_assessment_mode === "selen_quiz" ? "questionnaire Selen" : "évaluation externe / formateur"}</p>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, margin: "18px 0" }}>

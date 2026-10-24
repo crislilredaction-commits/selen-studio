@@ -177,7 +177,7 @@ export default async function DailySessionFollowupPage({ params }: Props) {
 
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: 28 }}>
-      <Link href={`/agent/daily/session-dossiers/${id}`}>← Retour au dossier</Link>
+      <Link href={`/agent/daily/session-dossiers/${id}/full#pendant-formation`}>← Retour à l’étape Pendant</Link>
       <h1>Fiche de suivi de session</h1>
       <p style={{ color: "var(--selen-text2)" }}>
         {formation?.title ?? "Session Daily"} · {session.internal_reference || "Sans référence"}. Cette fiche est partagée avec l’espace formateur.

@@ -100,7 +100,7 @@ export default async function SessionClosurePage({ params }: Props) {
 
   return (
     <main style={{ maxWidth: 920, margin: "0 auto", padding: 28 }}>
-      <p style={{ marginBottom: 12 }}><Link href={`/agent/daily/session-dossiers/${id}`}>← Retour au dossier</Link></p>
+      <p style={{ marginBottom: 12 }}><Link href={`/agent/daily/session-dossiers/${id}/full#apres-formation`}>← Retour à l’étape Après</Link></p>
       <h1 style={{ marginBottom: 4 }}>Revue de clôture Selen</h1>
       <p style={{ marginTop: 0, color: "var(--selen-text2)" }}>
         {formation?.title ?? "Session Daily"} · {org?.name ?? "OF"} · {session.internal_reference || "Sans référence"}
