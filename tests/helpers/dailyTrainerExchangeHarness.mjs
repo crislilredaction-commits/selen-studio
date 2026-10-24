@@ -49,6 +49,7 @@ export function exchangeHarness(options={}) {
    "@/lib/server/agentAssistance":{logAgentAssistanceAction:async input=>logs.push(input)},
    "@/lib/server/dailyAttendance":{attendanceParisClock:()=>({date:"2026-10-13",minutes:900})},
    "@/components/agent/AttendanceRegularizationLink":{__esModule:true,default:()=>null},
+   "@/components/agent/AttendanceHumanReview":{__esModule:true,default:()=>null},
    "./SessionStageNavigation":{__esModule:true,default:()=>null},
    "@/lib/vitrineLinks":{getVitrineBaseUrl:()=>"https://www.selen-editions.fr"},
    "@/lib/server/supabaseAdmin":{createSupabaseAdminClient:()=>admin},
