@@ -4,6 +4,7 @@ import test from "node:test";
 
 const route = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/attendance/pdf/route.ts", import.meta.url), "utf8");
 const page = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/full/page.tsx", import.meta.url), "utf8");
+const picker = await readFile(new URL("../src/components/agent/IndividualAttendanceDownload.tsx", import.meta.url), "utf8");
 
 test("le téléchargement des émargements exige un agent et le périmètre de l'organisme", () => {
   assert.match(route, /requireSupportAgent/);
@@ -52,4 +53,13 @@ test("la feuille individuelle ajoute seulement les signatures apprenant et forma
   assert.match(page, /Télécharger sa feuille individuelle \(PDF\)/);
   assert.match(page, /attendanceSettled/);
   assert.match(page, /publishedAttendance/);
+});
+
+test("Studio permet de choisir explicitement l'apprenant avant de télécharger son PDF", () => {
+  assert.match(page, /IndividualAttendanceDownload/);
+  assert.match(page, /attendanceSettled\(statuses\)/);
+  assert.match(picker, /Choisir l’apprenant concerné/);
+  assert.match(picker, /Télécharger son PDF/);
+  assert.match(picker, /signatures du\s+formateur correspondant aux mêmes créneaux/);
+  assert.match(picker, /disabled=\{!canDownload\}/);
 });
