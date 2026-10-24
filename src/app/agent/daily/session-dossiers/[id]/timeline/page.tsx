@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 import {
   getDailySessionPhase,
   isAvailablePhaseItem,
@@ -79,6 +80,18 @@ async function completeChecklistItemAction(formData: FormData) {
   if (!sessionId || !itemId) throw new Error("Tâche de session introuvable.");
 
   const admin = createSupabaseAdminClient();
+  // Les Server Actions sont invocables directement : le layout ne suffit pas
+  // à protéger une écriture exécutée avec la clé service-role.
+  const { data: scopedSession, error: scopeError } = await admin
+    .from("daily_sessions")
+    .select("organisation_id")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (scopeError) throw new Error("Vérification du périmètre de la session indisponible.");
+  if (!scopedSession?.organisation_id || !(await isDailyOrganisationInAgentScope(auth.email, scopedSession.organisation_id))) {
+    throw new Error("Accès refusé à cette session.");
+  }
+
   const { data: item, error: itemError } = await admin
     .from("daily_session_checklist_items")
     .select("id,item_key,status")
@@ -129,6 +142,9 @@ export default async function DailySessionTimelinePage({ params }: Props) {
     .maybeSingle();
   if (sessionError) throw new Error(sessionError.message);
   if (!session) return <main style={s.page}>Session introuvable.</main>;
+  if (!(await isDailyOrganisationInAgentScope(auth.email, session.organisation_id))) {
+    return <main style={s.page}>Accès refusé.</main>;
+  }
 
   const [organisationRes, formationRes, dossierRes, checklistRes, enrolmentsRes, documentsRes, communicationsRes, signaturesRes, attendanceRes, assessmentsRes, feedbackRes] = await Promise.all([
     admin.from("organisations").select("name,legal_name").eq("id", session.organisation_id).maybeSingle(),
