@@ -3,6 +3,7 @@ import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationS
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { jsPDF } from "jspdf";
 import { NextResponse } from "next/server";
+import { attendanceReviewStateLabel, getAttendanceReviewHistory } from "@/lib/daily/attendanceReviewHistory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ type AttendanceRecord = {
   validated_at: string | null;
   signature_storage_path: string | null;
   proof_sha256: string | null;
+  evidence_metadata: unknown;
 };
 
 function relation<T>(value: T | T[] | null | undefined): T | null {
@@ -66,7 +68,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   const [slotsResult, enrolmentsResult] = await Promise.all([
     admin.from("daily_attendance_slots")
-      .select("id,slot_date,starts_at,ends_at,label,daily_attendance_records(enrolment_id,status,signed_at,validated_at,signature_storage_path,proof_sha256)")
+      .select("id,slot_date,starts_at,ends_at,label,daily_attendance_records(enrolment_id,status,signed_at,validated_at,signature_storage_path,proof_sha256,evidence_metadata)")
       .eq("organisation_id", session.organisation_id).eq("session_id", id)
       .neq("status", "cancelled").order("slot_date").order("starts_at"),
     admin.from("daily_session_enrolments")
@@ -120,6 +122,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
       line(`${formatDate(slot.slot_date)} · ${String(slot.starts_at).slice(0, 5)}–${String(slot.ends_at).slice(0, 5)}${slot.label ? ` · ${slot.label}` : ""}`, 9, true);
       line(`Statut : ${statusLabel(record?.status)}${record?.signed_at ? ` · signé le ${formatDate(record.signed_at, true)}` : ""}${record?.validated_at ? ` · validé le ${formatDate(record.validated_at, true)}` : ""}`, 8);
       if (record?.proof_sha256) line(`Empreinte de preuve : ${record.proof_sha256}`, 7);
+      for (const review of getAttendanceReviewHistory(record ?? {})) {
+        line(`Revue v${review.version} : ${attendanceReviewStateLabel(review.state)}${review.submittedAt ? ` · transmise le ${formatDate(review.submittedAt, true)}` : ""}${review.decidedAt ? ` · décision le ${formatDate(review.decidedAt, true)}` : ""}`, 7);
+        if (review.reason) line(`Motif de la revue v${review.version} : ${review.reason}`, 7);
+      }
 
       if (record?.status === "present" && record.signature_storage_path) {
         const { data: signature, error: signatureError } = await admin.storage.from("documents").download(storageObjectPath(record.signature_storage_path));
@@ -140,7 +146,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   doc.setDrawColor(185);
   doc.line(left, y, right, y);
   y += 5;
-  line(`Document généré depuis Selen Studio le ${formatDate(new Date().toISOString(), true)}. Les lignes « En attente » ne constituent pas une présence signée.`, 7);
+  line(`Document généré depuis Selen Studio le ${formatDate(new Date().toISOString(), true)}. Les lignes « En attente » ne constituent pas une présence signée. L’historique de revue exclut les jetons, chemins de stockage et identités privées des décideurs.`, 7);
 
   const output = doc.output("arraybuffer");
   return new NextResponse(output, {

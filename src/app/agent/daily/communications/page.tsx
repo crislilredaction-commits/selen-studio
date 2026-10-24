@@ -6,6 +6,8 @@ import {
   DAILY_SIGNATURE_REMINDER_TYPE,
   signatureReminderDueAt,
 } from "@/lib/daily/signatureReminder24h";
+import { attendanceReviewStateLabel, getAttendanceReviewHistory } from "@/lib/daily/attendanceReviewHistory";
+import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 
 type Props = {
   searchParams: Promise<{ session_id?: string }>;
@@ -122,6 +124,14 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
 
   const { session_id: sessionId } = await searchParams;
   const admin = createSupabaseAdminClient();
+  const { data: scopedSession, error: scopedSessionError } = sessionId
+    ? await admin.from("daily_sessions").select("id,organisation_id").eq("id", sessionId).maybeSingle()
+    : { data: null, error: null };
+  if (scopedSessionError) throw new Error(scopedSessionError.message);
+  if (sessionId && !scopedSession) return <main style={{ padding: 28 }}>Session introuvable.</main>;
+  if (scopedSession && !(await isDailyOrganisationInAgentScope(auth.email, scopedSession.organisation_id))) {
+    return <main style={{ padding: 28 }}>Accès refusé.</main>;
+  }
 
   let query = admin
     .from("daily_communications")
@@ -135,8 +145,8 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
   if (error) throw new Error(error.message);
 
   const communicationRows = communications ?? [];
-  const sessionIds = [...new Set(communicationRows.map((item) => item.session_id).filter(Boolean))] as string[];
-  const organisationIds = [...new Set(communicationRows.map((item) => item.organisation_id).filter(Boolean))] as string[];
+  const sessionIds = [...new Set([sessionId, ...communicationRows.map((item) => item.session_id)].filter(Boolean))] as string[];
+  const organisationIds = [...new Set([scopedSession?.organisation_id, ...communicationRows.map((item) => item.organisation_id)].filter(Boolean))] as string[];
 
   let signatureQuery = admin
     .from("daily_convention_signatures")
@@ -178,6 +188,34 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
   const sessionMap = new Map((sessions ?? []).map((item) => [item.id, item]));
   const organisationMap = new Map((organisations ?? []).map((item) => [item.id, item.name]));
   const formationMap = new Map((formations ?? []).map((item) => [item.id, item.title]));
+  const [attendanceSlotsResult, attendanceEnrolmentsResult] = sessionId
+    ? await Promise.all([
+      admin.from("daily_attendance_slots")
+        .select("id,slot_date,starts_at,ends_at,daily_attendance_records(id,enrolment_id,signed_at,evidence_metadata)")
+        .eq("session_id", sessionId).order("slot_date").order("starts_at"),
+      admin.from("daily_session_enrolments")
+        .select("id,daily_learners(first_name,last_name,email)")
+        .eq("session_id", sessionId),
+    ])
+    : [{ data: [], error: null }, { data: [], error: null }];
+  if (attendanceSlotsResult.error || attendanceEnrolmentsResult.error) {
+    throw new Error(attendanceSlotsResult.error?.message || attendanceEnrolmentsResult.error?.message);
+  }
+  const attendanceLearners = new Map((attendanceEnrolmentsResult.data ?? []).map((enrolment) => {
+    const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
+    const name = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant";
+    return [enrolment.id, name] as const;
+  }));
+  const attendanceReviews = (attendanceSlotsResult.data ?? []).flatMap((slot) =>
+    (slot.daily_attendance_records ?? []).flatMap((attendance) =>
+      getAttendanceReviewHistory(attendance).map((review) => ({
+        ...review,
+        recordId: attendance.id,
+        learnerName: attendanceLearners.get(attendance.enrolment_id) || "Apprenant",
+        slotLabel: `${dateLabel(slot.slot_date)} · ${String(slot.starts_at).slice(0, 5)}–${String(slot.ends_at).slice(0, 5)}`,
+      })),
+    ),
+  ).sort((a, b) => new Date(b.decidedAt || b.submittedAt || 0).getTime() - new Date(a.decidedAt || a.submittedAt || 0).getTime());
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: "clamp(16px, 4vw, 28px)", minWidth: 0 }}>
@@ -195,6 +233,31 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
         <p style={{ padding: 10, border: "1px solid var(--selen-border)", borderRadius: 10, overflowWrap: "anywhere" }}>
           Filtre actif : session <code style={{ wordBreak: "break-all" }}>{sessionId}</code>
         </p>
+      ) : null}
+
+      {sessionId ? (
+        <section style={{ marginBottom: 20 }} aria-labelledby="attendance-review-history-title">
+          <h2 id="attendance-review-history-title" style={{ marginBottom: 10 }}>Preuves de revue des émargements</h2>
+          {attendanceReviews.length === 0 ? (
+            <SelenCard>
+              <SelenCardTitle>Aucune revue tardive enregistrée</SelenCardTitle>
+              <p style={{ color: "var(--selen-text2)", marginBottom: 0 }}>Les validations et rejets successifs apparaîtront ici sans jeton, chemin de stockage ni identité privée du décideur.</p>
+            </SelenCard>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {attendanceReviews.map((review) => (
+                <SelenCard key={`${review.recordId}:${review.version}`}>
+                  <SelenCardTitle>{review.learnerName} · preuve v{review.version}</SelenCardTitle>
+                  <p style={{ margin: "6px 0", fontSize: 13 }}><strong>Créneau :</strong> {review.slotLabel}</p>
+                  <p style={{ margin: "6px 0", fontSize: 13 }}><strong>Décision :</strong> {attendanceReviewStateLabel(review.state)}</p>
+                  {review.submittedAt ? <p style={{ margin: "6px 0", fontSize: 13 }}><strong>Transmise :</strong> {dateLabel(review.submittedAt)}</p> : null}
+                  {review.decidedAt ? <p style={{ margin: "6px 0", fontSize: 13 }}><strong>Décidée :</strong> {dateLabel(review.decidedAt)}</p> : null}
+                  {review.reason ? <p style={{ margin: "6px 0", fontSize: 13 }}><strong>Motif :</strong> {review.reason}</p> : null}
+                </SelenCard>
+              ))}
+            </div>
+          )}
+        </section>
       ) : null}
 
       <section style={{ marginBottom: 20 }}>
