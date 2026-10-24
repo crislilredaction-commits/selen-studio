@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 
@@ -15,6 +16,24 @@ const statusLabels: Record<string, string> = {
 };
 
 type Props = { params: Promise<{ id: string }> };
+
+async function requireScopedClosureSession(
+  sessionId: string,
+  agentEmail: string,
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+) {
+  // Une Server Action peut être invoquée directement sans passer par le layout.
+  const { data: session, error } = await admin
+    .from("daily_sessions")
+    .select("id,organisation_id")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (error) throw new Error("Vérification du périmètre de session indisponible.");
+  if (!session?.organisation_id || !(await isDailyOrganisationInAgentScope(agentEmail, session.organisation_id))) {
+    throw new Error("Accès refusé à cette session.");
+  }
+  return session;
+}
 
 function revalidateDossier(sessionId: string) {
   revalidatePath(`/agent/daily/session-dossiers/${sessionId}`);
@@ -32,6 +51,7 @@ async function closeDossier(formData: FormData) {
   if (!sessionId) throw new Error("Session invalide.");
 
   const admin = createSupabaseAdminClient();
+  await requireScopedClosureSession(sessionId, auth.email, admin);
   const { error } = await admin.rpc("daily_close_session_dossier", {
     p_session_id: sessionId,
     p_note: note || null,
@@ -49,6 +69,7 @@ async function archiveDossier(formData: FormData) {
   if (!sessionId) throw new Error("Session invalide.");
 
   const admin = createSupabaseAdminClient();
+  await requireScopedClosureSession(sessionId, auth.email, admin);
   const { error } = await admin.rpc("daily_archive_session_dossier", { p_session_id: sessionId });
   if (error) throw new Error(error.message);
   revalidateDossier(sessionId);
@@ -63,6 +84,7 @@ async function reopenDossier(formData: FormData) {
   if (!sessionId) throw new Error("Session invalide.");
 
   const admin = createSupabaseAdminClient();
+  await requireScopedClosureSession(sessionId, auth.email, admin);
   const { error } = await admin.rpc("daily_reopen_session_dossier", {
     p_session_id: sessionId,
     p_note: note || "Réouverture manuelle du dossier de session.",
@@ -77,17 +99,29 @@ export default async function SessionClosurePage({ params }: Props) {
 
   const { id } = await params;
   const admin = createSupabaseAdminClient();
-  const [{ data: dossier }, { data: session }, { data: items }] = await Promise.all([
-    admin.from("daily_session_dossiers").select("session_id,organisation_id,status,completed_at").eq("session_id", id).maybeSingle(),
-    admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,start_date,end_date").eq("id", id).maybeSingle(),
-    admin.from("daily_session_checklist_items").select("id,item_key,label,status,note,position").eq("session_id", id).order("position"),
-  ]);
+  const { data: session, error: sessionError } = await admin
+    .from("daily_sessions")
+    .select("id,organisation_id,formation_id,internal_reference,start_date,end_date")
+    .eq("id", id)
+    .maybeSingle();
+  if (sessionError) throw new Error("Lecture de la session indisponible.");
+  if (!session?.organisation_id) return <main style={{ padding: 28 }}>Dossier introuvable.</main>;
+  if (!(await isDailyOrganisationInAgentScope(auth.email, session.organisation_id))) {
+    return <main style={{ padding: 28 }}>Accès refusé.</main>;
+  }
 
-  if (!dossier || !session) return <main style={{ padding: 28 }}>Dossier introuvable.</main>;
+  const [{ data: dossier, error: dossierError }, { data: items, error: itemsError }] = await Promise.all([
+    admin.from("daily_session_dossiers").select("session_id,organisation_id,status,completed_at")
+      .eq("session_id", id).eq("organisation_id", session.organisation_id).maybeSingle(),
+    admin.from("daily_session_checklist_items").select("id,item_key,label,status,note,position")
+      .eq("session_id", id).eq("organisation_id", session.organisation_id).order("position"),
+  ]);
+  if (dossierError || itemsError) throw new Error("Lecture du dossier de clôture indisponible.");
+  if (!dossier) return <main style={{ padding: 28 }}>Dossier introuvable.</main>;
 
   const [{ data: org }, { data: formation }] = await Promise.all([
     admin.from("organisations").select("name").eq("id", session.organisation_id).maybeSingle(),
-    admin.from("daily_formations").select("title").eq("id", session.formation_id).maybeSingle(),
+    admin.from("daily_formations").select("title").eq("id", session.formation_id).eq("organisation_id", session.organisation_id).maybeSingle(),
   ]);
 
   const closureItem = (items ?? []).find((item) => item.item_key === "selen_closure_review");
