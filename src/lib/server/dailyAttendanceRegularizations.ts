@@ -48,7 +48,7 @@ function slotHasEnded(slot: SlotRow, now = parisNow()) {
   if (slot.slot_date < now.date) return true;
   if (slot.slot_date > now.date) return false;
   const [hours, minutes] = String(slot.ends_at).slice(0, 5).split(":").map(Number);
-  return now.minutes > hours * 60 + minutes;
+  return now.minutes >= hours * 60 + minutes;
 }
 
 function slotTimestamp(slot: SlotRow) {
@@ -58,6 +58,49 @@ function slotTimestamp(slot: SlotRow) {
 function lateReview(record?: RecordRow) {
   const metadata = record?.evidence_metadata && typeof record.evidence_metadata === "object" ? record.evidence_metadata : {};
   return metadata.late_review && typeof metadata.late_review === "object" ? metadata.late_review as Record<string, unknown> : {};
+}
+
+export function buildDailyAttendanceRegularizations({
+  slots,
+  enrolments,
+  records,
+  organisations,
+  now = parisNow(),
+}: {
+  slots: SlotRow[];
+  enrolments: EnrolmentRow[];
+  records: RecordRow[];
+  organisations: OrganisationRow[];
+  now?: { date: string; minutes: number };
+}): DailyAttendanceRegularization[] {
+  const organisationById = new Map(organisations.map((row) => [row.id, row]));
+  const activeEnrolments = enrolments.filter((row) => isDailyAttendanceRegularizationEnrolmentActive(row.status));
+  const recordBySlotAndEnrolment = new Map(records.map((row) => [`${row.slot_id}:${row.enrolment_id}`, row]));
+  const enrolmentsBySession = new Map<string, EnrolmentRow[]>();
+  for (const enrolment of activeEnrolments) enrolmentsBySession.set(enrolment.session_id, [...(enrolmentsBySession.get(enrolment.session_id) ?? []), enrolment]);
+
+  return slots.filter((slot) => slotHasEnded(slot, now)).flatMap((slot) => {
+    const session = relation<SessionRow>(slot.daily_sessions);
+    if (!session || isDailyAttendanceRegularizationSessionInactive(session.status)) return [];
+    const formation = relation<FormationRow>(session.daily_formations);
+    const organisation = organisationById.get(slot.organisation_id);
+    const sessionTitle = formation?.title || session?.internal_reference || "Session Daily";
+    return (enrolmentsBySession.get(slot.session_id) ?? []).flatMap((enrolment): DailyAttendanceRegularization[] => {
+      const record = recordBySlotAndEnrolment.get(`${slot.id}:${enrolment.id}`);
+      if (record && isDailyAttendanceRegularizationResolved(record.status)) return [];
+      const learner = relation<LearnerRow>(enrolment.daily_learners);
+      const learnerName = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant";
+      const organisationName = organisation?.legal_name || organisation?.name || "Organisme Daily";
+      const review = lateReview(record);
+      const reviewState = String(review.state ?? "").trim() || null;
+      const reviewDetail = reviewState === "awaiting_validation"
+        ? ` · preuve v${Number(review.version) || 1} à valider`
+        : reviewState === "rejected"
+          ? ` · preuve v${Number(review.version) || 1} rejetée, resoumission requise`
+          : "";
+      return [{ id: `attendance-regularization-${slot.id}-${enrolment.id}`, sessionId: slot.session_id, title: learnerName, detail: `${organisationName} · ${sessionTitle} · ${slot.slot_date} de ${String(slot.starts_at).slice(0, 5)} à ${String(slot.ends_at).slice(0, 5)}${reviewDetail}`, href: `/agent/daily/session-dossiers/${encodeURIComponent(slot.session_id)}/full`, slotEndedAt: slotTimestamp(slot), reviewState }];
+    });
+  });
 }
 
 export async function getDailyAttendanceRegularizations(staff: AttendanceRegularizationStaff): Promise<DailyAttendanceRegularization[]> {
@@ -87,33 +130,10 @@ export async function getDailyAttendanceRegularizations(staff: AttendanceRegular
   ]);
   if (enrolmentRes.error || recordRes.error) throw new Error(`File de régularisation indisponible : ${enrolmentRes.error?.message ?? recordRes.error?.message}`);
 
-  const organisations = new Map(((organisationRes.data ?? []) as OrganisationRow[]).map((row) => [row.id, row]));
-  const enrolments = ((enrolmentRes.data ?? []) as unknown as EnrolmentRow[]).filter((row) => isDailyAttendanceRegularizationEnrolmentActive(row.status));
-  const records = (recordRes.data ?? []) as RecordRow[];
-  const recordBySlotAndEnrolment = new Map(records.map((row) => [`${row.slot_id}:${row.enrolment_id}`, row]));
-  const enrolmentsBySession = new Map<string, EnrolmentRow[]>();
-  for (const enrolment of enrolments) enrolmentsBySession.set(enrolment.session_id, [...(enrolmentsBySession.get(enrolment.session_id) ?? []), enrolment]);
-
-  return slots.flatMap((slot) => {
-    const session = relation<SessionRow>(slot.daily_sessions);
-    if (!session || isDailyAttendanceRegularizationSessionInactive(session.status)) return [];
-    const formation = relation<FormationRow>(session?.daily_formations);
-    const organisation = organisations.get(slot.organisation_id);
-    const sessionTitle = formation?.title || session?.internal_reference || "Session Daily";
-    return (enrolmentsBySession.get(slot.session_id) ?? []).flatMap((enrolment): DailyAttendanceRegularization[] => {
-      const record = recordBySlotAndEnrolment.get(`${slot.id}:${enrolment.id}`);
-      if (record && isDailyAttendanceRegularizationResolved(record.status)) return [];
-      const learner = relation<LearnerRow>(enrolment.daily_learners);
-      const learnerName = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant";
-      const organisationName = organisation?.legal_name || organisation?.name || "Organisme Daily";
-      const review = lateReview(record);
-      const reviewState = String(review.state ?? "").trim() || null;
-      const reviewDetail = reviewState === "awaiting_validation"
-        ? ` · preuve v${Number(review.version) || 1} à valider`
-        : reviewState === "rejected"
-          ? ` · preuve v${Number(review.version) || 1} rejetée, resoumission requise`
-          : "";
-      return [{ id: `attendance-regularization-${slot.id}-${enrolment.id}`, sessionId: slot.session_id, title: learnerName, detail: `${organisationName} · ${sessionTitle} · ${slot.slot_date} de ${String(slot.starts_at).slice(0, 5)} à ${String(slot.ends_at).slice(0, 5)}${reviewDetail}`, href: `/agent/daily/session-dossiers/${encodeURIComponent(slot.session_id)}/full`, slotEndedAt: slotTimestamp(slot), reviewState }];
-    });
+  return buildDailyAttendanceRegularizations({
+    slots,
+    enrolments: (enrolmentRes.data ?? []) as unknown as EnrolmentRow[],
+    records: (recordRes.data ?? []) as RecordRow[],
+    organisations: (organisationRes.data ?? []) as OrganisationRow[],
   });
 }
