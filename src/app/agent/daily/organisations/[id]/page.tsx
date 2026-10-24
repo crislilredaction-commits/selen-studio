@@ -12,6 +12,7 @@ import SelenButton from "@/components/ui/SelenButton";
 import { createAgentAssistanceToken } from "@/lib/server/agentAssistanceTokens";
 import { getDailyAgentTasks } from "@/lib/server/dailyAgentTasks";
 import DailyOrganisationWorkspace from "@/components/daily/DailyOrganisationWorkspace";
+import DailyOrganisationSessions from "@/components/daily/DailyOrganisationSessions";
 import { dailyOrganisationProgramStats } from "@/lib/dailyOrganisationStatistics";
 import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 import { resendExistingDailyPortalAccess } from "@/lib/server/dailyDirectSessionPortalAccess";
@@ -22,9 +23,10 @@ type PageProps = {
   searchParams: Promise<{ tab?: string; access_status?: string; access_error?: string }>;
 };
 
-type TabKey = "overview" | "programs" | "applications" | "documents" | "info" | "users" | "learners" | "trainers" | "history";
+type TabKey = "overview" | "sessions" | "programs" | "applications" | "documents" | "info" | "users" | "learners" | "trainers" | "history";
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "overview", label: "Vue d’ensemble" },
+  { key: "sessions", label: "Sessions" },
   { key: "programs", label: "Programmes de formation" },
   { key: "applications", label: "Dossiers d’inscription" },
   { key: "documents", label: "Documents client" },
@@ -34,7 +36,7 @@ const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "trainers", label: "Formateurs" },
   { key: "history", label: "Historique" },
 ];
-const primaryTabs = tabs.filter((tab) => ["overview", "info", "history"].includes(tab.key)).map((tab) => ({
+const primaryTabs = tabs.filter((tab) => ["overview", "sessions", "info", "history"].includes(tab.key)).map((tab) => ({
   ...tab,
   label: tab.key === "overview" ? "Synthèse" : tab.label,
 }));
@@ -432,6 +434,15 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
   const currentSessions = openSessions.filter((session) => session.start_date && session.start_date <= today && (!session.end_date || session.end_date >= today));
   const sessionsToClose = openSessions.filter((session) => session.end_date && session.end_date < today);
   const enrolments = enrolmentsRes.data ?? [];
+  const openSessionIds = new Set(openSessions.map((session) => session.id));
+  const completedSessions = sessions.filter((session) => !openSessionIds.has(session.id));
+  const enrolmentCountBySession = new Map<string, number>();
+  for (const enrolment of enrolments) enrolmentCountBySession.set(enrolment.session_id, (enrolmentCountBySession.get(enrolment.session_id) ?? 0) + 1);
+  const withSessionContext = (items: typeof sessions) => items.map((session) => ({
+    ...session,
+    dossier_status: dossierBySessionId.get(session.id)?.status ?? null,
+    enrolment_count: enrolmentCountBySession.get(session.id) ?? 0,
+  }));
   const learners = learnersRes.data ?? [];
   const portalAccessForEnrolment = (enrolment: (typeof enrolments)[number]) => findDailyLearnerPortalAccess(
     activePortalAccess,
@@ -499,11 +510,13 @@ export default async function DailyOrganisationPage({ params, searchParams }: Pa
           <SelenCard><SelenCardTitle>Personnes & accès</SelenCardTitle><p style={s.muted}>{learners.length} apprenant(s) · {memberships.filter((membership) => membership.status === "active").length} utilisateur(s) actif(s) · {trainers.filter((trainer) => trainer.active).length} formateur(s) actif(s).</p><div style={s.actionLinks}><Link href={`/agent/daily/learners?organisation=${encodeURIComponent(id)}`} style={s.actionLink}>Ouvrir le répertoire apprenants →</Link><Link href={`/agent/daily/organisations/${id}?tab=users`} style={s.secondaryLink}>Gérer les droits →</Link><Link href={`/agent/daily/organisations/${id}?tab=learners`} style={s.secondaryLink}>Contrôler les accès portail →</Link><Link href={`/agent/daily/organisations/${id}?tab=trainers`} style={s.secondaryLink}>Consulter les formateurs →</Link></div></SelenCard>
           <SelenCard><SelenCardTitle>Tâches de cet OF</SelenCardTitle>{scopedDailyTasks.length === 0 ? <p style={s.muted}>Aucune tâche active pour cet organisme.</p> : <><p style={s.muted}>Les 5 premières tâches suivent l’ordre du Pilotage Daily.</p>{visibleOrganisationTasks.map((item) => <div key={item.id} style={s.attentionRow}><div><strong>{item.title}</strong><p style={s.mutedInline}>{item.reason} · {item.detail}</p></div><Link href={item.href} style={s.back}>Traiter →</Link></div>)}{additionalOrganisationTasks.length > 0 ? <details style={s.taskDisclosure}><summary style={s.summary}>Afficher {additionalOrganisationTasks.length} autres tâches actives</summary>{additionalOrganisationTasks.map((item) => <div key={item.id} style={s.attentionRow}><div><strong>{item.title}</strong><p style={s.mutedInline}>{item.reason} · {item.detail}</p></div><Link href={item.href} style={s.back}>Traiter →</Link></div>)}</details> : null}</>}</SelenCard>
           <SelenCard><SelenCardTitle>Signaux dossier</SelenCardTitle><Signal label="NDA" value={organisation.nda_status || "unknown"} /><Signal label="Qualiopi" value={organisation.qualiopi_status || "unknown"} /><Signal label="Utilisateurs actifs" value={String(memberships.filter((m) => m.status === "active").length)} /><Signal label="Formateurs actifs" value={String(trainers.filter((t) => t.active).length)} /><Signal label="Invitations en attente" value={String(invitations.filter((i) => i.status === "pending").length)} /></SelenCard>
-          <SelenCard style={{ gridColumn: "1 / -1" }}><SelenCardTitle>Sessions de cet organisme</SelenCardTitle><div style={s.sessionGroups}><SessionGroup title="À venir" sessions={plannedSessions} /><SessionGroup title="En cours" sessions={currentSessions} /><SessionGroup title="À clôturer" sessions={sessionsToClose} /></div></SelenCard>
+          <DailyOrganisationSessions organisationId={id} planned={withSessionContext(plannedSessions)} current={withSessionContext(currentSessions)} closing={withSessionContext(sessionsToClose)} history={withSessionContext(completedSessions)} mode="summary" />
           <SelenCard style={{ gridColumn: "1 / -1" }}><SelenCardTitle>Échéances formateurs</SelenCardTitle>{expiring.length === 0 ? <p style={s.muted}>Aucune certification à durée limitée n’arrive à échéance dans les 90 jours.</p> : expiring.map((cert) => { const trainer = trainers.find((t) => t.id === cert.trainer_profile_id); return <div key={cert.id} style={s.attentionRow}><span>{trainer?.display_name || "Formateur"} · {cert.title}</span><SelenBadge variant={certVariant(cert.validity_mode, cert.valid_until)}>{certificationLabel(cert.validity_mode, cert.valid_until)}</SelenBadge></div>; })}</SelenCard>
           <SelenCard style={{ gridColumn: "1 / -1" }}><div style={s.sectionHead}><SelenCardTitle>Historique récent</SelenCardTitle><Link href={`/agent/daily/organisations/${id}?tab=history`} style={s.actionLink}>Voir l’historique exhaustif →</Link></div>{timeline.length === 0 ? <p style={s.muted}>Aucun événement enregistré.</p> : timeline.slice(0, 5).map((event) => <div key={`summary:${event.id}`} style={s.historyRow}><div><div style={s.badgeLine}><SelenBadge variant={event.kind === "Email" ? "info" : event.kind === "Signature" ? "success" : "neutral"}>{event.kind}</SelenBadge><strong>{event.title}</strong></div>{event.detail ? <p style={s.mutedInline}>{event.detail}</p> : null}</div><span style={s.tiny}>{new Date(event.at).toLocaleString("fr-FR")}</span></div>)}</SelenCard>
         </div>
       ) : null}
+
+      {tab === "sessions" ? <DailyOrganisationSessions organisationId={id} planned={withSessionContext(plannedSessions)} current={withSessionContext(currentSessions)} closing={withSessionContext(sessionsToClose)} history={withSessionContext(completedSessions)} /> : null}
 
       {tab === "applications" ? <SelenCard><SelenCardTitle>Dossiers d’inscription</SelenCardTitle><p style={s.muted}>Liste complète et historisée des dossiers signés depuis Daily. Chaque ligne reste rattachée à son programme et, lorsqu’elle est choisie, à sa session.</p>{candidatures.length === 0 ? <p style={s.muted}>Aucun dossier rempli pour cet organisme.</p> : candidatures.map((candidature) => { const formation = formationById.get(candidature.formation_id); const session = candidature.attached_session_id ? sessionById.get(candidature.attached_session_id) : null; const identity = candidature.company_name || [candidature.respondent_first_name, candidature.respondent_last_name].filter(Boolean).join(" ") || candidature.respondent_email || "Candidat"; const state = candidatureStatus(candidature.decision_status, candidature.status); return <article key={candidature.id} style={s.memberCard}><div style={s.userRow}><div style={{ flex: 1, minWidth: 220 }}><strong>{identity}</strong><p style={s.mutedInline}>{formation?.title || "Formation"} · {session ? [session.start_date, session.end_date].filter(Boolean).join(" → ") || session.internal_reference || "Session rattachée" : "Session à planifier"} · {candidature.signature_signed_at ? "dossier signé" : "signature absente"}</p><p style={s.tiny}>{candidature.submitted_at ? `Reçu le ${new Date(candidature.submitted_at).toLocaleString("fr-FR")}` : "Date de réception inconnue"}{candidature.agent_analysis_completed_at ? " · analyse Selen enregistrée" : ""}</p></div><SelenBadge variant={state.variant}>{state.label}</SelenBadge></div><div style={{ ...s.badgeLine, marginTop: 10 }}><Link href={`/agent/daily/candidatures/${candidature.id}`} style={s.back}>Ouvrir les réponses et justificatifs →</Link>{session ? <Link href={`/agent/daily/session-dossiers/${session.id}/full`} style={s.back}>Ouvrir la session →</Link> : null}{session && candidature.decision_status==="accepted"?<Link href={`/agent/daily/session-dossiers/${session.id}/full`} style={s.back}>Préparer les documents depuis la session →</Link>:null}</div></article>; })}</SelenCard> : null}
 
@@ -546,12 +559,6 @@ function MiniStat({ label, value, detail, tone = "neutral" }: { label: string; v
   return <SelenCard style={s.statCard}><span style={s.tiny}>{label}</span><strong style={{ color, fontSize: value.length > 16 ? 14 : 24 }}>{value}</strong>{detail ? <span style={s.statDetail}>{detail}</span> : null}</SelenCard>;
 }
 function Signal({ label, value }: { label: string; value: string }) { return <div style={s.signal}><span style={s.mutedInline}>{label}</span><strong>{value}</strong></div>; }
-type SessionSummary = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; daily_formations?: { title?: string | null } | Array<{ title?: string | null }> | null };
-function SessionGroup({ title, sessions }: { title: string; sessions: SessionSummary[] }) {
-  if (sessions.length === 0) return <section style={s.sessionGroup}><strong>{title} · 0</strong><p style={s.mutedInline}>Aucune session.</p></section>;
-  return <details style={s.sessionGroup} open={sessions.length <= 3}><summary style={s.summary}><strong>{title} · {sessions.length}</strong><span style={s.tiny}>{sessions.length <= 3 ? "Détail affiché" : "Afficher la liste"}</span></summary>{sessions.map((session) => { const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations; return <Link key={session.id} href={`/agent/daily/session-dossiers/${session.id}/full`} style={s.sessionLink}>{formation?.title || session.internal_reference || "Session"}<span style={s.tiny}>{[session.start_date, session.end_date].filter(Boolean).join(" → ") || "Dates à préciser"}</span></Link>; })}</details>;
-}
-
 const s: Record<string, CSSProperties> = {
   page: { padding: "24px 28px 50px", maxWidth: 1180, margin: "0 auto", color: "var(--selen-text)" },
   header: { display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start", flexWrap: "wrap" },
@@ -568,7 +575,7 @@ const s: Record<string, CSSProperties> = {
   contextBar: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", margin: "-4px 0 16px", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--selen-border)", background: "var(--selen-bg3)" },
   actionLinks: { display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }, actionLink: { color: "var(--selen-gold)", fontWeight: 700, fontSize: 12, textDecoration: "none" }, secondaryLink: { color: "var(--selen-text2)", fontSize: 11, textDecoration: "none" }, sectionHead: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" },
   twoCols: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 12 }, stack: { display: "grid", gap: 12 }, list: { display: "grid", gap: 10 }, attentionRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "1px solid var(--selen-border)", flexWrap: "wrap" }, muted: { color: "var(--selen-text3)", fontSize: 13 }, mutedInline: { margin: "4px 0 0", color: "var(--selen-text3)", fontSize: 11, lineHeight: 1.45 }, tiny: { color: "var(--selen-text3)", fontSize: 10 }, signal: { display: "flex", justifyContent: "space-between", gap: 14, borderBottom: "1px solid var(--selen-border)", padding: "9px 0" },
-  sessionGroups: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }, sessionGroup: { alignContent: "start", minWidth: 0, padding: 12, borderRadius: 12, background: "var(--selen-bg3)", border: "1px solid var(--selen-border)" }, summary: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, cursor: "pointer", listStylePosition: "inside" }, taskDisclosure: { marginTop: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--selen-border)", background: "var(--selen-bg3)" }, sessionLink: { display: "grid", gap: 3, color: "var(--selen-text)", textDecoration: "none", padding: "8px 0", borderTop: "1px solid var(--selen-border)" },
+  summary: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, cursor: "pointer", listStylePosition: "inside" }, taskDisclosure: { marginTop: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--selen-border)", background: "var(--selen-bg3)" },
   editForm: { display: "grid", gap: 16, marginTop: 16 }, editGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12 }, field: { display: "grid", gap: 5, minWidth: 0 }, formFooter: { display: "flex", justifyContent: "flex-end", paddingTop: 4 },
   checkRow: { display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", padding: 12, border: "1px solid var(--selen-border)", borderRadius: 14, background: "var(--selen-bg3)" },
   memberCard: { borderTop: "1px solid var(--selen-border)", padding: "14px 0" }, userRow: { display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }, inlineForm: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }, accessForm: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, alignItems: "end", marginTop: 12, padding: 12, borderRadius: 12, background: "var(--selen-bg3)" }, fieldset: { border: "1px solid var(--selen-border)", borderRadius: 10, padding: 10, margin: 0 }, legend: { fontSize: 10, color: "var(--selen-text3)", padding: "0 4px" }, checkboxLabel: { display: "block", fontSize: 11, color: "var(--selen-text2)", margin: "5px 0" },

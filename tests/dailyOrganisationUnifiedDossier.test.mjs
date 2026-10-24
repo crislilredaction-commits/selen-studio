@@ -4,6 +4,8 @@ import test from "node:test";
 
 const page = readFileSync(new URL("../src/app/agent/daily/organisations/[id]/page.tsx", import.meta.url), "utf8");
 const layout = readFileSync(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
+const sessionsWorkspace = readFileSync(new URL("../src/components/daily/DailyOrganisationSessions.tsx", import.meta.url), "utf8");
+const sessionsStyles = readFileSync(new URL("../src/components/daily/daily-organisation-sessions.module.css", import.meta.url), "utf8");
 
 test("le dossier et toutes ses mutations restent bornés au périmètre de l’agent", () => {
   assert.match(page, /isDailyOrganisationInAgentScope\(auth\.email, id\)/);
@@ -44,6 +46,14 @@ test("les outils spécialisés restent accessibles sans surcharger la synthèse"
   assert.match(layout, /daily\/organisation-assignment/);
 });
 
+test("le dossier organisme possède un véritable onglet Sessions cohérent avec le fil d’Ariane", () => {
+  assert.match(page, /key: "sessions", label: "Sessions"/);
+  assert.match(page, /tab === "sessions"/);
+  assert.match(page, /DailyOrganisationSessions/);
+  assert.match(sessionsWorkspace, /Organisme → sessions → dossier/);
+  for (const fragment of ["vue-ensemble", "documents-avant-formation", "pendant-formation", "apres-formation"]) assert.match(sessionsWorkspace, new RegExp(fragment));
+});
+
 test("la vue d’ensemble classe les sessions canoniques", () => {
   assert.match(page, /async function readAllRows/);
   assert.match(page, /const plannedSessions =/);
@@ -51,10 +61,19 @@ test("la vue d’ensemble classe les sessions canoniques", () => {
   assert.match(page, /const sessionsToClose =/);
   assert.match(page, /from\("daily_session_dossiers"\)/);
   assert.match(page, /dossierBySessionId\.get\(session\.id\)\?\.status/);
-  assert.match(page, /title="À venir" sessions=\{plannedSessions\}/);
-  assert.match(page, /title="En cours" sessions=\{currentSessions\}/);
-  assert.match(page, /title="À clôturer" sessions=\{sessionsToClose\}/);
-  assert.match(page, /\/agent\/daily\/session-dossiers\/\$\{session\.id\}\/full/);
+  assert.match(page, /planned=\{withSessionContext\(plannedSessions\)\}/);
+  assert.match(page, /current=\{withSessionContext\(currentSessions\)\}/);
+  assert.match(page, /closing=\{withSessionContext\(sessionsToClose\)\}/);
+  assert.match(page, /history=\{withSessionContext\(completedSessions\)\}/);
+  assert.match(sessionsWorkspace, /\/agent\/daily\/session-dossiers\/\$\{encodeURIComponent\(session\.id\)\}\/full/);
+  assert.match(sessionsWorkspace, /enrolment_count/);
+  assert.match(sessionsWorkspace, /dossier_status/);
+});
+
+test("l’espace Sessions reste exploitable sur mobile", () => {
+  assert.match(sessionsStyles, /@media\(max-width:480px\)/);
+  assert.match(sessionsStyles, /\.phaseLinks\{grid-template-columns:1fr\}/);
+  assert.match(sessionsStyles, /min-height:44px/);
 });
 
 test("la synthèse replie les longues listes de tâches sans perdre leur ordre ni leurs liens", () => {
