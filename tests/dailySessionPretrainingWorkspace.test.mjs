@@ -18,9 +18,11 @@ test("la fiche session expose quatre onglets chronologiques sans dupliquer les t
   }
   assert.match(navigation, /querySelectorAll<HTMLElement>\("\[data-session-stage\]"\)/);
   assert.match(navigation, /panel\.hidden = panel\.dataset\.sessionStage !== activeStage/);
-  assert.match(source, /Participants & inscriptions/);
-  assert.match(source, /Documents à traiter/);
-  assert.match(source, /Communications & preuves/);
+  assert.match(navigation, /Participants & positionnements/);
+  assert.match(navigation, /Documents avant formation/);
+  assert.match(navigation, /Communications & preuves/);
+  assert.doesNotMatch(source, /workspaceLinks/);
+  assert.doesNotMatch(source, /footerLinks/);
 });
 
 test("les liens profonds ouvrent le bon onglet et conservent les détails ciblés", () => {
