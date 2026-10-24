@@ -13,7 +13,9 @@ on:
       - 'tests/dailyActiveTaskBehavior.test.mjs'
       - 'tests/dailySessionTaskAggregation.test.mjs'
       - 'tests/dailySessionTimeline.test.mjs'
+      - 'tests/dailySessionClosureScope.test.mjs'
       - 'src/app/agent/daily/session-dossiers/**/timeline/**'
+      - 'src/app/agent/daily/session-dossiers/**/closure/**'
       - 'package*.json'
   push:
     branches: [main]
@@ -27,7 +29,9 @@ on:
       - 'tests/dailyActiveTaskBehavior.test.mjs'
       - 'tests/dailySessionTaskAggregation.test.mjs'
       - 'tests/dailySessionTimeline.test.mjs'
+      - 'tests/dailySessionClosureScope.test.mjs'
       - 'src/app/agent/daily/session-dossiers/**/timeline/**'
+      - 'src/app/agent/daily/session-dossiers/**/closure/**'
       - 'package*.json'
 
 permissions:
@@ -48,8 +52,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: npm ci
-      - name: ESLint ciblé timeline et contrôle de périmètre
-        run: npx eslint 'src/app/agent/daily/session-dossiers/[id]/timeline/page.tsx' 'tests/dailySessionTaskAggregation.test.mjs'
+      - name: ESLint ciblé timeline et clôture sécurisées
+        run: npx eslint 'src/app/agent/daily/session-dossiers/[id]/timeline/page.tsx' 'src/app/agent/daily/session-dossiers/[id]/closure/page.tsx' 'tests/dailySessionTaskAggregation.test.mjs' 'tests/dailySessionClosureScope.test.mjs'
       - name: Tests, typecheck and build without production credentials
         run: |
           npm test
