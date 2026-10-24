@@ -35,3 +35,16 @@ test("les outils reviennent à leur phase du dossier unifié", () => {
   for (const path of ["satisfaction/page.tsx", "evaluation/page.tsx", "closure/page.tsx"]) assert.match(read(`src/app/agent/daily/session-dossiers/[id]/${path}`), /full#apres-formation/);
   assert.match(read("src/app/agent/daily/session-dossiers/[id]/followup/page.tsx"), /full#pendant-formation/);
 });
+
+test("le traitement historique des inscriptions partage le shell sécurisé de la session", () => {
+  const registrationLayout = read("src/app/agent/daily/sessions/[id]/layout.tsx");
+  const registrationPage = read("src/app/agent/daily/sessions/[id]/page.tsx");
+  const dossier = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
+  assert.match(registrationLayout, /SessionDossierLayout/);
+  assert.match(registrationLayout, /<SessionDossierLayout \\{\\.\\.\\.props\\} \\/>/);
+  assert.match(navigation, /Contrôler les inscriptions/);
+  assert.match(navigation, /\\/agent\\/daily\\/sessions\\/\\$\\{encodeURIComponent\\(sessionId\\)\\}/);
+  assert.match(registrationPage, /loadScopedDailySessionPrerequisites\\(admin, auth\\.email, id\\)/);
+  assert.match(registrationPage, /patchSummaryValidationAction\\(legacy, blockedReason\\)/);
+  assert.match(dossier, /href=\\{\\`\\/agent\\/daily\\/sessions\\/\\$\\{id\\}\\`\\}/);
+});
