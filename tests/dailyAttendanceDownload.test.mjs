@@ -31,3 +31,25 @@ test("le téléchargement est privé, borné et proposé depuis les présences",
   assert.match(page, /Télécharger les émargements \(PDF\)/);
   assert.match(page, /session-dossiers\/\$\{id\}\/attendance\/pdf/);
 });
+
+test("la feuille individuelle est bornée à une inscription active et à un relevé publié", () => {
+  assert.match(route, /searchParams\.get\("enrolment"\)/);
+  assert.match(route, /allEnrolments\.filter/);
+  assert.match(route, /\["declined", "cancelled", "abandoned"\]/);
+  assert.match(route, /isAfterSession\(session\.end_date\)/);
+  assert.match(route, /document_type", "attendance_summary"/);
+  assert.match(route, /\.in\("status", \["published", "signed"\]\)/);
+  assert.match(route, /Toutes les présences de cet apprenant doivent être traitées/);
+});
+
+test("la feuille individuelle ajoute seulement les signatures apprenant et formateur du même créneau", () => {
+  assert.match(route, /trainer_signature_evidence/);
+  assert.match(route, /metadata\.slot_id/);
+  assert.match(route, /Signature du formateur/);
+  assert.match(route, /Signature de l’apprenant : non enregistrée/);
+  assert.match(route, /Feuille d’émargement individuelle/);
+  assert.match(route, /aucune métadonnée privée de revue n’est exposée/);
+  assert.match(page, /Télécharger sa feuille individuelle \(PDF\)/);
+  assert.match(page, /attendanceSettled/);
+  assert.match(page, /publishedAttendance/);
+});
