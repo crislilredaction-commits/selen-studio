@@ -74,7 +74,7 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
   const qualityLink = qualityHref(id, session.organisation_id);
 
   return <main style={{ maxWidth: 1080, margin: "0 auto", padding: 28 }}>
-    <Link href={`/agent/daily/session-dossiers/${id}`} style={{ color: "var(--selen-text2)" }}>← Retour au dossier de session</Link>
+    <Link href={`/agent/daily/session-dossiers/${id}/full#apres-formation`} style={{ color: "var(--selen-text2)" }}>← Retour à l’étape Après</Link>
     <h1 style={{ marginBottom: 4 }}>Satisfaction de fin de formation</h1>
     <p style={{ marginTop: 0, color: "var(--selen-text2)" }}>{formation?.title ?? "Formation"} · {organisation?.name ?? "Organisme"} · {session.internal_reference || "Sans référence"}</p>
 

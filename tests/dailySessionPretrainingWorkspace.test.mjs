@@ -7,7 +7,7 @@ const source = readFileSync(
   "utf8",
 );
 const navigation = readFileSync(
-  new URL("../src/app/agent/daily/session-dossiers/[id]/full/SessionStageNavigation.tsx", import.meta.url),
+  new URL("../src/app/agent/daily/session-dossiers/[id]/SessionWorkspaceNavigation.tsx", import.meta.url),
   "utf8",
 );
 
@@ -24,7 +24,7 @@ test("la fiche session expose quatre onglets chronologiques sans dupliquer les t
 });
 
 test("les liens profonds ouvrent le bon onglet et conservent les détails ciblés", () => {
-  assert.match(navigation, /window\.addEventListener\("hashchange", activateHash\)/);
+  assert.match(navigation, /window\.addEventListener\("hashchange", activateLocation\)/);
   assert.match(navigation, /target\?\.closest<HTMLElement>\("\[data-session-stage\]"\)/);
   assert.match(navigation, /target instanceof HTMLDetailsElement/);
   assert.match(navigation, /target\.scrollIntoView/);
