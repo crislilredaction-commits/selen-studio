@@ -23,6 +23,7 @@ function phaseActions(sessionId: string): Record<StageId, Array<{ href: string; 
     ],
     before: [
       { href: dossierBase, label: "Programme & inscriptions" },
+      { href: `/agent/daily/sessions/${encodeURIComponent(sessionId)}`, label: "Contrôler les inscriptions" },
       { href: `${dossierBase}/full#participants-session`, label: "Participants & positionnements" },
       { href: `/agent/daily/pretraining-documents?session=${encodeURIComponent(sessionId)}`, label: "Documents avant formation" },
     ],
