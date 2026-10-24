@@ -18,10 +18,13 @@ test("le fil d’Ariane conserve l’onglet Sessions de l’organisme", () => {
   assert.match(layout, /Organisme → session → dossier/);
   assert.match(layout, /Ouvrir le dossier unifié/);
 });
-test("les quatre phases et leurs outils restent accessibles", () => {
+test("les quatre phases conservent uniquement leurs actions contextuelles", () => {
   for (const stage of ["overview", "before", "during", "after"]) assert.match(navigation, new RegExp(`id: "${stage}"`));
-  for (const tool of ["Programme & inscriptions", "Chronologie", "Suivi pendant", "Évaluation", "Satisfaction", "Clôture"]) assert.match(navigation, new RegExp(tool));
+  for (const tool of ["Programme & inscriptions", "Documents avant formation", "Chronologie", "Suivi pendant", "Émargements collectifs", "Évaluation", "Satisfaction", "Clôture"]) assert.match(navigation, new RegExp(tool));
   assert.match(navigation, /toolStages/);
+  assert.match(navigation, /phaseActions\(sessionId\)\[activeStage\]/);
+  assert.match(navigation, /Actions · \{activeStageDetails\.label\}/);
+  assert.doesNotMatch(navigation, /Outils de cette session/);
 });
 test("la navigation est responsive", () => {
   assert.match(responsive, /@media\(max-width:560px\)/);
