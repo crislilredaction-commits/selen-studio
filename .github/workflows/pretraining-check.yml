@@ -12,6 +12,8 @@ on:
       - 'tests/daily*Pretraining*.test.mjs'
       - 'tests/dailyActiveTaskBehavior.test.mjs'
       - 'tests/dailySessionTaskAggregation.test.mjs'
+      - 'tests/dailySessionTimeline.test.mjs'
+      - 'src/app/agent/daily/session-dossiers/**/timeline/**'
       - 'package*.json'
   push:
     branches: [main]
@@ -24,6 +26,8 @@ on:
       - 'tests/daily*Pretraining*.test.mjs'
       - 'tests/dailyActiveTaskBehavior.test.mjs'
       - 'tests/dailySessionTaskAggregation.test.mjs'
+      - 'tests/dailySessionTimeline.test.mjs'
+      - 'src/app/agent/daily/session-dossiers/**/timeline/**'
       - 'package*.json'
 
 permissions:
@@ -44,6 +48,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: npm ci
+      - name: ESLint ciblé timeline et contrôle de périmètre
+        run: npx eslint 'src/app/agent/daily/session-dossiers/[id]/timeline/page.tsx' 'tests/dailySessionTaskAggregation.test.mjs'
       - name: Tests, typecheck and build without production credentials
         run: |
           npm test
