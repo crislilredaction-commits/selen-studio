@@ -40,11 +40,11 @@ test("le traitement historique des inscriptions partage le shell sécurisé de l
   const registrationLayout = read("src/app/agent/daily/sessions/[id]/layout.tsx");
   const registrationPage = read("src/app/agent/daily/sessions/[id]/page.tsx");
   const dossier = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
-  assert.match(registrationLayout, /SessionDossierLayout/);
-  assert.match(registrationLayout, /<SessionDossierLayout \\{\\.\\.\\.props\\} \\/>/);
-  assert.match(navigation, /Contrôler les inscriptions/);
-  assert.match(navigation, /\\/agent\\/daily\\/sessions\\/\\$\\{encodeURIComponent\\(sessionId\\)\\}/);
-  assert.match(registrationPage, /loadScopedDailySessionPrerequisites\\(admin, auth\\.email, id\\)/);
-  assert.match(registrationPage, /patchSummaryValidationAction\\(legacy, blockedReason\\)/);
-  assert.match(dossier, /href=\\{\\`\\/agent\\/daily\\/sessions\\/\\$\\{id\\}\\`\\}/);
+  assert.ok(registrationLayout.includes("SessionDossierLayout"));
+  assert.ok(registrationLayout.includes("<SessionDossierLayout {...props} />"));
+  assert.ok(navigation.includes("Contrôler les inscriptions"));
+  assert.ok(navigation.includes("/agent/daily/sessions/${encodeURIComponent(sessionId)}"));
+  assert.ok(registrationPage.includes("loadScopedDailySessionPrerequisites(admin, auth.email, id)"));
+  assert.ok(registrationPage.includes("patchSummaryValidationAction(legacy, blockedReason)"));
+  assert.ok(dossier.includes("/agent/daily/sessions/${id}"));
 });
