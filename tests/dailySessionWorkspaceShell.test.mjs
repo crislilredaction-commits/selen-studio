@@ -30,6 +30,7 @@ test("les feuilles individuelles sont dans Pendant et restent bornées à l’or
   const dossier = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
   assert.match(navigation, /full#feuilles-individuelles/);
   assert.match(dossier, /id="feuilles-individuelles" data-session-stage="during" hidden/);
+  assert.match(dossier, /flexWrap:"wrap"/);
   assert.match(dossier, /<IndividualAttendanceDownload/);
   assert.match(dossier, /\.eq\("organisation_id",typedSession\.organisation_id\)/);
   assert.match(dossier, /learner!==null&&learner\.organisation_id===typedSession\.organisation_id/);
