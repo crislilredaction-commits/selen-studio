@@ -2,6 +2,7 @@ import { isOverdueAfterBusinessHours } from "@/lib/franceBusinessTime";
 import { isSignatureTerminal } from "@/lib/daily/signatureReminder24h";
 import { getDailyAttendanceClientFollowups } from "@/lib/server/dailyAttendanceClientFollowups";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { prioritizeStudioClientFollowups } from "@/lib/daily/pilotageFollowupQueue.mjs";
 
 export type FollowupStaff = { id: string | null; role: "agent" | "admin" };
 export type StudioClientFollowup = { id:string; title:string; detail:string; href:string; dueAt:string|null; assignedAgentProfileId:string|null; overdueShared:boolean; reminderType:string|null; isDaily:boolean };
@@ -122,5 +123,5 @@ export async function getStudioClientFollowups(staff:FollowupStaff,options?:{dai
   signatures:byId((signaturesResult.data??[]) as DailySignatureRow[]),
  };
  const reminderFollowups=buildStudioReminderFollowups(rows,staff,canonicalState,options);
- return [...reminderFollowups,...attendanceFollowups].filter((row)=>!options?.dailyOnly||row.isDaily).sort((left,right)=>Date.parse(left.dueAt??"")-Date.parse(right.dueAt??""));
+ return prioritizeStudioClientFollowups([...reminderFollowups,...attendanceFollowups].filter((row)=>!options?.dailyOnly||row.isDaily));
 }
