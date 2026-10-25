@@ -33,7 +33,7 @@ test("un tri stable préserve les droits, les objets et les égalités", () => {
 
 test("le pilotage utilise le tri et conserve les contrôles d'autorisation", async () => {
   const page = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /prioritizeDailyPilotageTasks\(tasks\)/);
+  assert.match(page, /prioritizeDailyPilotageTasks\(filterDailyPilotageTasks\(tasks, selectedView/);
   assert.match(page, /sortedTasks\.map\(\(item\)/);
   assert.match(page, /canTreatDailyPilotageTask\(item, staff\)/);
   assert.match(page, /Traitement réservé à l’agent assigné/);
