@@ -40,8 +40,8 @@ test("le serveur trie après filtrage de visibilité, sans nouvelle lecture ni m
 test("le pilotage signale les relances partagées et conserve la pagination existante", async () => {
   const { readFile } = await import("node:fs/promises");
   const page = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /followups\.filter\(item => item\.overdueShared\)\.length/);
+  assert.match(page, /matchingFollowups\.filter\(item => item\.overdueShared\)\.length/);
   assert.match(page, /Relances partagées avec l’équipe/);
-  assert.match(page, /paginateDailyPilotageTasks\(followups, params\?\.relances, 10\)/);
+  assert.match(page, /paginateDailyPilotageTasks\(matchingFollowups, params\?\.relances, 10\)/);
   assert.match(page, /getStudioClientFollowups\(staff/);
 });
