@@ -8,8 +8,8 @@ export const ids={org:"11111111-1111-4111-8111-111111111111",trainer:"22222222-2
 export function exchangeHarness(options={}) {
  const trainer={id:ids.trainer,organisation_id:ids.org,display_name:"Formatrice exemple",professional_email:"manager@example.test",user_id:null,membership_id:null,engagement_type:"external",status:"validated",active:true};
  const session={id:ids.session,organisation_id:ids.org,formation_id:"formation",trainer_ids:[ids.trainer],status:"ready",registration_status:"summary_validated",start_date:"2026-10-12",end_date:"2026-10-13",daily_formations:{title:"Formation exemple"}};
- const enrolment={id:"enrolment",organisation_id:ids.org,session_id:ids.session,learner_id:"learner",status:"confirmed",positioning_status:"reviewed",daily_learners:{first_name:"Alice",last_name:"Exemple",email:"alice@example.test"}};
- const cancelled={...enrolment,id:"cancelled-enrolment",status:"cancelled",daily_learners:{first_name:"Historique",last_name:"Annulé"}};
+ const enrolment={id:"enrolment",organisation_id:ids.org,session_id:ids.session,learner_id:"learner",status:"confirmed",positioning_status:"reviewed",daily_learners:{id:"learner",organisation_id:ids.org,first_name:"Alice",last_name:"Exemple",email:"alice@example.test"}};
+ const cancelled={...enrolment,id:"cancelled-enrolment",status:"cancelled",daily_learners:{id:"learner",organisation_id:ids.org,first_name:"Historique",last_name:"Annulé"}};
  const db={daily_trainer_profiles:[trainer],daily_sessions:[session,{...session,id:ids.other,trainer_ids:[]}],daily_session_enrolments:[enrolment,cancelled],
   daily_attendance_slots:[{id:"slot",organisation_id:ids.org,session_id:ids.session,slot_date:"2026-10-12",starts_at:"09:00",ends_at:"12:00",status:"closed"}],
   daily_attendance_records:[{id:"record",organisation_id:ids.org,session_id:ids.session,slot_id:"slot",enrolment_id:"enrolment",status:"present",signed_at:"2026-10-12T10:00:00Z",signature_storage_path:"private-proof"},
