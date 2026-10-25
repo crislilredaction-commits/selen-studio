@@ -30,6 +30,16 @@ test("Studio affiche la même présence signée et exclut l’inscription annul�
  const h=exchangeHarness(),before=JSON.stringify(h.db),html=await render(h);
  assert.match(html,/Alice Exemple/);assert.match(html,/Signé/);assert.match(html,/Présences par créneau \(1\/1\)/);assert.doesNotMatch(html,/Historique Annulé|private-proof/);assert.equal(JSON.stringify(h.db),before);assert.equal(h.scopes[0].org,ids.org);
 });
+test("la vue Studio masque les apprenants d’un autre organisme et leurs preuves en revue",async()=>{
+ const h=exchangeHarness();
+ h.db.daily_session_enrolments.push({...h.enrolment,id:"foreign-enrolment",learner_id:"foreign-learner",daily_learners:{id:"foreign-learner",organisation_id:ids.other,first_name:"Eve",last_name:"Externe"}});
+ h.db.daily_attendance_records.push({id:"foreign-review",organisation_id:ids.org,session_id:ids.session,slot_id:"slot",enrolment_id:"foreign-enrolment",status:"pending",evidence_metadata:{late_review:{state:"awaiting_validation",version:1}}});
+ const html=await render(h);
+ assert.match(html,/Alice Exemple/);
+ assert.ok(html.includes("Présences par créneau (1/1)"));
+ assert.doesNotMatch(html,/Eve Externe|Preuves d’émargement à valider/);
+});
+
 test("la session d’un autre organisme n’est pas exposée à un agent non affecté",async()=>{
  const h=exchangeHarness({outOfScope:true}),html=await render(h);assert.match(html,/Accès refusé/);assert.doesNotMatch(html,/Alice|Formation exemple|Signé/);assert.equal(h.reads.length,1);assert.equal(h.reads[0].table,"daily_sessions");
 });

@@ -29,6 +29,7 @@ function phaseActions(sessionId: string): Record<StageId, Array<{ href: string; 
     ],
     during: [
       { href: `${dossierBase}/followup`, label: "Suivi pendant" },
+      { href: `${dossierBase}/full#feuilles-individuelles`, label: "Feuilles individuelles (PDF)" },
       { href: `${dossierBase}/attendance/pdf`, label: "Émargements collectifs (PDF)" },
       { href: `/agent/daily/communications?session_id=${encodeURIComponent(sessionId)}`, label: "Communications & preuves" },
     ],
