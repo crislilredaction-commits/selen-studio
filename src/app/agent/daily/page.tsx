@@ -80,6 +80,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
   const followupViews = [
     { key: "all", label: "Toutes", count: followupCounts.all },
     { key: "undated", label: "Sans échéance", count: followupCounts.undated },
+    { key: "overdue", label: "En retard", count: followupCounts.overdue },
     { key: "shared", label: "Partagées", count: followupCounts.shared },
   ] as const;
   const followupCategories = [
