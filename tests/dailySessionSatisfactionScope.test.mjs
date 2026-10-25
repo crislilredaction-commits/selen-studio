@@ -10,7 +10,7 @@ const source = readFileSync(
 
 test("la satisfaction Studio reste bornée au périmètre de l'agent et aux apprenants de l'OF", () => {
   const scope = source.indexOf("await isDailyOrganisationInAgentScope(auth.email, session.organisation_id)");
-  const reads = source.indexOf("const [stakeholderRes, enrolmentRes, learnerFeedbackRes, assessmentRes, analysisRes]");
+  const reads = source.indexOf("const [stakeholderRes, enrolmentRes, learnerFeedbackRes, analysisRes]");
   assert.ok(scope >= 0 && reads > scope, "Les données personnelles ne sont lues qu'après contrôle du périmètre");
   assert.match(source, /\.select\("id,learner_id,daily_learners\(id,organisation_id,email,first_name,last_name\)"\)\.eq\("organisation_id", session\.organisation_id\)/);
   assert.match(source, /learner\?\.organisation_id === session\.organisation_id && learner\.id === enrolment\.learner_id/);
