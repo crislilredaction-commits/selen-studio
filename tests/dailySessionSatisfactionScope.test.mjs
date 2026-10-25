@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+const assessmentEligibility = readFileSync(new URL("../src/lib/server/dailyPosttrainingAssessmentEligibility.ts", import.meta.url), "utf8");
 const source = readFileSync(
   new URL("../src/app/agent/daily/session-dossiers/[id]/satisfaction/page.tsx", import.meta.url),
   "utf8",
@@ -24,8 +25,10 @@ test("les compteurs ignorent les réponses orphelines, annulées ou dupliquées"
 });
 
 test("une évaluation finale suffit à débloquer l'analyse post-formation même sans satisfaction", () => {
-  assert.match(source, /\.from\("daily_learning_assessments"\)\.select\("enrolment_id,outcome"\)\.eq\("organisation_id", session\.organisation_id\)/);
-  assert.match(source, /row\.outcome !== "pending"/);
+  assert.match(source, /getFinalizedDailyAssessmentEnrolmentIds\(admin, session\.organisation_id, id\)/);
+  assert.match(assessmentEligibility, /\.from\("daily_learning_assessments"\)/);
+  assert.match(assessmentEligibility, /\.eq\("organisation_id", organisationId\)\.eq\("session_id", sessionId\)/);
+  assert.match(assessmentEligibility, /row\.outcome !== "pending"/);
   assert.match(source, /enabled=\{Boolean\(feedback\) \|\| assessmentFinalized\}/);
-  assert.match(source, /assessmentRes\.error/);
+  assert.doesNotMatch(source, /daily_learning_assessments/);
 });
