@@ -32,7 +32,9 @@ test("la validation crée l'action client de diffusion sans exposer le lien dans
 test("le dossier complet est une synthèse métier et non une checklist", () => {
   const full = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
   assert.match(full, /À faire maintenant/);
-  assert.match(full, /En attente d'une inscription/);
+  const priorities = read("src/lib/daily/sessionWorkspaceNextAction.mjs");
+  assert.match(full, /resolveSessionWorkspaceNextAction/);
+  assert.match(priorities, /En attente d'une inscription/);
   assert.match(full, /Candidatures reçues/);
   assert.match(full, /Formulaires de session reçus/);
   assert.match(full, /Présences, évaluations & satisfaction/);

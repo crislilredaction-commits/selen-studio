@@ -4,6 +4,7 @@ import ts from "typescript";
 import assert from "node:assert/strict";
 import React from "react";
 import * as jsx from "react/jsx-runtime";
+import { resolveSessionWorkspaceNextAction } from "../../src/lib/daily/sessionWorkspaceNextAction.mjs";
 export const ids={org:"11111111-1111-4111-8111-111111111111",trainer:"22222222-2222-4222-8222-222222222222",session:"33333333-3333-4333-8333-333333333333",other:"44444444-4444-4444-8444-444444444444"};
 export function exchangeHarness(options={}) {
  const trainer={id:ids.trainer,organisation_id:ids.org,display_name:"Formatrice exemple",professional_email:"manager@example.test",user_id:null,membership_id:null,engagement_type:"external",status:"validated",active:true};
@@ -55,6 +56,7 @@ export function exchangeHarness(options={}) {
    "@/components/agent/AttendanceHumanReview":{__esModule:true,default:()=>null},
    "@/components/agent/IndividualAttendanceDownload":{__esModule:true,default:()=>null},
    "@/lib/vitrineLinks":{getVitrineBaseUrl:()=>"https://www.selen-editions.fr"},
+   "@/lib/daily/sessionWorkspaceNextAction.mjs":{resolveSessionWorkspaceNextAction},
    "@/lib/server/supabaseAdmin":{createSupabaseAdminClient:()=>admin},
    "@/app/agent/api/support/_utils":{requireSupportAgent:async()=>({ok:true,email:"agent@example.test"})},
    "@/lib/server/dailyOrganisationScope":{isDailyOrganisationInAgentScope:async(email,org)=>{scopes.push({email,org});return options.outOfScope!==true&&org===ids.org;}},
