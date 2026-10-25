@@ -41,7 +41,7 @@ test("le pilotage signale les relances partagées et conserve la pagination exis
   const { readFile } = await import("node:fs/promises");
   const page = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
   assert.match(page, /followups\.filter\(item => item\.overdueShared\)\.length/);
-  assert.match(page, /Relances partagées avec l'équipe/);
+  assert.match(page, /Relances partagées avec l’équipe/);
   assert.match(page, /paginateDailyPilotageTasks\(followups, params\?\.relances, 10\)/);
   assert.match(page, /getStudioClientFollowups\(staff/);
 });
