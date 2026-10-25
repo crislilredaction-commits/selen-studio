@@ -26,6 +26,18 @@ test("les quatre phases conservent uniquement leurs actions contextuelles", () =
   assert.match(navigation, /Actions · \{activeStageDetails\.label\}/);
   assert.doesNotMatch(navigation, /Outils de cette session/);
 });
+test("les feuilles individuelles sont dans Pendant et restent bornées à l’organisme et à l’inscription", () => {
+  const dossier = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
+  assert.match(navigation, /full#feuilles-individuelles/);
+  assert.match(dossier, /id="feuilles-individuelles" data-session-stage="during" hidden/);
+  assert.match(dossier, /<IndividualAttendanceDownload/);
+  assert.match(dossier, /\.eq\("organisation_id",typedSession\.organisation_id\)/);
+  assert.match(dossier, /learner\?\.organisation_id===typedSession\.organisation_id/);
+  assert.match(dossier, /learner\.id===row\.learner_id/);
+  assert.match(dossier, /activeEnrolmentIds\.has\(record\.enrolment_id\)/);
+  assert.match(dossier, /attendanceSettled\(statuses\)/);
+});
+
 test("la navigation est responsive", () => {
   assert.match(responsive, /@media\(max-width:560px\)/);
   assert.match(responsive, /grid-template-columns:1fr/);
