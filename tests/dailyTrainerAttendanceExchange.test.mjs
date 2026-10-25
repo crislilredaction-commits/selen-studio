@@ -17,7 +17,7 @@ test("le dossier historique affiche la candidature acceptée et la préparation 
 });
 test("la préparation publiée disparaît des actions mais conserve la candidature acceptée dans l’historique",async()=>{
  const h=acceptedFixture();h.admin.rpc=async()=>({data:{status:"validated"},error:null});const html=await render(h);
- assert.match(html,/Alice QA/);assert.match(html,/Aucune action prioritaire détectée/);assert.match(html,/À surveiller/);assert.doesNotMatch(html,/Documents avant formation à préparer|En attente d&#x27;une inscription/);
+ assert.match(html,/Alice QA/);assert.match(html,/Évaluations finales à contrôler/);assert.doesNotMatch(html,/Documents avant formation à préparer|En attente d&#x27;une inscription/);
 });
 test("une erreur de lecture des candidatures ne devient pas un compteur zéro",async()=>{
  const html=await render(acceptedFixture({failTable:"daily_formation_registration_requests"}));assert.match(html,/Dossiers d’inscription indisponibles/);assert.doesNotMatch(html,/Candidatures \(0\)|Rien à traiter/);
