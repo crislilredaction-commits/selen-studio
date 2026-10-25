@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import PosttrainingAnalysisForm from "./PosttrainingAnalysisForm";
+import { getFinalizedDailyAssessmentEnrolmentIds } from "@/lib/server/dailyPosttrainingAssessmentEligibility";
 
 type Props = { params: Promise<{ id: string }> };
 type Learner = { id?: string; organisation_id?: string | null; email?: string | null; first_name?: string | null; last_name?: string | null };
@@ -49,14 +50,13 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
     return <main style={{ padding: 28 }}>Accès refusé.</main>;
   }
 
-  const [stakeholderRes, enrolmentRes, learnerFeedbackRes, assessmentRes, analysisRes] = await Promise.all([
+  const [stakeholderRes, enrolmentRes, learnerFeedbackRes, analysisRes] = await Promise.all([
     admin.from("daily_stakeholder_satisfaction_responses").select("id,stakeholder_type,entity_name,entity_email,overall_rating,objectives_rating,trainer_rating,organisation_rating,would_recommend,strengths,improvements,free_comment,submitted_at").eq("session_id", id).order("submitted_at", { ascending: false }),
     admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(id,organisation_id,email,first_name,last_name)").eq("organisation_id", session.organisation_id).eq("session_id", id).not("status", "in", "(declined,cancelled,abandoned)"),
     admin.from("daily_learner_feedback_responses").select("enrolment_id,overall_rating,objectives_rating,trainer_rating,organisation_rating,content_rating,pace_rating,would_recommend,strengths,improvements,adaptation_feedback,free_comment,submitted_at").eq("organisation_id", session.organisation_id).eq("session_id", id),
-    admin.from("daily_learning_assessments").select("enrolment_id,outcome").eq("organisation_id", session.organisation_id).eq("session_id", id),
     admin.from("daily_posttraining_analyses").select("enrolment_id,strengths,weaknesses,vigilance,summary,action_required,updated_at").eq("organisation_id", session.organisation_id).eq("session_id", id),
   ]);
-  const error = stakeholderRes.error ?? enrolmentRes.error ?? learnerFeedbackRes.error ?? assessmentRes.error ?? analysisRes.error;
+  const error = stakeholderRes.error ?? enrolmentRes.error ?? learnerFeedbackRes.error ?? analysisRes.error;
   if (error) throw new Error(error.message);
   const [{ data: organisation }, { data: formation }] = await Promise.all([
     admin.from("organisations").select("name").eq("id", session.organisation_id).maybeSingle(),
@@ -71,9 +71,8 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
   const enrolmentIds = new Set(enrolments.map((row) => row.id));
   const learnerFeedback = ((learnerFeedbackRes.data ?? []) as LearnerFeedback[]).filter((row) => enrolmentIds.has(row.enrolment_id));
   const feedbackByEnrolment = new Map(learnerFeedback.map((row) => [row.enrolment_id, row]));
-  const finalizedAssessmentIds = new Set(((assessmentRes.data ?? []) as Array<{ enrolment_id: string; outcome: string }>)
-    .filter((row) => enrolmentIds.has(row.enrolment_id) && row.outcome !== "pending")
-    .map((row) => row.enrolment_id));
+  const finalizedAssessmentIds = new Set([...await getFinalizedDailyAssessmentEnrolmentIds(admin, session.organisation_id, id)]
+    .filter((enrolmentId) => enrolmentIds.has(enrolmentId)));
   const analysisByEnrolment = new Map(((analysisRes.data ?? []) as PosttrainingAnalysis[])
     .filter((row) => enrolmentIds.has(row.enrolment_id))
     .map((row) => [row.enrolment_id, row]));
