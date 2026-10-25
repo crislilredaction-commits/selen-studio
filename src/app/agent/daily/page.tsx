@@ -185,7 +185,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
             </select>
             <button type="submit" style={s.searchButton}>Appliquer</button>
             {selectedOrganisation ? <Link href={(() => { const query = new URLSearchParams(); if (selectedView !== "all") query.set("vue", selectedView); if (selectedPhase !== "all") query.set("etape", selectedPhase); if (searchQuery) query.set("q", searchQuery);
-    if (followupQuery) query.set("qr", followupQuery); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); if (followupQuery) query.set("qr", followupQuery); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Tous les organismes</Link> : null}
+    if (followupQuery) query.set("qr", followupQuery); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Tous les organismes</Link> : null}
           </div>
         </form> : null}
         <nav aria-label="Filtrer les tâches par étape de formation" style={s.filters}>
