@@ -49,7 +49,7 @@ test("l'interface conserve le contrôle d'accès serveur et expose les vues en l
   const page = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
   assert.match(page, /requireSupportAgent\(\)/);
   assert.match(page, /canTreatDailyPilotageTask\(item, staff\)/);
-  assert.match(page, /filterDailyPilotageTasks\(tasks, selectedView/);
+  assert.match(page, /filterDailyPilotageTasks\(searchedTasks, selectedView/);
   assert.match(page, /aria-label="Filtrer les tâches Daily"/);
   assert.match(page, /aria-current=\{selectedView === view\.key \? "page" : undefined\}/);
   assert.match(page, /sortedTasks\.map\(\(item\)/);
