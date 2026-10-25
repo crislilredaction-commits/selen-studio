@@ -15,7 +15,7 @@ function formatDate(value?: string | null) {
   return value ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Date inconnue";
 }
 
-type Props = { searchParams?: Promise<{ vue?: string | string[]; q?: string | string[]; page?: string | string[] }> };
+type Props = { searchParams?: Promise<{ vue?: string | string[]; q?: string | string[]; page?: string | string[]; relances?: string | string[] }> };
 
 export default async function AgentDailyPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
@@ -46,6 +46,9 @@ export default async function AgentDailyPage({ searchParams }: Props) {
   const allSortedTasks = prioritizeDailyPilotageTasks(filterDailyPilotageTasks(searchedTasks, selectedView, access));
   const pagination = paginateDailyPilotageTasks(allSortedTasks, params?.page);
   const sortedTasks = pagination.items;
+  // Les relances ont leur propre page pour ne pas masquer les tâches prioritaires.
+  const followupPagination = paginateDailyPilotageTasks(followups, params?.relances, 10);
+  const visibleFollowups = followupPagination.items;
   const urgentCount = viewCounts.urgent;
   const views = [
     { key: "all", label: "Toutes", count: viewCounts.all },
@@ -65,7 +68,17 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     if (selectedView !== "all") query.set("vue", selectedView);
     if (searchQuery) query.set("q", searchQuery);
     if (page > 1) query.set("page", String(page));
+    if (followupPagination.page > 1) query.set("relances", String(followupPagination.page));
     return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily";
+  };
+
+  const followupHref = (page: number) => {
+    const query = new URLSearchParams();
+    if (selectedView !== "all") query.set("vue", selectedView);
+    if (searchQuery) query.set("q", searchQuery);
+    if (pagination.page > 1) query.set("page", String(pagination.page));
+    if (page > 1) query.set("relances", String(page));
+    return query.size ? `/agent/daily?${query.toString()}#relances-daily` : "/agent/daily#relances-daily";
   };
 
   return <main className="daily-page" style={s.page}>
@@ -113,7 +126,12 @@ export default async function AgentDailyPage({ searchParams }: Props) {
         </nav> : null}
       </div>
 
-      <div><div style={s.sectionHead}><h2 style={s.h2}>Clients à relancer</h2><span style={s.pill}>{followups.length}</span></div>{followups.length === 0 ? <SelenCard style={s.empty}><SelenCardTitle>Aucune relance Daily</SelenCardTitle><p style={s.muted}>Aucune action n’est actuellement attendue d’un apprenant, formateur, entreprise ou autre partie prenante.</p></SelenCard> : <div style={s.list}>{followups.map((item) => <SelenCard key={item.id} style={s.card}><div className="daily-task-head" style={s.cardHead}><div><div style={s.badges}><span style={{ ...s.badge, ...s.badgeClient }}>Partie prenante</span></div><SelenCardTitle>{item.title}</SelenCardTitle></div><span style={s.date}>{formatDate(item.dueAt)}</span></div><p style={s.detail}>{item.detail}</p><div className="daily-task-actions" style={s.actions}><Link href={item.href} style={s.secondary}>Ouvrir le dossier →</Link></div></SelenCard>)}</div>}</div>
+      <div id="relances-daily"><div style={s.sectionHead}><h2 style={s.h2}>Clients à relancer</h2><span style={s.pill}>{followups.length}</span></div>{followups.length > 0 ? <p style={s.queueHint} role="status">Relances {followupPagination.from} à {followupPagination.to} sur {followupPagination.total}</p> : null}{followups.length === 0 ? <SelenCard style={s.empty}><SelenCardTitle>Aucune relance Daily</SelenCardTitle><p style={s.muted}>Aucune action n’est actuellement attendue d’un apprenant, formateur, entreprise ou autre partie prenante.</p></SelenCard> : <div style={s.list}>{visibleFollowups.map((item) => <SelenCard key={item.id} style={s.card}><div className="daily-task-head" style={s.cardHead}><div><div style={s.badges}><span style={{ ...s.badge, ...s.badgeClient }}>Partie prenante</span></div><SelenCardTitle>{item.title}</SelenCardTitle></div><span style={s.date}>{formatDate(item.dueAt)}</span></div><p style={s.detail}>{item.detail}</p><div className="daily-task-actions" style={s.actions}><Link href={item.href} style={s.secondary}>Ouvrir le dossier →</Link></div></SelenCard>)}</div>}
+        {followupPagination.totalPages > 1 ? <nav aria-label="Pages des relances Daily" style={s.pageNavigation}>
+          {followupPagination.page > 1 ? <Link href={followupHref(followupPagination.page - 1)} style={s.secondary}>← Relances précédentes</Link> : null}
+          <span style={s.pageStatus}>Page {followupPagination.page} sur {followupPagination.totalPages}</span>
+          {followupPagination.page < followupPagination.totalPages ? <Link href={followupHref(followupPagination.page + 1)} style={s.secondary}>Relances suivantes →</Link> : null}
+        </nav> : null}</div>
     </section>
   </main>;
 }
