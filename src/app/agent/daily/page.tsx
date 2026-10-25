@@ -6,6 +6,7 @@ import { getStudioClientFollowups } from "@/lib/server/studioClientFollowups";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import { presentDailyTask } from "@/lib/dailyTaskPresentation";
 import { prioritizeDailyPilotageTasks } from "@/lib/daily/pilotageTaskQueue.mjs";
+import { countDailyPilotageViews, filterDailyPilotageTasks, normalizeDailyPilotageView } from "@/lib/daily/pilotageTaskFilters.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,9 @@ function formatDate(value?: string | null) {
   return value ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Date inconnue";
 }
 
-export default async function AgentDailyPage() {
+type Props = { searchParams?: Promise<{ vue?: string | string[] }> };
+
+export default async function AgentDailyPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main className="daily-page" style={s.page}><p>Accès refusé.</p></main>;
 
@@ -33,8 +36,17 @@ export default async function AgentDailyPage() {
     return <main className="daily-page" style={s.page}><p style={s.error}>Impossible de charger le pilotage Daily : {error instanceof Error ? error.message : "erreur inconnue"}</p></main>;
   }
 
-  const sortedTasks = prioritizeDailyPilotageTasks(tasks);
-  const urgentCount = tasks.filter((item) => item.priority === "urgent").length;
+  const selectedView = normalizeDailyPilotageView((await searchParams)?.vue);
+  const access = { canTreat: (item: (typeof tasks)[number]) => canTreatDailyPilotageTask(item, staff) };
+  const viewCounts = countDailyPilotageViews(tasks, access);
+  const sortedTasks = prioritizeDailyPilotageTasks(filterDailyPilotageTasks(tasks, selectedView, access));
+  const urgentCount = viewCounts.urgent;
+  const views = [
+    { key: "all", label: "Toutes", count: viewCounts.all },
+    { key: "urgent", label: "Urgences", count: viewCounts.urgent },
+    { key: "overdue", label: "En retard", count: viewCounts.overdue },
+    { key: "actionable", label: "Traitables", count: viewCounts.actionable },
+  ] as const;
 
   return <main className="daily-page" style={s.page}>
     <header className="daily-hero" style={s.header}>
@@ -46,9 +58,12 @@ export default async function AgentDailyPage() {
 
     <section style={s.columns}>
       <div id="taches-daily">
-        <div style={s.sectionHead}><h2 style={s.h2}>Tâches à faire</h2><span style={s.pill}>{tasks.length}</span></div>
-        {tasks.length > 0 ? <p style={s.queueHint}>Les urgences d’abord, puis les échéances les plus proches. L’assignation et les droits de traitement restent inchangés.</p> : null}
-        {tasks.length === 0 ? <SelenCard style={s.empty}><SelenCardTitle>Aucune tâche humaine ouverte</SelenCardTitle><p style={s.muted}>Aucune action Daily agent n’est actuellement ouverte.</p></SelenCard> : <div style={s.list}>{sortedTasks.map((item) => {
+        <div style={s.sectionHead}><h2 style={s.h2}>Tâches à faire</h2><span style={s.pill}>{sortedTasks.length}</span></div>
+        <nav aria-label="Filtrer les tâches Daily" style={s.filters}>
+          {views.map(view => <Link key={view.key} href={view.key === "all" ? "/agent/daily" : `/agent/daily?vue=${view.key}`} aria-current={selectedView === view.key ? "page" : undefined} style={{ ...s.filterLink, ...(selectedView === view.key ? s.filterActive : {}) }}>{view.label} <span>{view.count}</span></Link>)}
+        </nav>
+        {tasks.length > 0 ? <p style={s.queueHint}>Les urgences d’abord, puis les échéances les plus proches. « Traitables » respecte les droits de l’agent connecté. Les autres vues restent consultables en lecture seule.</p> : null}
+        {sortedTasks.length === 0 ? <SelenCard style={s.empty}><SelenCardTitle>{tasks.length === 0 ? "Aucune tâche humaine ouverte" : "Aucune tâche dans cette vue"}</SelenCardTitle><p style={s.muted}>{tasks.length === 0 ? "Aucune action Daily agent n’est actuellement ouverte." : "Aucune tâche ne correspond à ce filtre. Les autres tâches restent accessibles."}</p>{tasks.length > 0 ? <Link href="/agent/daily" style={s.secondary}>Voir toutes les tâches →</Link> : null}</SelenCard> : <div style={s.list}>{sortedTasks.map((item) => {
           const canTreat = canTreatDailyPilotageTask(item, staff);
           const daily = presentDailyTask(item);
           return <SelenCard key={item.id} style={s.card}>
@@ -68,5 +83,5 @@ export default async function AgentDailyPage() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page:{maxWidth:1180,margin:"0 auto",padding:"28px 28px 70px",color:"var(--selen-text)"},header:{display:"flex",justifyContent:"space-between",gap:22,alignItems:"center",marginBottom:18,flexWrap:"wrap"},eyebrow:{margin:0,fontSize:10,fontWeight:800,letterSpacing:".18em",textTransform:"uppercase",color:"var(--selen-gold2)"},h1:{margin:"6px 0 5px",fontFamily:"var(--font-display)",fontSize:32},h2:{margin:0,fontSize:18},lead:{margin:0,maxWidth:760,lineHeight:1.65,color:"var(--selen-text2)",fontSize:14},counters:{display:"flex",gap:8,flexWrap:"wrap"},counter:{minWidth:82,display:"grid",justifyItems:"center",padding:"11px 14px",border:"1px solid var(--selen-border)",borderRadius:12,background:"var(--selen-bg2)"},controlCard:{marginBottom:16,padding:15},controlLinks:{display:"flex",gap:8,flexWrap:"wrap",marginTop:10},ruleText:{margin:"5px 0 0",color:"var(--selen-text2)",fontSize:12,lineHeight:1.55},queueHint:{margin:"0 0 12px",color:"var(--selen-text2)",fontSize:12,lineHeight:1.55},columns:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16},sectionHead:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,margin:"4px 0 10px"},pill:{minWidth:30,height:30,borderRadius:999,display:"grid",placeItems:"center",padding:"0 8px",border:"1px solid var(--selen-border)",color:"var(--selen-gold2)",fontWeight:800},list:{display:"grid",gap:10},card:{padding:16,minWidth:0},cardHead:{display:"flex",justifyContent:"space-between",gap:14,alignItems:"flex-start"},badges:{display:"flex",gap:7,flexWrap:"wrap",marginBottom:8},badge:{display:"inline-block",padding:"4px 8px",borderRadius:999,background:"rgba(201,148,58,.14)",color:"var(--selen-gold2)",fontSize:10,fontWeight:800},badgeClient:{background:"rgba(83,132,166,.12)",color:"var(--selen-info)"},badgeReadonly:{background:"var(--selen-bg3)",color:"var(--selen-text3)"},badgeEscalated:{background:"rgba(192,85,85,.13)",color:"var(--selen-danger)"},titleLink:{color:"inherit",textDecoration:"none"},org:{margin:"5px 0 0",fontSize:12,color:"var(--selen-text3)",overflowWrap:"anywhere"},date:{fontSize:10,color:"var(--selen-text3)",whiteSpace:"nowrap"},detail:{margin:"12px 0",lineHeight:1.55,fontSize:12,color:"var(--selen-text2)",overflowWrap:"anywhere"},actions:{display:"flex",gap:8,flexWrap:"wrap"},primary:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,background:"var(--selen-gold2)",color:"var(--selen-bg)",textDecoration:"none",fontWeight:800,fontSize:12},primaryButton:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,border:0,background:"var(--selen-gold2)",color:"var(--selen-bg)",fontWeight:800,fontSize:12,cursor:"pointer"},secondary:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,border:"1px solid var(--selen-border)",color:"var(--selen-text)",textDecoration:"none",fontWeight:700,fontSize:12},readonlyText:{display:"inline-flex",alignItems:"center",minHeight:34,color:"var(--selen-text3)",fontSize:11,lineHeight:1.4},empty:{padding:22},muted:{margin:"6px 0 0",lineHeight:1.55,color:"var(--selen-text2)",fontSize:12},error:{color:"var(--selen-danger)"}
+  page:{maxWidth:1180,margin:"0 auto",padding:"28px 28px 70px",color:"var(--selen-text)"},header:{display:"flex",justifyContent:"space-between",gap:22,alignItems:"center",marginBottom:18,flexWrap:"wrap"},eyebrow:{margin:0,fontSize:10,fontWeight:800,letterSpacing:".18em",textTransform:"uppercase",color:"var(--selen-gold2)"},h1:{margin:"6px 0 5px",fontFamily:"var(--font-display)",fontSize:32},h2:{margin:0,fontSize:18},lead:{margin:0,maxWidth:760,lineHeight:1.65,color:"var(--selen-text2)",fontSize:14},counters:{display:"flex",gap:8,flexWrap:"wrap"},counter:{minWidth:82,display:"grid",justifyItems:"center",padding:"11px 14px",border:"1px solid var(--selen-border)",borderRadius:12,background:"var(--selen-bg2)"},controlCard:{marginBottom:16,padding:15},controlLinks:{display:"flex",gap:8,flexWrap:"wrap",marginTop:10},ruleText:{margin:"5px 0 0",color:"var(--selen-text2)",fontSize:12,lineHeight:1.55},queueHint:{margin:"0 0 12px",color:"var(--selen-text2)",fontSize:12,lineHeight:1.55},filters:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12},filterLink:{display:"inline-flex",alignItems:"center",gap:7,minHeight:34,padding:"6px 11px",border:"1px solid var(--selen-border)",borderRadius:999,textDecoration:"none",fontSize:12,fontWeight:700,color:"var(--selen-text)"},filterActive:{background:"var(--selen-gold2)",color:"var(--selen-bg)",borderColor:"var(--selen-gold2)"},columns:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16},sectionHead:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,margin:"4px 0 10px"},pill:{minWidth:30,height:30,borderRadius:999,display:"grid",placeItems:"center",padding:"0 8px",border:"1px solid var(--selen-border)",color:"var(--selen-gold2)",fontWeight:800},list:{display:"grid",gap:10},card:{padding:16,minWidth:0},cardHead:{display:"flex",justifyContent:"space-between",gap:14,alignItems:"flex-start"},badges:{display:"flex",gap:7,flexWrap:"wrap",marginBottom:8},badge:{display:"inline-block",padding:"4px 8px",borderRadius:999,background:"rgba(201,148,58,.14)",color:"var(--selen-gold2)",fontSize:10,fontWeight:800},badgeClient:{background:"rgba(83,132,166,.12)",color:"var(--selen-info)"},badgeReadonly:{background:"var(--selen-bg3)",color:"var(--selen-text3)"},badgeEscalated:{background:"rgba(192,85,85,.13)",color:"var(--selen-danger)"},titleLink:{color:"inherit",textDecoration:"none"},org:{margin:"5px 0 0",fontSize:12,color:"var(--selen-text3)",overflowWrap:"anywhere"},date:{fontSize:10,color:"var(--selen-text3)",whiteSpace:"nowrap"},detail:{margin:"12px 0",lineHeight:1.55,fontSize:12,color:"var(--selen-text2)",overflowWrap:"anywhere"},actions:{display:"flex",gap:8,flexWrap:"wrap"},primary:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,background:"var(--selen-gold2)",color:"var(--selen-bg)",textDecoration:"none",fontWeight:800,fontSize:12},primaryButton:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,border:0,background:"var(--selen-gold2)",color:"var(--selen-bg)",fontWeight:800,fontSize:12,cursor:"pointer"},secondary:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,border:"1px solid var(--selen-border)",color:"var(--selen-text)",textDecoration:"none",fontWeight:700,fontSize:12},readonlyText:{display:"inline-flex",alignItems:"center",minHeight:34,color:"var(--selen-text3)",fontSize:11,lineHeight:1.4},empty:{padding:22},muted:{margin:"6px 0 0",lineHeight:1.55,color:"var(--selen-text2)",fontSize:12},error:{color:"var(--selen-danger)"}
 };
