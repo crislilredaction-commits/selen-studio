@@ -9,6 +9,7 @@ import { prioritizeDailyPilotageTasks, paginateDailyPilotageTasks } from "@/lib/
 import { normalizeDailyPilotageQuery, searchDailyPilotageTasks } from "@/lib/daily/pilotageTaskSearch.mjs";
 import { countDailyPilotageViews, filterDailyPilotageTasks, normalizeDailyPilotageView } from "@/lib/daily/pilotageTaskFilters.mjs";
 import { dailyPilotageOrganisationOptions, selectDailyPilotageOrganisation, filterDailyPilotageOrganisationTasks, dailyPilotageOrganisationOverview } from "@/lib/daily/pilotageOrganisationFilter.mjs";
+import { normalizeDailyPilotagePhase, getDailyPilotageTaskPhase, filterDailyPilotageTaskPhase, countDailyPilotageTaskPhases } from "@/lib/daily/pilotageTaskPhases.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ function formatDate(value?: string | null) {
   return value ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Date inconnue";
 }
 
-type Props = { searchParams?: Promise<{ vue?: string | string[]; q?: string | string[]; page?: string | string[]; relances?: string | string[]; organisme?: string | string[] }> };
+type Props = { searchParams?: Promise<{ vue?: string | string[]; q?: string | string[]; page?: string | string[]; relances?: string | string[]; organisme?: string | string[]; etape?: string | string[] }> };
 
 export default async function AgentDailyPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
@@ -45,7 +46,10 @@ export default async function AgentDailyPage({ searchParams }: Props) {
   const organisations = dailyPilotageOrganisationOptions(tasks);
   const selectedOrganisation = selectDailyPilotageOrganisation(params?.organisme, organisations);
   const organisationTasks = filterDailyPilotageOrganisationTasks(tasks, selectedOrganisation);
-  const searchedTasks = searchDailyPilotageTasks(organisationTasks, searchQuery, item => [item.title, item.reason, item.detail, presentDailyTask(item).context].join(" "));
+  const selectedPhase = normalizeDailyPilotagePhase(params?.etape);
+  const phaseCounts = countDailyPilotageTaskPhases(organisationTasks);
+  const phaseTasks = filterDailyPilotageTaskPhase(organisationTasks, selectedPhase);
+  const searchedTasks = searchDailyPilotageTasks(phaseTasks, searchQuery, item => [item.title, item.reason, item.detail, presentDailyTask(item).context].join(" "));
   const access = { canTreat: (item: (typeof tasks)[number]) => canTreatDailyPilotageTask(item, staff) };
   const viewCounts = countDailyPilotageViews(searchedTasks, access);
   const organisationOverview = dailyPilotageOrganisationOverview(tasks, access);
@@ -62,11 +66,30 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     { key: "overdue", label: "En retard", count: viewCounts.overdue },
     { key: "actionable", label: "Traitables", count: viewCounts.actionable },
   ] as const;
+  const phases = [
+    { key: "all", label: "Toutes les étapes", count: phaseCounts.all },
+    { key: "before", label: "Avant", count: phaseCounts.before },
+    { key: "during", label: "Pendant", count: phaseCounts.during },
+    { key: "after", label: "Après", count: phaseCounts.after },
+    { key: "global", label: "Transversal", count: phaseCounts.global },
+  ] as const;
+  const phaseLabels = { before: "Avant", during: "Pendant", after: "Après", global: "Transversal" };
   const filterHref = (view: (typeof views)[number]["key"]) => {
     const query = new URLSearchParams();
     if (view !== "all") query.set("vue", view);
     if (searchQuery) query.set("q", searchQuery);
     if (selectedOrganisation) query.set("organisme", selectedOrganisation);
+    if (selectedPhase !== "all") query.set("etape", selectedPhase);
+    if (followupPagination.page > 1) query.set("relances", String(followupPagination.page));
+    return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily";
+  };
+
+  const phaseHref = (phase: (typeof phases)[number]["key"]) => {
+    const query = new URLSearchParams();
+    if (selectedView !== "all") query.set("vue", selectedView);
+    if (searchQuery) query.set("q", searchQuery);
+    if (selectedOrganisation) query.set("organisme", selectedOrganisation);
+    if (phase !== "all") query.set("etape", phase);
     if (followupPagination.page > 1) query.set("relances", String(followupPagination.page));
     return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily";
   };
@@ -76,6 +99,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     if (selectedView !== "all") query.set("vue", selectedView);
     if (searchQuery) query.set("q", searchQuery);
     if (selectedOrganisation) query.set("organisme", selectedOrganisation);
+    if (selectedPhase !== "all") query.set("etape", selectedPhase);
     if (page > 1) query.set("page", String(page));
     if (followupPagination.page > 1) query.set("relances", String(followupPagination.page));
     return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily";
@@ -86,6 +110,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     if (selectedView !== "all") query.set("vue", selectedView);
     if (searchQuery) query.set("q", searchQuery);
     if (selectedOrganisation) query.set("organisme", selectedOrganisation);
+    if (selectedPhase !== "all") query.set("etape", selectedPhase);
     if (pagination.page > 1) query.set("page", String(pagination.page));
     if (page > 1) query.set("relances", String(page));
     return query.size ? `/agent/daily?${query.toString()}#relances-daily` : "/agent/daily#relances-daily";
@@ -118,18 +143,20 @@ export default async function AgentDailyPage({ searchParams }: Props) {
         <form action="/agent/daily" method="get" role="search" aria-label="Rechercher une tâche Daily" style={s.searchForm}>
           {selectedView !== "all" ? <input type="hidden" name="vue" value={selectedView} /> : null}
           {selectedOrganisation ? <input type="hidden" name="organisme" value={selectedOrganisation} /> : null}
+          {selectedPhase !== "all" ? <input type="hidden" name="etape" value={selectedPhase} /> : null}
           {followupPagination.page > 1 ? <input type="hidden" name="relances" value={followupPagination.page} /> : null}
           <label htmlFor="daily-task-search" style={s.searchLabel}>Rechercher une tâche ou un dossier</label>
           <div style={s.searchControls}>
             <input id="daily-task-search" name="q" type="search" maxLength={80} defaultValue={searchQuery} placeholder="Organisme, formation, action…" style={s.searchInput} />
             <button type="submit" style={s.searchButton}>Rechercher</button>
-            {searchQuery ? <Link href={(() => { const query = new URLSearchParams(); if (selectedView !== "all") query.set("vue", selectedView); if (selectedOrganisation) query.set("organisme", selectedOrganisation); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Effacer la recherche</Link> : null}
+            {searchQuery ? <Link href={(() => { const query = new URLSearchParams(); if (selectedView !== "all") query.set("vue", selectedView); if (selectedPhase !== "all") query.set("etape", selectedPhase); if (selectedOrganisation) query.set("organisme", selectedOrganisation); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Effacer la recherche</Link> : null}
           </div>
           {searchQuery ? <p style={s.searchResults} role="status">{searchedTasks.length} résultat{searchedTasks.length > 1 ? "s" : ""} pour « {searchQuery} »</p> : null}
         </form>
         {organisations.length > 1 ? <form action="/agent/daily" method="get" aria-label="Filtrer les tâches par organisme" style={s.organisationForm}>
           {selectedView !== "all" ? <input type="hidden" name="vue" value={selectedView} /> : null}
           {searchQuery ? <input type="hidden" name="q" value={searchQuery} /> : null}
+          {selectedPhase !== "all" ? <input type="hidden" name="etape" value={selectedPhase} /> : null}
           {followupPagination.page > 1 ? <input type="hidden" name="relances" value={followupPagination.page} /> : null}
           <label htmlFor="daily-organisation-filter" style={s.searchLabel}>Organisme de formation</label>
           <div style={s.searchControls}>
@@ -138,9 +165,12 @@ export default async function AgentDailyPage({ searchParams }: Props) {
               {organisations.map(organisation => <option key={organisation.id} value={organisation.id}>{organisation.name} ({organisation.count})</option>)}
             </select>
             <button type="submit" style={s.searchButton}>Appliquer</button>
-            {selectedOrganisation ? <Link href={(() => { const query = new URLSearchParams(); if (selectedView !== "all") query.set("vue", selectedView); if (searchQuery) query.set("q", searchQuery); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Tous les organismes</Link> : null}
+            {selectedOrganisation ? <Link href={(() => { const query = new URLSearchParams(); if (selectedView !== "all") query.set("vue", selectedView); if (selectedPhase !== "all") query.set("etape", selectedPhase); if (searchQuery) query.set("q", searchQuery); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Tous les organismes</Link> : null}
           </div>
         </form> : null}
+        <nav aria-label="Filtrer les tâches par étape de formation" style={s.filters}>
+          {phases.map(phase => <Link key={phase.key} href={phaseHref(phase.key)} aria-current={selectedPhase === phase.key ? "page" : undefined} style={{ ...s.filterLink, ...(selectedPhase === phase.key ? s.filterActive : {}) }}>{phase.label} <span>{phase.count}</span></Link>)}
+        </nav>
         <nav aria-label="Filtrer les tâches Daily" style={s.filters}>
           {views.map(view => <Link key={view.key} href={filterHref(view.key)} aria-current={selectedView === view.key ? "page" : undefined} style={{ ...s.filterLink, ...(selectedView === view.key ? s.filterActive : {}) }}>{view.label} <span>{view.count}</span></Link>)}
         </nav>
@@ -150,7 +180,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
           const canTreat = canTreatDailyPilotageTask(item, staff);
           const daily = presentDailyTask(item);
           return <SelenCard key={item.id} style={s.card}>
-            <div className="daily-task-head" style={s.cardHead}><div><div style={s.badges}><span style={s.badge}>{item.reason}</span><span style={s.badge}>Statut : {daily.statusLabel}</span><span style={s.badge}>Priorité : {daily.priorityLabel}</span>{item.escalatedToAdmin ? <span style={{ ...s.badge, ...s.badgeEscalated }}>Escaladé à un administrateur</span> : null}{!canTreat && item.assignedAgentProfileId ? <span style={{ ...s.badge, ...s.badgeReadonly }}>Assignée à un autre agent</span> : null}</div><Link href={item.href} style={s.titleLink}><SelenCardTitle>{item.title}</SelenCardTitle></Link><p style={s.org}>Contexte : {daily.context}</p></div><span style={s.date}>Échéance : {daily.dueAt ? formatDate(daily.dueAt) : "non renseignée"}</span></div>
+            <div className="daily-task-head" style={s.cardHead}><div><div style={s.badges}><span style={s.badge}>{item.reason}</span><span style={s.badge}>Statut : {daily.statusLabel}</span><span style={s.badge}>Priorité : {daily.priorityLabel}</span><span style={s.badge}>Étape : {phaseLabels[getDailyPilotageTaskPhase(item)]}</span>{item.escalatedToAdmin ? <span style={{ ...s.badge, ...s.badgeEscalated }}>Escaladé à un administrateur</span> : null}{!canTreat && item.assignedAgentProfileId ? <span style={{ ...s.badge, ...s.badgeReadonly }}>Assignée à un autre agent</span> : null}</div><Link href={item.href} style={s.titleLink}><SelenCardTitle>{item.title}</SelenCardTitle></Link><p style={s.org}>Contexte : {daily.context}</p></div><span style={s.date}>Échéance : {daily.dueAt ? formatDate(daily.dueAt) : "non renseignée"}</span></div>
             <p style={s.detail}>{item.detail}</p>
             <p style={s.detail}><strong>Action attendue :</strong> {daily.expectedAction}</p>
             <div className="daily-task-actions" style={s.actions}>
