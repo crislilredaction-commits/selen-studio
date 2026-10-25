@@ -4,11 +4,13 @@ import { readFile } from "node:fs/promises";
 
 const organisationPage = await readFile(new URL("../src/app/agent/daily/organisations/[id]/page.tsx", import.meta.url), "utf8");
 const dailyLayout = await readFile(new URL("../src/app/agent/daily/layout.tsx", import.meta.url), "utf8");
+const dailyNavigation = await readFile(new URL("../src/lib/daily/dailyStudioNavigation.mjs", import.meta.url), "utf8");
 const candidatureList = await readFile(new URL("../src/app/agent/daily/candidatures/page.tsx", import.meta.url), "utf8");
 const candidatureDetail = await readFile(new URL("../src/app/agent/daily/candidatures/[id]/page.tsx", import.meta.url), "utf8");
 
 test("Studio rend les dossiers remplis accessibles depuis le parcours Daily et le dossier OF", () => {
-  assert.match(dailyLayout, /href="\/agent\/daily\/candidatures"[^>]*>Dossiers d’inscription/);
+  assert.match(dailyNavigation, /href: "\/agent\/daily\/candidatures", label: "Dossiers d’inscription"/);
+  assert.match(dailyLayout, /DailyStudioNavigation owner=\{owner\}/);
   assert.match(organisationPage, /key: "applications", label: "Dossiers d’inscription"/);
   assert.match(organisationPage, /tab === "applications"/);
   assert.match(organisationPage, /Voir les dossiers et réponses/);
