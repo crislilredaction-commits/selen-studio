@@ -61,3 +61,19 @@ test("le traitement historique des inscriptions partage le shell sécurisé de l
   assert.ok(registrationPage.includes("patchSummaryValidationAction(legacy, blockedReason)"));
   assert.ok(dossier.includes("/agent/daily/sessions/${id}"));
 });
+
+
+test("le bilan Après ne compte que les apprenants actifs de l'organisme et masque les erreurs de chargement", () => {
+  const dossier = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
+  assert.match(dossier, /daily_learning_assessments"\)\.select\("enrolment_id,outcome,score,score_max"\)\.eq\("organisation_id",typedSession\.organisation_id\)\.eq\("session_id",id\)/);
+  assert.match(dossier, /daily_learner_feedback_responses"\)\.select\("enrolment_id,overall_rating,submitted_at"\)\.eq\("organisation_id",typedSession\.organisation_id\)\.eq\("session_id",id\)/);
+  assert.match(dossier, /assessments=\(assessmentsRes\.data\?\?\[\]\)\.filter\(entry=>activeEnrolmentIds\.has\(entry\.enrolment_id\)\)/);
+  assert.match(dossier, /feedbacks=\[\.\.\.new Map\(\(feedbackRes\.data\?\?\[\]\)\.filter\(entry=>activeEnrolmentIds\.has\(entry\.enrolment_id\)\)/);
+  assert.match(dossier, /completedAssessments=new Set\(assessments\.filter/);
+  assert.match(dossier, /afterUnavailable=Boolean\(assessmentsRes\.error\|\|feedbackRes\.error\)/);
+  assert.match(dossier, /afterUnavailable\?<p role="alert"/);
+  assert.match(dossier, /id="apres-formation" data-session-stage="after" hidden/);
+  assert.match(dossier, /feedbackByEnrolment\.has\(enrolment\.id\)/);
+  assert.match(dossier, /Ouvrir les évaluations finales/);
+  assert.match(dossier, /Contrôler la clôture/);
+});
