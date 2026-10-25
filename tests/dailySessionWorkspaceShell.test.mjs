@@ -32,7 +32,7 @@ test("les feuilles individuelles sont dans Pendant et restent bornées à l’or
   assert.match(dossier, /id="feuilles-individuelles" data-session-stage="during" hidden/);
   assert.match(dossier, /<IndividualAttendanceDownload/);
   assert.match(dossier, /\.eq\("organisation_id",typedSession\.organisation_id\)/);
-  assert.match(dossier, /learner\?\.organisation_id===typedSession\.organisation_id/);
+  assert.match(dossier, /learner!==null&&learner\.organisation_id===typedSession\.organisation_id/);
   assert.match(dossier, /learner\.id===row\.learner_id/);
   assert.match(dossier, /activeEnrolmentIds\.has\(record\.enrolment_id\)/);
   assert.match(dossier, /attendanceSettled\(statuses\)/);
