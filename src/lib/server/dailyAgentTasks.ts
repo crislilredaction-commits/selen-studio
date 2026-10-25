@@ -21,6 +21,8 @@ export type DailyAgentTask = {
   assignedAgentProfileId: string | null;
   overdueShared: boolean;
   kind: "assignment" | "program" | "registration" | "adaptation" | "preaudit" | "satisfaction" | "session" | "organisation";
+  /** Étape métier de la checklist, sans inférence à partir de l’URL. */
+  workflowPhase?: "before" | "during" | "after" | "global";
 };
 
 type Org = { id: string; name: string | null; legal_name: string | null; created_at: string | null };
@@ -327,6 +329,7 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
       assignedAgentProfileId: assignment?.agent_profile_id ?? null,
       overdueShared,
       kind: "session",
+      workflowPhase: item.phase === "before" || item.phase === "during" || item.phase === "after" ? item.phase : "global",
     }));
   }
 
