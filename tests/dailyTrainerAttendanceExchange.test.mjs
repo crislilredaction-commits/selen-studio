@@ -36,7 +36,7 @@ test("la vue Studio masque les apprenants d’un autre organisme et leurs preuve
  h.db.daily_attendance_records.push({id:"foreign-review",organisation_id:ids.org,session_id:ids.session,slot_id:"slot",enrolment_id:"foreign-enrolment",status:"pending",evidence_metadata:{late_review:{state:"awaiting_validation",version:1}}});
  const html=await render(h);
  assert.match(html,/Alice Exemple/);
- assert.match(html,/Présences par créneau \\(1\\/1\\)/);
+ assert.ok(html.includes("Présences par créneau (1/1)"));
  assert.doesNotMatch(html,/Eve Externe|Preuves d’émargement à valider/);
 });
 
