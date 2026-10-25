@@ -5,6 +5,7 @@ import { jsPDF } from "jspdf";
 import { NextResponse } from "next/server";
 import { attendanceReviewStateLabel, getAttendanceReviewHistory } from "@/lib/daily/attendanceReviewHistory";
 import { detectAttendanceSignatureFormat } from "@/lib/daily/attendanceSignatureImage.mjs";
+import { filterScopedAttendancePdfEnrolments } from "@/lib/daily/attendancePdfEnrolmentScope.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,7 +93,7 @@ export async function GET(request: Request, { params }: RouteContext) {
       .eq("organisation_id", session.organisation_id).eq("session_id", id)
       .neq("status", "cancelled").order("slot_date").order("starts_at"),
     admin.from("daily_session_enrolments")
-      .select("id,status,daily_learners(first_name,last_name,email)")
+      .select("id,organisation_id,learner_id,status,daily_learners(id,organisation_id,first_name,last_name,email)")
       .eq("organisation_id", session.organisation_id).eq("session_id", id),
     requestedEnrolmentId ? admin.from("daily_documents")
       .select("id").eq("organisation_id", session.organisation_id).eq("session_id", id)
@@ -109,7 +110,7 @@ export async function GET(request: Request, { params }: RouteContext) {
 
   const slots = slotsResult.data ?? [];
   const allEnrolments = enrolmentsResult.data ?? [];
-  const enrolments = requestedEnrolmentId ? allEnrolments.filter((item) => item.id === requestedEnrolmentId && !["declined", "cancelled", "abandoned"].includes(item.status)) : allEnrolments;
+  const enrolments = filterScopedAttendancePdfEnrolments(allEnrolments, session.organisation_id, requestedEnrolmentId);
   if (!slots.length) return NextResponse.json({ error: "Aucun créneau d’émargement n’est configuré." }, { status: 409 });
   if (requestedEnrolmentId && !enrolments.length) return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
   if (requestedEnrolmentId && !isAfterSession(session.end_date)) return NextResponse.json({ error: "La feuille individuelle sera disponible après la fin de la session." }, { status: 409 });
