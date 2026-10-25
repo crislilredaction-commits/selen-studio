@@ -97,7 +97,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     requestedEnrolmentId ? admin.from("daily_documents")
       .select("id").eq("organisation_id", session.organisation_id).eq("session_id", id)
       .eq("document_type", "attendance_summary").in("status", ["published", "signed"])
-      .eq("is_current", true).is("archived_at", null).maybeSingle() : Promise.resolve({ data: null, error: null }),
+      .eq("is_current", true).is("archived_at", null).limit(1).maybeSingle() : Promise.resolve({ data: null, error: null }),
     requestedEnrolmentId ? admin.from("daily_documents")
       .select("id,signed_at,storage_path,mime_type,metadata")
       .eq("organisation_id", session.organisation_id).eq("session_id", id)
