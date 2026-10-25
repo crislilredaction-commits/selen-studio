@@ -66,7 +66,7 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
   const stakeholders = stakeholderRes.data ?? [];
   const enrolments = ((enrolmentRes.data ?? []) as Enrolment[]).filter((enrolment) => {
     const learner = learnerOf(enrolment);
-    return learner?.organisation_id === session.organisation_id && learner.id === enrolment.learner_id;
+    return learner != null && learner.organisation_id === session.organisation_id && learner.id === enrolment.learner_id;
   });
   const enrolmentIds = new Set(enrolments.map((row) => row.id));
   const learnerFeedback = ((learnerFeedbackRes.data ?? []) as LearnerFeedback[]).filter((row) => enrolmentIds.has(row.enrolment_id));
