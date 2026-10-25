@@ -88,3 +88,14 @@ test("le dossier reste consultable si les accès personnels sont indisponibles, 
   assert.match(dossier, /portalAccessUnavailable\?<section data-session-stage="during" hidden role="alert"/);
   assert.match(dossier, /réessaie avant toute relance/);
 });
+
+test("la vue d'ensemble utilise les priorités réelles et garde le contrôle humain visible dans Pendant", () => {
+  const dossier = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
+  assert.match(dossier, /resolveSessionWorkspaceNextAction\(\{/);
+  assert.match(dossier, /pendingAttendanceReviews:attendanceRecords\.filter/);
+  assert.match(dossier, /portalAccessUnavailable,openFollowups:/);
+  assert.match(dossier, /afterUnavailable,completedAssessments,satisfactionCount:feedbacks\.length/);
+  assert.match(dossier, /id="presences-a-valider" data-session-stage="during" hidden/);
+  assert.match(dossier, /\{currentIndicator\}/);
+  assert.doesNotMatch(dossier, /Rien à traiter ✓/);
+});
