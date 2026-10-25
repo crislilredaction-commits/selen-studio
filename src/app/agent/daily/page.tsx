@@ -34,7 +34,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
   try {
     [tasks, followups] = await Promise.all([getDailyPilotageTasks(), getStudioClientFollowups(staff, { dailyOnly: true })]);
   } catch (error) {
-  return <main className="daily-page" style={s.page}><p style={s.error}>Impossible de charger le pilotage Daily : {error instanceof Error ? error.message : "erreur inconnue"}</p></main>;
+    return <main className="daily-page" style={s.page}><p style={s.error}>Impossible de charger le pilotage Daily : {error instanceof Error ? error.message : "erreur inconnue"}</p></main>;
   }
 
   const params = await searchParams;
