@@ -77,3 +77,14 @@ test("le bilan Après ne compte que les apprenants actifs de l'organisme et masq
   assert.match(dossier, /Ouvrir les évaluations finales/);
   assert.match(dossier, /Contrôler la clôture/);
 });
+
+
+test("le dossier reste consultable si les accès personnels sont indisponibles, sans produire de lien de régularisation", () => {
+  const dossier = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
+  assert.match(dossier, /if\(enrolmentsRes\.error\|\|attendanceRes\.error\|\|communicationsRes\.error\)/);
+  assert.doesNotMatch(dossier, /if\(enrolmentsRes\.error\|\|attendanceRes\.error\|\|communicationsRes\.error\|\|portalAccessRes\.error\)/);
+  assert.match(dossier, /portalAccessUnavailable=Boolean\(portalAccessRes\.error\)/);
+  assert.match(dossier, /regularizationLinks=portalAccessUnavailable\?\[\]:attendanceSlots\.flatMap/);
+  assert.match(dossier, /portalAccessUnavailable\?<section data-session-stage="during" hidden role="alert"/);
+  assert.match(dossier, /réessaie avant toute relance/);
+});
