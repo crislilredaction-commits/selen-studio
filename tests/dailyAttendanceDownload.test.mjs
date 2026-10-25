@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { detectAttendanceSignatureFormat } from "../src/lib/daily/attendanceSignatureImage.mjs";
+import { filterScopedAttendancePdfEnrolments } from "../src/lib/daily/attendancePdfEnrolmentScope.mjs";
 
 const route = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/attendance/pdf/route.ts", import.meta.url), "utf8");
 const page = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/full/page.tsx", import.meta.url), "utf8");
@@ -36,12 +37,30 @@ test("le téléchargement est privé, borné et proposé depuis les présences",
 
 test("la feuille individuelle est bornée à une inscription active et à un relevé publié", () => {
   assert.match(route, /searchParams\.get\("enrolment"\)/);
-  assert.match(route, /allEnrolments\.filter/);
-  assert.match(route, /\["declined", "cancelled", "abandoned"\]/);
+  assert.match(route, /filterScopedAttendancePdfEnrolments\(allEnrolments, session\.organisation_id, requestedEnrolmentId\)/);
+  assert.match(route, /daily_learners\(id,organisation_id,first_name,last_name,email\)/);
   assert.match(route, /isAfterSession\(session\.end_date\)/);
   assert.match(route, /document_type", "attendance_summary"/);
   assert.match(route, /\.in\("status", \["published", "signed"\]\)/);
   assert.match(route, /Toutes les présences de cet apprenant doivent être traitées/);
+});
+
+
+test("le PDF exclut les inscriptions dont la fiche apprenant est absente, étrangère ou incohérente", () => {
+  const organisationId = "of-a";
+  const valid = { id: "valid", organisation_id: organisationId, learner_id: "learner-a", status: "confirmed", daily_learners: { id: "learner-a", organisation_id: organisationId, first_name: "Alice" } };
+  const foreignLearner = { ...valid, id: "foreign", daily_learners: { ...valid.daily_learners, organisation_id: "of-b" } };
+  const wrongLearner = { ...valid, id: "wrong-id", daily_learners: { ...valid.daily_learners, id: "learner-b" } };
+  const foreignEnrolment = { ...valid, id: "foreign-enrolment", organisation_id: "of-b" };
+  const missingLearner = { ...valid, id: "missing", daily_learners: null };
+  const cancelled = { ...valid, id: "cancelled", status: "cancelled" };
+  const arrayLearner = { ...valid, id: "array", daily_learners: [{ ...valid.daily_learners }] };
+  const enrolments = [valid, foreignLearner, wrongLearner, foreignEnrolment, missingLearner, cancelled, arrayLearner];
+  assert.deepEqual(filterScopedAttendancePdfEnrolments(enrolments, organisationId).map(item => item.id), ["valid", "cancelled", "array"]);
+  assert.deepEqual(filterScopedAttendancePdfEnrolments(enrolments, organisationId, "valid").map(item => item.id), ["valid"]);
+  assert.deepEqual(filterScopedAttendancePdfEnrolments(enrolments, organisationId, "foreign"), []);
+  assert.deepEqual(filterScopedAttendancePdfEnrolments(enrolments, organisationId, "cancelled"), []);
+  assert.deepEqual(filterScopedAttendancePdfEnrolments(enrolments, organisationId, "missing"), []);
 });
 
 test("plusieurs relevés publiés ne bloquent pas les feuilles individuelles et les archives sont exclues", () => {
