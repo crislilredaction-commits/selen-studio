@@ -44,6 +44,15 @@ test("la feuille individuelle est bornée à une inscription active et à un rel
   assert.match(route, /Toutes les présences de cet apprenant doivent être traitées/);
 });
 
+test("plusieurs relevés publiés ne bloquent pas les feuilles individuelles et les archives sont exclues", () => {
+  // Un relevé collectif et des relevés individuels peuvent coexister sur la même session.
+  // maybeSingle sans limit(1) renverrait PGRST116 au lieu d'une preuve de publication.
+  assert.match(route, /\.eq\("document_type", "attendance_summary"\)[\s\S]*?\.is\("archived_at", null\)\.limit\(1\)\.maybeSingle\(\)/);
+  assert.match(page, /\.eq\("document_type","attendance_summary"\)[\s\S]*?\.is\("archived_at",null\)\.limit\(1\)\.maybeSingle\(\)/);
+  assert.match(route, /if \(requestedEnrolmentId && !publicationResult\.data\)/);
+  assert.match(page, /publicationUnavailable=\{Boolean\(publishedAttendanceError\)\}/);
+});
+
 test("la feuille individuelle ajoute seulement les signatures apprenant et formateur du même créneau", () => {
   assert.match(route, /trainer_signature_evidence/);
   assert.match(route, /metadata\.slot_id/);
