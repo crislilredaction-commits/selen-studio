@@ -41,7 +41,8 @@ test("les filtres et compteurs portent sur les seuls résultats recherchés sans
 
 test("le pilotage conserve la recherche dans les filtres, les autorisations et le retour à la vue", async () => {
   const page = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /searchDailyPilotageTasks\(tasks, searchQuery/);
+  assert.match(page, /filterDailyPilotageOrganisationTasks\(tasks, selectedOrganisation\)/);
+  assert.match(page, /searchDailyPilotageTasks\(organisationTasks, searchQuery/);
   assert.match(page, /countDailyPilotageViews\(searchedTasks, access\)/);
   assert.match(page, /filterDailyPilotageTasks\(searchedTasks, selectedView, access\)/);
   assert.match(page, /canTreatDailyPilotageTask\(item, staff\)/);

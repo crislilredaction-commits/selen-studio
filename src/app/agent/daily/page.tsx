@@ -8,6 +8,7 @@ import { presentDailyTask } from "@/lib/dailyTaskPresentation";
 import { prioritizeDailyPilotageTasks, paginateDailyPilotageTasks } from "@/lib/daily/pilotageTaskQueue.mjs";
 import { normalizeDailyPilotageQuery, searchDailyPilotageTasks } from "@/lib/daily/pilotageTaskSearch.mjs";
 import { countDailyPilotageViews, filterDailyPilotageTasks, normalizeDailyPilotageView } from "@/lib/daily/pilotageTaskFilters.mjs";
+import { dailyPilotageOrganisationOptions, selectDailyPilotageOrganisation, filterDailyPilotageOrganisationTasks } from "@/lib/daily/pilotageOrganisationFilter.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ function formatDate(value?: string | null) {
   return value ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Date inconnue";
 }
 
-type Props = { searchParams?: Promise<{ vue?: string | string[]; q?: string | string[]; page?: string | string[]; relances?: string | string[] }> };
+type Props = { searchParams?: Promise<{ vue?: string | string[]; q?: string | string[]; page?: string | string[]; relances?: string | string[]; organisme?: string | string[] }> };
 
 export default async function AgentDailyPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
@@ -40,7 +41,11 @@ export default async function AgentDailyPage({ searchParams }: Props) {
   const params = await searchParams;
   const selectedView = normalizeDailyPilotageView(params?.vue);
   const searchQuery = normalizeDailyPilotageQuery(params?.q);
-  const searchedTasks = searchDailyPilotageTasks(tasks, searchQuery, item => [item.title, item.reason, item.detail, presentDailyTask(item).context].join(" "));
+  // Choix strictement borné aux organismes déjà présents dans la file autorisée.
+  const organisations = dailyPilotageOrganisationOptions(tasks);
+  const selectedOrganisation = selectDailyPilotageOrganisation(params?.organisme, organisations);
+  const organisationTasks = filterDailyPilotageOrganisationTasks(tasks, selectedOrganisation);
+  const searchedTasks = searchDailyPilotageTasks(organisationTasks, searchQuery, item => [item.title, item.reason, item.detail, presentDailyTask(item).context].join(" "));
   const access = { canTreat: (item: (typeof tasks)[number]) => canTreatDailyPilotageTask(item, staff) };
   const viewCounts = countDailyPilotageViews(searchedTasks, access);
   const allSortedTasks = prioritizeDailyPilotageTasks(filterDailyPilotageTasks(searchedTasks, selectedView, access));
@@ -60,13 +65,16 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     const query = new URLSearchParams();
     if (view !== "all") query.set("vue", view);
     if (searchQuery) query.set("q", searchQuery);
-    return query.size ? `/agent/daily?${query.toString()}` : "/agent/daily";
+    if (selectedOrganisation) query.set("organisme", selectedOrganisation);
+    if (followupPagination.page > 1) query.set("relances", String(followupPagination.page));
+    return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily";
   };
 
   const pageHref = (page: number) => {
     const query = new URLSearchParams();
     if (selectedView !== "all") query.set("vue", selectedView);
     if (searchQuery) query.set("q", searchQuery);
+    if (selectedOrganisation) query.set("organisme", selectedOrganisation);
     if (page > 1) query.set("page", String(page));
     if (followupPagination.page > 1) query.set("relances", String(followupPagination.page));
     return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily";
@@ -76,6 +84,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     const query = new URLSearchParams();
     if (selectedView !== "all") query.set("vue", selectedView);
     if (searchQuery) query.set("q", searchQuery);
+    if (selectedOrganisation) query.set("organisme", selectedOrganisation);
     if (pagination.page > 1) query.set("page", String(pagination.page));
     if (page > 1) query.set("relances", String(page));
     return query.size ? `/agent/daily?${query.toString()}#relances-daily` : "/agent/daily#relances-daily";
@@ -94,14 +103,30 @@ export default async function AgentDailyPage({ searchParams }: Props) {
         <div style={s.sectionHead}><h2 style={s.h2}>Tâches à faire</h2><span style={s.pill}>{pagination.total}</span></div>
         <form action="/agent/daily" method="get" role="search" aria-label="Rechercher une tâche Daily" style={s.searchForm}>
           {selectedView !== "all" ? <input type="hidden" name="vue" value={selectedView} /> : null}
+          {selectedOrganisation ? <input type="hidden" name="organisme" value={selectedOrganisation} /> : null}
+          {followupPagination.page > 1 ? <input type="hidden" name="relances" value={followupPagination.page} /> : null}
           <label htmlFor="daily-task-search" style={s.searchLabel}>Rechercher une tâche ou un dossier</label>
           <div style={s.searchControls}>
             <input id="daily-task-search" name="q" type="search" maxLength={80} defaultValue={searchQuery} placeholder="Organisme, formation, action…" style={s.searchInput} />
             <button type="submit" style={s.searchButton}>Rechercher</button>
-            {searchQuery ? <Link href={selectedView === "all" ? "/agent/daily" : `/agent/daily?vue=${selectedView}`} style={s.secondary}>Effacer la recherche</Link> : null}
+            {searchQuery ? <Link href={(() => { const query = new URLSearchParams(); if (selectedView !== "all") query.set("vue", selectedView); if (selectedOrganisation) query.set("organisme", selectedOrganisation); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Effacer la recherche</Link> : null}
           </div>
           {searchQuery ? <p style={s.searchResults} role="status">{searchedTasks.length} résultat{searchedTasks.length > 1 ? "s" : ""} pour « {searchQuery} »</p> : null}
         </form>
+        {organisations.length > 1 ? <form action="/agent/daily" method="get" aria-label="Filtrer les tâches par organisme" style={s.organisationForm}>
+          {selectedView !== "all" ? <input type="hidden" name="vue" value={selectedView} /> : null}
+          {searchQuery ? <input type="hidden" name="q" value={searchQuery} /> : null}
+          {followupPagination.page > 1 ? <input type="hidden" name="relances" value={followupPagination.page} /> : null}
+          <label htmlFor="daily-organisation-filter" style={s.searchLabel}>Organisme de formation</label>
+          <div style={s.searchControls}>
+            <select id="daily-organisation-filter" name="organisme" defaultValue={selectedOrganisation} style={s.searchInput}>
+              <option value="">Tous les organismes ({tasks.length} tâches)</option>
+              {organisations.map(organisation => <option key={organisation.id} value={organisation.id}>{organisation.name} ({organisation.count})</option>)}
+            </select>
+            <button type="submit" style={s.searchButton}>Appliquer</button>
+            {selectedOrganisation ? <Link href={(() => { const query = new URLSearchParams(); if (selectedView !== "all") query.set("vue", selectedView); if (searchQuery) query.set("q", searchQuery); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Tous les organismes</Link> : null}
+          </div>
+        </form> : null}
         <nav aria-label="Filtrer les tâches Daily" style={s.filters}>
           {views.map(view => <Link key={view.key} href={filterHref(view.key)} aria-current={selectedView === view.key ? "page" : undefined} style={{ ...s.filterLink, ...(selectedView === view.key ? s.filterActive : {}) }}>{view.label} <span>{view.count}</span></Link>)}
         </nav>
@@ -137,5 +162,5 @@ export default async function AgentDailyPage({ searchParams }: Props) {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  pageNavigation:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginTop:14},pageStatus:{fontSize:12,color:"var(--selen-text2)"},page:{maxWidth:1180,margin:"0 auto",padding:"28px 28px 70px",color:"var(--selen-text)"},header:{display:"flex",justifyContent:"space-between",gap:22,alignItems:"center",marginBottom:18,flexWrap:"wrap"},eyebrow:{margin:0,fontSize:10,fontWeight:800,letterSpacing:".18em",textTransform:"uppercase",color:"var(--selen-gold2)"},h1:{margin:"6px 0 5px",fontFamily:"var(--font-display)",fontSize:32},h2:{margin:0,fontSize:18},lead:{margin:0,maxWidth:760,lineHeight:1.65,color:"var(--selen-text2)",fontSize:14},counters:{display:"flex",gap:8,flexWrap:"wrap"},counter:{minWidth:82,display:"grid",justifyItems:"center",padding:"11px 14px",border:"1px solid var(--selen-border)",borderRadius:12,background:"var(--selen-bg2)"},controlCard:{marginBottom:16,padding:15},searchForm:{marginBottom:12},searchLabel:{display:"block",fontWeight:700,fontSize:12,marginBottom:6},searchControls:{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"},searchInput:{flex:"1 1 220px",minWidth:0,minHeight:38,borderRadius:8,border:"1px solid var(--selen-border)",background:"var(--selen-bg2)",color:"var(--selen-text)",padding:"8px 12px",fontSize:13},searchButton:{minHeight:38,padding:"7px 12px",border:0,borderRadius:8,background:"var(--selen-gold2)",color:"var(--selen-bg)",fontWeight:800,cursor:"pointer"},searchResults:{margin:"8px 0 0",fontSize:12,color:"var(--selen-text2)"},controlLinks:{display:"flex",gap:8,flexWrap:"wrap",marginTop:10},ruleText:{margin:"5px 0 0",color:"var(--selen-text2)",fontSize:12,lineHeight:1.55},queueHint:{margin:"0 0 12px",color:"var(--selen-text2)",fontSize:12,lineHeight:1.55},filters:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12},filterLink:{display:"inline-flex",alignItems:"center",gap:7,minHeight:34,padding:"6px 11px",border:"1px solid var(--selen-border)",borderRadius:999,textDecoration:"none",fontSize:12,fontWeight:700,color:"var(--selen-text)"},filterActive:{background:"var(--selen-gold2)",color:"var(--selen-bg)",borderColor:"var(--selen-gold2)"},columns:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16},sectionHead:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,margin:"4px 0 10px"},pill:{minWidth:30,height:30,borderRadius:999,display:"grid",placeItems:"center",padding:"0 8px",border:"1px solid var(--selen-border)",color:"var(--selen-gold2)",fontWeight:800},list:{display:"grid",gap:10},card:{padding:16,minWidth:0},cardHead:{display:"flex",justifyContent:"space-between",gap:14,alignItems:"flex-start"},badges:{display:"flex",gap:7,flexWrap:"wrap",marginBottom:8},badge:{display:"inline-block",padding:"4px 8px",borderRadius:999,background:"rgba(201,148,58,.14)",color:"var(--selen-gold2)",fontSize:10,fontWeight:800},badgeClient:{background:"rgba(83,132,166,.12)",color:"var(--selen-info)"},badgeReadonly:{background:"var(--selen-bg3)",color:"var(--selen-text3)"},badgeEscalated:{background:"rgba(192,85,85,.13)",color:"var(--selen-danger)"},titleLink:{color:"inherit",textDecoration:"none"},org:{margin:"5px 0 0",fontSize:12,color:"var(--selen-text3)",overflowWrap:"anywhere"},date:{fontSize:10,color:"var(--selen-text3)",whiteSpace:"nowrap"},detail:{margin:"12px 0",lineHeight:1.55,fontSize:12,color:"var(--selen-text2)",overflowWrap:"anywhere"},actions:{display:"flex",gap:8,flexWrap:"wrap"},primary:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,background:"var(--selen-gold2)",color:"var(--selen-bg)",textDecoration:"none",fontWeight:800,fontSize:12},primaryButton:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,border:0,background:"var(--selen-gold2)",color:"var(--selen-bg)",fontWeight:800,fontSize:12,cursor:"pointer"},secondary:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,border:"1px solid var(--selen-border)",color:"var(--selen-text)",textDecoration:"none",fontWeight:700,fontSize:12},readonlyText:{display:"inline-flex",alignItems:"center",minHeight:34,color:"var(--selen-text3)",fontSize:11,lineHeight:1.4},empty:{padding:22},muted:{margin:"6px 0 0",lineHeight:1.55,color:"var(--selen-text2)",fontSize:12},error:{color:"var(--selen-danger)"}
+  pageNavigation:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginTop:14},pageStatus:{fontSize:12,color:"var(--selen-text2)"},page:{maxWidth:1180,margin:"0 auto",padding:"28px 28px 70px",color:"var(--selen-text)"},header:{display:"flex",justifyContent:"space-between",gap:22,alignItems:"center",marginBottom:18,flexWrap:"wrap"},eyebrow:{margin:0,fontSize:10,fontWeight:800,letterSpacing:".18em",textTransform:"uppercase",color:"var(--selen-gold2)"},h1:{margin:"6px 0 5px",fontFamily:"var(--font-display)",fontSize:32},h2:{margin:0,fontSize:18},lead:{margin:0,maxWidth:760,lineHeight:1.65,color:"var(--selen-text2)",fontSize:14},counters:{display:"flex",gap:8,flexWrap:"wrap"},counter:{minWidth:82,display:"grid",justifyItems:"center",padding:"11px 14px",border:"1px solid var(--selen-border)",borderRadius:12,background:"var(--selen-bg2)"},controlCard:{marginBottom:16,padding:15},searchForm:{marginBottom:12},organisationForm:{marginBottom:12,padding:"10px 12px",border:"1px solid var(--selen-border)",borderRadius:10,background:"var(--selen-bg2)"},searchLabel:{display:"block",fontWeight:700,fontSize:12,marginBottom:6},searchControls:{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"},searchInput:{flex:"1 1 220px",minWidth:0,minHeight:38,borderRadius:8,border:"1px solid var(--selen-border)",background:"var(--selen-bg2)",color:"var(--selen-text)",padding:"8px 12px",fontSize:13},searchButton:{minHeight:38,padding:"7px 12px",border:0,borderRadius:8,background:"var(--selen-gold2)",color:"var(--selen-bg)",fontWeight:800,cursor:"pointer"},searchResults:{margin:"8px 0 0",fontSize:12,color:"var(--selen-text2)"},controlLinks:{display:"flex",gap:8,flexWrap:"wrap",marginTop:10},ruleText:{margin:"5px 0 0",color:"var(--selen-text2)",fontSize:12,lineHeight:1.55},queueHint:{margin:"0 0 12px",color:"var(--selen-text2)",fontSize:12,lineHeight:1.55},filters:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12},filterLink:{display:"inline-flex",alignItems:"center",gap:7,minHeight:34,padding:"6px 11px",border:"1px solid var(--selen-border)",borderRadius:999,textDecoration:"none",fontSize:12,fontWeight:700,color:"var(--selen-text)"},filterActive:{background:"var(--selen-gold2)",color:"var(--selen-bg)",borderColor:"var(--selen-gold2)"},columns:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16},sectionHead:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,margin:"4px 0 10px"},pill:{minWidth:30,height:30,borderRadius:999,display:"grid",placeItems:"center",padding:"0 8px",border:"1px solid var(--selen-border)",color:"var(--selen-gold2)",fontWeight:800},list:{display:"grid",gap:10},card:{padding:16,minWidth:0},cardHead:{display:"flex",justifyContent:"space-between",gap:14,alignItems:"flex-start"},badges:{display:"flex",gap:7,flexWrap:"wrap",marginBottom:8},badge:{display:"inline-block",padding:"4px 8px",borderRadius:999,background:"rgba(201,148,58,.14)",color:"var(--selen-gold2)",fontSize:10,fontWeight:800},badgeClient:{background:"rgba(83,132,166,.12)",color:"var(--selen-info)"},badgeReadonly:{background:"var(--selen-bg3)",color:"var(--selen-text3)"},badgeEscalated:{background:"rgba(192,85,85,.13)",color:"var(--selen-danger)"},titleLink:{color:"inherit",textDecoration:"none"},org:{margin:"5px 0 0",fontSize:12,color:"var(--selen-text3)",overflowWrap:"anywhere"},date:{fontSize:10,color:"var(--selen-text3)",whiteSpace:"nowrap"},detail:{margin:"12px 0",lineHeight:1.55,fontSize:12,color:"var(--selen-text2)",overflowWrap:"anywhere"},actions:{display:"flex",gap:8,flexWrap:"wrap"},primary:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,background:"var(--selen-gold2)",color:"var(--selen-bg)",textDecoration:"none",fontWeight:800,fontSize:12},primaryButton:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,border:0,background:"var(--selen-gold2)",color:"var(--selen-bg)",fontWeight:800,fontSize:12,cursor:"pointer"},secondary:{display:"inline-flex",alignItems:"center",minHeight:34,padding:"0 11px",borderRadius:8,border:"1px solid var(--selen-border)",color:"var(--selen-text)",textDecoration:"none",fontWeight:700,fontSize:12},readonlyText:{display:"inline-flex",alignItems:"center",minHeight:34,color:"var(--selen-text3)",fontSize:11,lineHeight:1.4},empty:{padding:22},muted:{margin:"6px 0 0",lineHeight:1.55,color:"var(--selen-text2)",fontSize:12},error:{color:"var(--selen-danger)"}
 };
