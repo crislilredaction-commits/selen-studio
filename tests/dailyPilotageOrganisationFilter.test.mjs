@@ -47,7 +47,8 @@ test("la page filtre avant recherche, vues et pagination, sans nouvelle requête
   assert.match(page, /dailyPilotageOrganisationOptions\(tasks\)/);
   assert.match(page, /selectDailyPilotageOrganisation\(params\?\.organisme, organisations\)/);
   assert.match(page, /filterDailyPilotageOrganisationTasks\(tasks, selectedOrganisation\)/);
-  assert.match(page, /searchDailyPilotageTasks\(organisationTasks, searchQuery/);
+  assert.match(page, /filterDailyPilotageTaskPhase\(organisationTasks, selectedPhase\)/);
+  assert.match(page, /searchDailyPilotageTasks\(phaseTasks, searchQuery/);
   assert.match(page, /filterDailyPilotageTasks\(searchedTasks, selectedView, access\)/);
   assert.match(page, /canTreatDailyPilotageTask\(item, staff\)/);
   assert.match(page, /<select id="daily-organisation-filter" name="organisme"/);
