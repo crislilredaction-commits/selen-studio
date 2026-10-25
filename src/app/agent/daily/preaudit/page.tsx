@@ -12,7 +12,7 @@ const date=(v:string|null)=>v?new Intl.DateTimeFormat("fr-FR",{dateStyle:"medium
 export default async function DailyPreauditPage(){
  const auth=await requireSupportAgent();if(!auth.ok)return <main style={s.page}>Accès refusé.</main>;
  const targets=await getQualiopiPreauditOrganisations();
- if(!targets.length)return <main style={s.page}><p style={s.kicker}>Selen Studio · Daily</p><h1>Pré-audit Qualiopi</h1><p style={s.muted}>Aucun organisme certifié Qualiopi n'a d'audit de surveillance ou de renouvellement dans les trois prochains mois.</p></main>;
+ if(!targets.length)return <main style={s.page}><p style={s.kicker}>Selen Studio · Daily</p><h1>Pré-audit Qualiopi</h1><p style={s.muted}>Aucun organisme certifié Qualiopi n’a d’audit de surveillance ou de renouvellement dans les trois prochains mois.</p></main>;
  const admin=createSupabaseAdminClient();const ids=targets.map(x=>x.id);
  const [{data:sessions,error:se},{data:docs,error:de},{data:procedures,error:pe},{data:watches,error:we},{data:trainers,error:te}]=await Promise.all([
   admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,start_date,end_date,status").in("organisation_id",ids).neq("status","archived").order("start_date",{ascending:false}),

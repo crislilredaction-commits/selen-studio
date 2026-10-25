@@ -9,9 +9,9 @@ export function isolatedTsModule(file, modules = {}, globals = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
     fileName: file,
   }).outputText;
-  const module = { exports: {} };
+  const testModule = { exports: {} };
   vm.runInNewContext(output, {
-    module, exports: module.exports, Error, Date, URL, URLSearchParams, Response, Request, ReadableStream,
+    module: testModule, exports: testModule.exports, Error, Date, URL, URLSearchParams, Response, Request, ReadableStream,
     fetch: () => { throw new Error("Live fetch forbidden in tests"); },
     require: (id) => {
       if (!Object.hasOwn(modules, id)) throw new Error(`Unexpected dependency: ${id}`);
@@ -19,5 +19,5 @@ export function isolatedTsModule(file, modules = {}, globals = {}) {
     },
     ...globals,
   }, { filename: file });
-  return module.exports;
+  return testModule.exports;
 }

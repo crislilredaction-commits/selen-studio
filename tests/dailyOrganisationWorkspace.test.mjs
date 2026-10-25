@@ -22,10 +22,10 @@ function fixture() {
     "node:crypto": { createHash }, "@/lib/server/dailyOrganisationScope": f.scope,
     "@/lib/server/dailyStudioFormationSources": f.sources,
   });
-  const module = { "@/lib/server/dailyStudioOrganisationDocuments": documents };
-  const route = isolatedTsModule("src/app/agent/api/daily/documents/[id]/route.ts", { ...f.modules, ...module });
+  const documentModules = { "@/lib/server/dailyStudioOrganisationDocuments": documents };
+  const route = isolatedTsModule("src/app/agent/api/daily/documents/[id]/route.ts", { ...f.modules, ...documentModules });
   const workspace = isolatedTsModule("src/components/daily/DailyOrganisationWorkspace.tsx", {
-    ...f.modules, ...module, "react/jsx-runtime": require("react/jsx-runtime"),
+    ...f.modules, ...documentModules, "react/jsx-runtime": require("react/jsx-runtime"),
     "next/link": { default: "a" }, "@/components/ui/SelenCard": { default: "article", SelenCardTitle: "h2" },
     "@/components/ui/SelenBadge": { default: "span" },
   });

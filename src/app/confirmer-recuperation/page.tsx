@@ -18,21 +18,25 @@ export default function ConfirmRecoveryPage() {
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      const currentUrl = new URL(window.location.href);
+      const recoveryToken = currentUrl.searchParams.get("token_hash");
+      const recoveryType = currentUrl.searchParams.get("type");
 
-    const currentUrl = new URL(window.location.href);
-    const recoveryToken = currentUrl.searchParams.get("token_hash");
-    const recoveryType = currentUrl.searchParams.get("type");
+      window.history.replaceState({}, document.title, currentUrl.pathname);
 
-    window.history.replaceState({}, document.title, currentUrl.pathname);
+      if (!recoveryToken || recoveryType !== "recovery") {
+        setStatus("invalid");
+        setMessage("Ce lien est invalide ou incomplet. Demande un nouveau lien.");
+        return;
+      }
 
-    if (!recoveryToken || recoveryType !== "recovery") {
-      setStatus("invalid");
-      setMessage("Ce lien est invalide ou incomplet. Demande un nouveau lien.");
-      return;
-    }
-
-    tokenHash.current = recoveryToken;
-    setStatus("ready");
+      tokenHash.current = recoveryToken;
+      setStatus("ready");
+    });
+    return () => { cancelled = true; };
   }, []);
 
   async function handleConfirm() {

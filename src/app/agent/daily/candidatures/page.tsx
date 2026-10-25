@@ -4,6 +4,19 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 export const dynamic = "force-dynamic";
+type CandidatureRow = {
+  id: string;
+  formation_id: string;
+  respondent_first_name: string | null;
+  respondent_last_name: string | null;
+  respondent_email: string | null;
+  company_name: string | null;
+  response_type: string | null;
+  submitted_at: string | null;
+  decision_status: string;
+  prerequisite_contract: unknown;
+  daily_formations: { title?: string | null } | Array<{ title?: string | null }> | null;
+};
 export default async function DailyCandidaturesPage({ searchParams }: { searchParams: Promise<{ organisation?: string }> }) {
   const { organisation: requestedOrganisation } = await searchParams;
   const auth = await requireSupportAgent();
@@ -22,7 +35,7 @@ export default async function DailyCandidaturesPage({ searchParams }: { searchPa
     .select("id,formation_id,respondent_first_name,respondent_last_name,respondent_email,company_name,response_type,submitted_at,decision_status,prerequisite_contract,daily_formations(title)")
     .in("formation_id", formationIds).in("decision_status", ["pending","ready_for_of"]).order("submitted_at",{ascending:true}) : { data: [], error: null };
   if (error) return <main style={{padding:28}}>Chargement impossible : {error.message}</main>;
-  const rows=(data??[]) as Array<any>;
+  const rows=(data??[]) as CandidatureRow[];
   const requestIds = rows.map((row) => row.id);
   const { data: evidence, error: evidenceError } = requestIds.length
     ? await admin.from("daily_prerequisite_evidence")
@@ -53,6 +66,7 @@ export default async function DailyCandidaturesPage({ searchParams }: { searchPa
     <p style={{color:"var(--selen-text2)"}}>Selen analyse le dossier avant toute décision de l’organisme. Une analyse terminée devient ensuite visible côté OF pour acceptation ou refus.</p>
     <div style={{display:"grid",gap:10,marginTop:18}}>
       {prioritizedRows.map((row)=>{ const label=row.company_name || [row.respondent_first_name,row.respondent_last_name].filter(Boolean).join(" ") || row.respondent_email || "Candidat";
+        const formation = Array.isArray(row.daily_formations) ? row.daily_formations[0] : row.daily_formations;
         const contract = dailyPrerequisiteContract(row.prerequisite_contract, formationById.get(row.formation_id) ?? {});
         const requiresEvidence = contract.mode === "required" && Array.isArray(contract.requirements) && contract.requirements.some((requirement) => requirement && typeof requirement === "object" && requirement.required !== false);
         const counts = evidenceByRequest.get(row.id) ?? { submitted: 0, rejected: 0, verified: 0 };
@@ -66,7 +80,7 @@ export default async function DailyCandidaturesPage({ searchParams }: { searchPa
           : "Aucun justificatif reçu · Vérifier les pièces attendues dans le dossier";
         return <article key={row.id} style={{padding:16,border:"1px solid var(--selen-border)",borderRadius:12,background:"var(--selen-bg2)"}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><strong>{label}</strong><span>{row.decision_status==="ready_for_of"?"Analyse terminée · décision OF attendue":"Analyse à réaliser"}</span></div>
-          <p style={{margin:"6px 0",color:"var(--selen-text2)"}}>{row.daily_formations?.title || "Formation"} · {row.submitted_at?new Date(row.submitted_at).toLocaleString("fr-FR"):"date inconnue"}</p>
+          <p style={{margin:"6px 0",color:"var(--selen-text2)"}}>{formation?.title || "Formation"} · {row.submitted_at?new Date(row.submitted_at).toLocaleString("fr-FR"):"date inconnue"}</p>
           {prerequisiteLabel ? <p style={{margin:"6px 0",fontWeight:700,color:"var(--selen-gold2)"}}>Prérequis : {prerequisiteLabel}</p> : null}
           <Link href={`/agent/daily/candidatures/${row.id}${counts.submitted && row.decision_status === "pending" ? "#prerequis" : ""}`} style={{fontWeight:800,color:"var(--selen-gold2)"}}>{counts.submitted && row.decision_status === "pending" ? "Vérifier les justificatifs →" : row.decision_status === "ready_for_of" ? "Consulter l’analyse →" : "Analyser le dossier →"}</Link>
         </article>; })}

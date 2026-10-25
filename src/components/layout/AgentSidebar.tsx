@@ -108,8 +108,13 @@ export default function AgentSidebar() {
   }, [supabase]);
 
   useEffect(() => {
-    if (userSectionActive) setUsersOpen(true);
-    if (pathname.startsWith("/agent/profil")) setProfileOpen(true);
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      if (userSectionActive) setUsersOpen(true);
+      if (pathname.startsWith("/agent/profil")) setProfileOpen(true);
+    });
+    return () => { cancelled = true; };
   }, [pathname, userSectionActive]);
 
   const visibleLinks = links
