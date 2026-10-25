@@ -39,7 +39,7 @@ export function exchangeHarness(options={}) {
  const workspace={ok:true,user:{id:"manager",email:"manager@example.test"},workspace:{trainers:db.daily_trainer_profiles,membership:{organisation_id:ids.org,roles:["manager"]},capabilities:{sessions:true,trainers:true}}};
  const cache={};
  function load(path,extra={}) {
-  if(cache[path]&&!Object.keys(extra).length)return cache[path];const module={exports:{}};
+  if(cache[path]&&!Object.keys(extra).length)return cache[path];const testModule={exports:{}};
   const dependencies={
    "react":React,"react/jsx-runtime":jsx,"next/link":{__esModule:true,default:({children,...props})=>React.createElement("a",props,children)},
    "next/server":{NextResponse:{json:Response.json}},
@@ -57,10 +57,10 @@ export function exchangeHarness(options={}) {
    "@/lib/server/dailyOrganisationScope":{isDailyOrganisationInAgentScope:async(email,org)=>{scopes.push({email,org});return options.outOfScope!==true&&org===ids.org;}},
    ...extra};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,"utf8"),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{
-   module,exports:module.exports,URL,Date,Intl,Error,console,window:options.window,fetch(){throw Error("Real network forbidden");},
+   module:testModule,exports:testModule.exports,URL,Date,Intl,Error,console,window:options.window,fetch(){throw Error("Real network forbidden");},
    require(name){if(Object.hasOwn(dependencies,name))return dependencies[name];if(name==="@/lib/server/dailyAssistedTrainerWorkspace")return load("lib/server/dailyAssistedTrainerWorkspace.ts");if(name==="@/lib/dailyAttendanceState")return load("lib/dailyAttendanceState.ts");if(name==="@/lib/daily/attendanceRegularizationLink")return load("src/lib/daily/attendanceRegularizationLink.ts");throw Error("Unexpected dependency "+name);}
   },{filename:path});
-  if(!Object.keys(extra).length)cache[path]=module.exports;return module.exports;
+  if(!Object.keys(extra).length)cache[path]=testModule.exports;return testModule.exports;
  }
  return{db,trainer,session,enrolment,context,workspace,admin,reads,logs,scopes,effects,redirects,load};
 }

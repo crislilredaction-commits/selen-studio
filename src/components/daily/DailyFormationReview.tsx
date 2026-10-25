@@ -313,7 +313,7 @@ export default async function DailyFormationReview({ sessionId, formationId }: P
         <section style={s.stepsRow}>
           <div style={s.stepCard}><strong>1. Compare</strong><span>Ouvre le programme source si besoin.</span></div>
           <div style={s.stepCard}><strong>2. Corrige</strong><span>Modifie seulement les informations utiles.</span></div>
-          <div style={s.stepCard}><strong>3. Valide</strong><span>Le client récupère ensuite ses outils d'inscription.</span></div>
+          <div style={s.stepCard}><strong>3. Valide</strong><span>Le client récupère ensuite ses outils d’inscription.</span></div>
         </section>
       ) : null}
 

@@ -29,14 +29,19 @@ export default function AgentFriendlyBanner() {
   const [index, setIndex] = useState(() => pickMessage(pathname));
 
   useEffect(() => {
-    const key = "selen-studio-friendly-history";
-    let history: number[] = [];
-    try { history = JSON.parse(localStorage.getItem(key) || "[]"); } catch { history = []; }
-    let next = pickMessage(pathname);
-    for (let step = 0; step < MESSAGES.length && history.includes(next); step += 1) next = (next + 1) % MESSAGES.length;
-    const nextHistory = [next, ...history.filter((value) => value !== next)].slice(0, 4);
-    localStorage.setItem(key, JSON.stringify(nextHistory));
-    setIndex(next);
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      const key = "selen-studio-friendly-history";
+      let history: number[] = [];
+      try { history = JSON.parse(localStorage.getItem(key) || "[]"); } catch { history = []; }
+      let next = pickMessage(pathname);
+      for (let step = 0; step < MESSAGES.length && history.includes(next); step += 1) next = (next + 1) % MESSAGES.length;
+      const nextHistory = [next, ...history.filter((value) => value !== next)].slice(0, 4);
+      localStorage.setItem(key, JSON.stringify(nextHistory));
+      setIndex(next);
+    });
+    return () => { cancelled = true; };
   }, [pathname]);
 
   return (

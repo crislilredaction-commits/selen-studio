@@ -113,14 +113,14 @@ export default async function DailyQualityStudioPage() {
       <header>
         <p style={s.kicker}>Selen Studio · Daily</p>
         <h1 style={s.h1}>Qualité & veilles</h1>
-        <p style={s.muted}>Publie les veilles communes, résume ce qu'il faut retenir et propose directement les améliorations utiles aux clients Daily.</p>
+        <p style={s.muted}>Publie les veilles communes, résume ce qu’il faut retenir et propose directement les améliorations utiles aux clients Daily.</p>
       </header>
 
       <section style={s.reminderCard} aria-label="Rappel mensuel des veilles">
         <div>
           <p style={s.reminderEyebrow}>Cadence qualité · mensuelle</p>
           <h2 style={s.reminderTitle}>{watchReminderCount === 0 ? "Veilles du mois à jour" : `${watchReminderCount} veille(s) à alimenter ce mois-ci`}</h2>
-          <p style={s.muted}>Le contrôle est calculé à partir des veilles déjà publiées : au moins un apport par mois et par catégorie. Il sert d'aide-mémoire et ne crée pas de doublon documentaire.</p>
+          <p style={s.muted}>Le contrôle est calculé à partir des veilles déjà publiées : au moins un apport par mois et par catégorie. Il sert d’aide-mémoire et ne crée pas de doublon documentaire.</p>
         </div>
         <div style={s.cadenceGrid}>
           {cadence.map((item) => (
@@ -141,7 +141,7 @@ export default async function DailyQualityStudioPage() {
               ? "Actions correctives suivies ce trimestre"
               : `${correctiveCadence.dueForReviewCount} action(s) corrective(s) à revoir`}
           </h2>
-          <p style={s.muted}>Ce rappel réutilise les actions correctives existantes. Une action ouverte ou planifiée sans mise à jour pendant le trimestre est signalée à revoir ; aucune donnée de rappel parallèle n'est créée.</p>
+          <p style={s.muted}>Ce rappel réutilise les actions correctives existantes. Une action ouverte ou planifiée sans mise à jour pendant le trimestre est signalée à revoir ; aucune donnée de rappel parallèle n’est créée.</p>
         </div>
         <div style={correctiveCadence.dueForReviewCount === 0 ? s.cadenceOk : s.cadenceDue}>
           <strong>{correctiveCadence.openCount} action(s) ouverte(s) ou planifiée(s)</strong>
@@ -153,7 +153,7 @@ export default async function DailyQualityStudioPage() {
       <section style={s.grid}>
         <article style={s.card}>
           <h2>Publier une veille commune</h2>
-          <p style={s.muted}>Tu peux réunir dans le même champ les points importants de l'article et les pistes d'amélioration que tu proposes. Pas besoin de découper artificiellement ton analyse.</p>
+          <p style={s.muted}>Tu peux réunir dans le même champ les points importants de l’article et les pistes d’amélioration que tu proposes. Pas besoin de découper artificiellement ton analyse.</p>
           <form action={createWatch} style={s.form}>
             <label>Type
               <select name="watch_type" style={s.input}>
@@ -161,15 +161,15 @@ export default async function DailyQualityStudioPage() {
                 <option value="pedagogy_technology">Veille pédagogique & technologique</option>
               </select>
             </label>
-            <label>Titre de l'article<input name="title" required style={s.input} /></label>
-            <label>Lien de l'article<input name="article_url" type="url" required style={s.input} /></label>
+            <label>Titre de l’article<input name="title" required style={s.input} /></label>
+            <label>Lien de l’article<input name="article_url" type="url" required style={s.input} /></label>
             <label>Points importants & améliorations proposées
               <textarea
                 name="analysis_and_improvement"
                 required
                 rows={8}
                 style={s.input}
-                placeholder="Résume ce qu'il faut retenir, puis indique les améliorations, adaptations ou décisions que cette veille peut inspirer."
+                placeholder="Résume ce qu’il faut retenir, puis indique les améliorations, adaptations ou décisions que cette veille peut inspirer."
               />
             </label>
             <button style={s.primary}>Publier dans les tableaux clients</button>
@@ -178,7 +178,7 @@ export default async function DailyQualityStudioPage() {
 
         <article style={s.card}>
           <h2>Appliquer une amélioration</h2>
-          <p style={s.muted}>Utilise cette action lorsqu'une évolution a réellement été mise en œuvre pour un ou plusieurs organismes.</p>
+          <p style={s.muted}>Utilise cette action lorsqu’une évolution a réellement été mise en œuvre pour un ou plusieurs organismes.</p>
           <form action={forceUsage} style={s.form}>
             <label>Veille
               <select name="watch_id" required style={s.input}>
@@ -193,7 +193,7 @@ export default async function DailyQualityStudioPage() {
               </select>
             </label>
             <label>Amélioration réellement mise en œuvre<textarea name="improvement" required rows={5} style={s.input} /></label>
-            <button style={s.primary}>Enregistrer l'exploitation</button>
+            <button style={s.primary}>Enregistrer l’exploitation</button>
           </form>
         </article>
       </section>
@@ -212,7 +212,7 @@ export default async function DailyQualityStudioPage() {
                     <span style={s.badge}>{watch.watch_type === "regulatory" ? "Réglementaire" : "Pédagogique & techno"}</span>
                     <h3 style={{ margin: "6px 0" }}>{watch.title}</h3>
                     {watch.analysis_and_improvement ? <p style={s.analysis}>{watch.analysis_and_improvement}</p> : null}
-                    <a href={watch.article_url} target="_blank" rel="noreferrer" style={s.link}>Ouvrir l'article ↗</a>
+                    <a href={watch.article_url} target="_blank" rel="noreferrer" style={s.link}>Ouvrir l’article ↗</a>
                   </div>
                   <div style={s.stats}>
                     <strong>{interested}</strong><span>organisme(s) intéressé(s)</span>

@@ -15,7 +15,7 @@ export default function DailyPrerequisiteRequirementsEditor({ initial, disabled 
       <legend>Document {index + 1}</legend>
       <label>Intitulé<input value={row.label} maxLength={500} disabled={disabled} onChange={(event) => update(index, { label: event.target.value })} style={{ display: "block", width: "100%" }} /></label>
       <label>Consigne<textarea value={row.description ?? ""} maxLength={2000} disabled={disabled} onChange={(event) => update(index, { description: event.target.value })} style={{ display: "block", width: "100%" }} /></label>
-      <label><input type="checkbox" checked={row.required !== false} disabled={disabled} onChange={(event) => update(index, { required: event.target.checked })} /> Obligatoire pour l'admission</label>
+      <label><input type="checkbox" checked={row.required !== false} disabled={disabled} onChange={(event) => update(index, { required: event.target.checked })} /> Obligatoire pour l’admission</label>
       {!disabled ? <button type="button" onClick={() => setRows((current) => current.filter((_, i) => i !== index))}>Retirer cette demande</button> : null}
     </fieldset>)}
     {!disabled && rows.length < 30 ? <button type="button" onClick={() => setRows((current) => [...current, { id: crypto.randomUUID(), label: "", description: "", required: true }])}>Ajouter un justificatif</button> : null}

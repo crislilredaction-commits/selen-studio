@@ -88,13 +88,12 @@ async function saveAnalysis(formData:FormData){
   const {data:updated,error}=await admin.from("daily_formation_registration_requests").update({agent_analysis_summary:summary,agent_analysis_completed_at:now,agent_analysis_completed_by:auth.userId,prerequisites_validated:true,decision_status:"ready_for_of",updated_at:now}).eq("id",id).eq("formation_id",scoped.formation.id).in("decision_status",["pending","ready_for_of"]).eq("decision_status",req.decision_status).eq("updated_at",expectedUpdatedAt).select("id").maybeSingle();
   if(error) throw new Error(error.message);
   if(!updated) throw new Error(conflictMessage);
-  const formation=(req.daily_formations as any);
+  const formation=scoped.formation;
   const organisationId=String(formation?.organisation_id??"").trim();
   if(organisationId){
     const {data:organisation}=await admin.from("organisations").select("email,name,legal_name").eq("id",organisationId).maybeSingle();
     const recipient=String(organisation?.email??"").trim().toLowerCase();
     if(recipient){
-      const organisationName=String(organisation?.legal_name||organisation?.name||"votre organisme");
       const formationTitle=String(formation?.title||"la formation");
       const subject=`Selen Daily · synthèse de candidature prête pour ${formationTitle}`;
       const bodyText=`Bonjour,\n\nL’analyse Selen du dossier de candidature pour ${formationTitle} est terminée.\n\nLa synthèse est disponible dans votre espace Selen Daily. Vous pouvez la consulter avec le dossier de candidature puis accepter ou refuser l’inscription.\n\nAucune préparation préformation ne démarre tant que vous n’avez pas validé l’inscription.\n\nSelen Editions`;
