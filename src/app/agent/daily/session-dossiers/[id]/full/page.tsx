@@ -40,7 +40,7 @@ export default async function FullSessionDossierPage({params}:Props){
   admin.from("daily_formation_registration_requests").select("id,decision_status,respondent_first_name,respondent_last_name,company_name,submitted_at").eq("attached_session_id",id).eq("formation_id",typedSession.formation_id).order("submitted_at",{ascending:false}),
   admin.from("daily_portal_access_tokens").select("session_id,portal_type,entity_key,entity_email,token,status,expires_at").eq("session_id",id).eq("portal_type","learner").in("status",["pending","viewed"]),
  ]);
- if(enrolmentsRes.error||attendanceRes.error||communicationsRes.error)return <main style={s.page}><Link href="/agent/daily">← Retour Daily</Link><h1>Suivi des présences indisponible</h1><p>Les présences, les accès personnels ou leur suivi n’ont pas pu être chargés. Réessayez avant de conclure à l’absence d’un émargement.</p></main>;
+ if(enrolmentsRes.error||attendanceRes.error||communicationsRes.error)return <main style={s.page}><Link href="/agent/daily">← Retour Daily</Link><h1>Suivi des présences indisponible</h1><p>Les présences ou leur suivi n’ont pas pu être chargés. Réessayez avant de conclure à l’absence d’un émargement.</p></main>;
  if(candidaturesRes.error||responsesRes.error)return <main style={s.page}><h1>Dossiers d’inscription indisponibles</h1><p>Les dossiers n’ont pas pu être chargés. Réessayez avant de conclure qu’aucune inscription n’a été reçue.</p></main>;
  const candidatures=candidaturesRes.data??[],accepted=candidatures.filter(row=>row.decision_status==="accepted");
  const documentProgress=accepted.length?await admin.rpc("daily_pretraining_document_progress",{p_session_id:id}):{data:null,error:null};
