@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const layout = await readFile(new URL("../src/app/agent/daily/layout.tsx", import.meta.url), "utf8");
+const nav = await readFile(new URL("../src/components/daily/DailyStudioNavigation.tsx", import.meta.url), "utf8");
+const navConfig = await readFile(new URL("../src/lib/daily/dailyStudioNavigation.mjs", import.meta.url), "utf8");
 const generatorPage = await readFile(new URL("../src/app/agent/daily/generateur-formation/page.tsx", import.meta.url), "utf8");
 const dailyPage = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
 const planningPage = await readFile(new URL("../src/app/agent/daily/planning/page.tsx", import.meta.url), "utf8");
@@ -18,30 +20,26 @@ test("la navigation Studio Daily reste concentrée sur les entrées métier V1",
     "/agent/daily/preaudit",
     "/agent/daily/qualite",
   ];
-
-  for (const route of expectedRoutes) {
-    assert.match(layout, new RegExp(`href=\\"${route.replaceAll("/", "\\/")}\\"`));
-  }
+  for (const route of expectedRoutes) assert.ok(navConfig.includes('href: "' + route + '"'), route);
   for (const hiddenRoute of [
     "/agent/daily/session-dossiers",
     "/agent/daily/indicateurs",
     "/agent/daily/pretraining-documents",
     "/agent/daily/posttraining-documents",
     "/agent/daily/communications",
-  ]) {
-    assert.doesNotMatch(layout, new RegExp(`href=\\"${hiddenRoute.replaceAll("/", "\\/")}\\"`));
-  }
+  ]) assert.ok(!navConfig.includes('href: "' + hiddenRoute + '"'), hiddenRoute);
 });
 
-test("E1a place le générateur de formation dans les onglets Daily sans dupliquer sa logique", () => {
-  assert.match(layout, /href="\/agent\/daily\/generateur-formation"/);
-  assert.match(layout, /Générateur formation/);
+test("E1a garde le générateur réservé à la propriétaire dans la navigation Daily", () => {
+  assert.match(navConfig, /href: "\/agent\/daily\/generateur-formation"/);
+  assert.match(navConfig, /Générateur formation/);
+  assert.match(nav, /dailyStudioNavigationSections\(owner\)/);
   assert.match(layout, /isOwnerLil\(user\?\.email\)/);
   assert.match(generatorPage, /export \{ default \} from "\.\.\/\.\.\/generateur-dossiers-formation\/page"/);
 });
 
 test("la navigation et le planning Daily ont un comportement mobile explicite", () => {
-  assert.match(layout, /className="daily-subnav"/);
+  assert.match(nav, /className="daily-subnav"/);
   assert.match(planningPage, /className="daily-planning-page"/);
   assert.match(planningPage, /className="daily-summary-grid"/);
   assert.match(globalCss, /\.daily-subnav[\s\S]*overflow-x: auto/);

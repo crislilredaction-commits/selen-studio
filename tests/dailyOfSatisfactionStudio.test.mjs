@@ -5,6 +5,7 @@ import test from "node:test";
 const page = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/satisfaction/page.tsx", import.meta.url), "utf8");
 const trackingPage = await readFile(new URL("../src/app/agent/daily/satisfaction/page.tsx", import.meta.url), "utf8");
 const dailyLayout = await readFile(new URL("../src/app/agent/daily/layout.tsx", import.meta.url), "utf8");
+const dailyNavigation = await readFile(new URL("../src/lib/daily/dailyStudioNavigation.mjs", import.meta.url), "utf8");
 
 test("Studio distingue le retour OF sur la plateforme", () => {
   assert.match(page, /client: "OF · retour plateforme"/);
@@ -22,8 +23,9 @@ test("Studio utilise company comme type canonique commanditaire tout en toléran
 });
 
 test("le tableau satisfaction est accessible depuis la navigation Daily", () => {
-  assert.match(dailyLayout, /href="\/agent\/daily\/satisfaction"/);
-  assert.match(dailyLayout, />Satisfaction<\/Link>/);
+  assert.match(dailyNavigation, /href: "\/agent\/daily\/satisfaction"/);
+  assert.match(dailyNavigation, /label: "Satisfaction"/);
+  assert.match(dailyLayout, /DailyStudioNavigation owner=\{owner\}/);
 });
 
 test("le tableau satisfaction borne toutes les sources au périmètre agent", () => {
