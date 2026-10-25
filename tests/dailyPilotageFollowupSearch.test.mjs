@@ -52,7 +52,8 @@ test("l'interface garde la recherche des relances indépendante et accessible", 
   const page = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
   assert.match(page, /normalizeDailyPilotageQuery\(params\?\.qr\)/);
   assert.match(page, /searchDailyPilotageTasks\(followups, followupQuery/);
-  assert.match(page, /paginateDailyPilotageTasks\(matchingFollowups, params\?\.relances, 10\)/);
+  assert.match(page, /filterDailyFollowupViews\(matchingFollowups, selectedFollowupView\)/);
+  assert.match(page, /paginateDailyPilotageTasks\(filteredFollowups, params\?\.relances, 10\)/);
   assert.match(page, /aria-label="Rechercher une relance Daily"/);
   assert.match(page, /name="qr" type="search" maxLength=\{80\}/);
   assert.match(page, /query\.set\("qr", followupQuery\)/);

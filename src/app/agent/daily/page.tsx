@@ -10,6 +10,7 @@ import { normalizeDailyPilotageQuery, searchDailyPilotageTasks } from "@/lib/dai
 import { countDailyPilotageViews, filterDailyPilotageTasks, normalizeDailyPilotageView } from "@/lib/daily/pilotageTaskFilters.mjs";
 import { dailyPilotageOrganisationOptions, selectDailyPilotageOrganisation, filterDailyPilotageOrganisationTasks, dailyPilotageOrganisationOverview } from "@/lib/daily/pilotageOrganisationFilter.mjs";
 import { normalizeDailyPilotagePhase, getDailyPilotageTaskPhase, filterDailyPilotageTaskPhase, countDailyPilotageTaskPhases } from "@/lib/daily/pilotageTaskPhases.mjs";
+import { normalizeDailyFollowupView, countDailyFollowupViews, filterDailyFollowupViews } from "@/lib/daily/pilotageFollowupViews.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ function formatDate(value?: string | null) {
   return value ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Date inconnue";
 }
 
-type Props = { searchParams?: Promise<{ vue?: string | string[]; q?: string | string[]; page?: string | string[]; relances?: string | string[]; qr?: string | string[]; organisme?: string | string[]; etape?: string | string[] }> };
+type Props = { searchParams?: Promise<{ vue?: string | string[]; q?: string | string[]; page?: string | string[]; relances?: string | string[]; qr?: string | string[]; rv?: string | string[]; organisme?: string | string[]; etape?: string | string[] }> };
 
 export default async function AgentDailyPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
@@ -59,7 +60,10 @@ export default async function AgentDailyPage({ searchParams }: Props) {
   // Recherche indépendante sur les relances déjà visibles pour l'agent.
   const followupQuery = normalizeDailyPilotageQuery(params?.qr);
   const matchingFollowups = searchDailyPilotageTasks(followups, followupQuery, item => [item.title, item.detail, item.reminderType].join(" "));
-  const followupPagination = paginateDailyPilotageTasks(matchingFollowups, params?.relances, 10);
+  const selectedFollowupView = normalizeDailyFollowupView(params?.rv);
+  const followupCounts = countDailyFollowupViews(matchingFollowups);
+  const filteredFollowups = filterDailyFollowupViews(matchingFollowups, selectedFollowupView);
+  const followupPagination = paginateDailyPilotageTasks(filteredFollowups, params?.relances, 10);
   const visibleFollowups = followupPagination.items;
   const sharedFollowupCount = matchingFollowups.filter(item => item.overdueShared).length;
   const urgentCount = viewCounts.urgent;
@@ -68,6 +72,11 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     { key: "urgent", label: "Urgences", count: viewCounts.urgent },
     { key: "overdue", label: "En retard", count: viewCounts.overdue },
     { key: "actionable", label: "Traitables", count: viewCounts.actionable },
+  ] as const;
+  const followupViews = [
+    { key: "all", label: "Toutes", count: followupCounts.all },
+    { key: "undated", label: "Sans échéance", count: followupCounts.undated },
+    { key: "shared", label: "Partagées", count: followupCounts.shared },
   ] as const;
   const phases = [
     { key: "all", label: "Toutes les étapes", count: phaseCounts.all },
@@ -82,6 +91,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     if (view !== "all") query.set("vue", view);
     if (searchQuery) query.set("q", searchQuery);
     if (followupQuery) query.set("qr", followupQuery);
+    if (selectedFollowupView !== "all") query.set("rv", selectedFollowupView);
     if (selectedOrganisation) query.set("organisme", selectedOrganisation);
     if (selectedPhase !== "all") query.set("etape", selectedPhase);
     if (followupPagination.page > 1) query.set("relances", String(followupPagination.page));
@@ -93,6 +103,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     if (selectedView !== "all") query.set("vue", selectedView);
     if (searchQuery) query.set("q", searchQuery);
     if (followupQuery) query.set("qr", followupQuery);
+    if (selectedFollowupView !== "all") query.set("rv", selectedFollowupView);
     if (selectedOrganisation) query.set("organisme", selectedOrganisation);
     if (phase !== "all") query.set("etape", phase);
     if (followupPagination.page > 1) query.set("relances", String(followupPagination.page));
@@ -104,6 +115,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     if (selectedView !== "all") query.set("vue", selectedView);
     if (searchQuery) query.set("q", searchQuery);
     if (followupQuery) query.set("qr", followupQuery);
+    if (selectedFollowupView !== "all") query.set("rv", selectedFollowupView);
     if (selectedOrganisation) query.set("organisme", selectedOrganisation);
     if (selectedPhase !== "all") query.set("etape", selectedPhase);
     if (page > 1) query.set("page", String(page));
@@ -116,6 +128,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     if (selectedView !== "all") query.set("vue", selectedView);
     if (searchQuery) query.set("q", searchQuery);
     if (followupQuery) query.set("qr", followupQuery);
+    if (selectedFollowupView !== "all") query.set("rv", selectedFollowupView);
     if (selectedOrganisation) query.set("organisme", selectedOrganisation);
     if (selectedPhase !== "all") query.set("etape", selectedPhase);
     if (pagination.page > 1) query.set("page", String(pagination.page));
@@ -123,10 +136,23 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     return query.size ? `/agent/daily?${query.toString()}#relances-daily` : "/agent/daily#relances-daily";
   };
 
+  const followupViewHref = (view: (typeof followupViews)[number]["key"]) => {
+    const query = new URLSearchParams();
+    if (selectedView !== "all") query.set("vue", selectedView);
+    if (searchQuery) query.set("q", searchQuery);
+    if (followupQuery) query.set("qr", followupQuery);
+    if (selectedOrganisation) query.set("organisme", selectedOrganisation);
+    if (selectedPhase !== "all") query.set("etape", selectedPhase);
+    if (pagination.page > 1) query.set("page", String(pagination.page));
+    if (view !== "all") query.set("rv", view);
+    return query.size ? `/agent/daily?${query.toString()}#relances-daily` : "/agent/daily#relances-daily";
+  };
+
   const clearFollowupHref = () => {
     const query = new URLSearchParams();
     if (selectedView !== "all") query.set("vue", selectedView);
     if (searchQuery) query.set("q", searchQuery);
+    if (selectedFollowupView !== "all") query.set("rv", selectedFollowupView);
     if (selectedOrganisation) query.set("organisme", selectedOrganisation);
     if (selectedPhase !== "all") query.set("etape", selectedPhase);
     if (pagination.page > 1) query.set("page", String(pagination.page));
@@ -163,11 +189,13 @@ export default async function AgentDailyPage({ searchParams }: Props) {
           {selectedPhase !== "all" ? <input type="hidden" name="etape" value={selectedPhase} /> : null}
           {followupPagination.page > 1 ? <input type="hidden" name="relances" value={followupPagination.page} /> : null}
           {followupQuery ? <input type="hidden" name="qr" value={followupQuery} /> : null}
+          {selectedFollowupView !== "all" ? <input type="hidden" name="rv" value={selectedFollowupView} /> : null}
           <label htmlFor="daily-task-search" style={s.searchLabel}>Rechercher une tâche ou un dossier</label>
           <div style={s.searchControls}>
             <input id="daily-task-search" name="q" type="search" maxLength={80} defaultValue={searchQuery} placeholder="Organisme, formation, action…" style={s.searchInput} />
             <button type="submit" style={s.searchButton}>Rechercher</button>
-            {searchQuery ? <Link href={(() => { const query = new URLSearchParams(); if (selectedView !== "all") query.set("vue", selectedView); if (selectedPhase !== "all") query.set("etape", selectedPhase); if (selectedOrganisation) query.set("organisme", selectedOrganisation); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); if (followupQuery) query.set("qr", followupQuery); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Effacer la recherche</Link> : null}
+            {searchQuery ? <Link href={(() => { const query = new URLSearchParams(); if (selectedView !== "all") query.set("vue", selectedView); if (selectedPhase !== "all") query.set("etape", selectedPhase); if (selectedOrganisation) query.set("organisme", selectedOrganisation); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); if (followupQuery) query.set("qr", followupQuery);
+    if (selectedFollowupView !== "all") query.set("rv", selectedFollowupView); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Effacer la recherche</Link> : null}
           </div>
           {searchQuery ? <p style={s.searchResults} role="status">{searchedTasks.length} résultat{searchedTasks.length > 1 ? "s" : ""} pour « {searchQuery} »</p> : null}
         </form>
@@ -177,6 +205,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
           {selectedPhase !== "all" ? <input type="hidden" name="etape" value={selectedPhase} /> : null}
           {followupPagination.page > 1 ? <input type="hidden" name="relances" value={followupPagination.page} /> : null}
           {followupQuery ? <input type="hidden" name="qr" value={followupQuery} /> : null}
+          {selectedFollowupView !== "all" ? <input type="hidden" name="rv" value={selectedFollowupView} /> : null}
           <label htmlFor="daily-organisation-filter" style={s.searchLabel}>Organisme de formation</label>
           <div style={s.searchControls}>
             <select id="daily-organisation-filter" name="organisme" defaultValue={selectedOrganisation} style={s.searchInput}>
@@ -185,7 +214,8 @@ export default async function AgentDailyPage({ searchParams }: Props) {
             </select>
             <button type="submit" style={s.searchButton}>Appliquer</button>
             {selectedOrganisation ? <Link href={(() => { const query = new URLSearchParams(); if (selectedView !== "all") query.set("vue", selectedView); if (selectedPhase !== "all") query.set("etape", selectedPhase); if (searchQuery) query.set("q", searchQuery);
-    if (followupQuery) query.set("qr", followupQuery); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Tous les organismes</Link> : null}
+    if (followupQuery) query.set("qr", followupQuery);
+    if (selectedFollowupView !== "all") query.set("rv", selectedFollowupView); if (followupPagination.page > 1) query.set("relances", String(followupPagination.page)); return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily"; })()} style={s.secondary}>Tous les organismes</Link> : null}
           </div>
         </form> : null}
         <nav aria-label="Filtrer les tâches par étape de formation" style={s.filters}>
@@ -223,6 +253,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
           {selectedOrganisation ? <input type="hidden" name="organisme" value={selectedOrganisation} /> : null}
           {selectedPhase !== "all" ? <input type="hidden" name="etape" value={selectedPhase} /> : null}
           {pagination.page > 1 ? <input type="hidden" name="page" value={pagination.page} /> : null}
+          {selectedFollowupView !== "all" ? <input type="hidden" name="rv" value={selectedFollowupView} /> : null}
           <label htmlFor="daily-followup-search" style={s.searchLabel}>Rechercher une relance</label>
           <div style={s.searchControls}>
             <input id="daily-followup-search" name="qr" type="search" maxLength={80} defaultValue={followupQuery} placeholder="Partie prenante, motif, action…" style={s.searchInput} />
@@ -230,7 +261,11 @@ export default async function AgentDailyPage({ searchParams }: Props) {
             {followupQuery ? <Link href={clearFollowupHref()} style={s.secondary}>Effacer la recherche des relances</Link> : null}
           </div>
           {followupQuery ? <p style={s.searchResults} role="status">{matchingFollowups.length} résultat{matchingFollowups.length > 1 ? "s" : ""} pour « {followupQuery} »</p> : null}
-        </form>{sharedFollowupCount > 0 ? <p style={s.queueHint} role="status">Relances partagées avec l’équipe : {sharedFollowupCount}. Ces relances restent à traiter manuellement.</p> : null}{followupPagination.total > 0 ? <p style={s.queueHint} role="status">Relances {followupPagination.from} à {followupPagination.to} sur {followupPagination.total}</p> : null}{followupPagination.total === 0 ? <SelenCard style={s.empty}><SelenCardTitle>{followupQuery ? "Aucune relance trouvée" : "Aucune relance Daily"}</SelenCardTitle><p style={s.muted}>{followupQuery ? "Essayez un autre terme ou effacez la recherche. Les autres relances restent accessibles." : "Aucune action n’est actuellement attendue d’un apprenant, formateur, entreprise ou autre partie prenante."}</p>{followupQuery ? <Link href={clearFollowupHref()} style={s.secondary}>Voir toutes les relances →</Link> : null}</SelenCard> : <div style={s.list}>{visibleFollowups.map((item) => <SelenCard key={item.id} style={s.card}><div className="daily-task-head" style={s.cardHead}><div><div style={s.badges}><span style={{ ...s.badge, ...s.badgeClient }}>Partie prenante</span>{item.overdueShared ? <span style={s.badge}>Relance partagée</span> : null}</div><SelenCardTitle>{item.title}</SelenCardTitle></div><span style={s.date}>{item.dueAt ? formatDate(item.dueAt) : "À traiter sans délai"}</span></div><p style={s.detail}>{item.detail}</p><div className="daily-task-actions" style={s.actions}><Link href={item.href} style={s.secondary}>Ouvrir le dossier →</Link></div></SelenCard>)}</div>}
+        </form>
+        <nav aria-label="Filtrer les relances Daily" style={s.filters}>
+          {followupViews.map(view => <Link key={view.key} href={followupViewHref(view.key)} aria-current={selectedFollowupView === view.key ? "page" : undefined} style={{ ...s.filterLink, ...(selectedFollowupView === view.key ? s.filterActive : {}) }}>{view.label} <span>{view.count}</span></Link>)}
+        </nav>
+        {sharedFollowupCount > 0 ? <p style={s.queueHint} role="status">Relances partagées avec l’équipe : {sharedFollowupCount}. Ces relances restent à traiter manuellement.</p> : null}{followupPagination.total > 0 ? <p style={s.queueHint} role="status">Relances {followupPagination.from} à {followupPagination.to} sur {followupPagination.total}</p> : null}{followupPagination.total === 0 ? <SelenCard style={s.empty}><SelenCardTitle>{followupQuery && matchingFollowups.length === 0 ? "Aucune relance trouvée" : selectedFollowupView !== "all" && matchingFollowups.length > 0 ? "Aucune relance dans cette vue" : "Aucune relance Daily"}</SelenCardTitle><p style={s.muted}>{followupQuery && matchingFollowups.length === 0 ? "Essayez un autre terme ou effacez la recherche. Les autres relances restent accessibles." : selectedFollowupView !== "all" && matchingFollowups.length > 0 ? "Choisissez une autre vue pour consulter les relances disponibles." : "Aucune action n’est actuellement attendue d’un apprenant, formateur, entreprise ou autre partie prenante."}</p>{selectedFollowupView !== "all" ? <Link href={followupViewHref("all")} style={s.secondary}>Toutes les relances →</Link> : followupQuery ? <Link href={clearFollowupHref()} style={s.secondary}>Voir toutes les relances →</Link> : null}</SelenCard> : <div style={s.list}>{visibleFollowups.map((item) => <SelenCard key={item.id} style={s.card}><div className="daily-task-head" style={s.cardHead}><div><div style={s.badges}><span style={{ ...s.badge, ...s.badgeClient }}>Partie prenante</span>{item.overdueShared ? <span style={s.badge}>Relance partagée</span> : null}</div><SelenCardTitle>{item.title}</SelenCardTitle></div><span style={s.date}>{item.dueAt ? formatDate(item.dueAt) : "À traiter sans délai"}</span></div><p style={s.detail}>{item.detail}</p><div className="daily-task-actions" style={s.actions}><Link href={item.href} style={s.secondary}>Ouvrir le dossier →</Link></div></SelenCard>)}</div>}
         {followupPagination.totalPages > 1 ? <nav aria-label="Pages des relances Daily" style={s.pageNavigation}>
           {followupPagination.page > 1 ? <Link href={followupHref(followupPagination.page - 1)} style={s.secondary}>← Relances précédentes</Link> : null}
           <span style={s.pageStatus}>Page {followupPagination.page} sur {followupPagination.totalPages}</span>
