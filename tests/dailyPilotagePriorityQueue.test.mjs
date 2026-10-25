@@ -37,5 +37,5 @@ test("le pilotage utilise le tri et conserve les contrôles d'autorisation", asy
   assert.match(page, /sortedTasks\.map\(\(item\)/);
   assert.match(page, /canTreatDailyPilotageTask\(item, staff\)/);
   assert.match(page, /Traitement réservé à l’agent assigné/);
-  assert.match(page, /Urgences/);
+  assert.match(page, /<span>urgences<\/span>/);
 });
