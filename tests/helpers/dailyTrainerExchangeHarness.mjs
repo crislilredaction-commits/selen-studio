@@ -25,13 +25,16 @@ export function exchangeHarness(options={}) {
   return result;
  }
  const admin={from(table){
-  assert.ok(Object.hasOwn(db,table),"Unexpected table "+table);let filters=[],one=false,columns;
+  assert.ok(Object.hasOwn(db,table),"Unexpected table "+table);let filters=[],one=false,columns,maxRows=null;
   const q={select(v){columns=v;return q;},eq(k,v){filters.push(r=>r[k]===v);return q;},neq(k,v){filters.push(r=>r[k]!==v);return q;},
    in(k,v){filters.push(r=>v.includes(r[k]));return q;},not(k,op,v){assert.equal(op,"in");filters.push(r=>!v.slice(1,-1).split(",").includes(r[k]));return q;},
-   order(){return q;},limit(){return q;},maybeSingle(){one=true;return q;},single(){one=true;return q;},
+   is(k,v){filters.push(r=>v===null?r[k]==null:r[k]===v);return q;},
+   order(){return q;},limit(n){maxRows=n;return q;},maybeSingle(){one=true;return q;},single(){one=true;return q;},
    insert(){throw Error("Business write forbidden");},update(){throw Error("Business write forbidden");},upsert(){throw Error("Business write forbidden");},delete(){throw Error("Business write forbidden");},
    then(resolve,reject){return Promise.resolve().then(()=>{reads.push({table,columns});if(options.failTable===table)return{data:null,error:{message:"fixture read failure"}};
     let rows=db[table].filter(r=>filters.every(f=>f(r))).map(r=>table==="daily_attendance_slots"?{...r,daily_attendance_records:db.daily_attendance_records.filter(v=>v.slot_id===r.id)}:r);
+    if(maxRows!==null)rows=rows.slice(0,maxRows);
+    if(one&&rows.length>1)return{data:null,error:{code:"PGRST116",message:"Multiple rows returned"}};
     rows=rows.map(r=>project(r,columns));return{data:one?rows[0]??null:rows,error:null};}).then(resolve,reject);}};
   return q;
  }};

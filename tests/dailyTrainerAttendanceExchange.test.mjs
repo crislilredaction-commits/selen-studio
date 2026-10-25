@@ -40,6 +40,23 @@ test("la vue Studio masque les apprenants d’un autre organisme et leurs preuve
  assert.doesNotMatch(html,/Eve Externe|Preuves d’émargement à valider/);
 });
 
+test("deux relevés publiés sur une session ne bloquent pas le PDF individuel",async()=>{
+ const h=exchangeHarness();
+ h.db.daily_documents=[
+  {id:"summary-one",organisation_id:ids.org,session_id:ids.session,document_type:"attendance_summary",status:"published",is_current:true,archived_at:null},
+  {id:"summary-two",organisation_id:ids.org,session_id:ids.session,document_type:"attendance_summary",status:"signed",is_current:true,archived_at:null},
+ ];
+ const html=await render(h);
+ assert.match(html,/Télécharger sa feuille individuelle \(PDF\)/);
+ assert.doesNotMatch(html,/État de publication indisponible/);
+});
+test("un relevé archivé ne déverrouille jamais le PDF individuel",async()=>{
+ const h=exchangeHarness();
+ h.db.daily_documents=[{id:"archived",organisation_id:ids.org,session_id:ids.session,document_type:"attendance_summary",status:"published",is_current:true,archived_at:"2026-10-14T00:00:00Z"}];
+ const html=await render(h);
+ assert.doesNotMatch(html,/Télécharger sa feuille individuelle \(PDF\)/);
+ assert.match(html,/Feuille individuelle disponible après traitement complet et publication/);
+});
 test("la session d’un autre organisme n’est pas exposée à un agent non affecté",async()=>{
  const h=exchangeHarness({outOfScope:true}),html=await render(h);assert.match(html,/Accès refusé/);assert.doesNotMatch(html,/Alice|Formation exemple|Signé/);assert.equal(h.reads.length,1);assert.equal(h.reads[0].table,"daily_sessions");
 });
