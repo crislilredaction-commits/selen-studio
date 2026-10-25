@@ -34,14 +34,6 @@ export default async function AgentDailyPage({ searchParams }: Props) {
   try {
     [tasks, followups] = await Promise.all([getDailyPilotageTasks(), getStudioClientFollowups(staff, { dailyOnly: true })]);
   } catch (error) {
-    const pageHref = (page: number) => {
-    const query = new URLSearchParams();
-    if (selectedView !== "all") query.set("vue", selectedView);
-    if (searchQuery) query.set("q", searchQuery);
-    if (page > 1) query.set("page", String(page));
-    return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily";
-  };
-
   return <main className="daily-page" style={s.page}><p style={s.error}>Impossible de charger le pilotage Daily : {error instanceof Error ? error.message : "erreur inconnue"}</p></main>;
   }
 
@@ -66,6 +58,14 @@ export default async function AgentDailyPage({ searchParams }: Props) {
     if (view !== "all") query.set("vue", view);
     if (searchQuery) query.set("q", searchQuery);
     return query.size ? `/agent/daily?${query.toString()}` : "/agent/daily";
+  };
+
+  const pageHref = (page: number) => {
+    const query = new URLSearchParams();
+    if (selectedView !== "all") query.set("vue", selectedView);
+    if (searchQuery) query.set("q", searchQuery);
+    if (page > 1) query.set("page", String(page));
+    return query.size ? `/agent/daily?${query.toString()}#taches-daily` : "/agent/daily#taches-daily";
   };
 
   return <main className="daily-page" style={s.page}>
