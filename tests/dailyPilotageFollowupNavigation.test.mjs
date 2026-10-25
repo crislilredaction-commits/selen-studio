@@ -39,7 +39,8 @@ test("les paramètres de relances invalides sont ignorés ou bornés", () => {
 test("l'interface sépare les liens de pages tout en conservant la recherche et les filtres", async () => {
   const page = await readFile(new URL("../src/app/agent/daily/page.tsx", import.meta.url), "utf8");
   assert.match(page, /paginateDailyPilotageTasks\(allSortedTasks, params\?\.page\)/);
-  assert.match(page, /paginateDailyPilotageTasks\(matchingFollowups, params\?\.relances, 10\)/);
+  assert.match(page, /filterDailyFollowupViews\(matchingFollowups, selectedFollowupView\)/);
+  assert.match(page, /paginateDailyPilotageTasks\(filteredFollowups, params\?\.relances, 10\)/);
   assert.match(page, /visibleFollowups\.map\(\(item\)/);
   assert.match(page, /query\.set\("vue", selectedView\)/);
   assert.match(page, /query\.set\("q", searchQuery\)/);
