@@ -12,6 +12,15 @@ on:
       - 'tests/daily*Pretraining*.test.mjs'
       - 'tests/dailyActiveTaskBehavior.test.mjs'
       - 'tests/dailySessionTaskAggregation.test.mjs'
+      - 'tests/dailySessionTimeline.test.mjs'
+      - 'tests/dailySessionClosureScope.test.mjs'
+      - 'tests/dailySessionSatisfactionScope.test.mjs'
+      - 'tests/dailyAttendanceDownload.test.mjs'
+      - 'src/lib/daily/attendanceSignatureImage.mjs'
+      - 'src/app/agent/daily/session-dossiers/**/attendance/pdf/**'
+      - 'src/app/agent/daily/session-dossiers/**/satisfaction/**'
+      - 'src/app/agent/daily/session-dossiers/**/timeline/**'
+      - 'src/app/agent/daily/session-dossiers/**/closure/**'
       - 'package*.json'
   push:
     branches: [main]
@@ -24,6 +33,15 @@ on:
       - 'tests/daily*Pretraining*.test.mjs'
       - 'tests/dailyActiveTaskBehavior.test.mjs'
       - 'tests/dailySessionTaskAggregation.test.mjs'
+      - 'tests/dailySessionTimeline.test.mjs'
+      - 'tests/dailySessionClosureScope.test.mjs'
+      - 'tests/dailySessionSatisfactionScope.test.mjs'
+      - 'tests/dailyAttendanceDownload.test.mjs'
+      - 'src/lib/daily/attendanceSignatureImage.mjs'
+      - 'src/app/agent/daily/session-dossiers/**/attendance/pdf/**'
+      - 'src/app/agent/daily/session-dossiers/**/satisfaction/**'
+      - 'src/app/agent/daily/session-dossiers/**/timeline/**'
+      - 'src/app/agent/daily/session-dossiers/**/closure/**'
       - 'package*.json'
 
 permissions:
@@ -44,6 +62,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: npm ci
+      - name: ESLint ciblé timeline et clôture sécurisées
+        run: npx eslint 'src/app/agent/daily/session-dossiers/[id]/timeline/page.tsx' 'src/app/agent/daily/session-dossiers/[id]/closure/page.tsx' 'tests/dailySessionTaskAggregation.test.mjs' 'tests/dailySessionClosureScope.test.mjs'
+      - name: ESLint ciblé satisfaction et analyse post-formation
+        run: npx eslint 'src/app/agent/daily/session-dossiers/[id]/satisfaction/page.tsx' 'tests/dailySessionSatisfactionScope.test.mjs'
+      - name: ESLint ciblé PDF émargement individuel
+        run: npx eslint 'src/app/agent/daily/session-dossiers/[id]/attendance/pdf/route.ts' 'src/lib/daily/attendanceSignatureImage.mjs' 'tests/dailyAttendanceDownload.test.mjs'
       - name: Tests, typecheck and build without production credentials
         run: |
           npm test

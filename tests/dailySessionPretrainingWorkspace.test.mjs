@@ -18,9 +18,11 @@ test("la fiche session expose quatre onglets chronologiques sans dupliquer les t
   }
   assert.match(navigation, /querySelectorAll<HTMLElement>\("\[data-session-stage\]"\)/);
   assert.match(navigation, /panel\.hidden = panel\.dataset\.sessionStage !== activeStage/);
-  assert.match(source, /Participants & inscriptions/);
-  assert.match(source, /Documents à traiter/);
-  assert.match(source, /Communications & preuves/);
+  assert.match(navigation, /Participants & positionnements/);
+  assert.match(navigation, /Documents avant formation/);
+  assert.match(navigation, /Communications & preuves/);
+  assert.doesNotMatch(source, /workspaceLinks/);
+  assert.doesNotMatch(source, /footerLinks/);
 });
 
 test("les liens profonds ouvrent le bon onglet et conservent les détails ciblés", () => {
@@ -60,4 +62,20 @@ test("les statuts affichés proviennent des documents persistés", () => {
   }
   assert.match(source, /Version \{doc\.version\}/);
   assert.doesNotMatch(source, /onClick=.*valid/i);
+});
+
+test("le traitement des inscriptions utilise le contexte du dossier sans recopier les actions", () => {
+  const layout = readFileSync(
+    new URL("../src/app/agent/daily/sessions/[id]/layout.tsx", import.meta.url), "utf8",
+  );
+  const treatment = readFileSync(
+    new URL("../src/app/agent/daily/sessions/[id]/page.tsx", import.meta.url), "utf8",
+  );
+  assert.ok(layout.includes('SessionDossierLayout from "../../session-dossiers/[id]/layout"'));
+  assert.ok(layout.includes("<SessionDossierLayout {...props} />"));
+  assert.ok(navigation.includes("/agent/daily/sessions/${encodeURIComponent(sessionId)}"));
+  assert.ok(navigation.includes("Contrôler les inscriptions"));
+  assert.ok(treatment.includes("loadScopedDailySessionPrerequisites(admin, auth.email, id)"));
+  assert.ok(treatment.includes("patchSummaryValidationAction(legacy, blockedReason)"));
+  assert.ok(source.includes("/agent/daily/sessions/${id}"));
 });

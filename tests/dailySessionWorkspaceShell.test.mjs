@@ -18,10 +18,13 @@ test("le fil d’Ariane conserve l’onglet Sessions de l’organisme", () => {
   assert.match(layout, /Organisme → session → dossier/);
   assert.match(layout, /Ouvrir le dossier unifié/);
 });
-test("les quatre phases et leurs outils restent accessibles", () => {
+test("les quatre phases conservent uniquement leurs actions contextuelles", () => {
   for (const stage of ["overview", "before", "during", "after"]) assert.match(navigation, new RegExp(`id: "${stage}"`));
-  for (const tool of ["Programme & inscriptions", "Chronologie", "Suivi pendant", "Évaluation", "Satisfaction", "Clôture"]) assert.match(navigation, new RegExp(tool));
+  for (const tool of ["Programme & inscriptions", "Documents avant formation", "Chronologie", "Suivi pendant", "Émargements collectifs", "Évaluation", "Satisfaction", "Clôture"]) assert.match(navigation, new RegExp(tool));
   assert.match(navigation, /toolStages/);
+  assert.match(navigation, /phaseActions\(sessionId\)\[activeStage\]/);
+  assert.match(navigation, /Actions · \{activeStageDetails\.label\}/);
+  assert.doesNotMatch(navigation, /Outils de cette session/);
 });
 test("la navigation est responsive", () => {
   assert.match(responsive, /@media\(max-width:560px\)/);
@@ -31,4 +34,17 @@ test("la navigation est responsive", () => {
 test("les outils reviennent à leur phase du dossier unifié", () => {
   for (const path of ["satisfaction/page.tsx", "evaluation/page.tsx", "closure/page.tsx"]) assert.match(read(`src/app/agent/daily/session-dossiers/[id]/${path}`), /full#apres-formation/);
   assert.match(read("src/app/agent/daily/session-dossiers/[id]/followup/page.tsx"), /full#pendant-formation/);
+});
+
+test("le traitement historique des inscriptions partage le shell sécurisé de la session", () => {
+  const registrationLayout = read("src/app/agent/daily/sessions/[id]/layout.tsx");
+  const registrationPage = read("src/app/agent/daily/sessions/[id]/page.tsx");
+  const dossier = read("src/app/agent/daily/session-dossiers/[id]/full/page.tsx");
+  assert.ok(registrationLayout.includes("SessionDossierLayout"));
+  assert.ok(registrationLayout.includes("<SessionDossierLayout {...props} />"));
+  assert.ok(navigation.includes("Contrôler les inscriptions"));
+  assert.ok(navigation.includes("/agent/daily/sessions/${encodeURIComponent(sessionId)}"));
+  assert.ok(registrationPage.includes("loadScopedDailySessionPrerequisites(admin, auth.email, id)"));
+  assert.ok(registrationPage.includes("patchSummaryValidationAction(legacy, blockedReason)"));
+  assert.ok(dossier.includes("/agent/daily/sessions/${id}"));
 });

@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { jsPDF } from "jspdf";
 import { NextResponse } from "next/server";
 import { attendanceReviewStateLabel, getAttendanceReviewHistory } from "@/lib/daily/attendanceReviewHistory";
+import { detectAttendanceSignatureFormat } from "@/lib/daily/attendanceSignatureImage.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +50,18 @@ function storageObjectPath(path: string) {
 
 function safeFilename(value: unknown) {
   return safeText(value, "session").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "session";
+}
+
+function addSignaturePreview(doc: jsPDF, bytes: Buffer, x: number, y: number): boolean {
+  const format = detectAttendanceSignatureFormat(bytes);
+  if (!format) return false;
+  try {
+    doc.addImage(bytes.toString("base64"), format, x, y, 48, 20, undefined, "FAST");
+    return true;
+  } catch {
+    // Une preuve illisible ne doit pas bloquer le téléchargement du relevé.
+    return false;
+  }
 }
 
 function isAfterSession(endDate: unknown) {
@@ -156,8 +169,8 @@ export async function GET(request: Request, { params }: RouteContext) {
         if (!signatureError && signature) {
           const bytes = Buffer.from(await signature.arrayBuffer());
           ensure(25);
-          doc.addImage(bytes.toString("base64"), "PNG", left, y, 48, 20, undefined, "FAST");
-          y += 23;
+          if (addSignaturePreview(doc, bytes, left, y)) y += 23;
+          else line("Signature conservée dans le stockage sécurisé — aperçu illisible ou format non pris en charge.", 7);
         } else {
           line("Signature conservée dans le stockage sécurisé — aperçu indisponible lors de la génération.", 7);
         }
@@ -179,8 +192,8 @@ export async function GET(request: Request, { params }: RouteContext) {
           if (trainerImageError || !trainerImage) { line("Signature conservée — aperçu temporairement indisponible.", 7); continue; }
           const trainerBytes = Buffer.from(await trainerImage.arrayBuffer());
           ensure(25);
-          doc.addImage(trainerBytes.toString("base64"), "PNG", left, y, 48, 20, undefined, "FAST");
-          y += 23;
+          if (addSignaturePreview(doc, trainerBytes, left, y)) y += 23;
+          else line("Signature du formateur conservée — aperçu illisible ou format non pris en charge.", 7);
         }
       }
       y += 2;

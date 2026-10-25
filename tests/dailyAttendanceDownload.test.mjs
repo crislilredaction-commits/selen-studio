@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { detectAttendanceSignatureFormat } from "../src/lib/daily/attendanceSignatureImage.mjs";
 
 const route = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/attendance/pdf/route.ts", import.meta.url), "utf8");
 const page = await readFile(new URL("../src/app/agent/daily/session-dossiers/[id]/full/page.tsx", import.meta.url), "utf8");
@@ -62,4 +63,25 @@ test("Studio permet de choisir explicitement l'apprenant avant de télécharger 
   assert.match(picker, /Télécharger son PDF/);
   assert.match(picker, /signatures du\s+formateur correspondant aux mêmes créneaux/);
   assert.match(picker, /disabled=\{!canDownload\}/);
+});
+
+test("les signatures PNG et JPEG sont reconnues par leurs octets, pas par leur extension", () => {
+  assert.equal(detectAttendanceSignatureFormat(Uint8Array.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00])), "PNG");
+  assert.equal(detectAttendanceSignatureFormat(Uint8Array.from([0xff,0xd8,0xff,0xe0,0x00])), "JPEG");
+});
+
+test("les images vides, tronquées ou non prises en charge sont refusées sans inventer une signature", () => {
+  assert.equal(detectAttendanceSignatureFormat(new Uint8Array()), null);
+  assert.equal(detectAttendanceSignatureFormat(Uint8Array.from([0x89,0x50,0x4e,0x47])), null);
+  assert.equal(detectAttendanceSignatureFormat(Uint8Array.from([0x52,0x49,0x46,0x46,0x00])), null);
+  assert.equal(detectAttendanceSignatureFormat(Uint8Array.from([0xff,0xd8])), null);
+});
+
+test("le PDF garde une mention de preuve indisponible si une signature apprenant ou formateur est illisible", () => {
+  assert.match(route, /detectAttendanceSignatureFormat\(bytes\)/);
+  assert.match(route, /try \{\s*doc\.addImage/);
+  assert.match(route, /catch \{[\s\S]*?return false/);
+  assert.match(route, /if \(addSignaturePreview\(doc, bytes, left, y\)\)/);
+  assert.match(route, /if \(addSignaturePreview\(doc, trainerBytes, left, y\)\)/);
+  assert.match(route, /aperçu illisible ou format non pris en charge/);
 });

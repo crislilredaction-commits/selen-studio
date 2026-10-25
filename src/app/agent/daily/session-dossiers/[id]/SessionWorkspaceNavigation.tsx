@@ -14,6 +14,32 @@ const stages: Array<{ id: StageId; fragment: string; label: string; description:
 ];
 const toolStages: Record<string, StageId> = { evaluation: "after", satisfaction: "after", closure: "after", followup: "during", timeline: "overview" };
 
+function phaseActions(sessionId: string): Record<StageId, Array<{ href: string; label: string }>> {
+  const dossierBase = `/agent/daily/session-dossiers/${encodeURIComponent(sessionId)}`;
+  return {
+    overview: [
+      { href: `${dossierBase}/timeline`, label: "Chronologie" },
+      { href: `/agent/daily/communications?session_id=${encodeURIComponent(sessionId)}`, label: "Communications & preuves" },
+    ],
+    before: [
+      { href: dossierBase, label: "Programme & inscriptions" },
+      { href: `/agent/daily/sessions/${encodeURIComponent(sessionId)}`, label: "Contrôler les inscriptions" },
+      { href: `${dossierBase}/full#participants-session`, label: "Participants & positionnements" },
+      { href: `/agent/daily/pretraining-documents?session=${encodeURIComponent(sessionId)}`, label: "Documents avant formation" },
+    ],
+    during: [
+      { href: `${dossierBase}/followup`, label: "Suivi pendant" },
+      { href: `${dossierBase}/attendance/pdf`, label: "Émargements collectifs (PDF)" },
+      { href: `/agent/daily/communications?session_id=${encodeURIComponent(sessionId)}`, label: "Communications & preuves" },
+    ],
+    after: [
+      { href: `${dossierBase}/evaluation`, label: "Évaluation" },
+      { href: `${dossierBase}/satisfaction`, label: "Satisfaction" },
+      { href: `${dossierBase}/closure`, label: "Clôture" },
+    ],
+  };
+}
+
 function stageFromHash(): StageId {
   if (typeof window === "undefined") return "overview";
   const fragment = decodeURIComponent(window.location.hash.slice(1));
@@ -34,6 +60,8 @@ export default function SessionWorkspaceNavigation({ sessionId }: { sessionId: s
   const isWorkspace = pathname.endsWith("/full");
   const [workspaceStage, setWorkspaceStage] = useState<StageId>("overview");
   const activeStage = isWorkspace ? workspaceStage : stageFromPath(pathname);
+  const activeStageDetails = stages.find((stage) => stage.id === activeStage) ?? stages[0];
+  const activeActions = phaseActions(sessionId)[activeStage];
 
   useEffect(() => {
     if (!isWorkspace) return;
@@ -64,14 +92,9 @@ export default function SessionWorkspaceNavigation({ sessionId }: { sessionId: s
         </Link>;
       })}
     </nav>
-    <nav aria-label="Outils de cette session" className={styles.toolNav}>
-      <span className={styles.toolLabel}>Outils de cette session</span>
-      <Link href={`/agent/daily/session-dossiers/${sessionId}`}>Programme & inscriptions</Link>
-      <Link href={`/agent/daily/session-dossiers/${sessionId}/timeline`}>Chronologie</Link>
-      <Link href={`/agent/daily/session-dossiers/${sessionId}/followup`}>Suivi pendant</Link>
-      <Link href={`/agent/daily/session-dossiers/${sessionId}/evaluation`}>Évaluation</Link>
-      <Link href={`/agent/daily/session-dossiers/${sessionId}/satisfaction`}>Satisfaction</Link>
-      <Link href={`/agent/daily/session-dossiers/${sessionId}/closure`}>Clôture</Link>
+    <nav aria-label={`Actions de la phase ${activeStageDetails.label}`} className={styles.toolNav}>
+      <span className={styles.toolLabel}>Actions · {activeStageDetails.label}</span>
+      {activeActions.map((action) => <Link key={action.href} href={action.href}>{action.label}</Link>)}
     </nav>
   </>;
 }

@@ -4,10 +4,11 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import PosttrainingAnalysisForm from "./PosttrainingAnalysisForm";
+import { getFinalizedDailyAssessmentEnrolmentIds } from "@/lib/server/dailyPosttrainingAssessmentEligibility";
 
 type Props = { params: Promise<{ id: string }> };
-type Learner = { id?: string; email?: string | null; first_name?: string | null; last_name?: string | null };
-type Enrolment = { id: string; daily_learners?: Learner | Learner[] | null };
+type Learner = { id?: string; organisation_id?: string | null; email?: string | null; first_name?: string | null; last_name?: string | null };
+type Enrolment = { id: string; learner_id: string; daily_learners?: Learner | Learner[] | null };
 type LearnerFeedback = {
   enrolment_id: string; overall_rating: number; objectives_rating: number; trainer_rating: number | null; organisation_rating: number | null;
   content_rating: number | null; pace_rating: number | null; would_recommend: boolean | null; strengths: string | null;
@@ -51,8 +52,8 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
 
   const [stakeholderRes, enrolmentRes, learnerFeedbackRes, analysisRes] = await Promise.all([
     admin.from("daily_stakeholder_satisfaction_responses").select("id,stakeholder_type,entity_name,entity_email,overall_rating,objectives_rating,trainer_rating,organisation_rating,would_recommend,strengths,improvements,free_comment,submitted_at").eq("session_id", id).order("submitted_at", { ascending: false }),
-    admin.from("daily_session_enrolments").select("id,daily_learners(id,email,first_name,last_name)").eq("session_id", id).not("status", "in", "(declined,cancelled,abandoned)"),
-    admin.from("daily_learner_feedback_responses").select("enrolment_id,overall_rating,objectives_rating,trainer_rating,organisation_rating,content_rating,pace_rating,would_recommend,strengths,improvements,adaptation_feedback,free_comment,submitted_at").eq("session_id", id),
+    admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(id,organisation_id,email,first_name,last_name)").eq("organisation_id", session.organisation_id).eq("session_id", id).not("status", "in", "(declined,cancelled,abandoned)"),
+    admin.from("daily_learner_feedback_responses").select("enrolment_id,overall_rating,objectives_rating,trainer_rating,organisation_rating,content_rating,pace_rating,would_recommend,strengths,improvements,adaptation_feedback,free_comment,submitted_at").eq("organisation_id", session.organisation_id).eq("session_id", id),
     admin.from("daily_posttraining_analyses").select("enrolment_id,strengths,weaknesses,vigilance,summary,action_required,updated_at").eq("organisation_id", session.organisation_id).eq("session_id", id),
   ]);
   const error = stakeholderRes.error ?? enrolmentRes.error ?? learnerFeedbackRes.error ?? analysisRes.error;
@@ -63,14 +64,22 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
   ]);
 
   const stakeholders = stakeholderRes.data ?? [];
-  const enrolments = (enrolmentRes.data ?? []) as Enrolment[];
-  const learnerFeedback = (learnerFeedbackRes.data ?? []) as LearnerFeedback[];
+  const enrolments = ((enrolmentRes.data ?? []) as Enrolment[]).filter((enrolment) => {
+    const learner = learnerOf(enrolment);
+    return learner != null && learner.organisation_id === session.organisation_id && learner.id === enrolment.learner_id;
+  });
+  const enrolmentIds = new Set(enrolments.map((row) => row.id));
+  const learnerFeedback = ((learnerFeedbackRes.data ?? []) as LearnerFeedback[]).filter((row) => enrolmentIds.has(row.enrolment_id));
   const feedbackByEnrolment = new Map(learnerFeedback.map((row) => [row.enrolment_id, row]));
-  const analysisByEnrolment = new Map(((analysisRes.data ?? []) as PosttrainingAnalysis[]).map((row) => [row.enrolment_id, row]));
+  const finalizedAssessmentIds = new Set([...await getFinalizedDailyAssessmentEnrolmentIds(admin, session.organisation_id, id)]
+    .filter((enrolmentId) => enrolmentIds.has(enrolmentId)));
+  const analysisByEnrolment = new Map(((analysisRes.data ?? []) as PosttrainingAnalysis[])
+    .filter((row) => enrolmentIds.has(row.enrolment_id))
+    .map((row) => [row.enrolment_id, row]));
   const companyCount = stakeholders.filter((item) => item.stakeholder_type === "company" || item.stakeholder_type === "enterprise").length;
   const trainerCount = stakeholders.filter((item) => item.stakeholder_type === "trainer").length;
   const clientCount = stakeholders.filter((item) => item.stakeholder_type === "client").length;
-  const learnerDone = learnerFeedback.length;
+  const learnerDone = feedbackByEnrolment.size;
   const qualityLink = qualityHref(id, session.organisation_id);
 
   return <main style={{ maxWidth: 1080, margin: "0 auto", padding: 28 }}>
@@ -90,6 +99,7 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, margin: "18px 0" }}>
       <SelenCard><SelenCardTitle>Apprenants</SelenCardTitle><strong style={{ fontSize: 26 }}>{enrolments.length}</strong></SelenCard>
       <SelenCard><SelenCardTitle>Satisfactions apprenants</SelenCardTitle><strong style={{ fontSize: 26 }}>{learnerDone}/{enrolments.length}</strong></SelenCard>
+      <SelenCard><SelenCardTitle>Évaluations finalisées</SelenCardTitle><strong style={{ fontSize: 26 }}>{finalizedAssessmentIds.size}/{enrolments.length}</strong></SelenCard>
       <SelenCard><SelenCardTitle>Retour OF plateforme</SelenCardTitle><strong style={{ fontSize: 26 }}>{clientCount}</strong></SelenCard>
     </div>
 
@@ -101,12 +111,14 @@ export default async function StakeholderSatisfactionPage({ params }: Props) {
           const learner = learnerOf(enrolment);
           const feedback = feedbackByEnrolment.get(enrolment.id);
           const analysis = analysisByEnrolment.get(enrolment.id);
+          const assessmentFinalized = finalizedAssessmentIds.has(enrolment.id);
           return <SelenCard key={enrolment.id}>
             <SelenCardTitle>{learnerName(enrolment)}</SelenCardTitle>
             {learner?.email ? <p style={{ marginTop: 0, color: "var(--selen-text2)" }}>{learner.email}</p> : null}
             <p style={{ fontSize: 13 }}><strong>Satisfaction :</strong> {feedback ? `reçue le ${new Date(feedback.submitted_at).toLocaleString("fr-FR")}` : "à recevoir"}</p>
             {feedback ? <><p style={{ fontSize: 13 }}><strong>Global :</strong> {rating(feedback.overall_rating)} · <strong>Objectifs :</strong> {rating(feedback.objectives_rating)} · <strong>Formateur :</strong> {rating(feedback.trainer_rating)} · <strong>Contenu :</strong> {rating(feedback.content_rating)} · <strong>Rythme :</strong> {rating(feedback.pace_rating)}{feedback.would_recommend == null ? null : <> · <strong>Recommande :</strong> {feedback.would_recommend ? "oui" : "non"}</>}</p>{feedback.strengths ? <p style={{ fontSize: 13 }}><strong>Points forts :</strong> {feedback.strengths}</p> : null}{feedback.improvements ? <p style={{ fontSize: 13 }}><strong>Améliorations :</strong> {feedback.improvements}</p> : null}{feedback.adaptation_feedback ? <p style={{ fontSize: 13 }}><strong>Adaptations :</strong> {feedback.adaptation_feedback}</p> : null}{feedback.free_comment ? <p style={{ fontSize: 13 }}><strong>Commentaire :</strong> {feedback.free_comment}</p> : null}</> : null}
-            <PosttrainingAnalysisForm sessionId={id} enrolmentId={enrolment.id} initial={analysis} enabled={Boolean(feedback)} />
+            <p style={{ fontSize: 13 }}><strong>Évaluation des acquis :</strong> {assessmentFinalized ? "finalisée" : "en attente de validation"}</p>
+            <PosttrainingAnalysisForm sessionId={id} enrolmentId={enrolment.id} initial={analysis} enabled={Boolean(feedback) || assessmentFinalized} />
           </SelenCard>;
         })}
       </div>}
