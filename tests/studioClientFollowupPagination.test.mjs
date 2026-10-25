@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
+import { prioritizeStudioClientFollowups } from "../src/lib/daily/pilotageFollowupQueue.mjs";
 
 function setup(count, failingOffset = null) {
  const reminders = Array.from({length:count},(_,i)=>({
@@ -24,6 +25,7 @@ function setup(count, failingOffset = null) {
   "@/lib/franceBusinessTime":{isOverdueAfterBusinessHours:()=>false},
   "@/lib/daily/signatureReminder24h":{isSignatureTerminal:()=>false},
   "@/lib/server/dailyAttendanceClientFollowups":{getDailyAttendanceClientFollowups:async()=>[]},
+  "@/lib/daily/pilotageFollowupQueue.mjs": { prioritizeStudioClientFollowups },
   "@/lib/server/supabaseAdmin":{createSupabaseAdminClient:()=>admin},
  });
  return {run:()=>getStudioClientFollowups({id:"agent-1",role:"admin"}),ranges};

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
+import { prioritizeStudioClientFollowups } from "../src/lib/daily/pilotageFollowupQueue.mjs";
 
 const { buildStudioReminderFollowups } = isolatedTsModule(
   "src/lib/server/studioClientFollowups.ts",
@@ -11,7 +12,8 @@ const { buildStudioReminderFollowups } = isolatedTsModule(
       isSignatureTerminal: (status, signedAt) => Boolean(signedAt) || ["signed", "expired", "cancelled", "revoked", "refused", "error"].includes(status ?? ""),
     },
     "@/lib/server/dailyAttendanceClientFollowups": { getDailyAttendanceClientFollowups: async () => [] },
-    "@/lib/server/supabaseAdmin": { createSupabaseAdminClient: () => { throw new Error("Live database forbidden in tests"); } },
+    "@/lib/daily/pilotageFollowupQueue.mjs": { prioritizeStudioClientFollowups },
+  "@/lib/server/supabaseAdmin": { createSupabaseAdminClient: () => { throw new Error("Live database forbidden in tests"); } },
   },
 );
 
