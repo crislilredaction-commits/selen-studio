@@ -19,10 +19,10 @@ test("suivi sessions : authentification et périmètre agent avant toute lecture
 test("suivi sessions : les quatre lectures sont limitées aux organismes autorisés", async () => {
   const source = await page();
   for (const table of ["daily_session_followup_entries", "daily_sessions", "daily_formations"]) {
-    const section = source.split('.from("' + table + '")')[1]?.split("),")[0] ?? "";
+    const section = source.split('.from("' + table + '")')[1]?.split("\n    admin")[0] ?? "";
     assert.match(section, /\.in\("organisation_id", organisationIds\)/, table);
   }
-  const orgSection = source.split('.from("organisations")')[1]?.split("),")[0] ?? "";
+  const orgSection = source.split('.from("organisations")')[1]?.split("\n    admin")[0] ?? "";
   assert.match(orgSection, /\.in\("id", organisationIds\)/);
   assert.match(source, /if \(entriesError \|\| sessionsError \|\| formationsError \|\| organisationsError\)/);
   assert.doesNotMatch(source, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
