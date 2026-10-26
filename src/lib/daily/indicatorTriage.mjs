@@ -21,6 +21,12 @@ export function normalizeIndicatorView(raw) {
   return value === "attention" ? "attention" : "all";
 }
 
+/**
+ * @template {{ organisation_id?: string | null }} T
+ * @param {T[]} rows
+ * @param {string | null} selectedId
+ * @returns {T[]}
+ */
 export function filterIndicatorRowsByOrganisation(rows, selectedId) {
   return selectedId ? rows.filter((row) => row.organisation_id === selectedId) : rows;
 }
