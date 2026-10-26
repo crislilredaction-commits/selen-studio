@@ -1,4 +1,12 @@
 import Link from "next/link";
+import {
+  resolveIndicatorOrganisationSelection,
+  normalizeIndicatorQuery,
+  normalizeIndicatorView,
+  filterIndicatorRowsByOrganisation,
+  getIndicatorAttentionCount,
+  filterIndicatorOrganisations,
+} from "@/lib/daily/indicatorTriage.mjs";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
@@ -14,7 +22,15 @@ function average(values: Array<number | null | undefined>) {
   return `${(usable.reduce((sum, value) => sum + value, 0) / usable.length).toFixed(1)} / 5`;
 }
 
-export default async function DailyTrainingIndicatorsPage() {
+type Props = {
+  searchParams?: Promise<{
+    organisation_id?: string | string[];
+    q?: string | string[];
+    vue?: string | string[];
+  }>;
+};
+
+export default async function DailyTrainingIndicatorsPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main role="alert" style={s.page}>Accès refusé.</main>;
 
@@ -25,6 +41,14 @@ export default async function DailyTrainingIndicatorsPage() {
   } catch {
     return <main role="alert" style={s.page}>Impossible de vérifier votre périmètre Daily. Réessayez plus tard.</main>;
   }
+  const params = await searchParams;
+  const selection = resolveIndicatorOrganisationSelection(params?.organisation_id, organisationIds);
+  if (!selection.valid) {
+    return <main role="alert" style={s.page}>Organisme indisponible dans votre périmètre Daily.</main>;
+  }
+  const selectedOrganisationId = selection.id;
+  const query = normalizeIndicatorQuery(params?.q);
+  const view = normalizeIndicatorView(params?.vue);
   const admin = createSupabaseAdminClient();
 
   const [organisationsResult, sessionsResult, enrolmentsResult, attendanceResult, assessmentsResult, learnerFeedbackResult, stakeholderFeedbackResult] = organisationIds.length
@@ -55,13 +79,16 @@ export default async function DailyTrainingIndicatorsPage() {
     return <main style={s.page}><p style={s.error}>Impossible de charger les indicateurs formation : {error.message}</p></main>;
   }
 
-  const organisations = organisationsResult.data ?? [];
-  const sessions = sessionsResult.data ?? [];
-  const enrolments = enrolmentsResult.data ?? [];
-  const attendance = attendanceResult.data ?? [];
-  const assessments = assessmentsResult.data ?? [];
-  const learnerFeedback = learnerFeedbackResult.data ?? [];
-  const stakeholderFeedback = stakeholderFeedbackResult.data ?? [];
+  const allOrganisations = organisationsResult.data ?? [];
+  const organisations = selectedOrganisationId
+    ? allOrganisations.filter((row) => row.id === selectedOrganisationId)
+    : allOrganisations;
+  const sessions = filterIndicatorRowsByOrganisation(sessionsResult.data ?? [], selectedOrganisationId) as NonNullable<typeof sessionsResult.data>;
+  const enrolments = filterIndicatorRowsByOrganisation(enrolmentsResult.data ?? [], selectedOrganisationId) as NonNullable<typeof enrolmentsResult.data>;
+  const attendance = filterIndicatorRowsByOrganisation(attendanceResult.data ?? [], selectedOrganisationId) as NonNullable<typeof attendanceResult.data>;
+  const assessments = filterIndicatorRowsByOrganisation(assessmentsResult.data ?? [], selectedOrganisationId) as NonNullable<typeof assessmentsResult.data>;
+  const learnerFeedback = filterIndicatorRowsByOrganisation(learnerFeedbackResult.data ?? [], selectedOrganisationId) as NonNullable<typeof learnerFeedbackResult.data>;
+  const stakeholderFeedback = filterIndicatorRowsByOrganisation(stakeholderFeedbackResult.data ?? [], selectedOrganisationId) as NonNullable<typeof stakeholderFeedbackResult.data>;
 
   const decidedAttendance = attendance.filter((row) => row.status !== "pending");
   const presentAttendance = decidedAttendance.filter((row) => row.status === "present");
@@ -71,6 +98,19 @@ export default async function DailyTrainingIndicatorsPage() {
   const abandonedEnrolments = enrolments.filter((row) => row.status === "abandoned");
   const recommendationAnswers = [...learnerFeedback, ...stakeholderFeedback].filter((row) => typeof row.would_recommend === "boolean");
   const recommendations = recommendationAnswers.filter((row) => row.would_recommend === true);
+  const attentionByOrg = new Map(organisations.map((organisation) => [
+    organisation.id,
+    getIndicatorAttentionCount({
+      enrolments: enrolments.filter((row) => row.organisation_id === organisation.id),
+      attendance: attendance.filter((row) => row.organisation_id === organisation.id),
+      assessments: assessments.filter((row) => row.organisation_id === organisation.id),
+      learnerFeedback: learnerFeedback.filter((row) => row.organisation_id === organisation.id),
+      stakeholderFeedback: stakeholderFeedback.filter((row) => row.organisation_id === organisation.id),
+    }),
+  ] as const));
+  const visibleOrganisations = filterIndicatorOrganisations(organisations, query, view, attentionByOrg) as typeof organisations;
+  const attentionSummary = getIndicatorAttentionCount({ enrolments, attendance, assessments, learnerFeedback, stakeholderFeedback });
+  const noSatisfactionOrganisations = [...attentionByOrg.values()].reduce((sum, row) => sum + row.noSatisfaction, 0);
 
   return (
     <main style={s.page}>
@@ -78,13 +118,40 @@ export default async function DailyTrainingIndicatorsPage() {
         <div>
           <p style={s.kicker}>Selen Studio · Daily</p>
           <h1 style={s.h1}>Indicateurs formation</h1>
-          <p style={s.muted}>Vue consolidée calculée directement depuis les sessions, inscriptions, présences, évaluations et réponses de satisfaction des seuls organismes Daily autorisés pour votre profil.</p>
+          <p style={s.muted}>Indicateurs calculés depuis les données Daily des organismes affectés à votre profil. Sélectionnez un organisme pour concentrer les chiffres et les points de vigilance.</p>
         </div>
         <Link href="/agent/daily" style={s.secondary}>← Pilotage Daily</Link>
       </header>
 
+      <form method="get" action="/agent/daily/indicateurs" style={s.filters} aria-label="Filtrer les indicateurs formation">
+        <label style={s.field}>
+          Organisme
+          <select name="organisation_id" defaultValue={selectedOrganisationId ?? ""} style={s.input}>
+            <option value="">Tous mes organismes</option>
+            {allOrganisations.map((organisation) => (
+              <option key={organisation.id} value={organisation.id}>{organisation.legal_name || organisation.name || organisation.id}</option>
+            ))}
+          </select>
+        </label>
+        <label style={s.field}>
+          Rechercher dans le tableau
+          <input name="q" type="search" defaultValue={query} maxLength={80} placeholder="Nom de l’organisme" style={s.input} />
+        </label>
+        <label style={s.field}>
+          Vue du tableau
+          <select name="vue" defaultValue={view} style={s.input}>
+            <option value="all">Tous</option>
+            <option value="attention">Avec points à examiner</option>
+          </select>
+        </label>
+        <div style={s.filterActions}>
+          <button type="submit" style={s.primary}>Appliquer</button>
+          <Link href="/agent/daily/indicateurs" style={s.secondary}>Réinitialiser</Link>
+        </div>
+      </form>
+
       <section style={s.metrics} aria-label="Indicateurs consolidés">
-        <article style={s.card}><span style={s.label}>Sessions</span><strong style={s.value}>{sessions.length}</strong><small style={s.hint}>sessions Daily actives dans le périmètre</small></article>
+        <article style={s.card}><span style={s.label}>Sessions</span><strong style={s.value}>{sessions.length}</strong><small style={s.hint}>sessions Daily du périmètre sélectionné</small></article>
         <article style={s.card}><span style={s.label}>Inscriptions terminées</span><strong style={s.value}>{completedEnrolments.length}</strong><small style={s.hint}>{enrolments.length} inscription(s) au total · {abandonedEnrolments.length} abandon(s)</small></article>
         <article style={s.card}><span style={s.label}>Présence constatée</span><strong style={s.value}>{percent(presentAttendance.length, decidedAttendance.length)}</strong><small style={s.hint}>{presentAttendance.length} présence(s) sur {decidedAttendance.length} relevé(s) finalisé(s)</small></article>
         <article style={s.card}><span style={s.label}>Objectifs atteints</span><strong style={s.value}>{percent(achieved.length, assessed.length)}</strong><small style={s.hint}>{achieved.length} évaluation(s) atteinte(s) sur {assessed.length} décision(s)</small></article>
@@ -92,17 +159,32 @@ export default async function DailyTrainingIndicatorsPage() {
         <article style={s.card}><span style={s.label}>Recommandation</span><strong style={s.value}>{percent(recommendations.length, recommendationAnswers.length)}</strong><small style={s.hint}>{recommendations.length} oui sur {recommendationAnswers.length} réponse(s)</small></article>
       </section>
 
+      <section style={s.attentionCard} aria-label="Points de vigilance">
+        <div>
+          <h2 style={s.h2}>Points de vigilance</h2>
+          <p style={s.muted}>Signaux opérationnels, pas des anomalies confirmées. Les présences et évaluations en attente peuvent être normales pour une session en cours.</p>
+        </div>
+        <div style={s.attentionGrid}>
+          <span><strong>{attentionSummary.pendingAttendance}</strong> présences en attente</span>
+          <span><strong>{attentionSummary.pendingAssessments}</strong> évaluations en attente</span>
+          <span><strong>{attentionSummary.abandoned}</strong> abandons enregistrés</span>
+          <span><strong>{noSatisfactionOrganisations}</strong> organisme(s) sans retour malgré une inscription terminée</span>
+        </div>
+      </section>
+
       <section style={s.tableCard}>
         <div style={s.sectionHead}>
           <div>
             <h2 style={s.h2}>Lecture par organisme</h2>
-            <p style={s.muted}>Les chiffres restent dérivés des sources opérationnelles. Aucun stockage parallèle d’indicateurs n’est créé.</p>
+            <p style={s.muted}>Tri par points de vigilance, puis par nom. La recherche et la vue filtrent ce tableau ; les indicateurs ci-dessus couvrent tout le périmètre sélectionné.</p>
           </div>
-          <span style={s.scope}>{organisations.length} organisme(s) Daily actif(s)</span>
+          <span style={s.scope}>{visibleOrganisations.length} affiché(s) / {organisations.length} dans le périmètre</span>
         </div>
 
         {organisations.length === 0 ? (
           <p style={s.empty}>Aucun organisme Daily actif à analyser pour le moment.</p>
+        ) : visibleOrganisations.length === 0 ? (
+          <p style={s.empty}>Aucun organisme ne correspond aux filtres. Vous pouvez réinitialiser la recherche.</p>
         ) : (
           <div style={s.tableWrap}>
             <table style={s.table}>
@@ -114,10 +196,11 @@ export default async function DailyTrainingIndicatorsPage() {
                   <th style={s.th}>Présence</th>
                   <th style={s.th}>Objectifs atteints</th>
                   <th style={s.th}>Satisfaction</th>
+                  <th style={s.th}>À examiner</th>
                 </tr>
               </thead>
               <tbody>
-                {organisations.map((organisation) => {
+                {visibleOrganisations.map((organisation) => {
                   const orgSessions = sessions.filter((row) => row.organisation_id === organisation.id);
                   const orgEnrolments = enrolments.filter((row) => row.organisation_id === organisation.id);
                   const orgAttendance = attendance.filter((row) => row.organisation_id === organisation.id && row.status !== "pending");
@@ -137,6 +220,9 @@ export default async function DailyTrainingIndicatorsPage() {
                       <td style={s.td}>{percent(orgPresent.length, orgAttendance.length)}</td>
                       <td style={s.td}>{percent(orgAchieved.length, orgAssessments.length)}</td>
                       <td style={s.td}>{average(orgRatings)}</td>
+                      <td style={s.td} title="Présences et évaluations en attente, abandons, absence de satisfaction après inscription terminée">
+                        <strong>{attentionByOrg.get(organisation.id)?.count ?? 0}</strong>
+                      </td>
                     </tr>
                   );
                 })}
@@ -156,6 +242,13 @@ const s: Record<string, React.CSSProperties> = {
   h1: { margin: "6px 0", fontFamily: "var(--font-display)", fontSize: 32 },
   h2: { margin: "0 0 4px", fontFamily: "var(--font-display)", fontSize: 22 },
   muted: { margin: 0, color: "var(--selen-text2)", lineHeight: 1.6, fontSize: 13, maxWidth: 760 },
+  filters: { display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end", border: "1px solid var(--selen-border)", borderRadius: "var(--radius-md)", padding: 16, background: "var(--selen-bg2)", marginBottom: 18 },
+  field: { display: "grid", gap: 6, minWidth: 170, flex: "1 1 190px", color: "var(--selen-text2)", fontSize: 12, fontWeight: 700 },
+  input: { minHeight: 40, width: "100%", padding: "8px 10px", border: "1px solid var(--selen-border)", borderRadius: 8, background: "var(--selen-bg)", color: "var(--selen-text)" },
+  filterActions: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 },
+  primary: { minHeight: 40, padding: "0 14px", borderRadius: 8, border: "none", background: "var(--selen-gold2)", color: "var(--selen-bg)", cursor: "pointer", fontWeight: 800 },
+  attentionCard: { display: "grid", gap: 12, padding: 18, border: "1px solid var(--selen-border)", borderRadius: "var(--radius-md)", background: "var(--selen-bg2)", marginBottom: 20 },
+  attentionGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, fontSize: 13 },
   metrics: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 20 },
   card: { display: "grid", gap: 5, border: "1px solid var(--selen-border)", borderRadius: "var(--radius-md)", background: "var(--selen-bg2)", padding: 16 },
   label: { color: "var(--selen-text2)", fontSize: 12, fontWeight: 700 },
