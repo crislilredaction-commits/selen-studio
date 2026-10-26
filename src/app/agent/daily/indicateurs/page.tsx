@@ -83,12 +83,12 @@ export default async function DailyTrainingIndicatorsPage({ searchParams }: Prop
   const organisations = selectedOrganisationId
     ? allOrganisations.filter((row) => row.id === selectedOrganisationId)
     : allOrganisations;
-  const sessions = filterIndicatorRowsByOrganisation(sessionsResult.data ?? [], selectedOrganisationId);
-  const enrolments = filterIndicatorRowsByOrganisation(enrolmentsResult.data ?? [], selectedOrganisationId);
-  const attendance = filterIndicatorRowsByOrganisation(attendanceResult.data ?? [], selectedOrganisationId);
-  const assessments = filterIndicatorRowsByOrganisation(assessmentsResult.data ?? [], selectedOrganisationId);
-  const learnerFeedback = filterIndicatorRowsByOrganisation(learnerFeedbackResult.data ?? [], selectedOrganisationId);
-  const stakeholderFeedback = filterIndicatorRowsByOrganisation(stakeholderFeedbackResult.data ?? [], selectedOrganisationId);
+  const sessions = filterIndicatorRowsByOrganisation(sessionsResult.data ?? [], selectedOrganisationId) as NonNullable<typeof sessionsResult.data>;
+  const enrolments = filterIndicatorRowsByOrganisation(enrolmentsResult.data ?? [], selectedOrganisationId) as NonNullable<typeof enrolmentsResult.data>;
+  const attendance = filterIndicatorRowsByOrganisation(attendanceResult.data ?? [], selectedOrganisationId) as NonNullable<typeof attendanceResult.data>;
+  const assessments = filterIndicatorRowsByOrganisation(assessmentsResult.data ?? [], selectedOrganisationId) as NonNullable<typeof assessmentsResult.data>;
+  const learnerFeedback = filterIndicatorRowsByOrganisation(learnerFeedbackResult.data ?? [], selectedOrganisationId) as NonNullable<typeof learnerFeedbackResult.data>;
+  const stakeholderFeedback = filterIndicatorRowsByOrganisation(stakeholderFeedbackResult.data ?? [], selectedOrganisationId) as NonNullable<typeof stakeholderFeedbackResult.data>;
 
   const decidedAttendance = attendance.filter((row) => row.status !== "pending");
   const presentAttendance = decidedAttendance.filter((row) => row.status === "present");
