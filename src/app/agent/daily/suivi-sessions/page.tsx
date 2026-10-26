@@ -3,6 +3,7 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { buildScopedSessionFollowupRows } from "@/lib/daily/sessionFollowupScope.mjs";
+import { normalizeSessionFollowupFilters, filterSessionFollowupRows, countSessionFollowupStates } from "@/lib/daily/sessionFollowupFilters.mjs";
 
 const TYPE_LABELS: Record<string, string> = {
   incident: "Incident",
@@ -34,7 +35,9 @@ function formatSessionDates(startDate?: string | null, endDate?: string | null) 
   return start && end && start !== end ? `${start} → ${end}` : start || end || "Dates non renseignées";
 }
 
-export default async function DailySessionFollowupPage() {
+type Props = { searchParams?: Promise<{ q?: string | string[]; etat?: string | string[]; niveau?: string | string[]; type?: string | string[] }> };
+
+export default async function DailySessionFollowupPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
 
@@ -89,6 +92,10 @@ export default async function DailySessionFollowupPage() {
     actionable: boolean;
   }>;
 
+  // Les filtres portent exclusivement sur les lignes déjà autorisées, jamais sur une requête globale.
+  const filters = normalizeSessionFollowupFilters((await searchParams) ?? {});
+  const visibleRows = filterSessionFollowupRows(rows, filters) as typeof rows;
+  const stateCounts = countSessionFollowupStates(rows);
   const openCount = rows.filter(({ entry, actionable }) => actionable && entry.status === "open").length;
   const incidentCount = rows.filter(({ entry }) => entry.entry_type === "incident").length;
   const criticalOpenCount = rows.filter(({ entry, actionable }) => actionable && entry.status === "open" && entry.level === "critical").length;
@@ -111,6 +118,50 @@ export default async function DailySessionFollowupPage() {
         <div style={criticalOpenCount ? s.statCritical : s.stat}><strong>{criticalOpenCount}</strong><span>critique(s) ouvert(s)</span></div>
       </section>
 
+      <form method="get" action="/agent/daily/suivi-sessions" style={s.filterPanel} aria-label="Rechercher et filtrer les suivis">
+        <div style={s.filterGrid}>
+          <label style={s.filterLabel} htmlFor="followup-search">
+            Recherche
+            <input id="followup-search" name="q" type="search" maxLength={80} defaultValue={filters.q} placeholder="Organisme, formation, session, événement…" style={s.filterInput} />
+          </label>
+          <label style={s.filterLabel} htmlFor="followup-state">
+            État
+            <select id="followup-state" name="etat" defaultValue={filters.state} style={s.filterInput}>
+              <option value="all">Tous ({stateCounts.all})</option>
+              <option value="open">Ouverts ({stateCounts.open})</option>
+              <option value="resolved">Résolus ({stateCounts.resolved})</option>
+              <option value="history">Historique sans action ({stateCounts.history})</option>
+            </select>
+          </label>
+          <label style={s.filterLabel} htmlFor="followup-level">
+            Criticité
+            <select id="followup-level" name="niveau" defaultValue={filters.level} style={s.filterInput}>
+              <option value="all">Toutes</option>
+              <option value="critical">Critique</option>
+              <option value="attention">Attention</option>
+              <option value="info">Information</option>
+            </select>
+          </label>
+          <label style={s.filterLabel} htmlFor="followup-type">
+            Nature
+            <select id="followup-type" name="type" defaultValue={filters.type} style={s.filterInput}>
+              <option value="all">Toutes</option>
+              <option value="incident">Incidents</option>
+              <option value="adaptation">Adaptations</option>
+              <option value="note">Notes de suivi</option>
+              <option value="absence">Absences</option>
+              <option value="delay">Retards</option>
+              <option value="abandonment_alert">Alertes abandon</option>
+            </select>
+          </label>
+        </div>
+        <div style={s.filterActions}>
+          <button type="submit" style={s.filterButton}>Appliquer les filtres</button>
+          <Link href="/agent/daily/suivi-sessions" style={s.secondary}>Réinitialiser</Link>
+          <span role="status" style={s.muted}>{visibleRows.length} résultat(s) sur {rows.length} · urgences ouvertes en premier</span>
+        </div>
+      </form>
+
       <section style={s.notice}>
         <strong>Source de vérité conservée</strong>
         <p style={s.muted}>Cette vue lit uniquement <code>daily_session_followup_entries</code>. Les incidents de session ont donc déjà une source canonique : ils ne doivent pas être dupliqués dans une table qualité séparée.</p>
@@ -118,9 +169,11 @@ export default async function DailySessionFollowupPage() {
 
       {rows.length === 0 ? (
         <section style={s.card}><p style={s.muted}>Aucune entrée de suivi enregistrée pour le moment.</p></section>
+      ) : visibleRows.length === 0 ? (
+        <section style={s.card}><p style={s.muted}>Aucun suivi ne correspond aux filtres. Modifiez la recherche ou réinitialisez les filtres.</p></section>
       ) : (
         <section style={s.list}>
-          {rows.map(({ entry, session, formation, organisation, actionable }) => {
+          {visibleRows.map(({ entry, session, formation, organisation, actionable }) => {
             const organisationName = organisation?.legal_name || organisation?.name || "Organisme Daily";
             const sessionLabel = session?.internal_reference || "Session Daily";
             const resolved = entry.status === "resolved";
@@ -172,6 +225,12 @@ const s: Record<string, React.CSSProperties> = {
   stat: { display: "grid", gap: 3, padding: 14, border: "1px solid var(--selen-border)", borderRadius: 12, background: "var(--selen-bg2)" },
   statDue: { display: "grid", gap: 3, padding: 14, border: "1px solid rgba(201,148,58,.35)", borderRadius: 12, background: "rgba(201,148,58,.08)" },
   statCritical: { display: "grid", gap: 3, padding: 14, border: "1px solid rgba(180,78,70,.4)", borderRadius: 12, background: "rgba(180,78,70,.1)" },
+  filterPanel: { padding: 16, border: "1px solid var(--selen-border)", borderRadius: 12, background: "var(--selen-bg2)", marginBottom: 14 },
+  filterGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 },
+  filterLabel: { display: "grid", gap: 6, fontSize: 12, fontWeight: 700 },
+  filterInput: { width: "100%", minWidth: 0, minHeight: 38, padding: "8px 10px", border: "1px solid var(--selen-border)", borderRadius: 8, background: "var(--selen-bg)", color: "var(--selen-text)", fontSize: 13 },
+  filterActions: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 12 },
+  filterButton: { minHeight: 38, padding: "8px 13px", border: 0, borderRadius: 8, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" },
   notice: { padding: 15, border: "1px solid var(--selen-border)", borderRadius: 12, background: "var(--selen-bg2)", marginBottom: 14 },
   list: { display: "grid", gap: 12 },
   card: { padding: 18, border: "1px solid var(--selen-border)", borderRadius: 14, background: "var(--selen-bg2)" },
