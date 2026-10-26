@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
+import { buildScopedSessionFollowupRows } from "@/lib/daily/sessionFollowupScope.mjs";
 
 const TYPE_LABELS: Record<string, string> = {
   incident: "Incident",
@@ -36,6 +38,17 @@ export default async function DailySessionFollowupPage() {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
 
+  // Le service-role ne doit jamais transformer un accès agent en lecture globale.
+  let organisationIds: string[];
+  try {
+    organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  } catch {
+    return <main role="alert" style={s.page}><p>Impossible de vérifier votre périmètre Daily. Réessayez plus tard.</p></main>;
+  }
+  if (organisationIds.length === 0) {
+    return <main style={s.page}><p>Aucun organisme Daily actif dans votre périmètre.</p></main>;
+  }
+
   const admin = createSupabaseAdminClient();
   const [
     { data: entries, error: entriesError },
@@ -46,16 +59,20 @@ export default async function DailySessionFollowupPage() {
     admin
       .from("daily_session_followup_entries")
       .select("id,organisation_id,session_id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,author_role,author_name,created_at,updated_at")
+      .in("organisation_id", organisationIds)
       .order("occurred_at", { ascending: false }),
     admin
       .from("daily_sessions")
-      .select("id,organisation_id,formation_id,internal_reference,start_date,end_date,status"),
+      .select("id,organisation_id,formation_id,internal_reference,start_date,end_date,status")
+      .in("organisation_id", organisationIds),
     admin
       .from("daily_formations")
-      .select("id,organisation_id,title,status,archived_at"),
+      .select("id,organisation_id,title,status,archived_at")
+      .in("organisation_id", organisationIds),
     admin
       .from("organisations")
       .select("id,name,legal_name,status")
+      .in("id", organisationIds)
       .neq("status", "archived"),
   ]);
 
@@ -63,17 +80,14 @@ export default async function DailySessionFollowupPage() {
     return <main style={s.page}><p style={s.error}>Impossible de charger le suivi des sessions Daily.</p></main>;
   }
 
-  const sessionById = new Map((sessions ?? []).map((session) => [session.id, session]));
-  const formationById = new Map((formations ?? []).map((formation) => [formation.id, formation]));
-  const organisationById = new Map((organisations ?? []).map((organisation) => [organisation.id, organisation]));
-
-  const rows = (entries ?? []).map((entry) => {
-    const session = sessionById.get(entry.session_id);
-    const formation = session?.formation_id ? formationById.get(session.formation_id) : undefined;
-    const organisation = organisationById.get(entry.organisation_id);
-    const actionable = Boolean(session && organisation && !["archived", "cancelled"].includes(String(session.status ?? "")));
-    return { entry, session, formation, organisation, actionable };
-  });
+  // Même si une référence inter-organismes est corrompue, aucun détail ne traverse le périmètre.
+  const rows = buildScopedSessionFollowupRows(entries ?? [], sessions ?? [], formations ?? [], organisations ?? [], organisationIds) as Array<{
+    entry: NonNullable<typeof entries>[number];
+    session: NonNullable<typeof sessions>[number] | undefined;
+    formation: NonNullable<typeof formations>[number] | undefined;
+    organisation: NonNullable<typeof organisations>[number];
+    actionable: boolean;
+  }>;
 
   const openCount = rows.filter(({ entry, actionable }) => actionable && entry.status === "open").length;
   const incidentCount = rows.filter(({ entry }) => entry.entry_type === "incident").length;
