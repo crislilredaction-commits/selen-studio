@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 const page = await readFile(new URL("../src/app/agent/daily/veille-proposee/page.tsx", import.meta.url), "utf8");
 const scope = await readFile(new URL("../src/lib/server/dailyOrganisationScope.ts", import.meta.url), "utf8");
 const action = page.slice(page.indexOf("async function review("), page.indexOf("\nfunction fr("));
-const view = page.slice(page.indexOf("export default async function WatchSubmissionReviewPage()"), page.indexOf("\nconst s:"));
+const view = page.slice(page.indexOf("export default async function WatchSubmissionReviewPage("), page.indexOf("\nconst s:"));
 
 test("veilles proposées : accès Studio vérifié avant lecture service-role", () => {
   const auth = view.indexOf("const auth = await requireSupportAgent()");
