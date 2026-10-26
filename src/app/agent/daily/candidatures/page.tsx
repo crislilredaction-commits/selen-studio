@@ -58,12 +58,12 @@ export default async function DailyCandidaturesPage({ searchParams }: { searchPa
     if (item.status === "verified") counts.verified++;
     evidenceByRequest.set(item.registration_request_id, counts);
   }
-  const prioritizedRows = prioritizeCandidatureQueue(rows, evidenceByRequest);
+  const prioritizedRows = prioritizeCandidatureQueue(rows, evidenceByRequest) as CandidatureRow[];
   const query = normalizeCandidatureSearch(rawQuery);
   const view = normalizeCandidatureView(rawView);
   const viewCounts = countCandidatureQueueViews(rows, evidenceByRequest);
   // Tri et recherche uniquement après les lectures limitées aux organismes affectés.
-  const visibleRows = filterCandidatureQueue(prioritizedRows, query, view, evidenceByRequest);
+  const visibleRows = filterCandidatureQueue(prioritizedRows, query, view, evidenceByRequest) as CandidatureRow[];
   return <main style={{maxWidth:1080,margin:"0 auto",padding:"28px"}}>
     <p style={{fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"var(--selen-gold2)"}}>Selen Daily · Candidatures</p>
     <h1>Analyse des dossiers</h1>
