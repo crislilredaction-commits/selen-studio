@@ -34,7 +34,7 @@ test("la chronologie, les preuves et le PDF réutilisent la projection sûre",()
  for(const surface of[timeline,communications,pdf])assert.match(surface,/getAttendanceReviewHistory/);
  assert.match(timeline,/Historique des revues d’émargement/);
  assert.match(communications,/Preuves de revue des émargements/);
- assert.match(communications,/isDailyOrganisationInAgentScope\(auth\.email, scopedSession\.organisation_id\)/);
+ assert.match(communications,/getDailyOrganisationIdsForAgent\(auth\.email\)/); assert.match(communications,/\.in\("organisation_id", dailyOrganisationIds\)/);
  assert.match(pdf,/Revue v\$\{review\.version\}/);
  for(const privateKey of["decided_by_email","reviewerUserId","access_token"])assert.doesNotMatch(historySource,new RegExp(privateKey));
 });
