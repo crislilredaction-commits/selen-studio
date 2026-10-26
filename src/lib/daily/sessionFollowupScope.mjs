@@ -14,6 +14,8 @@ export function buildScopedSessionFollowupRows(entries, sessions, formations, or
     const organisation = organisationById.get(entry.organisation_id);
     if (!organisation) return [];
     const session = sessionById.get(entry.session_id);
+    // Une référence vers une session non accessible ne doit pas être affichée comme orpheline.
+    if (entry.session_id && !session) return [];
     if (session && session.organisation_id !== entry.organisation_id) return [];
     const candidateFormation = session?.formation_id ? formationById.get(session.formation_id) : undefined;
     const formation = candidateFormation?.organisation_id === entry.organisation_id ? candidateFormation : undefined;
