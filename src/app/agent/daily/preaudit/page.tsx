@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import { getQualiopiPreauditOrganisations } from "@/lib/server/dailyQualiopiPreaudit";
 import { getCommunicationEvidenceCheck } from "@/lib/server/dailyCommunicationEvidence";
@@ -11,7 +12,20 @@ const pct=(checks:Check[])=>checks.length?Math.round(checks.filter(x=>x.ok).leng
 const date=(v:string|null)=>v?new Intl.DateTimeFormat("fr-FR",{dateStyle:"medium"}).format(new Date(`${v}T12:00:00Z`)):"—";
 export default async function DailyPreauditPage(){
  const auth=await requireSupportAgent();if(!auth.ok)return <main style={s.page}>Accès refusé.</main>;
- const targets=await getQualiopiPreauditOrganisations();
+ // Ne jamais interroger les données de pré-audit d'un organisme hors affectation.
+ let dailyOrganisationIds: string[];
+ try {
+  dailyOrganisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+ } catch {
+  return <main role="alert" style={s.page}>Impossible de vérifier votre périmètre Daily. Réessayez plus tard.</main>;
+ }
+ if (!dailyOrganisationIds.length) return <main style={s.page}><h1>Pré-audit Qualiopi</h1><p>Aucun organisme Daily affecté.</p></main>;
+ let targets: Awaited<ReturnType<typeof getQualiopiPreauditOrganisations>>;
+ try {
+  targets = await getQualiopiPreauditOrganisations(dailyOrganisationIds);
+ } catch {
+  return <main role="alert" style={s.page}>Impossible de charger les organismes du pré-audit.</main>;
+ }
  if(!targets.length)return <main style={s.page}><p style={s.kicker}>Selen Studio · Daily</p><h1>Pré-audit Qualiopi</h1><p style={s.muted}>Aucun organisme certifié Qualiopi n’a d’audit de surveillance ou de renouvellement dans les trois prochains mois.</p></main>;
  const admin=createSupabaseAdminClient();const ids=targets.map(x=>x.id);
  const [{data:sessions,error:se},{data:docs,error:de},{data:procedures,error:pe},{data:watches,error:we},{data:trainers,error:te}]=await Promise.all([
