@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
-import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
+import { countOpenDailySessionChecklistItems } from "@/lib/daily/planningSessionOverview.mjs";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
@@ -70,36 +71,54 @@ export default async function DailyPlanningPage() {
   const days = Array.from({ length: 21 }, (_, index) => addDays(today, index));
   const horizonEnd = days[days.length - 1];
   const recentStart = addDays(today, -30);
-  const organisationIds = await getActiveDailyOrganisationIds();
+  // Le service-role ne doit lire que les organismes affectés à l'agent authentifié.
+  // Un échec de résolution du périmètre ferme l'accès plutôt que d'afficher une vue globale.
+  let organisationIds: string[];
+  try {
+    organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  } catch {
+    return <main role="alert" style={{ padding: 28 }}>Impossible de vérifier votre périmètre Daily. Réessayez plus tard.</main>;
+  }
 
-  const { data: dossiers } = organisationIds.length
+  const { data: dossiers, error: dossiersError } = organisationIds.length
     ? await admin
         .from("daily_session_dossiers")
         .select("session_id,organisation_id,status,updated_at")
         .in("organisation_id", organisationIds)
         .order("updated_at", { ascending: false })
-    : { data: [] };
+    : { data: [], error: null };
+  if (dossiersError) {
+    return <main role="alert" style={{ padding: 28 }}>Impossible de charger les dossiers du planning Daily.</main>;
+  }
 
-  const sessionIds = (dossiers ?? []).map((d) => d.session_id);
+  const sessionIds = [...new Set((dossiers ?? []).map((d) => d.session_id))];
   const orgIds = [...new Set((dossiers ?? []).map((d) => d.organisation_id))];
 
-  const [{ data: sessions }, { data: organisations }, { data: items }] = await Promise.all([
+  const [{ data: sessions, error: sessionsError }, { data: organisations, error: organisationsError }, { data: items, error: itemsError }] = await Promise.all([
     sessionIds.length
       ? admin.from("daily_sessions").select("id,formation_id,internal_reference,start_date,end_date,status").in("id", sessionIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
     orgIds.length
       ? admin.from("organisations").select("id,name").in("id", orgIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
     sessionIds.length
       ? admin.from("daily_session_checklist_items").select("session_id,status").in("session_id", sessionIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  const formationIds = [...new Set((sessions ?? []).map((s) => s.formation_id).filter(Boolean))];
-  const { data: formations } = formationIds.length
-    ? await admin.from("daily_formations").select("id,title").in("id", formationIds)
-    : { data: [] };
+  if (sessionsError || organisationsError || itemsError) {
+    return <main role="alert" style={{ padding: 28 }}>Impossible de charger les sessions du planning Daily.</main>;
+  }
 
+  const formationIds = [...new Set((sessions ?? []).map((s) => s.formation_id).filter(Boolean))];
+  const { data: formations, error: formationsError } = formationIds.length
+    ? await admin.from("daily_formations").select("id,title").in("id", formationIds)
+    : { data: [], error: null };
+  if (formationsError) {
+    return <main role="alert" style={{ padding: 28 }}>Impossible de charger les formations du planning Daily.</main>;
+  }
+
+  const openChecklistBySession = countOpenDailySessionChecklistItems(items ?? []);
   const sessionMap = new Map((sessions ?? []).map((row) => [row.id, row]));
   const orgMap = new Map((organisations ?? []).map((row) => [row.id, row]));
   const formationMap = new Map((formations ?? []).map((row) => [row.id, row]));
@@ -113,8 +132,7 @@ export default async function DailyPlanningPage() {
       if (!closed && session.start_date && session.start_date > horizonEnd) return null;
       if (closed && last && last < recentStart) return null;
 
-      const checklist = (items ?? []).filter((item) => item.session_id === dossier.session_id);
-      const openChecklist = checklist.filter((item) => !["validated", "not_applicable"].includes(item.status)).length;
+      const openChecklist = openChecklistBySession.get(dossier.session_id) ?? 0;
       const organisation = orgMap.get(dossier.organisation_id);
       const formation = session.formation_id ? formationMap.get(session.formation_id) : null;
       const state = stateForSession({
@@ -154,7 +172,7 @@ export default async function DailyPlanningPage() {
       <div style={{ marginBottom: 18 }}>
         <h1 style={{ marginBottom: 4 }}>Planning Daily</h1>
         <p style={{ color: "var(--selen-text2)", marginTop: 0 }}>
-          Vue opérationnelle des sessions à venir, en cours et à clôturer. Une session clôturée quitte le planning actif et reste consultable dans l’historique récent.
+          Sessions des organismes de votre périmètre Daily : à venir, en cours et à clôturer. Les dossiers clôturés restent dans l’historique récent.
         </p>
       </div>
 
@@ -210,7 +228,7 @@ export default async function DailyPlanningPage() {
             })}
 
             {activeRows.length === 0 ? (
-              <div style={{ padding: 18, color: "var(--selen-text3)", fontSize: 13 }}>Aucune session Daily active sur cette période.</div>
+              <div style={{ padding: 18, color: "var(--selen-text3)", fontSize: 13 }}>Aucune session Daily active accessible dans votre périmètre sur cette période.</div>
             ) : null}
           </div>
         </div>
