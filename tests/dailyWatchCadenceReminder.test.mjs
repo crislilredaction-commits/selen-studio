@@ -24,8 +24,9 @@ test("les entrées archivées ne valident pas la cadence du mois", () => {
 });
 
 test("les améliorations de veille restent bornées aux organismes Daily actifs côté serveur et UI", () => {
-  assert.match(page, /getActiveDailyOrganisationIds/);
-  assert.match(page, /const dailyOrganisationIds = await getActiveDailyOrganisationIds\(\)/);
+  assert.match(page, /getDailyOrganisationIdsForAgent\(auth\.email\)/);
+  assert.doesNotMatch(page, /getActiveDailyOrganisationIds/);
+  assert.match(page, /dailyOrganisationIds = await getDailyOrganisationIdsForAgent\(auth\.email\)/);
   assert.match(page, /target === "all"\s*\? dailyOrganisationIds/);
   assert.match(page, /dailyOrganisationIds\.includes\(target\)/);
   assert.match(page, /\.in\("id", dailyOrganisationIds\)/);
