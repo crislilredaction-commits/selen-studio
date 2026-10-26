@@ -65,8 +65,9 @@ test("le pilotage Daily conserve ses garde-fous mobiles après simplification", 
   assert.match(globalCss, /@media \(max-width: 480px\)[\s\S]*\.daily-task-actions[\s\S]*flex-direction: column/);
 });
 
-test("le planning est borné au périmètre canonique des organismes Daily actifs", () => {
-  assert.match(planningPage, /getActiveDailyOrganisationIds/);
+test("le planning est borné au périmètre canonique Daily ET aux affectations de l'agent", () => {
+  assert.match(planningPage, /getDailyOrganisationIdsForAgent\(auth\.email\)/);
+  assert.doesNotMatch(planningPage, /getActiveDailyOrganisationIds/);
   assert.match(planningPage, /\.from\("daily_session_dossiers"\)[\s\S]*\.in\("organisation_id", organisationIds\)/);
   assert.match(planningPage, /organisationIds\.length\s*\?\s*await admin/);
 });
