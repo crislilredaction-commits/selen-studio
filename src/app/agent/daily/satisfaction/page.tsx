@@ -3,6 +3,7 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import { dailySatisfactionLearnerProgress } from "@/lib/daily/dailySatisfactionLearnerProgress.mjs";
 
 type SessionRow = {
   id: string;
@@ -70,21 +71,18 @@ export default async function DailySatisfactionTrackingPage() {
   const enrolments = (enrolmentRes.data ?? []) as EnrolmentRow[];
   const learnerFeedback = (learnerRes.data ?? []) as LearnerFeedbackRow[];
   const stakeholders = (stakeholderRes.data ?? []) as StakeholderRow[];
-  const activeEnrolments = enrolments.filter((row) => !["declined", "cancelled", "abandoned"].includes(row.status));
-
   const rows = sessions.map((session) => {
-    const expectedLearners = activeEnrolments.filter((row) => row.session_id === session.id).length;
-    const learnerDone = learnerFeedback.filter((row) => row.session_id === session.id).length;
+    const { expectedLearners, learnerDone, missingLearners, learnerComplete } = dailySatisfactionLearnerProgress(enrolments, learnerFeedback, session.id);
     const companyDone = stakeholderCount(stakeholders, session.id, ["company", "enterprise"]);
     const trainerDone = stakeholderCount(stakeholders, session.id, ["trainer"]);
     const clientDone = stakeholderCount(stakeholders, session.id, ["client"]);
-    const learnerComplete = expectedLearners > 0 && learnerDone >= expectedLearners;
     const hasAnyResponse = learnerDone + companyDone + trainerDone + clientDone > 0;
-    return { session, expectedLearners, learnerDone, companyDone, trainerDone, clientDone, learnerComplete, hasAnyResponse };
+    return { session, expectedLearners, learnerDone, missingLearners, companyDone, trainerDone, clientDone, learnerComplete, hasAnyResponse };
   });
 
   const sessionsWithMissingLearnerFeedback = rows.filter((row) => row.expectedLearners > row.learnerDone).length;
   const sessionsWithResponses = rows.filter((row) => row.hasAnyResponse).length;
+  const missingLearnerResponses = rows.reduce((total, row) => total + row.missingLearners, 0);
 
   return <main style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 28px 60px" }}>
     <header style={{ marginBottom: 18 }}>
@@ -97,6 +95,7 @@ export default async function DailySatisfactionTrackingPage() {
       <SelenCard><SelenCardTitle>Sessions suivies</SelenCardTitle><strong style={{ fontSize: 26 }}>{rows.length}</strong></SelenCard>
       <SelenCard><SelenCardTitle>Avec au moins une réponse</SelenCardTitle><strong style={{ fontSize: 26 }}>{sessionsWithResponses}</strong></SelenCard>
       <SelenCard><SelenCardTitle>Satisfaction apprenant incomplète</SelenCardTitle><strong style={{ fontSize: 26 }}>{sessionsWithMissingLearnerFeedback}</strong></SelenCard>
+      <SelenCard><SelenCardTitle>Réponses apprenants manquantes</SelenCardTitle><strong style={{ fontSize: 26 }}>{missingLearnerResponses}</strong></SelenCard>
     </div>
 
     <section style={{ display: "grid", gap: 12 }}>
@@ -110,7 +109,7 @@ export default async function DailySatisfactionTrackingPage() {
           <Link href={`/agent/daily/session-dossiers/${row.session.id}/satisfaction`} style={{ border: "1px solid var(--selen-border2)", borderRadius: 9, padding: "8px 11px", color: "var(--selen-text)", textDecoration: "none", fontSize: 12, fontWeight: 800 }}>Ouvrir le détail</Link>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginTop: 12 }}>
-          <div style={metricStyle}><span>Apprenants</span><strong>{row.learnerDone}/{row.expectedLearners}</strong><small>{row.learnerComplete ? "Complet" : row.expectedLearners === 0 ? "Aucun attendu" : "À compléter"}</small></div>
+          <div style={metricStyle}><span>Apprenants</span><strong>{row.learnerDone}/{row.expectedLearners}</strong><small>{row.learnerComplete ? "Complet" : row.expectedLearners === 0 ? "Aucun attendu" : `${row.missingLearners} réponse(s) à obtenir`}</small></div>
           <div style={metricStyle}><span>Commanditaire</span><strong>{row.companyDone}</strong><small>réponse(s)</small></div>
           <div style={metricStyle}><span>Formateur</span><strong>{row.trainerDone}</strong><small>réponse(s)</small></div>
           <div style={metricStyle}><span>OF · plateforme</span><strong>{row.clientDone}</strong><small>réponse(s)</small></div>
