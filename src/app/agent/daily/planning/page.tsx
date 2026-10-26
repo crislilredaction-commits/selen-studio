@@ -170,7 +170,7 @@ export default async function DailyPlanningPage({ searchParams }: Props) {
   const query = normalizeDailyPlanningQuery(params?.q);
   const stateFilter = normalizeDailyPlanningState(params?.etat);
   // Les filtres s’appliquent uniquement aux dossiers déjà bornés au périmètre agent.
-  const visibleActiveRows = filterDailyPlanningRows(activeRows, query, stateFilter);
+  const visibleActiveRows = filterDailyPlanningRows(activeRows, query, stateFilter) as typeof activeRows;
   const historyRows = allRows
     .filter((row) => row?.dossierStatus === "completed" || row?.dossierStatus === "archived")
     .sort((a, b) => (b?.end ?? b?.start ?? "").localeCompare(a?.end ?? a?.start ?? ""));
