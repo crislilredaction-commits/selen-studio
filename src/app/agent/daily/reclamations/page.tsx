@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
-import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -31,8 +31,13 @@ export default async function DailyStakeholderFeedbackPage() {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
 
+  let organisationIds: string[];
+  try {
+    organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  } catch {
+    return <main role="alert" style={s.page}>Impossible de vérifier votre périmètre Daily.</main>;
+  }
   const admin = createSupabaseAdminClient();
-  const organisationIds = await getActiveDailyOrganisationIds();
   const [{ data: feedback, error: feedbackError }, { data: organisations, error: organisationsError }] = organisationIds.length
     ? await Promise.all([
         admin
