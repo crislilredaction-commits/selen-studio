@@ -116,10 +116,10 @@ export default async function DailyQualityStudioPage() {
     admin.from("daily_watch_entries").select("id,watch_type,title,article_url,analysis_and_improvement,published_at,status").order("published_at", { ascending: false }),
     dailyOrganisationIds.length
       ? admin.from("daily_organisation_watch_entries").select("watch_entry_id,interested,forced_by_studio,improvement_note,organisation_id").in("organisation_id", dailyOrganisationIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
     dailyOrganisationIds.length
       ? admin.from("daily_quality_actions").select("category,status,created_at,updated_at,organisation_id").in("organisation_id", dailyOrganisationIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (watchesError || usagesError || actionsError) return <main role="alert" style={s.page}>Impossible de charger la qualité Daily.</main>;
   const usageRows = usages ?? [];
