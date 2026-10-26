@@ -3,6 +3,7 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import DailySatisfactionCsvExport from "@/components/daily/DailySatisfactionCsvExport";
 import { dailySatisfactionLearnerProgress } from "@/lib/daily/dailySatisfactionLearnerProgress.mjs";
 import { filterDailySatisfactionRows, normalizeDailySatisfactionQuery, normalizeDailySatisfactionView } from "@/lib/daily/dailySatisfactionFilters.mjs";
 
@@ -132,6 +133,22 @@ export default async function DailySatisfactionTrackingPage({ searchParams }: Pr
         ] as const).map((item) => <Link key={item.key} href={viewHref(item.key)} aria-current={view === item.key ? "page" : undefined} style={{ border: "1px solid var(--selen-border2)", borderRadius: 999, padding: "7px 12px", textDecoration: "none", fontSize: 12, fontWeight: 700, background: view === item.key ? "var(--selen-gold2)" : "transparent", color: view === item.key ? "var(--selen-bg)" : "var(--selen-text)" }}>{item.label} ({item.count})</Link>)}
       </nav>
       <p role="status" style={{ margin: "12px 0 0", fontSize: 12, color: "var(--selen-text2)" }}>{visibleRows.length} session{visibleRows.length > 1 ? "s" : ""} affichée{visibleRows.length > 1 ? "s" : ""}. {view === "missing" ? "Les dossiers avec le plus de réponses manquantes apparaissent en premier." : ""}</p>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+        <DailySatisfactionCsvExport rows={visibleRows.map((row) => ({
+          formation: formationTitle(row.session.daily_formations),
+          organisation: relationName(row.session.organisations),
+          reference: row.session.internal_reference ?? "",
+          startDate: row.session.start_date ?? "",
+          endDate: row.session.end_date ?? "",
+          expectedLearners: row.expectedLearners,
+          learnerDone: row.learnerDone,
+          missingLearners: row.missingLearners,
+          companyDone: row.companyDone,
+          trainerDone: row.trainerDone,
+          clientDone: row.clientDone,
+        }))} />
+        <span style={{ fontSize: 12, color: "var(--selen-text2)" }}>Export des seules sessions affichées, sans données personnelles d'apprenants.</span>
+      </div>
     </SelenCard>
 
     <section style={{ display: "grid", gap: 12 }}>
