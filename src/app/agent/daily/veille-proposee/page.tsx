@@ -1,4 +1,6 @@
 import { revalidatePath } from "next/cache";
+import Link from "next/link";
+import { filterWatchSubmissions, normalizeWatchSubmissionQuery, normalizeWatchSubmissionCategory, normalizeWatchSubmissionView, watchSubmissionMetrics, isWatchSubmissionOverdue } from "@/lib/daily/watchSubmissionTriage.mjs";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
@@ -67,7 +69,15 @@ async function review(formData: FormData) {
   revalidatePath("/agent/daily/qualite");
 }
 function fr(v:string){return new Intl.DateTimeFormat("fr-FR",{dateStyle:"medium"}).format(new Date(v))}
-export default async function WatchSubmissionReviewPage() {
+type Props = {
+  searchParams?: Promise<{
+    q?: string | string[];
+    categorie?: string | string[];
+    vue?: string | string[];
+  }>;
+};
+
+export default async function WatchSubmissionReviewPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
 
@@ -88,5 +98,87 @@ export default async function WatchSubmissionReviewPage() {
     .in("organisation_id", dailyOrganisationIds)
     .order("created_at", { ascending: true });
   if (error) return <main role="alert" style={s.page}>Impossible de charger les veilles proposées.</main>;
-  return <main style={s.page}><header><p style={s.kicker}>Selen Studio · Daily</p><h1>Veilles proposées par les organismes</h1><p style={s.muted}>Chaque proposition reste invisible de la veille commune tant que tu ne l’as pas relue. Tu peux corriger le titre, la source et l’analyse avant validation.</p></header>{(data??[]).length===0?<section style={s.card}><p style={s.muted}>Aucune veille en attente de validation.</p></section>:<div style={s.list}>{(data??[]).map(row=>{const org=Array.isArray(row.organisations)?row.organisations[0]:row.organisations;return <form action={review} key={row.id} style={s.card}><input type="hidden" name="id" value={row.id}/><div style={s.head}><div><span style={s.badge}>{row.watch_type==="regulatory"?"Réglementaire":row.watch_type==="pedagogy"?"Pédagogique":"Technologique"}</span><h2 style={{margin:"7px 0"}}>{row.title}</h2><small>{org?.legal_name||org?.name||row.organisation_id} · proposé le {fr(row.created_at)}</small></div></div>{row.summary?<div style={s.source}><strong>Résumé proposé</strong><p>{row.summary}</p></div>:null}<label>Titre corrigé<input name="title" defaultValue={row.title} required style={s.input}/></label><label>Source<input name="source_url" type="url" defaultValue={row.source_url??""} required style={s.input}/></label><label>Analyse / points importants / amélioration<textarea name="analysis" rows={7} defaultValue={row.analysis_and_improvement??row.summary??""} required style={s.input}/></label><label>Note de retour à l’organisme<textarea name="note" rows={3} style={s.input}/></label><div style={s.actions}><button name="decision" value="approved" style={s.primary}>Valider et publier dans la veille commune</button><button name="decision" value="rejected" style={s.secondary}>Ne pas retenir</button></div></form>})}</div>}</main>}
+
+  // Les paramètres GET ne modifient que la présentation des propositions déjà autorisées.
+  const params = await searchParams;
+  const q = normalizeWatchSubmissionQuery(params?.q);
+  const categorie = normalizeWatchSubmissionCategory(params?.categorie);
+  const vue = normalizeWatchSubmissionView(params?.vue);
+  const rows = data ?? [];
+  const now = new Date();
+  const metrics = watchSubmissionMetrics(rows, now);
+  const visibleRows = filterWatchSubmissions(rows, { q, categorie, vue }, now);
+
+  return (
+    <main style={s.page}>
+      <header>
+        <p style={s.kicker}>Selen Studio · Daily</p>
+        <h1>Veilles proposées par les organismes</h1>
+        <p style={s.muted}>Retrouve les propositions de tes organismes, traite d’abord les plus anciennes et conserve une validation humaine avant toute publication commune.</p>
+      </header>
+      <section aria-label="État des propositions" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <span style={s.card}><strong>{metrics.total}</strong> en attente</span>
+        <span style={s.card}><strong>{metrics.overdue}</strong> depuis au moins 7 jours</span>
+        <span style={s.card}><strong>{metrics.regulatory}</strong> réglementaire(s)</span>
+      </section>
+      <form method="get" role="search" style={{ ...s.card, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", alignItems: "end" }}>
+        <label>Rechercher
+          <input type="search" name="q" maxLength={80} defaultValue={q} placeholder="Organisme, sujet, source…" style={s.input} />
+        </label>
+        <label>Catégorie
+          <select name="categorie" defaultValue={categorie} style={s.input}>
+            <option value="all">Toutes les catégories</option>
+            <option value="regulatory">Réglementaires</option>
+            <option value="other">Pédagogiques et technologiques</option>
+          </select>
+        </label>
+        <label>Ancienneté
+          <select name="vue" defaultValue={vue} style={s.input}>
+            <option value="all">Toutes les propositions</option>
+            <option value="overdue">En attente depuis 7 jours ou plus</option>
+          </select>
+        </label>
+        <div style={s.actions}>
+          <button type="submit" style={s.primary}>Filtrer</button>
+          <Link href="/agent/daily/veille-proposee" style={{ ...s.secondary, textDecoration: "none" }}>Réinitialiser</Link>
+        </div>
+      </form>
+      <p aria-live="polite" style={s.muted}>{visibleRows.length} proposition(s) affichée(s) sur {metrics.total}. Les plus anciennes apparaissent en premier.</p>
+      {metrics.total === 0 ? (
+        <section style={s.card}><p style={s.muted}>Aucune veille en attente de validation.</p></section>
+      ) : visibleRows.length === 0 ? (
+        <section style={s.card}><p style={s.muted}>Aucune proposition ne correspond à ces filtres.</p><Link href="/agent/daily/veille-proposee">Afficher toutes les propositions</Link></section>
+      ) : (
+        <div style={s.list}>
+          {visibleRows.map((row) => {
+            const org = Array.isArray(row.organisations) ? row.organisations[0] : row.organisations;
+            const overdue = isWatchSubmissionOverdue(row, now);
+            return (
+              <form action={review} key={row.id} style={s.card}>
+                <input type="hidden" name="id" value={row.id} />
+                <div style={s.head}>
+                  <div>
+                    <span style={s.badge}>{row.watch_type === "regulatory" ? "Réglementaire" : row.watch_type === "pedagogy" ? "Pédagogique" : "Technologique"}</span>
+                    {overdue ? <strong style={{ marginLeft: 12, color: "var(--selen-gold2)" }}>À examiner en priorité · 7 jours ou plus</strong> : null}
+                    <h2 style={{ margin: "7px 0" }}>{row.title}</h2>
+                    <small>{org?.legal_name || org?.name || "Organisme Daily"} · proposé le {fr(row.created_at)}</small>
+                  </div>
+                </div>
+                {row.summary ? <div style={s.source}><strong>Résumé proposé</strong><p>{row.summary}</p></div> : null}
+                <label>Titre corrigé<input name="title" defaultValue={row.title} required style={s.input} /></label>
+                <label>Source<input name="source_url" type="url" defaultValue={row.source_url ?? ""} required style={s.input} /></label>
+                <label>Analyse / points importants / amélioration<textarea name="analysis" rows={7} defaultValue={row.analysis_and_improvement ?? row.summary ?? ""} required style={s.input} /></label>
+                <label>Note de retour à l’organisme<textarea name="note" rows={3} style={s.input} /></label>
+                <div style={s.actions}>
+                  <button name="decision" value="approved" style={s.primary}>Valider et publier dans la veille commune</button>
+                  <button name="decision" value="rejected" formNoValidate style={s.secondary}>Ne pas retenir</button>
+                </div>
+              </form>
+            );
+          })}
+        </div>
+      )}
+    </main>
+  );
+}
 const s:Record<string,React.CSSProperties>={page:{maxWidth:1100,margin:"0 auto",padding:"24px 28px 60px",display:"grid",gap:16,color:"var(--selen-text)"},kicker:{fontSize:10,textTransform:"uppercase",letterSpacing:".2em",color:"var(--selen-gold)"},muted:{color:"var(--selen-text2)",lineHeight:1.6,fontSize:13},list:{display:"grid",gap:14},card:{border:"1px solid var(--selen-border)",borderRadius:"var(--radius-md)",background:"var(--selen-bg2)",padding:18,display:"grid",gap:12},head:{display:"flex",justifyContent:"space-between",gap:12},badge:{fontSize:10,textTransform:"uppercase",letterSpacing:".12em",color:"var(--selen-gold2)"},source:{borderLeft:"3px solid var(--selen-gold)",padding:"8px 12px",background:"var(--selen-bg3)"},input:{width:"100%",boxSizing:"border-box",marginTop:5,padding:9,border:"1px solid var(--selen-border)",borderRadius:8,background:"var(--selen-bg)",color:"var(--selen-text)"},actions:{display:"flex",gap:8,flexWrap:"wrap"},primary:{border:0,borderRadius:8,padding:"9px 12px",background:"var(--selen-gold)",color:"#17110b",fontWeight:800,cursor:"pointer"},secondary:{border:"1px solid var(--selen-border)",borderRadius:8,padding:"9px 12px",background:"transparent",color:"var(--selen-text)",fontWeight:700,cursor:"pointer"},error:{border:"1px solid #a64b3b",padding:10,color:"#d99586"}};
