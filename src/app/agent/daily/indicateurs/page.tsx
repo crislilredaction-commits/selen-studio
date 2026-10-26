@@ -110,6 +110,7 @@ export default async function DailyTrainingIndicatorsPage({ searchParams }: Prop
   ] as const));
   const visibleOrganisations = filterIndicatorOrganisations(organisations, query, view, attentionByOrg);
   const attentionSummary = getIndicatorAttentionCount({ enrolments, attendance, assessments, learnerFeedback, stakeholderFeedback });
+  const noSatisfactionOrganisations = [...attentionByOrg.values()].reduce((sum, row) => sum + row.noSatisfaction, 0);
 
   return (
     <main style={s.page}>
@@ -167,7 +168,7 @@ export default async function DailyTrainingIndicatorsPage({ searchParams }: Prop
           <span><strong>{attentionSummary.pendingAttendance}</strong> présences en attente</span>
           <span><strong>{attentionSummary.pendingAssessments}</strong> évaluations en attente</span>
           <span><strong>{attentionSummary.abandoned}</strong> abandons enregistrés</span>
-          <span><strong>{attentionSummary.noSatisfaction}</strong> organisme(s) sans retour malgré une inscription terminée</span>
+          <span><strong>{noSatisfactionOrganisations}</strong> organisme(s) sans retour malgré une inscription terminée</span>
         </div>
       </section>
 
