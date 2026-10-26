@@ -17,8 +17,12 @@ function validFutureDate(value: unknown, now: number) {
   return Number.isFinite(time) && time >= now && time - now <= THREE_MONTHS_MS ? { value, time } : null;
 }
 
-export async function getQualiopiPreauditOrganisations(): Promise<QualiopiPreauditOrganisation[]> {
-  const ids = await getActiveDailyOrganisationIds();
+export async function getQualiopiPreauditOrganisations(allowedOrganisationIds?: readonly string[]): Promise<QualiopiPreauditOrganisation[]> {
+  // Le pré-audit agent transmet son périmètre vérifié ; l'absence de droits
+  // ne doit jamais déclencher un repli vers tous les abonnés Daily.
+  const ids = allowedOrganisationIds === undefined
+    ? await getActiveDailyOrganisationIds()
+    : [...new Set(allowedOrganisationIds.filter(Boolean))];
   if (!ids.length) return [];
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin.from("organisations")
