@@ -147,7 +147,7 @@ export default async function DailySatisfactionTrackingPage({ searchParams }: Pr
           trainerDone: row.trainerDone,
           clientDone: row.clientDone,
         }))} />
-        <span style={{ fontSize: 12, color: "var(--selen-text2)" }}>Export des seules sessions affichées, sans données personnelles d'apprenants.</span>
+        <span style={{ fontSize: 12, color: "var(--selen-text2)" }}>Export des seules sessions affichées, sans données personnelles d’apprenants.</span>
       </div>
     </SelenCard>
 
