@@ -3,6 +3,7 @@ import test from "node:test";
 import { createRequire } from "node:module";
 import { dailyPrivateFixture, materializeFixture, ids } from "./helpers/dailyPrivateFixture.mjs";
 import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
+import * as candidatureQueue from "../src/lib/daily/dailyCandidatureQueue.mjs";
 
 const require = createRequire(import.meta.url);
 const ANALYSIS_REVISION = "2026-10-03T12:00:00+00:00";
@@ -28,6 +29,7 @@ function pageFixture() {
     "next/navigation": { notFound() { throw new Error("NOT_FOUND"); } },
     "@/lib/server/clientNotificationSilence": { async sendClientEmailWithSilence(args) { emailCalls.push(args); return { sent: true }; } },
     "@/lib/server/dailyOrganisationScope": f.scope,
+    "@/lib/daily/dailyCandidatureQueue.mjs": candidatureQueue,
     "@/lib/dailyCandidaturePresentation": isolatedTsModule("src/lib/dailyCandidaturePresentation.ts"),
     "./analysis.module.css": { default: new Proxy({}, { get: (_, key) => String(key) }) },
   };
