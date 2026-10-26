@@ -47,3 +47,30 @@ test("la liste des organismes utilise les mêmes programmes et tâches canonique
   assert.doesNotMatch(listPage, /daily_organisation_checklist_items/);
   assert.doesNotMatch(listPage, /items\.length \|\| 7/);
 });
+
+test("le répertoire filtre les organismes autorisés sans élargir le périmètre", () => {
+  const rows = [
+    { id: "a", name: "École Alpha", legal_name: null, siret: "111", nda_number: "NDA-1" },
+    { id: "b", name: "Beta", legal_name: "Bêta Formation", siret: "222", nda_number: null },
+  ];
+  const options = { query: "", filter: "all", taskCounts: new Map([["a", 2]]), assignedIds: new Set(["a"]), validationCounts: new Map([["b", 1]]), certificationCounts: new Map([["a", 1]]) };
+  const filter = (patch) => stats.filterDailyOrganisationDirectory(rows, { ...options, ...patch }).map((row) => row.id).join(",");
+  assert.equal(filter({ query: "ecole" }), "a");
+  assert.equal(filter({ query: "BÊTA" }), "b");
+  assert.equal(filter({ query: "NDA-1" }), "a");
+  assert.equal(filter({ filter: "attention" }), "a");
+  assert.equal(filter({ filter: "unassigned" }), "b");
+  assert.equal(filter({ filter: "validations" }), "b");
+  assert.equal(filter({ filter: "certifications" }), "a");
+  assert.equal(filter({ filter: "attention", query: "beta" }), "");
+  assert.equal(filter({ filter: "unknown" }), "a,b");
+  assert.equal(filter({ query: "inexistant" }), "");
+});
+
+test("le répertoire conserve les bornes agent et les compteurs canoniques", () => {
+  assert.match(listPage, /getDailyOrganisationIdsForAgent/);
+  assert.match(listPage, /filterDailyOrganisationDirectory\(organisations/);
+  assert.match(listPage, /visibleOrganisations\.map/);
+  assert.match(listPage, /dailyOrganisationTaskCounts\(attentionTasks\)/);
+  assert.match(listPage, /Réinitialiser/);
+});

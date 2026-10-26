@@ -34,3 +34,25 @@ export function dailyOrganisationTaskCounts(
   }
   return counts;
 }
+
+export type DailyOrganisationDirectoryFilter = "all" | "attention" | "unassigned" | "validations" | "certifications";
+
+export function filterDailyOrganisationDirectory<T extends {
+  id: string; name: string; legal_name: string | null; siret: string | null; nda_number: string | null;
+}>(organisations: T[], options: {
+  query: string; filter: string; taskCounts: ReadonlyMap<string, number>;
+  assignedIds: ReadonlySet<string>; validationCounts: ReadonlyMap<string, number>;
+  certificationCounts: ReadonlyMap<string, number>;
+}): T[] {
+  const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr").trim();
+  const query = normalize(options.query.slice(0, 80));
+  return organisations.filter((organisation) => {
+    if (query && ![organisation.name, organisation.legal_name, organisation.siret, organisation.nda_number]
+      .some((value) => value && normalize(value).includes(query))) return false;
+    if (options.filter === "attention") return (options.taskCounts.get(organisation.id) ?? 0) > 0;
+    if (options.filter === "unassigned") return !options.assignedIds.has(organisation.id);
+    if (options.filter === "validations") return (options.validationCounts.get(organisation.id) ?? 0) > 0;
+    if (options.filter === "certifications") return (options.certificationCounts.get(organisation.id) ?? 0) > 0;
+    return true;
+  });
+}

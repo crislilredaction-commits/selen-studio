@@ -6,7 +6,7 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
-import { dailyOrganisationProgramStats, dailyOrganisationTaskCounts } from "@/lib/dailyOrganisationStatistics";
+import { dailyOrganisationProgramStats, dailyOrganisationTaskCounts, filterDailyOrganisationDirectory } from "@/lib/dailyOrganisationStatistics";
 
 type OrganisationRow = {
   id: string;
@@ -62,7 +62,13 @@ function daysUntil(value: string) {
   return Math.ceil((target.getTime() - today.getTime()) / 86_400_000);
 }
 
-export default async function DailyOrganisationsPage() {
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
+function first(value: string | string[] | undefined) { return Array.isArray(value) ? value[0] ?? "" : value ?? ""; }
+
+export default async function DailyOrganisationsPage({ searchParams }: Props) {
+  const params = await searchParams;
+  const query = first(params.q).slice(0, 80);
+  const filter = first(params.filter);
   const auth = await requireSupportAgent();
   if (!auth.ok) {
     return <main style={s.page}><p style={s.error}>{auth.error}</p></main>;
@@ -183,6 +189,17 @@ export default async function DailyOrganisationsPage() {
     }
   });
 
+  const validationCounts = new Map<string, number>();
+  for (const row of validations) validationCounts.set(row.organisation_id, (validationCounts.get(row.organisation_id) ?? 0) + 1);
+  const visibleOrganisations = filterDailyOrganisationDirectory(organisations, {
+    query,
+    filter,
+    taskCounts: activeTaskCounts,
+    assignedIds: new Set(assignments.map((row) => row.organisation_id)),
+    validationCounts,
+    certificationCounts: urgentCertificationByOrganisation,
+  });
+
   const totalAttention = attentionTasks.length;
   const pendingValidations = validations.length;
   const expiringCertifications = Array.from(urgentCertificationByOrganisation.values()).reduce(
@@ -214,11 +231,31 @@ export default async function DailyOrganisationsPage() {
 
       <SelenCard>
         <SelenCardTitle>Dossiers organismes Daily</SelenCardTitle>
+        <form method="get" action="/agent/daily/organisations" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end", marginBottom: 16 }}>
+          <label style={{ display: "grid", gap: 5, flex: "1 1 220px", fontSize: 12 }}>
+            Rechercher un organisme
+            <input name="q" type="search" maxLength={80} defaultValue={query} placeholder="Nom, SIRET ou NDA" style={{ minHeight: 38, border: "1px solid var(--selen-border)", borderRadius: 9, padding: "8px 10px", background: "var(--selen-bg)", color: "var(--selen-text)" }} />
+          </label>
+          <label style={{ display: "grid", gap: 5, fontSize: 12 }}>
+            Afficher
+            <select name="filter" defaultValue={["attention","unassigned","validations","certifications"].includes(filter) ? filter : "all"} style={{ minHeight: 38, border: "1px solid var(--selen-border)", borderRadius: 9, padding: "8px 10px", background: "var(--selen-bg)", color: "var(--selen-text)" }}>
+              <option value="all">Tous</option>
+              <option value="attention">Points à traiter</option>
+              <option value="unassigned">Sans agent</option>
+              <option value="validations">Profils à valider</option>
+              <option value="certifications">Certifications à surveiller</option>
+            </select>
+          </label>
+          <button type="submit" style={{ minHeight: 38, border: 0, borderRadius: 9, padding: "0 14px", background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Filtrer</button>
+          <Link href="/agent/daily/organisations" style={{ padding: "10px 0", color: "var(--selen-text2)", fontSize: 12 }}>Réinitialiser</Link>
+        </form>
+        <p aria-live="polite" style={s.meta}>{visibleOrganisations.length} organisme(s) affiché(s) sur {organisations.length}</p>
         {organisations.length === 0 ? (
           <p style={s.empty}>Aucun organisme abonné à Daily pour le moment.</p>
         ) : (
           <div style={s.list}>
-            {organisations.map((organisation) => {
+            {visibleOrganisations.length === 0 ? <p style={s.empty}>Aucun organisme ne correspond aux filtres. <Link href="/agent/daily/organisations">Afficher tous les dossiers</Link></p> : null}
+            {visibleOrganisations.map((organisation) => {
               const assignment = assignments.find((row) => row.organisation_id === organisation.id);
               const programStats = dailyOrganisationProgramStats(formations.filter((row) => row.organisation_id === organisation.id));
               const attention = activeTaskCounts.get(organisation.id) ?? 0;
