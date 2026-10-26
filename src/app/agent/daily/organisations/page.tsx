@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
-import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { getDailyAgentTasks } from "@/lib/server/dailyAgentTasks";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenBadge from "@/components/ui/SelenBadge";
@@ -94,7 +94,7 @@ export default async function DailyOrganisationsPage() {
 
   let dailyOrganisationIds: string[];
   try {
-    dailyOrganisationIds = await getActiveDailyOrganisationIds();
+    dailyOrganisationIds = await getDailyOrganisationIdsForAgent(auth.email);
   } catch (error) {
     return (
       <main style={s.page}>
@@ -111,7 +111,7 @@ export default async function DailyOrganisationsPage() {
     ? dailyOrganisationIds
     : ["00000000-0000-0000-0000-000000000000"];
 
-  const [organisationsRes, assignmentsRes, formationsRes, validationsRes, trainersRes, certificationsRes] =
+  const [organisationsRes, assignmentsRes, formationsRes, validationsRes, trainersRes] =
     await Promise.all([
       admin
         .from("organisations")
@@ -138,13 +138,9 @@ export default async function DailyOrganisationsPage() {
         .select("id,organisation_id")
         .in("organisation_id", scopeIds)
         .eq("active", true),
-      admin
-        .from("daily_trainer_certifications")
-        .select("trainer_profile_id,validity_mode,valid_until")
-        .eq("validity_mode", "limited"),
     ]);
 
-  const firstError = [organisationsRes, assignmentsRes, formationsRes, validationsRes, trainersRes, certificationsRes]
+  const firstError = [organisationsRes, assignmentsRes, formationsRes, validationsRes, trainersRes]
     .map((result) => result.error)
     .find(Boolean);
 
@@ -157,7 +153,20 @@ export default async function DailyOrganisationsPage() {
   const formations = (formationsRes.data ?? []) as Array<{ organisation_id: string; status: string }>;
   const validations = (validationsRes.data ?? []) as ValidationRow[];
   const trainers = (trainersRes.data ?? []) as TrainerRow[];
-  const certifications = (certificationsRes.data ?? []) as CertificationRow[];
+  // Les certifications sont liées uniquement aux formateurs des organismes autorisés.
+  // Ne jamais lire toutes les certifications avec la clé service-role.
+  const trainerIds = trainers.map((trainer) => trainer.id);
+  const { data: certificationRows, error: certificationsError } = trainerIds.length
+    ? await admin
+        .from("daily_trainer_certifications")
+        .select("trainer_profile_id,validity_mode,valid_until")
+        .in("trainer_profile_id", trainerIds)
+        .eq("validity_mode", "limited")
+    : { data: [] as CertificationRow[], error: null };
+  if (certificationsError) {
+    return <main style={s.page}><p style={s.error}>Erreur Daily : {certificationsError.message}</p></main>;
+  }
+  const certifications = (certificationRows ?? []) as CertificationRow[];
   const activeTaskCounts = dailyOrganisationTaskCounts(attentionTasks);
 
   const trainerOrganisation = new Map(trainers.map((trainer) => [trainer.id, trainer.organisation_id]));
