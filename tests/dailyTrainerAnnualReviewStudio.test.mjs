@@ -17,11 +17,12 @@ test("annual review oversight reuses canonical trainer and review tables", () =>
   assert.match(reviewPage, /\.eq\("active", true\)/);
 });
 
-test("annual review oversight is limited to active Daily organisations", () => {
-  assert.match(reviewPage, /getActiveDailyOrganisationIds/);
+test("annual review oversight is limited to assigned active Daily organisations", () => {
+  assert.match(reviewPage, /getDailyOrganisationIdsForAgent\(auth\.email\)/);
+  assert.doesNotMatch(reviewPage, /getActiveDailyOrganisationIds/);
   assert.match(reviewPage, /\.select\("id,organisation_id,display_name,professional_email,engagement_type,status,active"\)/);
-  assert.match(reviewPage, /\.in\("organisation_id", scopeIds\)/);
-  assert.match(reviewPage, /\.in\("trainer_profile_id", reviewScope\)/);
+  assert.match(reviewPage, /\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(reviewPage, /\.in\("trainer_profile_id", trainerIds\)/);
 });
 
 test("a review is only complete after trainer submission and manager completion", () => {
