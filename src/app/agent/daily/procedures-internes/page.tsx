@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
-import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 const PROCEDURE_LABELS: Record<string, string> = {
@@ -29,8 +29,17 @@ export default async function DailyInternalProceduresPage() {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
 
+  let dailyOrganisationIds: string[];
+  try {
+    dailyOrganisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  } catch {
+    return <main style={s.page}><p style={s.error}>Impossible de vérifier votre périmètre Daily.</p></main>;
+  }
+  if (dailyOrganisationIds.length === 0) {
+    return <main style={s.page}><h1 style={s.h1}>Procédures internes</h1><p>Aucun organisme Daily affecté.</p></main>;
+  }
+
   const admin = createSupabaseAdminClient();
-  const dailyOrganisationIds = await getActiveDailyOrganisationIds();
   const proceduresRequest = dailyOrganisationIds.length
     ? admin
         .from("daily_internal_procedures")
