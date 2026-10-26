@@ -90,8 +90,8 @@ export default async function DailySatisfactionTrackingPage({ searchParams }: Pr
   const query = normalizeDailySatisfactionQuery(params?.q);
   const view = normalizeDailySatisfactionView(params?.vue);
   // Les filtres ne reçoivent que les sessions déjà bornées aux organismes affectés.
-  const visibleRows = filterDailySatisfactionRows(rows, query, view, (row) =>
-    [formationTitle(row.session.daily_formations), relationName(row.session.organisations), row.session.internal_reference].join(" "));
+  const visibleRows = filterDailySatisfactionRows(rows, query, view, (row: (typeof rows)[number]) =>
+    [formationTitle(row.session.daily_formations), relationName(row.session.organisations), row.session.internal_reference].join(" ")) as typeof rows;
   const completedSessions = rows.filter((row) => row.expectedLearners > 0 && row.learnerComplete).length;
   const viewHref = (nextView: "all" | "missing" | "complete") => {
     const search = new URLSearchParams();
