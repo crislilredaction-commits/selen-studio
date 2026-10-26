@@ -122,7 +122,7 @@ export default async function DailySatisfactionTrackingPage({ searchParams }: Pr
           <input id="satisfaction-search" type="search" name="q" maxLength={80} defaultValue={query} placeholder="Nom, organisme, référence…" style={{ minHeight: 40, padding: "8px 11px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg2)", color: "var(--selen-text)" }} />
         </label>
         <button type="submit" style={{ minHeight: 40, padding: "8px 14px", border: 0, borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Rechercher</button>
-        {query ? <Link href={viewHref(view)} style={{ fontSize: 12, color: "var(--selen-text2)" }}>Effacer la recherche</Link> : null}
+        {query ? <Link href={view === "all" ? "/agent/daily/satisfaction" : `/agent/daily/satisfaction?vue=${view}`} style={{ fontSize: 12, color: "var(--selen-text2)" }}>Effacer la recherche</Link> : null}
       </form>
       <nav aria-label="Prioriser les sessions de satisfaction" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
         {([
