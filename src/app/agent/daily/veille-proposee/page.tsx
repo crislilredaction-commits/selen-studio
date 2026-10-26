@@ -150,7 +150,7 @@ export default async function WatchSubmissionReviewPage({ searchParams }: Props)
         <section style={s.card}><p style={s.muted}>Aucune proposition ne correspond à ces filtres.</p><Link href="/agent/daily/veille-proposee">Afficher toutes les propositions</Link></section>
       ) : (
         <div style={s.list}>
-          {visibleRows.map((row) => {
+          {visibleRows.map((row: (typeof rows)[number]) => {
             const org = Array.isArray(row.organisations) ? row.organisations[0] : row.organisations;
             const overdue = isWatchSubmissionOverdue(row, now);
             return (
