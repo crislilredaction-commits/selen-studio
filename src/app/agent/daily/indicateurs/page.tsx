@@ -108,7 +108,7 @@ export default async function DailyTrainingIndicatorsPage({ searchParams }: Prop
       stakeholderFeedback: stakeholderFeedback.filter((row) => row.organisation_id === organisation.id),
     }),
   ] as const));
-  const visibleOrganisations = filterIndicatorOrganisations(organisations, query, view, attentionByOrg);
+  const visibleOrganisations = filterIndicatorOrganisations(organisations, query, view, attentionByOrg) as typeof organisations;
   const attentionSummary = getIndicatorAttentionCount({ enrolments, attendance, assessments, learnerFeedback, stakeholderFeedback });
   const noSatisfactionOrganisations = [...attentionByOrg.values()].reduce((sum, row) => sum + row.noSatisfaction, 0);
 
