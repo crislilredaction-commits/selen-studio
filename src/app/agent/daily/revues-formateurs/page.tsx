@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
-import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 
 function formatDate(value?: string | null) {
   if (!value) return "Non renseignée";
@@ -19,25 +19,19 @@ export default async function DailyTrainerAnnualReviewsPage() {
 
   let dailyOrganisationIds: string[];
   try {
-    dailyOrganisationIds = await getActiveDailyOrganisationIds();
-  } catch (error) {
-    return (
-      <main style={s.page}>
-        <p style={s.error}>
-          Impossible de charger le périmètre Daily : {error instanceof Error ? error.message : "périmètre indisponible"}
-        </p>
-      </main>
-    );
+    dailyOrganisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  } catch {
+    return <main style={s.page}><p role="alert" style={s.error}>Impossible de vérifier votre périmètre Daily.</p></main>;
   }
 
-  const scopeIds = dailyOrganisationIds.length
-    ? dailyOrganisationIds
-    : ["00000000-0000-0000-0000-000000000000"];
+  if (dailyOrganisationIds.length === 0) {
+    return <main style={s.page}><h1>Bilan annuel des compétences formateurs</h1><p>Aucun organisme Daily affecté.</p></main>;
+  }
 
   const { data: trainers, error: trainersError } = await admin
     .from("daily_trainer_profiles")
     .select("id,organisation_id,display_name,professional_email,engagement_type,status,active")
-    .in("organisation_id", scopeIds)
+    .in("organisation_id", dailyOrganisationIds)
     .eq("active", true)
     .neq("status", "archived")
     .order("display_name");
@@ -47,14 +41,13 @@ export default async function DailyTrainerAnnualReviewsPage() {
   }
 
   const trainerIds = (trainers ?? []).map((trainer) => trainer.id);
-  const reviewScope = trainerIds.length
-    ? trainerIds
-    : ["00000000-0000-0000-0000-000000000000"];
-  const { data: reviews, error: reviewsError } = await admin
-    .from("daily_trainer_annual_reviews")
-    .select("id,trainer_profile_id,review_year,status,submitted_at,manager_completed_at,updated_at")
-    .eq("review_year", year)
-    .in("trainer_profile_id", reviewScope);
+  const { data: reviews, error: reviewsError } = trainerIds.length
+    ? await admin
+        .from("daily_trainer_annual_reviews")
+        .select("id,trainer_profile_id,review_year,status,submitted_at,manager_completed_at,updated_at")
+        .eq("review_year", year)
+        .in("trainer_profile_id", trainerIds)
+    : { data: [], error: null };
 
   if (reviewsError) {
     return <main style={s.page}><p style={s.error}>Impossible de charger les bilans annuels formateurs.</p></main>;
@@ -88,7 +81,7 @@ export default async function DailyTrainerAnnualReviewsPage() {
         <div style={s.cardHead}>
           <div>
             <h2 style={s.h2}>Suivi {year}</h2>
-            <p style={s.muted}>Cette vue sert d&apos;aide-mémoire aux agents. Les données restent celles de <code>daily_trainer_profiles</code> et <code>daily_trainer_annual_reviews</code>, limitées aux organismes dont l&apos;abonnement Daily est actif.</p>
+            <p style={s.muted}>Cette vue sert d&apos;aide-mémoire aux agents. Les données restent celles de <code>daily_trainer_profiles</code> et <code>daily_trainer_annual_reviews</code>, limitées aux organismes Daily actifs qui vous sont affectés.</p>
           </div>
         </div>
 
