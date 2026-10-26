@@ -10,11 +10,35 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(date);
 }
 
-export default async function DailyTrainerAnnualReviewsPage() {
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
+
+function one(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+function normalize(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr");
+}
+
+function reviewPriority(review: { submitted_at: string | null; manager_completed_at: string | null } | null) {
+  if (review?.submitted_at && review?.manager_completed_at) return 2;
+  if (review?.submitted_at) return 0;
+  return 1;
+}
+
+export default async function DailyTrainerAnnualReviewsPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
 
-  const year = new Date().getFullYear();
+  const params = await searchParams;
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 5 }, (_, index) => currentYear - index);
+  const requestedYear = Number(one(params.year));
+  const year = years.includes(requestedYear) ? requestedYear : currentYear;
+  const search = one(params.q).trim().slice(0, 80);
+  const normalizedSearch = normalize(search);
+  const requestedState = one(params.state);
+  const state = ["all", "manager", "trainer", "complete"].includes(requestedState) ? requestedState : "all";
   const admin = createSupabaseAdminClient();
 
   let dailyOrganisationIds: string[];
@@ -58,6 +82,23 @@ export default async function DailyTrainerAnnualReviewsPage() {
   const fullyCompleted = rows.filter(({ review }) => Boolean(review?.submitted_at && review?.manager_completed_at)).length;
   const awaitingManager = rows.filter(({ review }) => Boolean(review?.submitted_at && !review?.manager_completed_at)).length;
   const toStart = rows.filter(({ review }) => !review?.submitted_at).length;
+  // Le tri et la recherche portent uniquement sur les profils déjà bornés aux OF de l'agent.
+  const visibleRows = rows
+    .filter(({ trainer, review }) => {
+      const priority = reviewPriority(review);
+      const matchesState = state === "all"
+        || (state === "manager" && priority === 0)
+        || (state === "trainer" && priority === 1)
+        || (state === "complete" && priority === 2);
+      const matchesSearch = !normalizedSearch || normalize(
+        [trainer.display_name, trainer.professional_email].filter(Boolean).join(" ")
+      ).includes(normalizedSearch);
+      return matchesState && matchesSearch;
+    })
+    .sort((a, b) => reviewPriority(a.review) - reviewPriority(b.review)
+      || (a.trainer.display_name || a.trainer.professional_email || "").localeCompare(
+        b.trainer.display_name || b.trainer.professional_email || "", "fr"
+      ));
 
   return (
     <main style={s.page}>
@@ -85,9 +126,32 @@ export default async function DailyTrainerAnnualReviewsPage() {
           </div>
         </div>
 
-        {rows.length === 0 ? <p style={s.muted}>Aucun formateur actif à suivre.</p> : (
+        <form method="get" action="/agent/daily/revues-formateurs" style={s.filters} role="search">
+          <label style={s.filterLabel}>Rechercher un formateur
+            <input name="q" type="search" maxLength={80} defaultValue={search} placeholder="Nom ou email" style={s.filterInput} />
+          </label>
+          <label style={s.filterLabel}>État du bilan
+            <select name="state" defaultValue={state} style={s.filterInput}>
+              <option value="all">Tous les états</option>
+              <option value="manager">Manager à compléter</option>
+              <option value="trainer">À faire / soumettre</option>
+              <option value="complete">Terminés</option>
+            </select>
+          </label>
+          <label style={s.filterLabel}>Année
+            <select name="year" defaultValue={String(year)} style={s.filterInput}>
+              {years.map((availableYear) => <option key={availableYear} value={availableYear}>{availableYear}</option>)}
+            </select>
+          </label>
+          <button type="submit" style={s.filterButton}>Appliquer</button>
+          <Link href="/agent/daily/revues-formateurs" style={s.reset}>Réinitialiser</Link>
+        </form>
+        <p style={s.resultCount} aria-live="polite">{visibleRows.length} bilan(s) affiché(s) sur {rows.length}. Les bilans en attente du manager sont présentés en premier.</p>
+        {rows.length === 0 ? <p style={s.muted}>Aucun formateur actif à suivre.</p> : visibleRows.length === 0 ? (
+          <p style={s.muted}>Aucun bilan ne correspond aux filtres sélectionnés.</p>
+        ) : (
           <div style={s.list}>
-            {rows.map(({ trainer, review }) => {
+            {visibleRows.map(({ trainer, review }) => {
               const complete = Boolean(review?.submitted_at && review?.manager_completed_at);
               const managerDue = Boolean(review?.submitted_at && !review?.manager_completed_at);
               const label = complete ? "Terminé" : managerDue ? "Manager à compléter" : "À faire / soumettre";
@@ -127,6 +191,12 @@ const s: Record<string, React.CSSProperties> = {
   card: { border: "1px solid var(--selen-border)", borderRadius: 12, background: "var(--selen-bg2)", padding: 18 },
   cardHead: { display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 14 },
   muted: { margin: "5px 0 0", color: "var(--selen-text2)", fontSize: 12, lineHeight: 1.6 },
+  filters: { display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end", marginBottom: 12, padding: 14, border: "1px solid var(--selen-border)", borderRadius: 10 },
+  filterLabel: { display: "grid", gap: 5, flex: "1 1 160px", fontSize: 12, fontWeight: 700 },
+  filterInput: { width: "100%", minWidth: 0, padding: "9px 10px", border: "1px solid var(--selen-border)", borderRadius: 7, background: "var(--selen-bg)", color: "var(--selen-text)", fontSize: 13 },
+  filterButton: { padding: "10px 14px", border: 0, borderRadius: 7, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" },
+  reset: { padding: "10px 4px", fontSize: 12, color: "var(--selen-gold2)", textDecoration: "underline" },
+  resultCount: { margin: "0 0 12px", fontSize: 12, color: "var(--selen-text2)" },
   list: { display: "grid", gap: 9 },
   rowOk: { display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(250px,auto)", gap: 14, padding: 14, border: "1px solid rgba(74,150,104,.32)", borderRadius: 9, background: "rgba(74,150,104,.06)" },
   rowDue: { display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(250px,auto)", gap: 14, padding: 14, border: "1px solid rgba(201,148,58,.38)", borderRadius: 9, background: "rgba(201,148,58,.06)" },
