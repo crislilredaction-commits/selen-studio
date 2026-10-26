@@ -17,7 +17,7 @@ const row = (id, { status = "open", level = "info", type = "note", actionable = 
 
 test("filtres : paramètres bornés et valeurs inconnues rejetées", () => {
   assert.deepEqual(normalizeSessionFollowupFilters({ q: [" été ".repeat(30)], etat: "oops", niveau: "critical", type: "incident" }), {
-    q: "été ".repeat(30).trim().slice(0, 80), state: "all", level: "critical", type: "incident",
+    q: " été ".repeat(30).trim().slice(0, 80), state: "all", level: "critical", type: "incident",
   });
   assert.deepEqual(normalizeSessionFollowupFilters({}), { q: "", state: "all", level: "all", type: "all" });
 });
