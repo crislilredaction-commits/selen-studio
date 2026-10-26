@@ -2,10 +2,19 @@ import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { normalizeStakeholderFeedbackFilters, filterStakeholderFeedbackRows, countStakeholderFeedbackStages, stakeholderFeedbackStage } from "@/lib/daily/stakeholderFeedbackTriage.mjs";
 
 const TYPE_LABELS: Record<string, string> = {
   complaint: "Réclamation",
   suggestion: "Suggestion",
+};
+
+const STAGE_LABELS: Record<string, string> = {
+  review: "À examiner par Selen",
+  forward: "À transmettre à l’organisme",
+  response: "En attente de réponse organisme",
+  close: "Réponse reçue · à clôturer",
+  resolved: "Clôturée",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -27,7 +36,9 @@ function isResolved(status?: string | null, resolvedAt?: string | null) {
   return status === "resolved" || Boolean(resolvedAt);
 }
 
-export default async function DailyStakeholderFeedbackPage() {
+type Props = { searchParams?: Promise<{ q?: string | string[]; etape?: string | string[]; type?: string | string[] }> };
+
+export default async function DailyStakeholderFeedbackPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
 
@@ -67,6 +78,10 @@ export default async function DailyStakeholderFeedbackPage() {
   const complaintCount = rows.filter(({ item }) => item.submission_type === "complaint").length;
   const suggestionCount = rows.filter(({ item }) => item.submission_type === "suggestion").length;
   const openCount = rows.filter(({ resolved }) => !resolved).length;
+  // Filtrage uniquement après la lecture bornée aux organismes affectés à l’agent.
+  const filters = normalizeStakeholderFeedbackFilters((await searchParams) ?? {});
+  const visibleRows = filterStakeholderFeedbackRows(rows, filters) as typeof rows;
+  const stageCounts = countStakeholderFeedbackStages(rows);
 
   return (
     <main style={s.page}>
@@ -86,6 +101,39 @@ export default async function DailyStakeholderFeedbackPage() {
         <div style={openCount ? s.statDue : s.stat}><strong>{openCount}</strong><span>encore ouvert(s)</span></div>
       </section>
 
+      <form method="get" action="/agent/daily/reclamations" style={s.filterPanel} aria-label="Rechercher et prioriser les réclamations et suggestions">
+        <div style={s.filterGrid}>
+          <label style={s.filterLabel} htmlFor="feedback-search">
+            Recherche
+            <input id="feedback-search" name="q" type="search" maxLength={80} defaultValue={filters.q} placeholder="Organisme, sujet, déposant…" style={s.filterInput} />
+          </label>
+          <label style={s.filterLabel} htmlFor="feedback-stage">
+            Prochaine étape
+            <select id="feedback-stage" name="etape" defaultValue={filters.stage} style={s.filterInput}>
+              <option value="all">Toutes ({stageCounts.all})</option>
+              <option value="review">À examiner ({stageCounts.review})</option>
+              <option value="forward">À transmettre ({stageCounts.forward})</option>
+              <option value="response">Attente organisme ({stageCounts.response})</option>
+              <option value="close">À clôturer ({stageCounts.close})</option>
+              <option value="resolved">Clôturées ({stageCounts.resolved})</option>
+            </select>
+          </label>
+          <label style={s.filterLabel} htmlFor="feedback-type">
+            Nature
+            <select id="feedback-type" name="type" defaultValue={filters.type} style={s.filterInput}>
+              <option value="all">Réclamations et suggestions</option>
+              <option value="complaint">Réclamations</option>
+              <option value="suggestion">Suggestions</option>
+            </select>
+          </label>
+        </div>
+        <div style={s.filterActions}>
+          <button type="submit" style={s.filterButton}>Appliquer les filtres</button>
+          <Link href="/agent/daily/reclamations" style={s.secondary}>Réinitialiser</Link>
+          <span role="status" style={s.muted}>{visibleRows.length} résultat(s) sur {rows.length} · étapes ouvertes en premier</span>
+        </div>
+      </form>
+
       <section style={s.notice}>
         <strong>Source de vérité conservée</strong>
         <p style={s.muted}>Cette vue n’ajoute ni table ni workflow parallèle. Elle expose les réclamations et suggestions déjà suivies par Daily, avec leur revue Selen, leur transmission éventuelle à l’organisme, sa réponse et leur résolution.</p>
@@ -93,11 +141,14 @@ export default async function DailyStakeholderFeedbackPage() {
 
       {rows.length === 0 ? (
         <section style={s.card}><p style={s.muted}>Aucune réclamation ni suggestion enregistrée.</p></section>
+      ) : visibleRows.length === 0 ? (
+        <section style={s.card}><p style={s.muted}>Aucun retour ne correspond aux filtres. Modifiez la recherche ou réinitialisez les filtres.</p></section>
       ) : (
         <section style={s.list}>
-          {rows.map(({ item, organisation, resolved }) => {
+          {visibleRows.map(({ item, organisation, resolved }) => {
             const organisationName = organisation?.legal_name || organisation?.name || "Organisme Daily";
             const statusLabel = STATUS_LABELS[item.status] || item.status || "Statut inconnu";
+            const stage = stakeholderFeedbackStage({ item });
             return (
               <article key={item.id} style={resolved ? s.cardOk : s.cardDue}>
                 <div style={s.rowHead}>
@@ -105,6 +156,7 @@ export default async function DailyStakeholderFeedbackPage() {
                     <div style={s.badges}>
                       <span style={item.submission_type === "complaint" ? s.badgeComplaint : s.badgeSuggestion}>{TYPE_LABELS[item.submission_type] || item.submission_type}</span>
                       <span style={resolved ? s.badgeResolved : s.badgeOpen}>{statusLabel}</span>
+                      <span style={resolved ? s.badgeResolved : s.badgeOpen}>{STAGE_LABELS[stage]}</span>
                     </div>
                     <h2 style={s.h2}>{item.subject}</h2>
                     <p style={s.org}>{organisationName} · {item.stakeholder_type || "partie prenante"}</p>
@@ -147,6 +199,12 @@ const s: Record<string, React.CSSProperties> = {
   stat: { display: "grid", gap: 3, padding: 14, border: "1px solid var(--selen-border)", borderRadius: 12, background: "var(--selen-bg2)" },
   statDue: { display: "grid", gap: 3, padding: 14, border: "1px solid rgba(180,78,70,.35)", borderRadius: 12, background: "rgba(180,78,70,.08)" },
   notice: { padding: 15, border: "1px solid var(--selen-border)", borderRadius: 12, background: "var(--selen-bg2)", marginBottom: 14 },
+  filterPanel: { padding: 15, border: "1px solid var(--selen-border)", borderRadius: 12, background: "var(--selen-bg2)", marginBottom: 14 },
+  filterGrid: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" },
+  filterLabel: { display: "grid", gap: 6, flex: "1 1 180px", fontSize: 12, fontWeight: 700 },
+  filterInput: { width: "100%", minHeight: 38, padding: "8px 10px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg)", color: "var(--selen-text)" },
+  filterActions: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12, marginTop: 12 },
+  filterButton: { minHeight: 38, padding: "0 14px", border: 0, borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" },
   list: { display: "grid", gap: 12 },
   card: { padding: 18, border: "1px solid var(--selen-border)", borderRadius: 14, background: "var(--selen-bg2)" },
   cardOk: { padding: 18, border: "1px solid var(--selen-border)", borderRadius: 14, background: "var(--selen-bg2)" },
