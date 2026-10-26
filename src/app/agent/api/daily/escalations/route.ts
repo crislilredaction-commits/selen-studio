@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { getDailyPilotageTasks, canTreatDailyPilotageTask } from "@/lib/server/dailyPilotageVisibility";
 
 function text(formData: FormData, key: string) { return String(formData.get(key) ?? "").trim(); }
@@ -21,6 +22,14 @@ export async function POST(request: Request) {
   const isAdmin = adminUser?.role === "admin" || profile.role === "admin";
 
   if (action === "create") {
+    let organisationIds: string[] = [];
+    if (!isAdmin) {
+      try {
+        organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+      } catch {
+        return back(request, "error", "Impossible de vérifier votre périmètre Daily.");
+      }
+    }
     const targetType = text(formData, "target_type");
     const reason = text(formData, "reason");
     if (!reason) return back(request, "error", "Le motif de l’escalade est obligatoire.");
@@ -35,6 +44,7 @@ export async function POST(request: Request) {
       const tasks = await getDailyPilotageTasks();
       const task = tasks.find((item) => item.id === taskKey);
       if (!task || task.kind === "assignment") return back(request, "error", "Cette tâche n’est plus disponible pour une escalade.");
+      if (!isAdmin && !organisationIds.includes(task.organisationId)) return back(request, "error", "Cet organisme ne fait pas partie de votre périmètre Daily.");
       if (!canTreatDailyPilotageTask(task, { id: profile.id, role: isAdmin ? "admin" : "agent" })) return back(request, "error", "Cette tâche est assignée à un autre agent.");
       organisationId = task.organisationId;
       sessionId = sessionIdFromHref(task.href);
@@ -43,11 +53,19 @@ export async function POST(request: Request) {
     } else if (targetType === "dossier") {
       sessionId = text(formData, "session_id") || null;
       if (!sessionId) return back(request, "error", "Session manquante.");
-      const [{ data: session }, { data: dossier }] = await Promise.all([
-        admin.from("daily_sessions").select("id,organisation_id,status").eq("id", sessionId).neq("status", "archived").maybeSingle(),
-        admin.from("daily_session_dossiers").select("session_id,assigned_agent_profile_id").eq("session_id", sessionId).maybeSingle(),
-      ]);
-      if (!session || !dossier) return back(request, "error", "Dossier de session introuvable.");
+      if (!isAdmin && organisationIds.length === 0) return back(request, "error", "Ce dossier ne fait pas partie de votre périmètre Daily.");
+      let sessionQuery = admin.from("daily_sessions").select("id,organisation_id,status").eq("id", sessionId).neq("status", "archived");
+      if (!isAdmin) sessionQuery = sessionQuery.in("organisation_id", organisationIds);
+      const { data: session, error: sessionError } = await sessionQuery.maybeSingle();
+      if (sessionError || !session || (!isAdmin && !organisationIds.includes(session.organisation_id))) {
+        return back(request, "error", "Dossier de session introuvable dans votre périmètre Daily.");
+      }
+      const { data: dossier, error: dossierError } = await admin.from("daily_session_dossiers")
+        .select("session_id,assigned_agent_profile_id")
+        .eq("session_id", sessionId)
+        .eq("organisation_id", session.organisation_id)
+        .maybeSingle();
+      if (dossierError || !dossier) return back(request, "error", "Dossier de session introuvable.");
       if (!isAdmin && dossier.assigned_agent_profile_id && dossier.assigned_agent_profile_id !== profile.id) return back(request, "error", "Ce dossier est assigné à un autre agent.");
       organisationId = session.organisation_id;
       targetHref = `/agent/daily/session-dossiers/${sessionId}/full`;
