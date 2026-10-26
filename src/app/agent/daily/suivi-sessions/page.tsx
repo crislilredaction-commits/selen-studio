@@ -81,7 +81,13 @@ export default async function DailySessionFollowupPage() {
   }
 
   // Même si une référence inter-organismes est corrompue, aucun détail ne traverse le périmètre.
-  const rows = buildScopedSessionFollowupRows(entries ?? [], sessions ?? [], formations ?? [], organisations ?? [], organisationIds);
+  const rows = buildScopedSessionFollowupRows(entries ?? [], sessions ?? [], formations ?? [], organisations ?? [], organisationIds) as Array<{
+    entry: NonNullable<typeof entries>[number];
+    session: NonNullable<typeof sessions>[number] | undefined;
+    formation: NonNullable<typeof formations>[number] | undefined;
+    organisation: NonNullable<typeof organisations>[number];
+    actionable: boolean;
+  }>;
 
   const openCount = rows.filter(({ entry, actionable }) => actionable && entry.status === "open").length;
   const incidentCount = rows.filter(({ entry }) => entry.entry_type === "incident").length;
