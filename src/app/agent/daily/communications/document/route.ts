@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,26 @@ export async function GET(req: Request) {
     return Response.json({ error: "communication_id et document_id requis" }, { status: 400 });
   }
 
+  let dailyOrganisationIds: string[];
+  try {
+    dailyOrganisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  } catch {
+    return Response.json({ error: "Périmètre Daily indisponible." }, { status: 403 });
+  }
+  if (dailyOrganisationIds.length === 0) {
+    return Response.json({ error: "Accès refusé." }, { status: 403 });
+  }
+
   const admin = createSupabaseAdminClient();
+  const { data: allowedCommunication, error: communicationError } = await admin
+    .from("daily_communications")
+    .select("id")
+    .eq("id", communicationId)
+    .in("organisation_id", dailyOrganisationIds)
+    .maybeSingle();
+  if (communicationError) return Response.json({ error: "Vérification de la communication impossible." }, { status: 500 });
+  if (!allowedCommunication) return Response.json({ error: "Communication introuvable." }, { status: 404 });
+
   const { data: snapshot, error: snapshotError } = await admin
     .from("daily_communication_documents")
     .select("document_id,logical_name,document_version,sha256,storage_path")

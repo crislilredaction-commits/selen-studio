@@ -7,7 +7,7 @@ import {
   signatureReminderDueAt,
 } from "@/lib/daily/signatureReminder24h";
 import { attendanceReviewStateLabel, getAttendanceReviewHistory } from "@/lib/daily/attendanceReviewHistory";
-import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 
 type Props = {
   searchParams: Promise<{ session_id?: string }>;
@@ -122,20 +122,28 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={{ padding: 28 }}>Accès refusé.</main>;
 
+  let dailyOrganisationIds: string[];
+  try {
+    dailyOrganisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  } catch {
+    return <main style={{ padding: 28 }}>Impossible de vérifier votre périmètre Daily.</main>;
+  }
+  if (dailyOrganisationIds.length === 0) {
+    return <main style={{ padding: 28 }}>Aucun organisme Daily affecté.</main>;
+  }
+
   const { session_id: sessionId } = await searchParams;
   const admin = createSupabaseAdminClient();
   const { data: scopedSession, error: scopedSessionError } = sessionId
-    ? await admin.from("daily_sessions").select("id,organisation_id").eq("id", sessionId).maybeSingle()
+    ? await admin.from("daily_sessions").select("id,organisation_id").eq("id", sessionId).in("organisation_id", dailyOrganisationIds).maybeSingle()
     : { data: null, error: null };
   if (scopedSessionError) throw new Error(scopedSessionError.message);
-  if (sessionId && !scopedSession) return <main style={{ padding: 28 }}>Session introuvable.</main>;
-  if (scopedSession && !(await isDailyOrganisationInAgentScope(auth.email, scopedSession.organisation_id))) {
-    return <main style={{ padding: 28 }}>Accès refusé.</main>;
-  }
+  if (sessionId && !scopedSession) return <main style={{ padding: 28 }}>Session introuvable ou non autorisée.</main>;
 
   let query = admin
     .from("daily_communications")
     .select("id,organisation_id,session_id,enrolment_id,communication_type,recipient_email,recipient_name,subject,text_body,provider,provider_message_id,status,sent_at,delivered_at,failed_at,failure_reason,created_at,metadata,daily_communication_documents(document_id,document_type,logical_name,document_version,sha256,storage_path)")
+    .in("organisation_id", dailyOrganisationIds)
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -145,20 +153,30 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
   if (error) throw new Error(error.message);
 
   const communicationRows = communications ?? [];
+  // Les conventions sans communication initiale doivent rester visibles, mais uniquement
+  // pour des sessions appartenant aux organismes autorisés de l'agent.
+  const { data: scopedSignatureSessions, error: scopedSignatureSessionsError } = sessionId
+    ? { data: [{ id: sessionId }], error: null }
+    : await admin.from("daily_sessions")
+        .select("id")
+        .in("organisation_id", dailyOrganisationIds)
+        .limit(1000);
+  if (scopedSignatureSessionsError) throw new Error(scopedSignatureSessionsError.message);
+  const signatureSessionIds = (scopedSignatureSessions ?? []).map((session) => session.id);
   const sessionIds = [...new Set([sessionId, ...communicationRows.map((item) => item.session_id)].filter(Boolean))] as string[];
   const organisationIds = [...new Set([scopedSession?.organisation_id, ...communicationRows.map((item) => item.organisation_id)].filter(Boolean))] as string[];
 
-  let signatureQuery = admin
-    .from("daily_convention_signatures")
-    .select("id,convention_id,session_id,signatory_type,signatory_name,signatory_email,status,viewed_at,signed_at,expires_at,last_error,daily_conventions(id,document_name,recipient_type,recipient_name,recipient_email,company_name,version)")
-    .order("created_at", { ascending: false })
-    .limit(300);
-  if (sessionId) signatureQuery = signatureQuery.eq("session_id", sessionId);
-  else if (sessionIds.length) signatureQuery = signatureQuery.in("session_id", sessionIds);
+  const signatureQuery = signatureSessionIds.length
+    ? admin.from("daily_convention_signatures")
+        .select("id,convention_id,session_id,signatory_type,signatory_name,signatory_email,status,viewed_at,signed_at,expires_at,last_error,daily_conventions(id,document_name,recipient_type,recipient_name,recipient_email,company_name,version)")
+        .in("session_id", signatureSessionIds)
+        .order("created_at", { ascending: false })
+        .limit(300)
+    : Promise.resolve({ data: [] as SignatureRow[], error: null });
 
   const [{ data: sessions }, { data: organisations }, { data: signatures, error: signatureError }] = await Promise.all([
     sessionIds.length
-      ? admin.from("daily_sessions").select("id,internal_reference,formation_id").in("id", sessionIds)
+      ? admin.from("daily_sessions").select("id,internal_reference,formation_id").in("id", sessionIds).in("organisation_id", dailyOrganisationIds)
       : Promise.resolve({ data: [] }),
     organisationIds.length
       ? admin.from("organisations").select("id,name").in("id", organisationIds)

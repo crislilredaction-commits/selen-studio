@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 
 export const runtime = "nodejs";
 
@@ -55,11 +56,22 @@ export async function GET(req: Request) {
   const communicationId = new URL(req.url).searchParams.get("communication_id")?.trim();
   if (!communicationId) return Response.json({ error: "communication_id requis" }, { status: 400 });
 
+  let dailyOrganisationIds: string[];
+  try {
+    dailyOrganisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  } catch {
+    return Response.json({ error: "Périmètre Daily indisponible." }, { status: 403 });
+  }
+  if (dailyOrganisationIds.length === 0) {
+    return Response.json({ error: "Accès refusé." }, { status: 403 });
+  }
+
   const admin = createSupabaseAdminClient();
   const { data: communication, error } = await admin
     .from("daily_communications")
     .select("id,communication_type,recipient_email,recipient_name,subject,text_body,provider,provider_message_id,status,sent_at,delivered_at,failed_at,failure_reason,created_at")
     .eq("id", communicationId)
+    .in("organisation_id", dailyOrganisationIds)
     .maybeSingle();
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
