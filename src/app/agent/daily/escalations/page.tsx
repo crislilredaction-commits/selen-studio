@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { getDailyPilotageTasks, canTreatDailyPilotageTask } from "@/lib/server/dailyPilotageVisibility";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +24,18 @@ export default async function EscalationsPage({ searchParams }: Props) {
   ]);
   if (!profile?.id) return <main style={s.page}>Profil agent actif introuvable.</main>;
   const isAdmin = adminUser?.role === "admin" || profile.role === "admin";
+  let organisationIds: string[] = [];
+  if (!isAdmin) {
+    try {
+      organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+    } catch {
+      return <main role="alert" style={s.page}>Impossible de vérifier votre périmètre Daily. Réessayez plus tard.</main>;
+    }
+  }
 
   let query = admin.from("daily_work_escalations").select("id,organisation_id,session_id,target_type,task_key,task_title,target_href,reason,status,escalated_by,handled_by,resolution_note,created_at,updated_at,resolved_at").order("created_at", { ascending:false }).limit(60);
-  if (!isAdmin) query = query.eq("escalated_by", profile.id);
-  const { data: rows, error } = await query;
+  if (!isAdmin) query = query.eq("escalated_by", profile.id).in("organisation_id", organisationIds);
+  const { data: rows, error } = isAdmin || organisationIds.length ? await query : { data: [], error: null };
   if (error) return <main style={s.page}>Impossible de charger les escalades : {error.message}</main>;
   const escalations = rows ?? [];
   const ids = escalations.map((row) => row.id);
@@ -38,17 +47,20 @@ export default async function EscalationsPage({ searchParams }: Props) {
   for (const event of events ?? []) eventsByEscalation.set(event.escalation_id, [...(eventsByEscalation.get(event.escalation_id) ?? []), event]);
 
   const activeTaskEscalation = taskKey ? escalations.find((row) => row.task_key === taskKey && ["open","in_progress"].includes(row.status)) : null;
-  const tasks = taskKey ? await getDailyPilotageTasks() : [];
-  const selectedTask = tasks.find((item) => item.id === taskKey && canTreatDailyPilotageTask(item, { id: profile.id, role: isAdmin ? "admin" : "agent" }));
+  const tasks = taskKey && (isAdmin || organisationIds.length) ? await getDailyPilotageTasks() : [];
+  const selectedTask = tasks.find((item) => item.id === taskKey && (isAdmin || organisationIds.includes(item.organisationId)) && canTreatDailyPilotageTask(item, { id: profile.id, role: isAdmin ? "admin" : "agent" }));
 
   let dossier: { sessionId:string; organisationId:string; title:string } | null = null;
   let activeDossierEscalation = null as (typeof escalations)[number] | null;
-  if (sessionId) {
-    const { data: session } = await admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,status").eq("id", sessionId).neq("status","archived").maybeSingle();
-    if (session) {
+  if (sessionId && (isAdmin || organisationIds.length)) {
+    let sessionQuery = admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,status").eq("id", sessionId).neq("status","archived");
+    if (!isAdmin) sessionQuery = sessionQuery.in("organisation_id", organisationIds);
+    const { data: session, error: sessionError } = await sessionQuery.maybeSingle();
+    if (sessionError) return <main role="alert" style={s.page}>Impossible de vérifier ce dossier de session.</main>;
+    if (session && (isAdmin || organisationIds.includes(session.organisation_id))) {
       const [{ data: formation }, { data: dossierRow }] = await Promise.all([
-        admin.from("daily_formations").select("title").eq("id", session.formation_id).maybeSingle(),
-        admin.from("daily_session_dossiers").select("session_id,assigned_agent_profile_id").eq("session_id", sessionId).maybeSingle(),
+        admin.from("daily_formations").select("title").eq("id", session.formation_id).eq("organisation_id", session.organisation_id).maybeSingle(),
+        admin.from("daily_session_dossiers").select("session_id,assigned_agent_profile_id").eq("session_id", sessionId).eq("organisation_id", session.organisation_id).maybeSingle(),
       ]);
       if (dossierRow && (isAdmin || !dossierRow.assigned_agent_profile_id || dossierRow.assigned_agent_profile_id === profile.id)) dossier = { sessionId, organisationId:session.organisation_id, title:formation?.title || session.internal_reference || "Dossier de session" };
       activeDossierEscalation = escalations.find((row) => row.target_type === "dossier" && row.session_id === sessionId && ["open","in_progress"].includes(row.status)) ?? null;
