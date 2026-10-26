@@ -73,7 +73,8 @@ test("le planning est borné au périmètre canonique Daily ET aux affectations 
 });
 
 test("les indicateurs formation dérivent des sources Daily existantes et restent bornés aux abonnements actifs", () => {
-  assert.match(indicatorsPage, /getActiveDailyOrganisationIds/);
+  assert.match(indicatorsPage, /getDailyOrganisationIdsForAgent\(auth\.email\)/);
+  assert.doesNotMatch(indicatorsPage, /getActiveDailyOrganisationIds/);
   for (const table of [
     "daily_sessions",
     "daily_session_enrolments",

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
+import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 
 function percent(value: number, total: number) {
@@ -14,8 +15,17 @@ function average(values: Array<number | null | undefined>) {
 }
 
 export default async function DailyTrainingIndicatorsPage() {
+  const auth = await requireSupportAgent();
+  if (!auth.ok) return <main role="alert" style={s.page}>Accès refusé.</main>;
+
+  // Les lectures service-role sont strictement limitées aux OF affectés à cet agent.
+  let organisationIds: string[];
+  try {
+    organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  } catch {
+    return <main role="alert" style={s.page}>Impossible de vérifier votre périmètre Daily. Réessayez plus tard.</main>;
+  }
   const admin = createSupabaseAdminClient();
-  const organisationIds = await getActiveDailyOrganisationIds();
 
   const [organisationsResult, sessionsResult, enrolmentsResult, attendanceResult, assessmentsResult, learnerFeedbackResult, stakeholderFeedbackResult] = organisationIds.length
     ? await Promise.all([
@@ -68,7 +78,7 @@ export default async function DailyTrainingIndicatorsPage() {
         <div>
           <p style={s.kicker}>Selen Studio · Daily</p>
           <h1 style={s.h1}>Indicateurs formation</h1>
-          <p style={s.muted}>Vue consolidée calculée directement depuis les sessions, inscriptions, présences, évaluations et réponses de satisfaction des seuls organismes Daily actifs.</p>
+          <p style={s.muted}>Vue consolidée calculée directement depuis les sessions, inscriptions, présences, évaluations et réponses de satisfaction des seuls organismes Daily autorisés pour votre profil.</p>
         </div>
         <Link href="/agent/daily" style={s.secondary}>← Pilotage Daily</Link>
       </header>
