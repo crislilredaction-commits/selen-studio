@@ -1,7 +1,8 @@
 import { revalidatePath } from "next/cache";
 import { getDailyCorrectiveActionQuarterStatus } from "@/lib/daily/qualityActionCadence";
 import { getDailyWatchCadenceStatus } from "@/lib/daily/watchCadence";
-import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
+import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
+import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -23,6 +24,8 @@ async function currentAgentProfileId() {
 
 async function createWatch(formData: FormData) {
   "use server";
+  const auth = await requireSupportAgent();
+  if (!auth.ok) return;
   const type = String(formData.get("watch_type") ?? "");
   const title = String(formData.get("title") ?? "").trim();
   const url = String(formData.get("article_url") ?? "").trim();
@@ -43,18 +46,26 @@ async function createWatch(formData: FormData) {
 
 async function forceUsage(formData: FormData) {
   "use server";
+  const auth = await requireSupportAgent();
+  if (!auth.ok) return;
   const watchId = String(formData.get("watch_id") ?? "");
   const improvement = String(formData.get("improvement") ?? "").trim();
   const target = String(formData.get("organisation_id") ?? "all");
   if (!watchId || !improvement) return;
 
-  const admin = createSupabaseAdminClient();
-  const dailyOrganisationIds = await getActiveDailyOrganisationIds();
+  // Le service-role ne doit jamais contourner les affectations de l’agent.
+  const dailyOrganisationIds = await getDailyOrganisationIdsForAgent(auth.email);
   const organisationIds = target === "all"
     ? dailyOrganisationIds
     : dailyOrganisationIds.includes(target)
       ? [target]
       : [];
+  if (organisationIds.length === 0) return;
+
+  const admin = createSupabaseAdminClient();
+  const { data: activeWatch, error: watchError } = await admin.from("daily_watch_entries")
+    .select("id").eq("id", watchId).eq("status", "active").maybeSingle();
+  if (watchError || !activeWatch) return;
 
   const agentId = await currentAgentProfileId();
   const now = new Date().toISOString();
@@ -85,16 +96,23 @@ function frDate(value?: string | null) {
 }
 
 export default async function DailyQualityStudioPage() {
+  const auth = await requireSupportAgent();
+  if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
+  let dailyOrganisationIds: string[];
+  try {
+    dailyOrganisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  } catch {
+    return <main role="alert" style={s.page}>Impossible de vérifier votre périmètre Daily.</main>;
+  }
   const admin = createSupabaseAdminClient();
-  const dailyOrganisationIds = await getActiveDailyOrganisationIds();
-  const organisations = dailyOrganisationIds.length
-    ? (await admin
-        .from("organisations")
+  const { data: organisations, error: organisationsError } = dailyOrganisationIds.length
+    ? await admin.from("organisations")
         .select("id,name,legal_name,status")
         .in("id", dailyOrganisationIds)
-        .order("name")).data
-    : [];
-  const [{ data: watches }, { data: usages }, { data: qualityActions }] = await Promise.all([
+        .order("name")
+    : { data: [], error: null };
+  if (organisationsError) return <main role="alert" style={s.page}>Impossible de charger les organismes autorisés.</main>;
+  const [{ data: watches, error: watchesError }, { data: usages, error: usagesError }, { data: qualityActions, error: actionsError }] = await Promise.all([
     admin.from("daily_watch_entries").select("id,watch_type,title,article_url,analysis_and_improvement,published_at,status").order("published_at", { ascending: false }),
     dailyOrganisationIds.length
       ? admin.from("daily_organisation_watch_entries").select("watch_entry_id,interested,forced_by_studio,improvement_note,organisation_id").in("organisation_id", dailyOrganisationIds)
@@ -103,6 +121,7 @@ export default async function DailyQualityStudioPage() {
       ? admin.from("daily_quality_actions").select("category,status,created_at,updated_at,organisation_id").in("organisation_id", dailyOrganisationIds)
       : Promise.resolve({ data: [] }),
   ]);
+  if (watchesError || usagesError || actionsError) return <main role="alert" style={s.page}>Impossible de charger la qualité Daily.</main>;
   const usageRows = usages ?? [];
   const cadence = getDailyWatchCadenceStatus(watches ?? []);
   const watchReminderCount = cadence.filter((item) => !item.currentMonthCovered).length;
@@ -188,7 +207,7 @@ export default async function DailyQualityStudioPage() {
             </label>
             <label>Organismes
               <select name="organisation_id" style={s.input}>
-                <option value="all">Tous les clients Daily actifs</option>
+                <option value="all">{auth.role === "admin" ? "Tous les clients Daily actifs" : "Tous mes organismes Daily affectés"}</option>
                 {(organisations ?? []).map((organisation) => <option key={organisation.id} value={organisation.id}>{organisation.legal_name || organisation.name || organisation.id}</option>)}
               </select>
             </label>
