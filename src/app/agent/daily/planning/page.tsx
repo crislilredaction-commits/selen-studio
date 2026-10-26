@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { countOpenDailySessionChecklistItems } from "@/lib/daily/planningSessionOverview.mjs";
+import { DAILY_PLANNING_STATES, filterDailyPlanningRows, normalizeDailyPlanningQuery, normalizeDailyPlanningState } from "@/lib/daily/dailyPlanningFilters.mjs";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
@@ -62,7 +63,9 @@ function stateStyle(state: string) {
   return { color: "#8bd49c", background: "rgba(139,212,156,.12)" };
 }
 
-export default async function DailyPlanningPage() {
+type Props = { searchParams?: Promise<{ q?: string | string[]; etat?: string | string[] }> };
+
+export default async function DailyPlanningPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={{ padding: 28 }}>Accès refusé.</main>;
 
@@ -163,6 +166,11 @@ export default async function DailyPlanningPage() {
     });
 
   const activeRows = allRows.filter((row) => row?.dossierStatus === "active");
+  const params = await searchParams;
+  const query = normalizeDailyPlanningQuery(params?.q);
+  const stateFilter = normalizeDailyPlanningState(params?.etat);
+  // Les filtres s’appliquent uniquement aux dossiers déjà bornés au périmètre agent.
+  const visibleActiveRows = filterDailyPlanningRows(activeRows, query, stateFilter);
   const historyRows = allRows
     .filter((row) => row?.dossierStatus === "completed" || row?.dossierStatus === "archived")
     .sort((a, b) => (b?.end ?? b?.start ?? "").localeCompare(a?.end ?? a?.start ?? ""));
@@ -187,6 +195,22 @@ export default async function DailyPlanningPage() {
 
       <SelenCard>
         <SelenCardTitle>21 prochains jours</SelenCardTitle>
+        <form action="/agent/daily/planning" method="get" role="search" aria-label="Filtrer le planning actif" style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: 10, marginTop: 14 }}>
+          <label htmlFor="planning-search" style={{ display: "grid", gap: 5, flex: "1 1 260px", fontSize: 12, fontWeight: 700 }}>
+            Organisme, formation ou référence
+            <input id="planning-search" type="search" name="q" maxLength={80} defaultValue={query} placeholder="Rechercher une session…" style={{ minHeight: 40, padding: "8px 11px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg2)", color: "var(--selen-text)" }} />
+          </label>
+          <label htmlFor="planning-state" style={{ display: "grid", gap: 5, minWidth: 170, fontSize: 12, fontWeight: 700 }}>
+            État de préparation
+            <select id="planning-state" name="etat" defaultValue={stateFilter} style={{ minHeight: 40, padding: "8px 11px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg2)", color: "var(--selen-text)" }}>
+              <option value="all">Tous les états</option>
+              {Object.entries(DAILY_PLANNING_STATES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </label>
+          <button type="submit" style={{ minHeight: 40, padding: "8px 14px", border: 0, borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Filtrer</button>
+          {(query || stateFilter !== "all") ? <Link href="/agent/daily/planning" style={{ fontSize: 12, color: "var(--selen-text2)" }}>Réinitialiser</Link> : null}
+        </form>
+        <p role="status" style={{ fontSize: 12, color: "var(--selen-text2)", margin: "10px 0 0" }}>{visibleActiveRows.length} session{visibleActiveRows.length > 1 ? "s" : ""} sur {activeRows.length} dans le planning actif. Les filtres ne modifient pas l’historique.</p>
         <div style={{ marginTop: 14, overflowX: "auto", border: "1px solid var(--selen-border)", borderRadius: 12 }}>
           <div style={{ minWidth: 1180 }}>
             <div style={{ display: "grid", gridTemplateColumns: `260px repeat(${days.length}, 44px) 140px`, background: "var(--selen-bg3)", borderBottom: "1px solid var(--selen-border)" }}>
@@ -199,7 +223,7 @@ export default async function DailyPlanningPage() {
               <div style={{ padding: "10px 8px", fontSize: 11, color: "var(--selen-text3)", borderLeft: "1px solid var(--selen-border)" }}>État</div>
             </div>
 
-            {activeRows.map((row) => {
+            {visibleActiveRows.map((row) => {
               if (!row) return null;
               const style = stateStyle(row.state);
               return (
@@ -227,8 +251,8 @@ export default async function DailyPlanningPage() {
               );
             })}
 
-            {activeRows.length === 0 ? (
-              <div style={{ padding: 18, color: "var(--selen-text3)", fontSize: 13 }}>Aucune session Daily active accessible dans votre périmètre sur cette période.</div>
+            {visibleActiveRows.length === 0 ? (
+              <div style={{ padding: 18, color: "var(--selen-text3)", fontSize: 13 }}>{activeRows.length === 0 ? "Aucune session Daily active accessible dans votre périmètre sur cette période." : "Aucune session ne correspond aux filtres. Réinitialisez la recherche pour retrouver le planning complet."}</div>
             ) : null}
           </div>
         </div>
