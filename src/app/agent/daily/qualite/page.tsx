@@ -1,4 +1,6 @@
 import { revalidatePath } from "next/cache";
+import Link from "next/link";
+import { buildWatchPublicationRows, filterWatchPublicationRows, normalizeWatchPublicationQuery, normalizeWatchPublicationCategory, normalizeWatchPublicationView, watchPublicationMetrics } from "@/lib/daily/watchPublicationTriage.mjs";
 import { getDailyCorrectiveActionQuarterStatus } from "@/lib/daily/qualityActionCadence";
 import { getDailyWatchCadenceStatus } from "@/lib/daily/watchCadence";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
@@ -95,7 +97,9 @@ function frDate(value?: string | null) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(date);
 }
 
-export default async function DailyQualityStudioPage() {
+type Props = { searchParams?: Promise<{ q?: string | string[]; categorie?: string | string[]; vue?: string | string[] }> };
+
+export default async function DailyQualityStudioPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
   let dailyOrganisationIds: string[];
@@ -126,6 +130,14 @@ export default async function DailyQualityStudioPage() {
   const cadence = getDailyWatchCadenceStatus(watches ?? []);
   const watchReminderCount = cadence.filter((item) => !item.currentMonthCovered).length;
   const correctiveCadence = getDailyCorrectiveActionQuarterStatus(qualityActions ?? []);
+  // Recherche et triage uniquement après les lectures déjà bornées aux affectations.
+  const params = await searchParams;
+  const q = normalizeWatchPublicationQuery(params?.q);
+  const categorie = normalizeWatchPublicationCategory(params?.categorie);
+  const vue = normalizeWatchPublicationView(params?.vue);
+  const publicationRows = buildWatchPublicationRows(watches ?? [], usageRows) as Array<{ watch: NonNullable<typeof watches>[number]; interested: number; applied: number; pending: number }>;
+  const visibleRows: typeof publicationRows = filterWatchPublicationRows(publicationRows, { q, categorie, vue });
+  const publicationMetrics = watchPublicationMetrics(publicationRows);
 
   return (
     <main style={s.page}>
@@ -219,23 +231,58 @@ export default async function DailyQualityStudioPage() {
 
       <section style={s.card}>
         <h2>Veilles publiées</h2>
-        {(watches ?? []).length === 0 ? <p style={s.muted}>Aucune veille commune pour le moment.</p> : (
+        <p style={s.muted}>Retrouve les veilles communes, les organismes intéressés et les améliorations restant à appliquer. Les compteurs ne portent que sur tes organismes autorisés.</p>
+        <div style={s.summary} aria-label="État des veilles publiées">
+          <span><strong>{publicationMetrics.total}</strong> veille(s)</span>
+          <span><strong>{publicationMetrics.toApply}</strong> à exploiter</span>
+          <span><strong>{publicationMetrics.applied}</strong> déjà appliquée(s)</span>
+          <span><strong>{publicationMetrics.archived}</strong> archivée(s)</span>
+        </div>
+        <form method="get" role="search" style={s.filters}>
+          <label>Rechercher
+            <input name="q" type="search" maxLength={80} defaultValue={q} placeholder="Titre ou source" style={s.input} />
+          </label>
+          <label>Catégorie
+            <select name="categorie" defaultValue={categorie} style={s.input}>
+              <option value="all">Toutes les catégories</option>
+              <option value="regulatory">Réglementaire</option>
+              <option value="pedagogy_technology">Pédagogique et technologique</option>
+            </select>
+          </label>
+          <label>Suivi
+            <select name="vue" defaultValue={vue} style={s.input}>
+              <option value="all">Toutes les veilles</option>
+              <option value="to_apply">Intéressés, amélioration à appliquer</option>
+              <option value="applied">Amélioration appliquée</option>
+              <option value="archived">Archives</option>
+            </select>
+          </label>
+          <div style={s.filterActions}>
+            <button type="submit" style={s.primary}>Filtrer</button>
+            <Link href="/agent/daily/qualite" style={s.link}>Réinitialiser</Link>
+          </div>
+        </form>
+        <p aria-live="polite" style={s.muted}>{visibleRows.length} veille(s) affichée(s) sur {publicationMetrics.total}. Les veilles à exploiter apparaissent en premier.</p>
+        {publicationMetrics.total === 0 ? <p style={s.muted}>Aucune veille commune pour le moment.</p> : visibleRows.length === 0 ? (
+          <p style={s.muted}>Aucune veille ne correspond à ces filtres. <Link href="/agent/daily/qualite">Afficher toutes les veilles</Link></p>
+        ) : (
           <div style={s.list}>
-            {(watches ?? []).map((watch) => {
-              const rows = usageRows.filter((usage) => usage.watch_entry_id === watch.id);
-              const interested = rows.filter((usage) => usage.interested).length;
-              const forced = rows.filter((usage) => usage.forced_by_studio).length;
+            {visibleRows.map((row) => {
+              const watch = row.watch;
               return (
                 <article key={watch.id} style={s.row}>
                   <div>
                     <span style={s.badge}>{watch.watch_type === "regulatory" ? "Réglementaire" : "Pédagogique & techno"}</span>
+                    {watch.status === "archived" ? <strong style={s.attention}> · Archivée</strong> : row.pending > 0 ? <strong style={s.attention}> · À exploiter</strong> : null}
                     <h3 style={{ margin: "6px 0" }}>{watch.title}</h3>
+                    <small style={s.muted}>Publication : {frDate(watch.published_at)}</small>
                     {watch.analysis_and_improvement ? <p style={s.analysis}>{watch.analysis_and_improvement}</p> : null}
-                    <a href={watch.article_url} target="_blank" rel="noreferrer" style={s.link}>Ouvrir l’article ↗</a>
+                    <a href={watch.article_url} target="_blank" rel="noopener noreferrer" style={s.link}>Ouvrir l’article ↗</a>
                   </div>
                   <div style={s.stats}>
-                    <strong>{interested}</strong><span>organisme(s) intéressé(s)</span>
-                    <strong>{forced}</strong><span>amélioration(s) appliquée(s)</span>
+                    <strong>{row.interested}</strong><span>organisme(s) intéressé(s)</span>
+                    <strong>{row.pending}</strong><span>intéressé(s), à exploiter</span>
+                    <strong>{row.applied}</strong><span>amélioration(s) appliquée(s)</span>
                   </div>
                 </article>
               );
@@ -265,6 +312,10 @@ const s: Record<string, React.CSSProperties> = {
   form: { display: "grid", gap: 10 },
   input: { display: "block", width: "100%", boxSizing: "border-box", marginTop: 5, border: "1px solid var(--selen-border)", borderRadius: 6, background: "var(--selen-bg3)", color: "var(--selen-text)", padding: 10 },
   primary: { width: "fit-content", border: "1px solid var(--selen-gold2)", borderRadius: 6, background: "var(--selen-gold2)", color: "var(--selen-bg)", padding: "9px 12px", fontWeight: 800, cursor: "pointer" },
+  summary: { display: "flex", gap: 12, flexWrap: "wrap", margin: "12px 0", fontSize: 13 },
+  filters: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", alignItems: "end", gap: 12, margin: "16px 0" },
+  filterActions: { display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" },
+  attention: { color: "var(--selen-gold2)", fontSize: 12 },
   list: { display: "grid", gap: 10 },
   row: { display: "grid", gridTemplateColumns: "minmax(0,1fr) 210px", gap: 16, border: "1px solid var(--selen-border)", borderRadius: 8, padding: 14, background: "var(--selen-bg3)" },
   badge: { fontSize: 10, textTransform: "uppercase", color: "var(--selen-gold2)" },
