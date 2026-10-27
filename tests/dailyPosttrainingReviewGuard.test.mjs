@@ -35,7 +35,7 @@ test("Studio UI opens through the audited endpoint and disables decisions until 
   assert.match(page,/expected_updated_at:doc\.updated_at/);
   assert.match(page,/expected_status:doc\.status/);
   assert.match(page,/expected_version:doc\.version/);
-  assert.match(page,/disabled=\{!opened\}/);
+  assert.match(page,/disabled=\{!opened \|\| Boolean\(pendingId\) \|\| Boolean\(openingId\)\}/);
 });
 
 test("Studio keeps post-training tracking complete after publication",()=>{
