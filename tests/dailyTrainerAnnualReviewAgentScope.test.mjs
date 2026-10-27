@@ -24,7 +24,9 @@ test("bilans formateurs : résolution du périmètre en refus fermé", async () 
 
 test("bilans formateurs : profils bornés aux organismes affectés", async () => {
   const source = await page();
-  assert.match(source, /\.from\("daily_trainer_profiles"\)[\s\S]*?\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(source, /\.from\("daily_trainer_profiles"\)[\s\S]*?\.in\("organisation_id", scopedOrganisationIds\)/);
+  assert.match(source, /const scopedOrganisationIds = selectedOrganisation \? \[selectedOrganisation\] : dailyOrganisationIds/);
+  assert.match(source, /if \(selectedOrganisation === null\)/);
   assert.match(source, /\.eq\("active", true\)/);
   assert.match(source, /\.neq\("status", "archived"\)/);
 });

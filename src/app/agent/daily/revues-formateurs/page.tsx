@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
+import { selectTrainerReviewOrganisation, trainerReviewOrganisationOptions } from "@/lib/daily/trainerReviewOrganisationScope.mjs";
 
 function formatDate(value?: string | null) {
   if (!value) return "Non renseignée";
@@ -52,10 +53,26 @@ export default async function DailyTrainerAnnualReviewsPage({ searchParams }: Pr
     return <main style={s.page}><h1>Bilan annuel des compétences formateurs</h1><p>Aucun organisme Daily affecté.</p></main>;
   }
 
+  // Les noms proposés sont exclusivement ceux des organismes Daily autorisés.
+  const { data: organisations, error: organisationsError } = await admin
+    .from("organisations")
+    .select("id,name,legal_name")
+    .in("id", dailyOrganisationIds);
+  if (organisationsError) {
+    return <main style={s.page}><p role="alert" style={s.error}>Impossible de charger les organismes affectés.</p></main>;
+  }
+  const organisationOptions = trainerReviewOrganisationOptions(organisations ?? [], dailyOrganisationIds);
+  const selectedOrganisation = selectTrainerReviewOrganisation(params.organisme, organisationOptions);
+  if (selectedOrganisation === null) {
+    return <main style={s.page}><p role="alert" style={s.error}>Organisme non autorisé dans votre périmètre Daily.</p></main>;
+  }
+  const scopedOrganisationIds = selectedOrganisation ? [selectedOrganisation] : dailyOrganisationIds;
+  const organisationNames = new Map(organisationOptions.map((organisation) => [organisation.id, organisation.name]));
+
   const { data: trainers, error: trainersError } = await admin
     .from("daily_trainer_profiles")
     .select("id,organisation_id,display_name,professional_email,engagement_type,status,active")
-    .in("organisation_id", dailyOrganisationIds)
+    .in("organisation_id", scopedOrganisationIds)
     .eq("active", true)
     .neq("status", "archived")
     .order("display_name");
@@ -130,6 +147,12 @@ export default async function DailyTrainerAnnualReviewsPage({ searchParams }: Pr
           <label style={s.filterLabel}>Rechercher un formateur
             <input name="q" type="search" maxLength={80} defaultValue={search} placeholder="Nom ou email" style={s.filterInput} />
           </label>
+          {organisationOptions.length > 1 ? <label style={s.filterLabel}>Organisme de formation
+            <select name="organisme" defaultValue={selectedOrganisation} style={s.filterInput}>
+              <option value="">Tous les organismes affectés</option>
+              {organisationOptions.map((organisation) => <option key={organisation.id} value={organisation.id}>{organisation.name}</option>)}
+            </select>
+          </label> : null}
           <label style={s.filterLabel}>État du bilan
             <select name="state" defaultValue={state} style={s.filterInput}>
               <option value="all">Tous les états</option>
@@ -146,7 +169,7 @@ export default async function DailyTrainerAnnualReviewsPage({ searchParams }: Pr
           <button type="submit" style={s.filterButton}>Appliquer</button>
           <Link href="/agent/daily/revues-formateurs" style={s.reset}>Réinitialiser</Link>
         </form>
-        <p style={s.resultCount} aria-live="polite">{visibleRows.length} bilan(s) affiché(s) sur {rows.length}. Les bilans en attente du manager sont présentés en premier.</p>
+        <p style={s.resultCount} aria-live="polite">{visibleRows.length} bilan(s) affiché(s) sur {rows.length}{selectedOrganisation ? ` pour ${organisationNames.get(selectedOrganisation) || "l’organisme sélectionné"}` : ""}. Les bilans en attente du manager sont présentés en premier.</p>
         {rows.length === 0 ? <p style={s.muted}>Aucun formateur actif à suivre.</p> : visibleRows.length === 0 ? (
           <p style={s.muted}>Aucun bilan ne correspond aux filtres sélectionnés.</p>
         ) : (
@@ -160,6 +183,7 @@ export default async function DailyTrainerAnnualReviewsPage({ searchParams }: Pr
                   <div>
                     <strong>{trainer.display_name || trainer.professional_email || "Formateur sans nom affiché"}</strong>
                     <p style={s.meta}>{trainer.professional_email || "Email non renseigné"} · {trainer.engagement_type === "subcontractor" ? "Sous-traitant" : "Formateur"}</p>
+                    <p style={s.meta}>OF : <Link href={`/agent/daily/organisations/${encodeURIComponent(trainer.organisation_id)}`} style={s.orgLink}>{organisationNames.get(trainer.organisation_id) || "Organisme Daily"}</Link></p>
                   </div>
                   <div style={s.statusBox}>
                     <span style={complete ? s.statusOk : s.statusDue}>{label}</span>
@@ -201,6 +225,7 @@ const s: Record<string, React.CSSProperties> = {
   rowOk: { display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(250px,auto)", gap: 14, padding: 14, border: "1px solid rgba(74,150,104,.32)", borderRadius: 9, background: "rgba(74,150,104,.06)" },
   rowDue: { display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(250px,auto)", gap: 14, padding: 14, border: "1px solid rgba(201,148,58,.38)", borderRadius: 9, background: "rgba(201,148,58,.06)" },
   meta: { margin: "5px 0 0", color: "var(--selen-text3)", fontSize: 11 },
+  orgLink: { color: "var(--selen-gold2)", fontWeight: 700 },
   statusBox: { display: "grid", justifyItems: "end", gap: 3 },
   statusOk: { fontSize: 11, fontWeight: 800, color: "var(--selen-success)" },
   statusDue: { fontSize: 11, fontWeight: 800, color: "var(--selen-gold2)" },
