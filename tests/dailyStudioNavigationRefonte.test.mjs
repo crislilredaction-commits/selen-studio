@@ -1,24 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { DAILY_STUDIO_NAV_GROUPS, dailyStudioNavigationSections, isDailyStudioNavLinkActive } from "../src/lib/daily/dailyStudioNavigation.mjs";
+import { DAILY_STUDIO_NAV_GROUPS, dailyStudioNavigationSections, dailyStudioAdministrationLinks, isDailyStudioNavLinkActive } from "../src/lib/daily/dailyStudioNavigation.mjs";
 
-test("navigation regroupée : tous les accès métier V1, sans doublon", () => {
-  assert.deepEqual(DAILY_STUDIO_NAV_GROUPS.map(group => group.label), ["Pilotage", "Dossiers", "Qualité et outils"]);
-  const links = dailyStudioNavigationSections(true).flatMap(group => group.links);
-  assert.equal(links.length, 10);
-  assert.equal(new Set(links.map(link => link.href)).size, links.length);
-  assert.ok(links.some(link => link.href === "/agent/daily/escalations"));
-  assert.ok(links.some(link => link.href === "/agent/daily/veille-proposee"));
+test("navigation regroupée : cinq rubriques et outils métier préservés sans doublon", () => {
+  assert.deepEqual(DAILY_STUDIO_NAV_GROUPS.map(group => group.label), ["Tableau de bord", "Organismes", "Sessions", "Candidatures", "Administration"]);
+  const primary = dailyStudioNavigationSections(true).flatMap(group => group.links);
+  const tools = dailyStudioAdministrationLinks(true);
+  assert.equal(primary.length, 5);
+  assert.equal(tools.length, 10);
+  const routes = [...primary, ...tools].map(link => link.href);
+  assert.equal(new Set(routes).size, routes.length);
+  assert.ok(tools.some(link => link.href === "/agent/daily/escalations"));
+  assert.ok(tools.some(link => link.href === "/agent/daily/veille-proposee"));
 });
 
-test("le générateur réservé à la propriétaire disparaît des liens des agents", () => {
-  const agent = dailyStudioNavigationSections(false).flatMap(group => group.links);
-  const owner = dailyStudioNavigationSections(true).flatMap(group => group.links);
+test("le générateur réservé à la propriétaire disparaît du hub des agents", () => {
+  const agent = dailyStudioAdministrationLinks(false);
+  const owner = dailyStudioAdministrationLinks(true);
   assert.equal(agent.length, 9);
   assert.ok(agent.every(link => !link.ownerOnly));
   assert.equal(owner.filter(link => link.ownerOnly).length, 1);
-  assert.equal(dailyStudioNavigationSections(undefined).flatMap(group => group.links).length, 9);
+  assert.equal(dailyStudioAdministrationLinks(undefined).length, 9);
+  assert.equal(dailyStudioNavigationSections(false).flatMap(group => group.links).length, 5);
 });
 
 test("repère actif exact au niveau racine, conservé sur les sous-dossiers", () => {
