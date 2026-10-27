@@ -47,7 +47,7 @@ export default async function DailyPreauditPage({ searchParams }: { searchParams
  const query = normalizePreauditQuery(params?.q);
  const view = normalizePreauditView(params?.vue);
  const summary = preauditSummary(cards);
- const visibleCards = filterPreauditCards(cards, { query, view });
+ const visibleCards: typeof cards = filterPreauditCards(cards, { query, view });
  return <main style={s.page}>
   <header style={s.header}><div><p style={s.kicker}>Selen Studio · Daily</p><h1>Pré-audit Qualiopi</h1><p style={s.muted}>Organismes certifiés avec surveillance ou renouvellement dans les trois prochains mois. Les contrôles sont des signaux de préparation, pas une décision de conformité.</p></div><strong>{cards.length} organisme(s) à préparer</strong></header>
   <section aria-label="Synthèse des pré-audits" style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:16}}>
