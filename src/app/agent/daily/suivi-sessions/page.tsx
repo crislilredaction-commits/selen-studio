@@ -3,7 +3,7 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { buildScopedSessionFollowupRows } from "@/lib/daily/sessionFollowupScope.mjs";
-import { normalizeSessionFollowupFilters, filterSessionFollowupRows, countSessionFollowupStates } from "@/lib/daily/sessionFollowupFilters.mjs";
+import { normalizeSessionFollowupFilters, resolveSessionFollowupOrganisationSelection, filterSessionFollowupRows, countSessionFollowupStates } from "@/lib/daily/sessionFollowupFilters.mjs";
 
 const TYPE_LABELS: Record<string, string> = {
   incident: "Incident",
@@ -35,7 +35,7 @@ function formatSessionDates(startDate?: string | null, endDate?: string | null) 
   return start && end && start !== end ? `${start} → ${end}` : start || end || "Dates non renseignées";
 }
 
-type Props = { searchParams?: Promise<{ q?: string | string[]; etat?: string | string[]; niveau?: string | string[]; type?: string | string[] }> };
+type Props = { searchParams?: Promise<{ organisation_id?: string | string[]; q?: string | string[]; etat?: string | string[]; niveau?: string | string[]; type?: string | string[] }> };
 
 export default async function DailySessionFollowupPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
@@ -52,39 +52,50 @@ export default async function DailySessionFollowupPage({ searchParams }: Props) 
     return <main style={s.page}><p>Aucun organisme Daily actif dans votre périmètre.</p></main>;
   }
 
+  const params = (await searchParams) ?? {};
+  const selection = resolveSessionFollowupOrganisationSelection(params.organisation_id, organisationIds);
+  if (!selection.valid) return <main role="alert" style={s.page}>Organisme indisponible dans votre périmètre Daily.</main>;
+
   const admin = createSupabaseAdminClient();
+  const { data: organisations, error: organisationsError } = await admin
+    .from("organisations")
+    .select("id,name,legal_name,status")
+    .in("id", organisationIds)
+    .neq("status", "archived");
+  if (organisationsError) return <main style={s.page}><p style={s.error}>Impossible de charger les organismes Daily.</p></main>;
+  const activeOrganisationIds = (organisations ?? []).map((organisation) => organisation.id);
+  if (selection.id && !activeOrganisationIds.includes(selection.id)) {
+    return <main role="alert" style={s.page}>Organisme indisponible dans votre périmètre Daily.</main>;
+  }
+  const scopedOrganisationIds = selection.id ? [selection.id] : activeOrganisationIds;
+  if (scopedOrganisationIds.length === 0) return <main style={s.page}><p>Aucun organisme Daily actif dans votre périmètre.</p></main>;
+
   const [
     { data: entries, error: entriesError },
     { data: sessions, error: sessionsError },
     { data: formations, error: formationsError },
-    { data: organisations, error: organisationsError },
   ] = await Promise.all([
     admin
       .from("daily_session_followup_entries")
       .select("id,organisation_id,session_id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,author_role,author_name,created_at,updated_at")
-      .in("organisation_id", organisationIds)
+      .in("organisation_id", scopedOrganisationIds)
       .order("occurred_at", { ascending: false }),
     admin
       .from("daily_sessions")
       .select("id,organisation_id,formation_id,internal_reference,start_date,end_date,status")
-      .in("organisation_id", organisationIds),
+      .in("organisation_id", scopedOrganisationIds),
     admin
       .from("daily_formations")
       .select("id,organisation_id,title,status,archived_at")
-      .in("organisation_id", organisationIds),
-    admin
-      .from("organisations")
-      .select("id,name,legal_name,status")
-      .in("id", organisationIds)
-      .neq("status", "archived"),
+      .in("organisation_id", scopedOrganisationIds),
   ]);
 
-  if (entriesError || sessionsError || formationsError || organisationsError) {
+  if (entriesError || sessionsError || formationsError) {
     return <main style={s.page}><p style={s.error}>Impossible de charger le suivi des sessions Daily.</p></main>;
   }
 
   // Même si une référence inter-organismes est corrompue, aucun détail ne traverse le périmètre.
-  const rows = buildScopedSessionFollowupRows(entries ?? [], sessions ?? [], formations ?? [], organisations ?? [], organisationIds) as Array<{
+  const rows = buildScopedSessionFollowupRows(entries ?? [], sessions ?? [], formations ?? [], organisations ?? [], scopedOrganisationIds) as Array<{
     entry: NonNullable<typeof entries>[number];
     session: NonNullable<typeof sessions>[number] | undefined;
     formation: NonNullable<typeof formations>[number] | undefined;
@@ -93,7 +104,7 @@ export default async function DailySessionFollowupPage({ searchParams }: Props) 
   }>;
 
   // Les filtres portent exclusivement sur les lignes déjà autorisées, jamais sur une requête globale.
-  const filters = normalizeSessionFollowupFilters((await searchParams) ?? {});
+  const filters = normalizeSessionFollowupFilters(params);
   const visibleRows = filterSessionFollowupRows(rows, filters) as typeof rows;
   const stateCounts = countSessionFollowupStates(rows);
   const openCount = rows.filter(({ entry, actionable }) => actionable && entry.status === "open").length;
@@ -120,6 +131,15 @@ export default async function DailySessionFollowupPage({ searchParams }: Props) 
 
       <form method="get" action="/agent/daily/suivi-sessions" style={s.filterPanel} aria-label="Rechercher et filtrer les suivis">
         <div style={s.filterGrid}>
+          <label style={s.filterLabel} htmlFor="followup-organisation">
+            Organisme
+            <select id="followup-organisation" name="organisation_id" defaultValue={selection.id ?? ""} style={s.filterInput}>
+              <option value="">Tous mes organismes</option>
+              {(organisations ?? []).map((organisation) => (
+                <option key={organisation.id} value={organisation.id}>{organisation.legal_name || organisation.name || "Organisme Daily"}</option>
+              ))}
+            </select>
+          </label>
           <label style={s.filterLabel} htmlFor="followup-search">
             Recherche
             <input id="followup-search" name="q" type="search" maxLength={80} defaultValue={filters.q} placeholder="Organisme, formation, session, événement…" style={s.filterInput} />
