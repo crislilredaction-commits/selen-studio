@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { buildScopedSessionFollowupRows } from "../src/lib/daily/sessionFollowupScope.mjs";
+import { countSessionFollowupStates } from "../src/lib/daily/sessionFollowupFilters.mjs";
 
 const page = () => readFile(new URL("../src/app/agent/daily/suivi-sessions/page.tsx", import.meta.url), "utf8");
 
@@ -16,15 +17,18 @@ test("suivi sessions : authentification et périmètre agent avant toute lecture
   assert.doesNotMatch(source, /getActiveDailyOrganisationIds/);
 });
 
-test("suivi sessions : les quatre lectures sont limitées aux organismes autorisés", async () => {
+test("suivi sessions : les lectures métier sont bornées à l’organisme sélectionné", async () => {
   const source = await page();
   for (const table of ["daily_session_followup_entries", "daily_sessions", "daily_formations"]) {
     const section = source.split('.from("' + table + '")')[1]?.split("\n    admin")[0] ?? "";
-    assert.match(section, /\.in\("organisation_id", organisationIds\)/, table);
+    assert.match(section, /\.in\("organisation_id", scopedOrganisationIds\)/, table);
   }
   const orgSection = source.split('.from("organisations")')[1]?.split("\n    admin")[0] ?? "";
   assert.match(orgSection, /\.in\("id", organisationIds\)/);
-  assert.match(source, /if \(entriesError \|\| sessionsError \|\| formationsError \|\| organisationsError\)/);
+  assert.match(source, /if \(entriesError \|\| sessionsError \|\| formationsError\)/);
+  assert.ok(source.indexOf("resolveSessionFollowupOrganisationSelection(params.organisation_id") < source.indexOf('.from("daily_session_followup_entries")'));
+  assert.match(source, /selection\.id \? \[selection\.id\] : activeOrganisationIds/);
+  assert.match(source, /if \(selection\.id && !activeOrganisationIds\.includes\(selection\.id\)\)/);
   assert.doesNotMatch(source, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
 });
 
@@ -64,4 +68,19 @@ test("suivi sessions : historique conservé en lecture seule, données sources i
   assert.equal(rows[0].actionable, false);
   assert.deepEqual(buildScopedSessionFollowupRows(entries, sessions, [], organisations, []), []);
   assert.deepEqual(entries, [{ id: "a", organisation_id: "A", session_id: "SA" }]);
+});
+
+test("suivi sessions : compteurs isolés entre deux organismes homonymes", () => {
+  const entries = [
+    { id: "a", organisation_id: "A", session_id: "SA", status: "open", level: "critical" },
+    { id: "b", organisation_id: "B", session_id: "SB", status: "resolved", level: "info" },
+  ];
+  const sessions = [
+    { id: "SA", organisation_id: "A", status: "active" },
+    { id: "SB", organisation_id: "B", status: "active" },
+  ];
+  const organisations = [{ id: "A", name: "Même nom" }, { id: "B", name: "Même nom" }];
+  const rows = buildScopedSessionFollowupRows(entries, sessions, [], organisations, ["B"]);
+  assert.deepEqual(rows.map((row) => row.entry.id), ["b"]);
+  assert.deepEqual(countSessionFollowupStates(rows), { all: 1, open: 0, resolved: 1, history: 0 });
 });

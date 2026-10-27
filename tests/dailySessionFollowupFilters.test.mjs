@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import {
   normalizeSessionFollowupFilters, sessionFollowupState,
-  countSessionFollowupStates, filterSessionFollowupRows,
+  countSessionFollowupStates, filterSessionFollowupRows, resolveSessionFollowupOrganisationSelection,
 } from "../src/lib/daily/sessionFollowupFilters.mjs";
 
 const source = readFileSync(new URL("../src/app/agent/daily/suivi-sessions/page.tsx", import.meta.url), "utf8");
@@ -57,4 +57,15 @@ test("filtres : source immuable et périmètre agent appliqué avant tout filtre
   assert.ok(scope >= 0 && filters > scope);
   assert.match(source, /getDailyOrganisationIdsForAgent\(auth.email\)/);
   assert.doesNotMatch(source, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
+});
+
+test("suivi sessions : organisme inconnu ou non affecté refusé avant les lectures", () => {
+  assert.deepEqual(resolveSessionFollowupOrganisationSelection(undefined, ["A", "B"]), { id: null, valid: true });
+  assert.deepEqual(resolveSessionFollowupOrganisationSelection("B", ["A", "B"]), { id: "B", valid: true });
+  assert.deepEqual(resolveSessionFollowupOrganisationSelection(["B", "C"], ["A", "B"]), { id: "B", valid: true });
+  for (const invalid of ["C", "x".repeat(101), [], ["C"]]) {
+    assert.deepEqual(resolveSessionFollowupOrganisationSelection(invalid, ["A", "B"]), { id: null, valid: false });
+  }
+  assert.match(source, /name="organisation_id"/);
+  assert.match(source, /scopedOrganisationIds = selection\.id \? \[selection\.id\] : activeOrganisationIds/);
 });

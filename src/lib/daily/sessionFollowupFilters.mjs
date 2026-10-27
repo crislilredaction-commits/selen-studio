@@ -64,3 +64,11 @@ export function filterSessionFollowupRows(rows, filters) {
     return bDate - aDate;
   });
 }
+
+/** Refuse tout organisme non affecté avant les lectures service-role du suivi. */
+export function resolveSessionFollowupOrganisationSelection(raw, allowedIds) {
+  if (raw === undefined || raw === null || raw === "") return { id: null, valid: true };
+  const id = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof id !== "string" || id.length > 100 || !allowedIds.includes(id)) return { id: null, valid: false };
+  return { id, valid: true };
+}
