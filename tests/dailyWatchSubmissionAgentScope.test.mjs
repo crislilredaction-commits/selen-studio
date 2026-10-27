@@ -16,7 +16,10 @@ test("veilles proposées : accès Studio vérifié avant lecture service-role", 
 });
 
 test("veilles proposées : liste des propositions limitée aux organismes affectés", () => {
-  assert.match(view, /\.from\("daily_watch_submissions"\)[\s\S]*?\.eq\("status", "pending"\)[\s\S]*?\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(view, /\.from\("daily_watch_submissions"\)[\s\S]*?\.eq\("status", "pending"\)[\s\S]*?\.in\("organisation_id", scopedOrganisationIds\)/);
+  assert.match(view, /\.from\("organisations"\)[\s\S]*?\.in\("id", dailyOrganisationIds\)/);
+  assert.ok(view.indexOf("if (selectedOrganisation === null)") < view.indexOf('.from("daily_watch_submissions")'));
+  assert.match(view, /const scopedOrganisationIds = selectedOrganisation \? \[selectedOrganisation\] : organisationOptions\.map/);
   assert.doesNotMatch(view, /getActiveDailyOrganisationIds/);
 });
 
