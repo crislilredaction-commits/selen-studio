@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { matchesPretrainingDocument, matchesPretrainingReviewStep, normalizePretrainingQuery, pretrainingPriority } from "@/lib/daily/pretrainingDocumentTriage";
+import { matchesPretrainingDocument, matchesPretrainingReviewStep, normalizePretrainingQuery, pretrainingPriority } from "@/lib/daily/pretrainingDocumentTriage.mjs";
 
 type PreparationSession = { id:string; organisation_id:string; internal_reference?:string|null; start_date?:string|null; daily_formations?:{title?:string|null}|null };
 type ContractualEnrolment = {id:string;learner_id:string;name:string;updated_at:string;contracting_party_type:"individual"|"company"|null;company_name:string|null;issue:string|null};
