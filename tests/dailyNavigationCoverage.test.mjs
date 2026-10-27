@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { dailyStudioNavigationSections, dailyStudioAdministrationLinks } from "../src/lib/daily/dailyStudioNavigation.mjs";
 
 const layout = await readFile(new URL("../src/app/agent/daily/layout.tsx", import.meta.url), "utf8");
 const nav = await readFile(new URL("../src/components/daily/DailyStudioNavigation.tsx", import.meta.url), "utf8");
@@ -12,22 +13,26 @@ const indicatorsPage = await readFile(new URL("../src/app/agent/daily/indicateur
 const organisationLayout = await readFile(new URL("../src/app/agent/daily/organisations/[id]/layout.tsx", import.meta.url), "utf8");
 const globalCss = await readFile(new URL("../src/app/globals.css", import.meta.url), "utf8");
 
-test("la navigation Studio Daily reste concentrée sur les entrées métier V1", () => {
-  const expectedRoutes = [
+test("la navigation Studio Daily garde cinq entrées principales sans perdre les outils secondaires", () => {
+  const primary = dailyStudioNavigationSections(false).flatMap(group => group.links.map(link => link.href));
+  assert.deepEqual(primary, [
     "/agent/daily",
-    "/agent/daily/planning",
     "/agent/daily/organisations",
-    "/agent/daily/preaudit",
-    "/agent/daily/qualite",
-  ];
-  for (const route of expectedRoutes) assert.ok(navConfig.includes('href: "' + route + '"'), route);
+    "/agent/daily/planning",
+    "/agent/daily/candidatures",
+    "/agent/daily/administration",
+  ]);
+  const secondary = dailyStudioAdministrationLinks(false).map(link => link.href);
+  for (const route of ["/agent/daily/preaudit", "/agent/daily/qualite", "/agent/daily/communications"]) {
+    assert.ok(secondary.includes(route), route);
+  }
   for (const hiddenRoute of [
     "/agent/daily/session-dossiers",
     "/agent/daily/indicateurs",
     "/agent/daily/pretraining-documents",
     "/agent/daily/posttraining-documents",
     "/agent/daily/communications",
-  ]) assert.ok(!navConfig.includes('href: "' + hiddenRoute + '"'), hiddenRoute);
+  ]) assert.ok(!primary.includes(hiddenRoute), hiddenRoute);
 });
 
 test("E1a garde le générateur réservé à la propriétaire dans la navigation Daily", () => {
