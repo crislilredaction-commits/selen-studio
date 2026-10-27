@@ -1,0 +1,90 @@
+/* Deux représentations d'une même liste autorisée, sans requête supplémentaire. */
+.mobileList {
+  display: none;
+}
+
+.desktopTimeline {
+  display: block;
+}
+
+.mobileCard {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--selen-border);
+  border-radius: 12px;
+  background: var(--selen-bg2);
+  color: var(--selen-text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.mobileCard:focus-visible {
+  outline: 3px solid var(--selen-gold2);
+  outline-offset: 3px;
+}
+
+.mobileCardHeading,
+.mobileFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobileCardHeading strong {
+  font-size: 14px;
+}
+
+.mobileState {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mobileFormation {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mobileMeta,
+.mobileFooter {
+  font-size: 12px;
+  color: var(--selen-text2);
+}
+
+.mobileFooter {
+  padding-top: 8px;
+  border-top: 1px solid var(--selen-border);
+}
+
+.mobileFooter strong {
+  color: var(--selen-gold2);
+}
+
+.mobileEmpty {
+  margin: 0;
+  padding: 14px;
+  color: var(--selen-text2);
+}
+
+@media (max-width: 820px) {
+  .desktopTimeline {
+    display: none;
+  }
+
+  .mobileList {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .mobileCard {
+    min-height: 104px;
+  }
+}
