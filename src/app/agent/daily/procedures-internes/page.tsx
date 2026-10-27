@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { filterAndPrioritizeProcedures, normalizeProcedureQuery, normalizeProcedureView } from "@/lib/daily/internalProceduresTriage.mjs";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
@@ -25,7 +26,9 @@ function needsAnnualReview(reviewedAt?: string | null, updatedAt?: string | null
   return timestamp < Date.now() - 365 * 24 * 60 * 60 * 1000;
 }
 
-export default async function DailyInternalProceduresPage() {
+type Props = { searchParams?: Promise<{ q?: string | string[]; vue?: string | string[] }> };
+
+export default async function DailyInternalProceduresPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={s.page}><p>Accès refusé.</p></main>;
 
@@ -64,13 +67,24 @@ export default async function DailyInternalProceduresPage() {
 
   const organisationById = new Map((organisations ?? []).map((organisation) => [organisation.id, organisation]));
   const rows = (procedures ?? []).map((procedure) => ({
-    procedure,
+    procedure: { ...procedure, internalTypeLabel: PROCEDURE_LABELS[procedure.procedure_type] || procedure.procedure_type },
     organisation: organisationById.get(procedure.organisation_id),
     annualReviewDue: needsAnnualReview(procedure.reviewed_at, procedure.updated_at),
   }));
   const activeCount = rows.filter(({ procedure }) => procedure.status === "active").length;
   const draftCount = rows.filter(({ procedure }) => procedure.status === "draft").length;
   const annualReviewDueCount = rows.filter(({ annualReviewDue }) => annualReviewDue).length;
+  const params = await searchParams;
+  const query = normalizeProcedureQuery(params?.q);
+  const view = normalizeProcedureView(params?.vue);
+  // Les filtres et le tri ne portent que sur les lignes déjà bornées aux affectations.
+  const visibleRows = filterAndPrioritizeProcedures(rows, query, view) as typeof rows;
+  const viewHref = (nextView: "all" | "due" | "draft" | "active") => {
+    const search = new URLSearchParams();
+    if (query) search.set("q", query);
+    if (nextView !== "all") search.set("vue", nextView);
+    return search.size ? `/agent/daily/procedures-internes?${search.toString()}` : "/agent/daily/procedures-internes";
+  };
 
   return (
     <main style={s.page}>
@@ -95,9 +109,36 @@ export default async function DailyInternalProceduresPage() {
         <p style={s.muted}>Chaque procédure doit rester datée et vérifiée au moins une fois par an. Cette vue ne crée aucun doublon et ne modifie aucune procédure : elle signale seulement les brouillons et les revues annuelles à prévoir.</p>
       </section>
 
-      {rows.length === 0 ? <section style={s.card}><p style={s.muted}>Aucune procédure interne enregistrée.</p></section> : (
+      <section style={s.notice} aria-label="Rechercher et prioriser les procédures">
+        <form action="/agent/daily/procedures-internes" method="get" role="search" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+          {view !== "all" ? <input type="hidden" name="vue" value={view} /> : null}
+          <label htmlFor="procedures-search" style={{ flex: "1 1 260px", fontSize: 12, fontWeight: 700 }}>
+            Rechercher un organisme, une procédure ou un objet
+            <input id="procedures-search" type="search" name="q" maxLength={80} defaultValue={query} placeholder="Organisme, titre, objet…" style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 6, minHeight: 40, padding: "8px 11px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg3)", color: "var(--selen-text)" }} />
+          </label>
+          <button type="submit" style={{ minHeight: 40, padding: "8px 14px", border: 0, borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Rechercher</button>
+          {query ? <Link href={view === "all" ? "/agent/daily/procedures-internes" : `/agent/daily/procedures-internes?vue=${view}`} style={s.link}>Effacer</Link> : null}
+        </form>
+        <nav aria-label="Filtrer les procédures par priorité" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+          {([
+            { key: "all", label: "Toutes", count: rows.length },
+            { key: "due", label: "Revue à prévoir", count: annualReviewDueCount },
+            { key: "draft", label: "Brouillons", count: draftCount },
+            { key: "active", label: "Actives", count: activeCount },
+          ] as const).map((item) => (
+            <Link key={item.key} href={viewHref(item.key)} aria-current={view === item.key ? "page" : undefined} style={{ border: "1px solid var(--selen-border)", borderRadius: 999, padding: "7px 12px", textDecoration: "none", fontSize: 12, fontWeight: 700, background: view === item.key ? "var(--selen-gold2)" : "var(--selen-bg3)", color: view === item.key ? "var(--selen-bg)" : "var(--selen-text)" }}>
+              {item.label} ({item.count})
+            </Link>
+          ))}
+        </nav>
+        <p role="status" style={s.muted}>{visibleRows.length} procédure{visibleRows.length > 1 ? "s" : ""} affichée{visibleRows.length > 1 ? "s" : ""}. Les revues annuelles à prévoir apparaissent en premier.</p>
+      </section>
+
+      {rows.length === 0 ? <section style={s.card}><p style={s.muted}>Aucune procédure interne enregistrée.</p></section> : visibleRows.length === 0 ? (
+        <section style={s.card}><p style={s.muted}>Aucune procédure ne correspond à ces filtres.</p><Link href="/agent/daily/procedures-internes" style={s.link}>Afficher toutes les procédures</Link></section>
+      ) : (
         <section style={s.list}>
-          {rows.map(({ procedure, organisation, annualReviewDue }) => {
+          {visibleRows.map(({ procedure, organisation, annualReviewDue }) => {
             const organisationName = organisation?.legal_name || organisation?.name || "Organisme Daily";
             return (
               <article key={procedure.id} style={procedure.status === "active" && !annualReviewDue ? s.cardOk : s.cardDue}>
