@@ -7,7 +7,9 @@ const source = readFileSync(new URL("../src/app/agent/daily/revues-formateurs/pa
 test("annual review triage keeps the agent boundary before filtering", () => {
   assert.match(source, /requireSupportAgent\(\)/);
   assert.match(source, /getDailyOrganisationIdsForAgent\(auth\.email\)/);
-  assert.match(source, /\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(source, /\.in\("organisation_id", scopedOrganisationIds\)/);
+  assert.match(source, /const scopedOrganisationIds = selectedOrganisation \? \[selectedOrganisation\] : dailyOrganisationIds/);
+  assert.match(source, /if \(selectedOrganisation === null\)/);
   assert.match(source, /\.in\("trainer_profile_id", trainerIds\)/);
   assert.match(source, /const visibleRows = rows/);
   assert.doesNotMatch(source, /\.(?:insert|update|upsert|delete)\(/);
@@ -36,7 +38,7 @@ test("review state filters distinguish trainer, manager and completed", () => {
   assert.match(source, /\["all", "manager", "trainer", "complete"\]\.includes/);
 });
 
-test("review list is prioritized, counts remain global and empty filters are explained", () => {
+test("review list is prioritized, counts match the selected scope and empty filters are explained", () => {
   assert.match(source, /\.sort\(\(a, b\) => reviewPriority\(a\.review\) - reviewPriority\(b\.review\)/);
   assert.match(source, /visibleRows\.map\(/);
   assert.match(source, /visibleRows\.length\} bilan\(s\) affiché\(s\) sur \{rows\.length\}/);
