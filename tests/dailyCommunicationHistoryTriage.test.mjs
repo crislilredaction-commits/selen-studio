@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   communicationHistoryMetrics, filterCommunicationHistory,
+  communicationOrganisationOptions, selectCommunicationOrganisation,
   isCommunicationFailure, normalizeCommunicationQuery,
   normalizeCommunicationStatus, normalizeCommunicationType,
 } from "../src/lib/daily/communicationHistoryTriage.mjs";
@@ -48,10 +49,38 @@ test("communications : filtrage uniquement après périmètre et sans mutation m
   const auth = page.indexOf("requireSupportAgent()");
   const scope = page.indexOf("getDailyOrganisationIdsForAgent(auth.email)", auth);
   const admin = page.indexOf("createSupabaseAdminClient()", scope);
-  const bounded = page.indexOf('.in("organisation_id", dailyOrganisationIds)', admin);
+  const bounded = page.indexOf('.in("organisation_id", scopedOrganisationIds)', admin);
   const filtered = page.indexOf("filterCommunicationHistory(", bounded);
   assert.ok(auth >= 0 && auth < scope && scope < admin && admin < bounded && bounded < filtered);
   assert.match(page, /name="session_id" value=\{sessionId\}/);
   assert.match(page, /communicationRows\.map\(/);
+  assert.doesNotMatch(page, /\.(?:insert|update|upsert|delete)\(/);
+});
+
+test("communications : sélection organisme autorisée et sans repli vers tous", () => {
+  const options = communicationOrganisationOptions([
+    { id: "b", legal_name: "Zèbre", status: "archived" },
+    { id: "a", name: "École Aube", status: "active" },
+    { id: "a", name: "Doublon" },
+    { id: "hors", name: "Hors périmètre" },
+  ], ["a", "b"]);
+  assert.deepEqual(options, [{ id: "a", name: "École Aube" }, { id: "b", name: "Zèbre" }]);
+  assert.equal(selectCommunicationOrganisation(undefined, options), "");
+  assert.equal(selectCommunicationOrganisation(["a", "b"], options), "a");
+  assert.equal(selectCommunicationOrganisation("b", options), "b");
+  for (const invalid of ["hors", "inconnu", {}, null, ["hors", "a"]]) {
+    assert.equal(selectCommunicationOrganisation(invalid, options), null);
+  }
+});
+
+test("communications : sélection refusée avant toute lecture métier, y compris les signatures", () => {
+  const page = readFileSync(new URL("../src/app/agent/daily/communications/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /name="organisation_id"/);
+  assert.match(page, /selectCommunicationOrganisation\(organisationParam, organisationOptions\)/);
+  assert.match(page, /selectedOrganisationId === null/);
+  assert.ok(page.indexOf("selectedOrganisationId === null") < page.indexOf('from("daily_communications")'));
+  assert.match(page, /\.in\("organisation_id", scopedOrganisationIds\)/);
+  assert.match(page, /scopedSignatureSessions[\s\S]*?\.in\("organisation_id", scopedOrganisationIds\)/);
+  assert.match(page, /\.eq\("id", sessionId\)\.in\("organisation_id", scopedOrganisationIds\)/);
   assert.doesNotMatch(page, /\.(?:insert|update|upsert|delete)\(/);
 });
