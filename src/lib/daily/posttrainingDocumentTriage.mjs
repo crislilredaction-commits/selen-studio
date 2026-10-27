@@ -34,7 +34,9 @@ export function filterPosttrainingDocuments(rows, options = {}) {
   const query = comparable(normalizePosttrainingQuery(options.query));
   const view = normalizePosttrainingView(options.view);
   const type = normalizePosttrainingType(options.type);
+  const organisationId = typeof options.organisationId === "string" ? options.organisationId : "";
   return rows.filter(row => {
+    if (organisationId && row.organisation_id !== organisationId) return false;
     if (type !== "all" && row.document_type !== type) return false;
     if (view === "attention" && !attention.has(row.status)) return false;
     if (view === "corrections" && row.status !== "correction_requested") return false;

@@ -2,17 +2,22 @@
 import { useCallback,useEffect,useMemo,useRef,useState } from "react";
 import { filterPosttrainingDocuments, posttrainingDocumentMetrics } from "@/lib/daily/posttrainingDocumentTriage.mjs";
 
-type DocumentRow={id:string;document_type:string;status:string;version:number;created_at:string;updated_at:string;sha256:string;metadata?:Record<string,unknown>|null;organisations?:{name?:string|null}|null};
+type DocumentRow={id:string;organisation_id:string;document_type:string;status:string;version:number;created_at:string;updated_at:string;sha256:string;metadata?:Record<string,unknown>|null;organisations?:{name?:string|null}|null};
 const labels:Record<string,string>={attendance_summary:"Relevé des présences",completion_certificate:"Certificat de réalisation"};
 const statusLabels:Record<string,string>={to_check:"À vérifier",to_validate:"À valider",validated:"Validé",correction_requested:"Correction demandée",published:"Publié",signed:"Signé",archived:"Archivé"};
 
 export default function Page(){
-  const[documents,setDocuments]=useState<DocumentRow[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(""),[message,setMessage]=useState(""),[filter,setFilter]=useState("attention"),[query,setQuery]=useState(""),[typeFilter,setTypeFilter]=useState("all"),[openedIds,setOpenedIds]=useState<Set<string>>(new Set()),[openingId,setOpeningId]=useState(""),[pendingId,setPendingId]=useState("");
+  const[documents,setDocuments]=useState<DocumentRow[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(""),[message,setMessage]=useState(""),[filter,setFilter]=useState("attention"),[query,setQuery]=useState(""),[typeFilter,setTypeFilter]=useState("all"),[organisationFilter,setOrganisationFilter]=useState(""),[openedIds,setOpenedIds]=useState<Set<string>>(new Set()),[openingId,setOpeningId]=useState(""),[pendingId,setPendingId]=useState("");
   const actionPending=useRef(false);
-  const load=useCallback(async()=>{setLoading(true);setError("");try{const r=await fetch("/agent/api/daily/posttraining-documents",{cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error??"Chargement impossible.");setDocuments(d.documents??[]);setOpenedIds(new Set());}catch(e){setError(e instanceof Error?e.message:"Chargement impossible.");}finally{setLoading(false);}},[]);
+  const load=useCallback(async()=>{setLoading(true);setError("");try{const r=await fetch("/agent/api/daily/posttraining-documents",{cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error??"Chargement impossible.");setDocuments(d.documents??[]);setOrganisationFilter(current=>!current||(d.documents??[]).some((doc:DocumentRow)=>doc.organisation_id===current)?current:"");setOpenedIds(new Set());}catch(e){setError(e instanceof Error?e.message:"Chargement impossible.");}finally{setLoading(false);}},[]);
   useEffect(()=>{void load();},[load]);
-  const visible=useMemo(()=>filterPosttrainingDocuments(documents,{query,view:filter,type:typeFilter}) as DocumentRow[],[documents,query,filter,typeFilter]);
-  const metrics=useMemo(()=>posttrainingDocumentMetrics(documents),[documents]);
+  // Le filtre local ne remplace jamais le contrôle des affectations côté API.
+  const organisationOptions=useMemo(()=>Array.from(new Map(documents.map(doc=>[
+    doc.organisation_id,{id:doc.organisation_id,name:doc.organisations?.name??"Organisme sans nom"},
+  ])).values()).sort((a,b)=>a.name.localeCompare(b.name,"fr")),[documents]);
+  const scopedDocuments=useMemo(()=>filterPosttrainingDocuments(documents,{view:"all",organisationId:organisationFilter}) as DocumentRow[],[documents,organisationFilter]);
+  const visible=useMemo(()=>filterPosttrainingDocuments(scopedDocuments,{query,view:filter,type:typeFilter}) as DocumentRow[],[scopedDocuments,query,filter,typeFilter]);
+  const metrics=useMemo(()=>posttrainingDocumentMetrics(scopedDocuments),[scopedDocuments]);
 
   async function openDocument(doc:DocumentRow){
     const preview=window.open("about:blank","_blank");
@@ -75,6 +80,12 @@ export default function Page(){
           <label style={{display:"grid",gap:4,flex:"1 1 270px"}}>Rechercher un document
             <input aria-label="Rechercher un document de fin" value={query} maxLength={80} onChange={event=>setQuery(event.target.value)} placeholder="Organisme, apprenant ou référence de session" style={{padding:9,border:"1px solid var(--selen-border)",borderRadius:8,background:"var(--selen-bg2)",color:"var(--selen-text)"}}/>
           </label>
+          <label style={{display:"grid",gap:4,flex:"1 1 200px"}}>Organisme
+            <select aria-label="Filtrer les documents de fin par organisme" value={organisationFilter} onChange={event=>setOrganisationFilter(event.target.value)} style={{padding:9,border:"1px solid var(--selen-border)",borderRadius:8,background:"var(--selen-bg2)",color:"var(--selen-text)"}}>
+              <option value="">Tous mes organismes</option>
+              {organisationOptions.map(org=><option key={org.id} value={org.id}>{org.name}</option>)}
+            </select>
+          </label>
           <label style={{display:"grid",gap:4,flex:"1 1 200px"}}>Type de pièce
             <select aria-label="Type de document" value={typeFilter} onChange={event=>setTypeFilter(event.target.value)} style={{padding:9,border:"1px solid var(--selen-border)",borderRadius:8,background:"var(--selen-bg2)",color:"var(--selen-text)"}}>
               <option value="all">Tous les types</option>
@@ -88,9 +99,9 @@ export default function Page(){
           <button onClick={()=>setFilter("corrections")} disabled={filter==="corrections"}>Corrections ({metrics.corrections})</button>
           <button onClick={()=>setFilter("ready")} disabled={filter==="ready"}>Validés à publier ({metrics.ready})</button>
           <button onClick={()=>setFilter("all")} disabled={filter==="all"}>Tous ({metrics.total})</button>
-          <button onClick={()=>{setFilter("attention");setTypeFilter("all");setQuery("");}} disabled={filter==="attention"&&typeFilter==="all"&&!query}>Réinitialiser</button>
+          <button onClick={()=>{setFilter("attention");setTypeFilter("all");setQuery("");setOrganisationFilter("");}} disabled={filter==="attention"&&typeFilter==="all"&&!query&&!organisationFilter}>Réinitialiser</button>
         </div>
-        <p role="status" style={{fontSize:12,margin:0}}>{visible.length} document(s) affiché(s) sur {metrics.total}. Les corrections sont prioritaires.</p>
+        <p role="status" style={{fontSize:12,margin:0}}>{visible.length} document(s) affiché(s) sur {metrics.total} pour {organisationFilter?"l’organisme sélectionné":"mes organismes affectés"}. Les corrections sont prioritaires.</p>
       </section>
       {error?<div role="alert" style={{padding:12,border:"1px solid #b24c3d",marginBottom:12}}>{error}</div>:null}
       {message?<div role="status" style={{padding:12,border:"1px solid var(--selen-border)",marginBottom:12}}>{message}</div>:null}
