@@ -58,3 +58,25 @@ test("documents de fin : l'API conserve le bornage agent et la revue de la versi
   assert.match(api,/current\.updated_at!==expectedUpdatedAt/);
   assert.match(api,/openedSha!==current\.sha256/);
 });
+
+test("documents de fin : filtrage canonique par organisme et compteurs bornés",()=>{
+  const rows=[
+    {id:"a",organisation_id:"of-a",status:"validated",document_type:"attendance_summary",organisations:{name:"Même nom"}},
+    {id:"b",organisation_id:"of-b",status:"correction_requested",document_type:"attendance_summary",organisations:{name:"Même nom"}},
+    {id:"c",organisation_id:"of-a",status:"published",document_type:"completion_certificate",organisations:{name:"Même nom"}},
+  ];
+  const scoped=filterPosttrainingDocuments(rows,{organisationId:"of-a",view:"all"});
+  assert.deepEqual(scoped.map(row=>row.id),["a","c"]);
+  assert.deepEqual(posttrainingDocumentMetrics(scoped),{total:2,attention:1,corrections:0,ready:1});
+  assert.deepEqual(filterPosttrainingDocuments(rows,{organisationId:"of-b"}).map(row=>row.id),["b"]);
+  assert.deepEqual(filterPosttrainingDocuments(rows,{organisationId:"unknown",view:"all"}),[]);
+});
+
+test("documents de fin : sélecteur limité aux organismes fournis par l'API",()=>{
+  const page=readFileSync(new URL("../src/app/agent/daily/posttraining-documents/page.tsx",import.meta.url),"utf8");
+  assert.match(page,/documents\.map\(doc=>\[/);
+  assert.match(page,/organisationOptions\.map\(org=>/);
+  assert.match(page,/value=\{organisationFilter\}/);
+  assert.match(page,/posttrainingDocumentMetrics\(scopedDocuments\)/);
+  assert.match(page,/setOrganisationFilter/);
+});
