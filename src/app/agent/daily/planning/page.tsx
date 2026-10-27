@@ -202,7 +202,7 @@ export default async function DailyPlanningPage({ searchParams }: Props) {
           <strong style={{ color: "var(--selen-gold2)", fontSize: 13 }}>{priorityRows.length} dossier{priorityRows.length > 1 ? "s" : ""} à examiner</strong>
         </div>
         <p style={{ margin: "6px 0 12px", color: "var(--selen-text2)", fontSize: 12 }}>
-          Clôtures en retard, dates manquantes, contrôles en cours puis préparations à terminer. Cette file respecte les filtres du planning et votre périmètre d'affectation.
+          Clôtures en retard, dates manquantes, contrôles en cours puis préparations à terminer. Cette file respecte les filtres du planning et votre périmètre d’affectation.
         </p>
         {priorityRows.length === 0 ? (
           <p role="status" style={{ color: "var(--selen-text3)", fontSize: 13 }}>Aucune intervention prioritaire pour cette sélection.</p>
