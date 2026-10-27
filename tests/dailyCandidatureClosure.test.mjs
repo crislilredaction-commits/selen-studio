@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { dailyPrivateFixture, ids } from "./helpers/dailyPrivateFixture.mjs";
 import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
 import * as candidatureQueue from "../src/lib/daily/dailyCandidatureQueue.mjs";
+import * as candidatureOrganisationScope from "../src/lib/daily/candidatureOrganisationScope.mjs";
 
 const require = createRequire(import.meta.url); const jsx = require("react/jsx-runtime");
 const openedAt = "2026-10-03T12:00:00+00:00"; const changedAt = "2026-10-03T12:01:00+00:00";
@@ -26,6 +27,7 @@ function fixture() {
     "@/lib/server/dailyStudioFormationSources": f.sources,
     "@/lib/server/dailyOrganisationScope": f.scope,
     "@/lib/daily/dailyCandidatureQueue.mjs": candidatureQueue,
+    "@/lib/daily/candidatureOrganisationScope.mjs": candidatureOrganisationScope,
     "@/lib/dailyCandidaturePresentation": isolatedTsModule("src/lib/dailyCandidaturePresentation.ts"),
     "./analysis.module.css": { default: new Proxy({}, { get: (_, key) => String(key) }) },
   };
