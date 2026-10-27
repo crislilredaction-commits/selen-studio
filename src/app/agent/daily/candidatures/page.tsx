@@ -76,6 +76,7 @@ export default async function DailyCandidaturesPage({ searchParams }: { searchPa
   return <main style={{maxWidth:1080,margin:"0 auto",padding:"28px"}}>
     <p style={{fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"var(--selen-gold2)"}}>Selen Daily · Candidatures</p>
     <h1>Analyse des dossiers</h1>
+    {requestedOrganisation ? <p><Link href="/agent/daily/candidatures">← Toutes les candidatures</Link></p> : null}
     <p style={{color:"var(--selen-text2)"}}>Selen analyse le dossier avant toute décision de l’organisme. Une analyse terminée devient ensuite visible côté OF pour acceptation ou refus.</p>
     <form action="/agent/daily/candidatures" method="get" role="search" aria-label="Filtrer les candidatures" style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"end",marginTop:20,padding:16,border:"1px solid var(--selen-border)",borderRadius:12,background:"var(--selen-bg2)"}}>
       <label htmlFor="candidature-organisation" style={{display:"grid",gap:5,flex:"1 1 210px",fontSize:12,fontWeight:700}}>
