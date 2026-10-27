@@ -20,7 +20,8 @@ test("les désinscriptions quittent la liste et les compteurs actifs sans perdre
   assert.match(learnersPage, /const activeEnrolments = allEnrolments\.filter\(\(item\) => isActiveEnrolment\(item\.status\)\)/);
   assert.match(learnersPage, /const historicalEnrolments = allEnrolments\.filter\(\(item\) => !isActiveEnrolment\(item\.status\)\)/);
   assert.match(learnersPage, /\["Participants actifs",activeLearners\]/);
-  assert.match(learnersPage, /activeEnrolments\.filter\(\(e\) => \["not_started","sent","submitted"\]\.includes\(e\.positioning_status\)\)/);
+  assert.match(learnersPage, /scopedActiveEnrolments\.filter\(\(e\) => \["not_started","sent","submitted"\]\.includes\(e\.positioning_status\)\)/);
+  assert.match(learnersPage, /filterLearnerOrganisation\(activeEnrolments, selectedOrganisation\.id\)/);
   assert.match(learnersPage, /Historique des inscriptions closes/);
   assert.match(learnersPage, /Consulter l’historique/);
 });
