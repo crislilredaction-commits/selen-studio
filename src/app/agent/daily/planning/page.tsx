@@ -6,6 +6,7 @@ import { DAILY_PLANNING_STATES, filterDailyPlanningRows, normalizeDailyPlanningQ
 import { buildDailyPlanningPriorityRows } from "@/lib/daily/dailyPlanningTriage.mjs";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
+import styles from "./planning-mobile.module.css";
 
 function parisDateString(date = new Date()) {
   return new Intl.DateTimeFormat("sv-SE", {
@@ -240,7 +241,37 @@ export default async function DailyPlanningPage({ searchParams }: Props) {
           {(query || stateFilter !== "all") ? <Link href="/agent/daily/planning" style={{ fontSize: 12, color: "var(--selen-text2)" }}>Réinitialiser</Link> : null}
         </form>
         <p role="status" style={{ fontSize: 12, color: "var(--selen-text2)", margin: "10px 0 0" }}>{visibleActiveRows.length} session{visibleActiveRows.length > 1 ? "s" : ""} sur {activeRows.length} dans le planning actif. Les filtres ne modifient pas l’historique.</p>
-        <div style={{ marginTop: 14, overflowX: "auto", border: "1px solid var(--selen-border)", borderRadius: 12 }}>
+        <section className={styles.mobileList} aria-label="Sessions du planning en liste mobile">
+          {visibleActiveRows.map((row) => {
+            if (!row) return null;
+            const stateAppearance = stateStyle(row.state);
+            return (
+              <Link
+                key={row.sessionId}
+                href={`/agent/daily/session-dossiers/${row.sessionId}/full`}
+                className={styles.mobileCard}
+                aria-label={`Ouvrir le dossier de ${row.formationTitle}, ${row.organisationName}, ${row.state}`}
+              >
+                <span className={styles.mobileCardHeading}>
+                  <strong>{row.organisationName}</strong>
+                  <span className={styles.mobileState} style={stateAppearance}>{row.state}</span>
+                </span>
+                <span className={styles.mobileFormation}>{row.formationTitle}</span>
+                <span className={styles.mobileMeta}>{row.reference} · {formatDateRange(row.start, row.end)}</span>
+                <span className={styles.mobileFooter}>
+                  <span>{row.openChecklist > 0 ? `${row.openChecklist} point(s) à vérifier` : "Aucun point de contrôle ouvert"}</span>
+                  <strong>Ouvrir le dossier →</strong>
+                </span>
+              </Link>
+            );
+          })}
+          {visibleActiveRows.length === 0 ? (
+            <p role="status" className={styles.mobileEmpty}>
+              {activeRows.length === 0 ? "Aucune session Daily active accessible sur cette période." : "Aucune session ne correspond aux filtres sélectionnés."}
+            </p>
+          ) : null}
+        </section>
+        <div className={styles.desktopTimeline} style={{ marginTop: 14, overflowX: "auto", border: "1px solid var(--selen-border)", borderRadius: 12 }}>
           <div style={{ minWidth: 1180 }}>
             <div style={{ display: "grid", gridTemplateColumns: `260px repeat(${days.length}, 44px) 140px`, background: "var(--selen-bg3)", borderBottom: "1px solid var(--selen-border)" }}>
               <div style={{ padding: "10px 12px", fontSize: 11, color: "var(--selen-text3)", position: "sticky", left: 0, zIndex: 2, background: "var(--selen-bg3)" }}>Organisme / session</div>
