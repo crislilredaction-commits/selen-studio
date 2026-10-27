@@ -3,9 +3,10 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { LEARNER_VIEWS, countLearnerViews, filterLearnerEnrolments, learnerNeedsAttention, normalizeLearnerSearch, normalizeLearnerView, prioritizeLearnerEnrolments } from "@/lib/daily/dailyLearnerTriage.mjs";
+import { filterLearnerOrganisation, learnerOrganisationOptions, resolveLearnerOrganisation } from "@/lib/daily/learnerOrganisationScope.mjs";
 
 export const dynamic = "force-dynamic";
-type Props = { searchParams?: Promise<{ q?: string | string[]; vue?: string | string[] }> };
+type Props = { searchParams?: Promise<{ q?: string | string[]; vue?: string | string[]; organisme?: string | string[] }> };
 
 function badge(value: string) {
   const labels: Record<string,string> = { pending:"En attente", invited:"Invité", confirmed:"Confirmé", declined:"Refusé", cancelled:"Annulé", completed:"Terminé", not_started:"Non démarré", sent:"Envoyé", submitted:"Répondu", reviewed:"Relu", not_reviewed:"Non vérifiés", met:"Validés", not_met:"Non remplis", to_clarify:"À clarifier" };
@@ -44,18 +45,25 @@ export default async function DailyLearnersStudioPage({ searchParams }: Props) {
   if (needsError) return <main role="alert" style={{ padding: 28 }}>Chargement des adaptations impossible. Réessayez plus tard.</main>;
 
   const needsMap = new Map((supportNeeds ?? []).map((item) => [item.enrolment_id, item]));
-  const activeLearners = new Set(activeEnrolments.map((item) => item.learner_id).filter(Boolean)).size;
-  const confirmed = activeEnrolments.filter((e) => e.status === "confirmed").length;
-  const adaptations = (supportNeeds ?? []).length;
-  const pendingPositioning = activeEnrolments.filter((e) => ["not_started","sent","submitted"].includes(e.positioning_status)).length;
   const params = await searchParams;
   const query = normalizeLearnerSearch(params?.q);
   const view = normalizeLearnerView(params?.vue);
-  // La recherche et le tri ne s’appliquent qu’aux inscriptions déjà limitées aux OF affectés.
-  const counts = countLearnerViews(activeEnrolments, needsMap);
-  const prioritizedActiveEnrolments = prioritizeLearnerEnrolments(activeEnrolments, needsMap);
+  // Les choix proviennent uniquement des inscriptions déjà bornées aux OF affectés.
+  const organisationOptions = learnerOrganisationOptions(allEnrolments);
+  const selectedOrganisation = resolveLearnerOrganisation(params?.organisme, organisationOptions);
+  if (!selectedOrganisation.valid) return <main role="alert" style={{ padding: 28 }}>Organisme inaccessible.</main>;
+  const scopedActiveEnrolments = filterLearnerOrganisation(activeEnrolments, selectedOrganisation.id) as typeof activeEnrolments;
+  const scopedHistoricalEnrolments = filterLearnerOrganisation(historicalEnrolments, selectedOrganisation.id) as typeof historicalEnrolments;
+  const scopedEnrolmentIds = new Set(scopedActiveEnrolments.map((item) => item.id));
+  const activeLearners = new Set(scopedActiveEnrolments.map((item) => item.learner_id).filter(Boolean)).size;
+  const confirmed = scopedActiveEnrolments.filter((e) => e.status === "confirmed").length;
+  const adaptations = (supportNeeds ?? []).filter((item) => scopedEnrolmentIds.has(item.enrolment_id)).length;
+  const pendingPositioning = scopedActiveEnrolments.filter((e) => ["not_started","sent","submitted"].includes(e.positioning_status)).length;
+  // Les compteurs, priorités et historiques suivent tous le même filtre d'organisme.
+  const counts = countLearnerViews(scopedActiveEnrolments, needsMap);
+  const prioritizedActiveEnrolments = prioritizeLearnerEnrolments(scopedActiveEnrolments, needsMap);
   const visibleActiveEnrolments = filterLearnerEnrolments(prioritizedActiveEnrolments, query, view, needsMap) as typeof activeEnrolments;
-  const visibleHistoricalEnrolments = filterLearnerEnrolments(historicalEnrolments, query, "all") as typeof historicalEnrolments;
+  const visibleHistoricalEnrolments = filterLearnerEnrolments(scopedHistoricalEnrolments, query, "all") as typeof historicalEnrolments;
 
   return <main style={{ maxWidth: 1180, margin: "0 auto", padding: "clamp(16px, 4vw, 28px)", minWidth: 0 }}>
     <div style={{ marginBottom: 22, minWidth: 0 }}><p style={{ fontSize: 12, fontWeight: 700, color: "var(--selen-text2)" }}>SELEN DAILY</p><h1 style={{ overflowWrap: "anywhere" }}>Apprenants & inscriptions</h1><p style={{ color: "var(--selen-text2)", overflowWrap: "anywhere" }}>Vue transverse des apprenants, inscriptions, positionnements et adaptations.</p></div>
@@ -63,6 +71,13 @@ export default async function DailyLearnersStudioPage({ searchParams }: Props) {
       {[["Participants actifs",activeLearners],["Inscriptions confirmées",confirmed],["Positionnements à suivre",pendingPositioning],["Adaptations actives",adaptations]].map(([label,value])=><div key={String(label)} style={{border:"1px solid var(--selen-border)",borderRadius:12,padding:16,background:"var(--selen-bg2)",minWidth:0}}><div style={{fontSize:26,fontWeight:800}}>{value}</div><div style={{fontSize:12,color:"var(--selen-text2)",overflowWrap:"anywhere"}}>{label}</div></div>)}
     </div>
     <form action="/agent/daily/learners" method="get" role="search" aria-label="Filtrer les inscriptions" style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"end",padding:16,marginBottom:12,border:"1px solid var(--selen-border)",borderRadius:12,background:"var(--selen-bg2)"}}>
+      <label htmlFor="learner-organisation" style={{display:"grid",gap:5,flex:"1 1 220px",fontSize:12,fontWeight:700}}>
+        Organisme de formation
+        <select id="learner-organisation" name="organisme" defaultValue={selectedOrganisation.id ?? ""} style={{minHeight:44,padding:"8px 11px",border:"1px solid var(--selen-border)",borderRadius:9,background:"var(--selen-bg)",color:"var(--selen-text)",minWidth:0}}>
+          <option value="">Tous les organismes affectés</option>
+          {organisationOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+        </select>
+      </label>
       <label htmlFor="learner-search" style={{display:"grid",gap:5,flex:"1 1 230px",fontSize:12,fontWeight:700}}>
         Apprenant, organisme, formation ou session
         <input id="learner-search" type="search" name="q" maxLength={80} defaultValue={query} placeholder="Rechercher une inscription…" style={{minHeight:44,padding:"8px 11px",border:"1px solid var(--selen-border)",borderRadius:9,background:"var(--selen-bg)",color:"var(--selen-text)",minWidth:0}} />
@@ -74,11 +89,11 @@ export default async function DailyLearnersStudioPage({ searchParams }: Props) {
         </select>
       </label>
       <button type="submit" style={{minHeight:44,padding:"8px 14px",border:0,borderRadius:9,background:"var(--selen-gold2)",color:"var(--selen-bg)",fontWeight:800,cursor:"pointer"}}>Filtrer</button>
-      {(query || view !== "all") ? <Link href="/agent/daily/learners" style={{fontSize:12,minHeight:44,display:"inline-flex",alignItems:"center"}}>Réinitialiser</Link> : null}
+      {(query || view !== "all" || selectedOrganisation.id) ? <Link href="/agent/daily/learners" style={{fontSize:12,minHeight:44,display:"inline-flex",alignItems:"center"}}>Réinitialiser</Link> : null}
     </form>
-    <p role="status" style={{fontSize:12,color:"var(--selen-text2)",margin:"0 0 14px"}}>{visibleActiveEnrolments.length} inscription{visibleActiveEnrolments.length > 1 ? "s" : ""} active{visibleActiveEnrolments.length > 1 ? "s" : ""} affichée{visibleActiveEnrolments.length > 1 ? "s" : ""} sur {activeEnrolments.length}. Adaptations, prérequis et positionnements sont traités en priorité.</p>
+    <p role="status" style={{fontSize:12,color:"var(--selen-text2)",margin:"0 0 14px"}}>{visibleActiveEnrolments.length} inscription{visibleActiveEnrolments.length > 1 ? "s" : ""} active{visibleActiveEnrolments.length > 1 ? "s" : ""} affichée{visibleActiveEnrolments.length > 1 ? "s" : ""} sur {scopedActiveEnrolments.length}. Adaptations, prérequis et positionnements sont traités en priorité.</p>
     <section style={{ display:"grid", gap:12, minWidth: 0 }}>
-      {visibleActiveEnrolments.length === 0 ? <div style={{border:"1px solid var(--selen-border)",borderRadius:12,padding:18}}>{activeEnrolments.length ? "Aucune inscription ne correspond aux filtres sélectionnés." : "Aucune inscription active pour le moment."}</div> : visibleActiveEnrolments.map((e) => {
+      {visibleActiveEnrolments.length === 0 ? <div style={{border:"1px solid var(--selen-border)",borderRadius:12,padding:18}}>{scopedActiveEnrolments.length ? "Aucune inscription ne correspond aux filtres sélectionnés." : "Aucune inscription active pour cet organisme ou ce périmètre."}</div> : visibleActiveEnrolments.map((e) => {
         const need = needsMap.get(e.id);
         const attention = learnerNeedsAttention(e, needsMap);
         const session = e.daily_sessions as { id?: string; internal_reference?: string | null; start_date?: string | null; daily_formations?: { title?: string | null } | null } | null;
