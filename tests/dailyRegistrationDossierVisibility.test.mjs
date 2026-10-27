@@ -9,7 +9,7 @@ const candidatureList = await readFile(new URL("../src/app/agent/daily/candidatu
 const candidatureDetail = await readFile(new URL("../src/app/agent/daily/candidatures/[id]/page.tsx", import.meta.url), "utf8");
 
 test("Studio rend les dossiers remplis accessibles depuis le parcours Daily et le dossier OF", () => {
-  assert.match(dailyNavigation, /href: "\/agent\/daily\/candidatures", label: "Dossiers d’inscription"/);
+  assert.match(dailyNavigation, /href: "\/agent\/daily\/candidatures", label: "Candidatures"/);
   assert.match(dailyLayout, /DailyStudioNavigation owner=\{owner\}/);
   assert.match(organisationPage, /key: "applications", label: "Dossiers d’inscription"/);
   assert.match(organisationPage, /tab === "applications"/);
