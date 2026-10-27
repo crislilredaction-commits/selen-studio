@@ -7,6 +7,7 @@ import SelenBadge from "@/components/ui/SelenBadge";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import SelenButton from "@/components/ui/SelenButton";
 import { dailyOrganisationProgramStats, dailyOrganisationTaskCounts, filterDailyOrganisationDirectory } from "@/lib/dailyOrganisationStatistics";
+import { buildDailyOrganisationPriorityRows, sortDailyOrganisationPriorityRows } from "@/lib/daily/dailyOrganisationPriority.mjs";
 
 type OrganisationRow = {
   id: string;
@@ -69,6 +70,8 @@ export default async function DailyOrganisationsPage({ searchParams }: Props) {
   const params = await searchParams;
   const query = first(params.q).slice(0, 80);
   const filter = first(params.filter);
+  const requestedSort = first(params.sort);
+  const sort = ["priority", "name", "programmes"].includes(requestedSort) ? requestedSort : "priority";
   const auth = await requireSupportAgent();
   if (!auth.ok) {
     return <main style={s.page}><p style={s.error}>{auth.error}</p></main>;
@@ -191,14 +194,29 @@ export default async function DailyOrganisationsPage({ searchParams }: Props) {
 
   const validationCounts = new Map<string, number>();
   for (const row of validations) validationCounts.set(row.organisation_id, (validationCounts.get(row.organisation_id) ?? 0) + 1);
+  const programmeCounts = new Map<string, number>();
+  for (const formation of formations) {
+    if (formation.status !== "validated") programmeCounts.set(formation.organisation_id, (programmeCounts.get(formation.organisation_id) ?? 0) + 1);
+  }
+  const assignedIds = new Set(assignments.map((row) => row.organisation_id));
   const visibleOrganisations = filterDailyOrganisationDirectory(organisations, {
     query,
     filter,
     taskCounts: activeTaskCounts,
-    assignedIds: new Set(assignments.map((row) => row.organisation_id)),
+    assignedIds,
     validationCounts,
     certificationCounts: urgentCertificationByOrganisation,
   });
+  // Triage exclusivement sur les organismes déjà filtrés par affectation agent.
+  const priorityRows = buildDailyOrganisationPriorityRows(visibleOrganisations, {
+    taskCounts: activeTaskCounts,
+    validationCounts,
+    certificationCounts: urgentCertificationByOrganisation,
+    programmeCounts,
+    assignedIds,
+  });
+  const sortedOrganisations = sortDailyOrganisationPriorityRows(priorityRows, sort);
+  const priorityQueue = sortDailyOrganisationPriorityRows(priorityRows.filter((row) => row.priorityRank < 5), "priority").slice(0, 5);
 
   const totalAttention = attentionTasks.length;
   const pendingValidations = validations.length;
@@ -230,6 +248,21 @@ export default async function DailyOrganisationsPage({ searchParams }: Props) {
       </section>
 
       <SelenCard>
+        <SelenCardTitle>À examiner en priorité</SelenCardTitle>
+        <p style={s.meta}>Raccourcis vers les dossiers à vérifier, selon les validations, échéances, tâches, affectations et programmes. Ces signaux ne constituent pas une décision de conformité.</p>
+        {priorityQueue.length === 0 ? <p style={s.empty}>Aucun point de vigilance dans la sélection actuelle.</p> : (
+          <ol style={{ display: "grid", gap: 8, paddingLeft: 22, margin: "12px 0 0" }}>
+            {priorityQueue.map((organisation) => <li key={organisation.id} style={{ padding: "7px 0" }}>
+              <Link href={`/agent/daily/organisations/${encodeURIComponent(organisation.id)}`} style={{ color: "var(--selen-text)", fontWeight: 700 }}>
+                {organisation.legal_name || organisation.name}
+              </Link>
+              <span style={{ marginLeft: 10, fontSize: 12, color: "var(--selen-text2)" }}>{organisation.priorityLabel}</span>
+            </li>)}
+          </ol>
+        )}
+      </SelenCard>
+
+      <SelenCard>
         <SelenCardTitle>Dossiers organismes Daily</SelenCardTitle>
         <form method="get" action="/agent/daily/organisations" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end", marginBottom: 16 }}>
           <label style={{ display: "grid", gap: 5, flex: "1 1 220px", fontSize: 12 }}>
@@ -246,6 +279,14 @@ export default async function DailyOrganisationsPage({ searchParams }: Props) {
               <option value="certifications">Certifications à surveiller</option>
             </select>
           </label>
+          <label style={{ display: "grid", gap: 5, fontSize: 12 }}>
+            Trier par
+            <select name="sort" defaultValue={sort} style={{ minHeight: 38, border: "1px solid var(--selen-border)", borderRadius: 9, padding: "8px 10px", background: "var(--selen-bg)", color: "var(--selen-text)" }}>
+              <option value="priority">Priorité métier</option>
+              <option value="name">Nom de l’organisme</option>
+              <option value="programmes">Programmes à finaliser</option>
+            </select>
+          </label>
           <button type="submit" style={{ minHeight: 38, border: 0, borderRadius: 9, padding: "0 14px", background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Filtrer</button>
           <Link href="/agent/daily/organisations" style={{ padding: "10px 0", color: "var(--selen-text2)", fontSize: 12 }}>Réinitialiser</Link>
         </form>
@@ -255,7 +296,7 @@ export default async function DailyOrganisationsPage({ searchParams }: Props) {
         ) : (
           <div style={s.list}>
             {visibleOrganisations.length === 0 ? <p style={s.empty}>Aucun organisme ne correspond aux filtres. <Link href="/agent/daily/organisations">Afficher tous les dossiers</Link></p> : null}
-            {visibleOrganisations.map((organisation) => {
+            {sortedOrganisations.map((organisation) => {
               const assignment = assignments.find((row) => row.organisation_id === organisation.id);
               const programStats = dailyOrganisationProgramStats(formations.filter((row) => row.organisation_id === organisation.id));
               const attention = activeTaskCounts.get(organisation.id) ?? 0;
