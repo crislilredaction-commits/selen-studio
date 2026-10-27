@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { filterAndPrioritizeProcedures, normalizeProcedureQuery, normalizeProcedureView } from "../src/lib/daily/internalProceduresTriage.mjs";
+import { filterAndPrioritizeProcedures, normalizeProcedureQuery, normalizeProcedureView, procedureOrganisationOptions, selectProcedureOrganisation } from "../src/lib/daily/internalProceduresTriage.mjs";
 
 const makeRow = (id, status, due, organisation = "École Aube", reviewed_at = null) => ({
   procedure: { id, title: id, procedure_type: "absence_dropout", purpose: "Suivi qualité", status, reviewed_at, updated_at: "2026-09-01", internalTypeLabel: "Absences et abandons" },
@@ -49,9 +49,39 @@ test("la recherche ne sort jamais du tableau de lignes déjà autorisées", () =
 test("page : garde agent et périmètre avant filtrage, sans écriture métier", () => {
   const page = readFileSync(new URL("../src/app/agent/daily/procedures-internes/page.tsx", import.meta.url), "utf8");
   assert.match(page, /requireSupportAgent\(\)/);
-  assert.match(page, /\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(page, /\.in\("organisation_id", scopedOrganisationIds\)/);
   assert.match(page, /filterAndPrioritizeProcedures\(rows, query, view\)/);
   assert.match(page, /name="q"/);
   assert.match(page, /name="vue"/);
+  assert.doesNotMatch(page, /\.(?:insert|upsert|update|delete)\(/);
+});
+
+test("organismes proposés : affectation, archive, dédoublonnage et tri", () => {
+  const options = procedureOrganisationOptions([
+    { id: "b", legal_name: "Zèbre", status: "active" },
+    { id: "a", name: "Aube", status: "active" },
+    { id: "a", name: "Doublon", status: "active" },
+    { id: "c", name: "Hors périmètre", status: "active" },
+    { id: "d", name: "Archivé", status: "archived" },
+  ], ["a", "b", "d"]);
+  assert.deepEqual(options, [{ id: "a", name: "Aube" }, { id: "b", name: "Zèbre" }]);
+  assert.equal(selectProcedureOrganisation(undefined, options), "");
+  assert.equal(selectProcedureOrganisation("a", options), "a");
+  assert.equal(selectProcedureOrganisation(["b", "a"], options), "b");
+  for (const invalid of ["c", "d", "intrus", {}, null]) {
+    assert.equal(selectProcedureOrganisation(invalid, options), null);
+  }
+});
+
+test("page : le choix organisme est validé avant la lecture et borne les compteurs", () => {
+  const page = readFileSync(new URL("../src/app/agent/daily/procedures-internes/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /name="organisme"/);
+  assert.match(page, /\.neq\("status", "archived"\)/);
+  assert.match(page, /selectProcedureOrganisation\(params\?\.organisme, organisationOptions\)/);
+  assert.match(page, /selectedOrganisation === null/);
+  assert.match(page, /\.in\("organisation_id", scopedOrganisationIds\)/);
+  assert.ok(page.indexOf("selectedOrganisation === null") < page.indexOf('from("daily_internal_procedures")'));
+  assert.ok(page.indexOf('in("organisation_id", scopedOrganisationIds)') < page.indexOf("const activeCount"));
+  assert.match(page, /search\.set\("organisme", selectedOrganisation\)/);
   assert.doesNotMatch(page, /\.(?:insert|upsert|update|delete)\(/);
 });
