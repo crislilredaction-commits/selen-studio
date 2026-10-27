@@ -59,7 +59,7 @@ export default async function DailySatisfactionTrackingPage({ searchParams }: Pr
     .select("id,name,legal_name")
     .in("id", assignedOrganisationIds);
   if (organisationsError) throw new Error(organisationsError.message);
-  const organisationOptions = satisfactionOrganisationOptions(assignedOrganisations ?? [], assignedOrganisationIds);
+  const organisationOptions: { id: string; name: string }[] = satisfactionOrganisationOptions(assignedOrganisations ?? [], assignedOrganisationIds);
   const params = await searchParams;
   const selectedOrganisation = selectSatisfactionOrganisation(params?.organisme, organisationOptions);
   if (selectedOrganisation === null) {
