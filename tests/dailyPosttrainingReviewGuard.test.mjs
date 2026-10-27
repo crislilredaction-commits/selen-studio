@@ -44,3 +44,11 @@ test("Studio keeps post-training tracking complete after publication",()=>{
   assert.doesNotMatch(reviewRoute,/doc\.status==="validated"/);
   assert.match(reviewRoute,/Impossible de synchroniser le suivi des documents de fin/);
 });
+
+test("Studio publication requires the same agent to open the current document version",()=>{
+  const guard=reviewRoute.indexOf("if(openedVersion!==current.version");
+  const publish=reviewRoute.indexOf('if(action==="publish"){');
+  assert.ok(guard>=0&&publish>guard,"The version/agent guard must run before publication");
+  assert.match(reviewRoute,/avant de la valider, de demander une correction ou de la publier/);
+  assert.match(page,/doc\.status==="validated"\?<button[^>]+disabled=\{!opened \|\| busy\}/);
+});

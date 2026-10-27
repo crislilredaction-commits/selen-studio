@@ -109,7 +109,7 @@ export default function Page(){
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                 <button onClick={()=>void openDocument(doc)} disabled={busy}>{openingId===doc.id?"Ouverture…":"Ouvrir la pièce"}</button>
-                {doc.status==="validated"?<button onClick={()=>void review(doc,"publish")} disabled={busy}>{pendingId===doc.id?"Traitement…":"Publier et notifier"}</button>:mayReview?<>
+                {doc.status==="validated"?<button onClick={()=>void review(doc,"publish")} disabled={!opened || busy}>{pendingId===doc.id?"Traitement…":"Publier et notifier"}</button>:mayReview?<>
                   <button onClick={()=>void review(doc,"validate")} disabled={!opened || Boolean(pendingId) || Boolean(openingId)}>{pendingId===doc.id?"Traitement…":"Valider"}</button>
                   <button onClick={()=>void review(doc,"request_correction")} disabled={!opened || Boolean(pendingId) || Boolean(openingId)}>Correction</button>
                 </>:null}

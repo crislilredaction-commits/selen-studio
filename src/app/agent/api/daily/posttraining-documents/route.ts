@@ -143,6 +143,13 @@ export async function PATCH(req:Request){
   }
   if(!parentActive)return NextResponse.json({error:"Ce document est sans objet car son dossier métier n’est plus actif."},{status:409});
 
+  const openedVersion=Number(current.metadata?.review_opened_version);
+  const openedSha=typeof current.metadata?.review_opened_sha256==="string"?current.metadata.review_opened_sha256:"";
+  const openedBy=typeof current.metadata?.review_opened_by_email==="string"?current.metadata.review_opened_by_email.toLowerCase():"";
+  if(openedVersion!==current.version||openedSha!==current.sha256||openedBy!==auth.email.toLowerCase()){
+    return NextResponse.json({error:"Ouvre cette version de la pièce dans Studio avant de la valider, de demander une correction ou de la publier."},{status:409});
+  }
+
   if(action==="publish"){
     const publication=await publishDailyDocumentAndNotify({admin,document:current,publishedBy:userId,publishedByEmail:auth.email});
     if(!publication.ok)return NextResponse.json({error:publication.error},{status:publication.status});
@@ -152,12 +159,6 @@ export async function PATCH(req:Request){
   }
 
   if(["published","signed","archived"].includes(current.status))return NextResponse.json({error:"Ce document n’est plus modifiable dans ce circuit de revue."},{status:400});
-  const openedVersion=Number(current.metadata?.review_opened_version);
-  const openedSha=typeof current.metadata?.review_opened_sha256==="string"?current.metadata.review_opened_sha256:"";
-  const openedBy=typeof current.metadata?.review_opened_by_email==="string"?current.metadata.review_opened_by_email.toLowerCase():"";
-  if(openedVersion!==current.version||openedSha!==current.sha256||openedBy!==auth.email.toLowerCase()){
-    return NextResponse.json({error:"Ouvre cette version de la pièce dans Studio avant de la valider ou de demander une correction."},{status:409});
-  }
   const metadata={...(current.metadata??{}),review_note:note||null,reviewed_at:new Date().toISOString(),reviewed_by_email:auth.email};
   const updates=action==="validate"?{status:"validated",validated_by:userId,validated_at:new Date().toISOString(),updated_by:userId,metadata}:{status:"correction_requested",validated_by:null,validated_at:null,updated_by:userId,metadata};
   const {data,error}=await admin.from("daily_documents").update(updates)
