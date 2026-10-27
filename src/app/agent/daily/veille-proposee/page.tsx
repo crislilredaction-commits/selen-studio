@@ -3,6 +3,7 @@ import Link from "next/link";
 import { filterWatchSubmissions, normalizeWatchSubmissionQuery, normalizeWatchSubmissionCategory, normalizeWatchSubmissionView, watchSubmissionMetrics, isWatchSubmissionOverdue } from "@/lib/daily/watchSubmissionTriage.mjs";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
+import { watchSubmissionOrganisationOptions, selectWatchSubmissionOrganisation } from "@/lib/daily/watchSubmissionOrganisationScope.mjs";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -74,6 +75,7 @@ type Props = {
     q?: string | string[];
     categorie?: string | string[];
     vue?: string | string[];
+    organisme?: string | string[];
   }>;
 };
 
@@ -92,15 +94,30 @@ export default async function WatchSubmissionReviewPage({ searchParams }: Props)
   }
 
   const admin = createSupabaseAdminClient();
-  const { data, error } = await admin.from("daily_watch_submissions")
-    .select("id,organisation_id,watch_type,title,source_url,summary,analysis_and_improvement,status,created_at,organisations(name,legal_name)")
-    .eq("status", "pending")
-    .in("organisation_id", dailyOrganisationIds)
-    .order("created_at", { ascending: true });
+  const { data: organisations, error: organisationsError } = await admin.from("organisations")
+    .select("id,name,legal_name,status")
+    .in("id", dailyOrganisationIds)
+    .neq("status", "archived");
+  if (organisationsError) return <main role="alert" style={s.page}>Impossible de charger les organismes Daily autorisés.</main>;
+  const organisationOptions: { id: string; name: string }[] = watchSubmissionOrganisationOptions(organisations ?? [], dailyOrganisationIds);
+  const params = await searchParams;
+  const selectedOrganisation = selectWatchSubmissionOrganisation(params?.organisme, organisationOptions);
+  if (selectedOrganisation === null) {
+    return <main role="alert" style={s.page}>Organisme non autorisé dans votre périmètre Daily.</main>;
+  }
+  const scopedOrganisationIds = selectedOrganisation ? [selectedOrganisation] : organisationOptions.map((option) => option.id);
+
+  // Le périmètre choisi est appliqué à la requête avant les compteurs et filtres.
+  const { data, error } = scopedOrganisationIds.length
+    ? await admin.from("daily_watch_submissions")
+        .select("id,organisation_id,watch_type,title,source_url,summary,analysis_and_improvement,status,created_at,organisations(name,legal_name)")
+        .eq("status", "pending")
+        .in("organisation_id", scopedOrganisationIds)
+        .order("created_at", { ascending: true })
+    : { data: [], error: null };
   if (error) return <main role="alert" style={s.page}>Impossible de charger les veilles proposées.</main>;
 
-  // Les paramètres GET ne modifient que la présentation des propositions déjà autorisées.
-  const params = await searchParams;
+  // Les autres paramètres GET ne filtrent que les propositions déjà autorisées.
   const q = normalizeWatchSubmissionQuery(params?.q);
   const categorie = normalizeWatchSubmissionCategory(params?.categorie);
   const vue = normalizeWatchSubmissionView(params?.vue);
@@ -122,6 +139,12 @@ export default async function WatchSubmissionReviewPage({ searchParams }: Props)
         <span style={s.card}><strong>{metrics.regulatory}</strong> réglementaire(s)</span>
       </section>
       <form method="get" role="search" style={{ ...s.card, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", alignItems: "end" }}>
+        <label>Organisme
+          <select name="organisme" defaultValue={selectedOrganisation} style={s.input}>
+            <option value="">Tous les organismes ({organisationOptions.length})</option>
+            {organisationOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+          </select>
+        </label>
         <label>Rechercher
           <input type="search" name="q" maxLength={80} defaultValue={q} placeholder="Organisme, sujet, source…" style={s.input} />
         </label>

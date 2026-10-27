@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import { watchSubmissionOrganisationOptions, selectWatchSubmissionOrganisation } from "../src/lib/daily/watchSubmissionOrganisationScope.mjs";
 import {
   filterWatchSubmissions,
   isWatchSubmissionOverdue,
@@ -54,8 +55,38 @@ test("veille : filtre appliqué après le bornage canonique et aucune nouvelle l
   const page = readFileSync(new URL("../src/app/agent/daily/veille-proposee/page.tsx", import.meta.url), "utf8");
   const scope = page.indexOf("getDailyOrganisationIdsForAgent(auth.email)", page.indexOf("export default async function"));
   const admin = page.indexOf("createSupabaseAdminClient()", scope);
-  const scopedQuery = page.indexOf('.in("organisation_id", dailyOrganisationIds)', admin);
+  const organisationScope = page.indexOf('.in("id", dailyOrganisationIds)', admin);
+  const selectionGuard = page.indexOf("if (selectedOrganisation === null)", organisationScope);
+  const scopedQuery = page.indexOf('.in("organisation_id", scopedOrganisationIds)', selectionGuard);
   const filtering = page.indexOf("filterWatchSubmissions(", scopedQuery);
-  assert.ok(scope >= 0 && scope < admin && admin < scopedQuery && scopedQuery < filtering);
+  assert.ok(scope >= 0 && scope < admin && admin < organisationScope && organisationScope < selectionGuard && selectionGuard < scopedQuery && scopedQuery < filtering);
   assert.doesNotMatch(page.slice(page.indexOf("export default async function")), /\.(?:insert|update|upsert|delete)\(/);
+});
+
+test("veille multi-OF : le sélecteur n'expose que les organismes affectés et non archivés", () => {
+  const options = watchSubmissionOrganisationOptions([
+    { id: "intrus", name: "Non affecté" },
+    { id: "of-b", name: "École Été", status: "active" },
+    { id: "of-a", legal_name: "Académie", status: "active" },
+    { id: "of-a", name: "Doublon", status: "active" },
+    { id: "of-c", name: "Archivé", status: "archived" },
+  ], ["of-a", "of-b", "of-c"]);
+  assert.deepEqual(options, [{ id: "of-a", name: "Académie" }, { id: "of-b", name: "École Été" }]);
+  assert.equal(selectWatchSubmissionOrganisation(undefined, options), "");
+  assert.equal(selectWatchSubmissionOrganisation("of-b", options), "of-b");
+  for (const value of ["intrus", "of-c", "inconnu", 42, null, ["intrus", "of-a"]]) {
+    assert.equal(selectWatchSubmissionOrganisation(value, options), null);
+  }
+  assert.equal(selectWatchSubmissionOrganisation(["of-a", "intrus"], options), "of-a");
+});
+
+test("veille multi-OF : sélection validée avant lecture et compteurs, sans élargissement", () => {
+  const page = readFileSync(new URL("../src/app/agent/daily/veille-proposee/page.tsx", import.meta.url), "utf8");
+  const guard = page.indexOf("if (selectedOrganisation === null)");
+  const scoped = page.indexOf('.in("organisation_id", scopedOrganisationIds)');
+  const metrics = page.indexOf("watchSubmissionMetrics(rows, now)");
+  assert.ok(guard >= 0 && scoped > guard && metrics > scoped);
+  assert.match(page, /const scopedOrganisationIds = selectedOrganisation \? \[selectedOrganisation\] : organisationOptions\.map/);
+  assert.match(page, /name="organisme" defaultValue=\{selectedOrganisation\}/);
+  assert.match(page, /\.neq\("status", "archived"\)/);
 });
