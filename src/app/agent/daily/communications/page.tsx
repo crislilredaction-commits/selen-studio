@@ -14,10 +14,12 @@ import {
   normalizeCommunicationQuery,
   normalizeCommunicationStatus,
   normalizeCommunicationType,
+  communicationOrganisationOptions,
+  selectCommunicationOrganisation,
 } from "@/lib/daily/communicationHistoryTriage.mjs";
 
 type Props = {
-  searchParams: Promise<{ session_id?: string; q?: string | string[]; etat?: string | string[]; categorie?: string | string[] }>;
+  searchParams: Promise<{ session_id?: string; organisation_id?: string | string[]; q?: string | string[]; etat?: string | string[]; categorie?: string | string[] }>;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -139,13 +141,20 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
     return <main style={{ padding: 28 }}>Aucun organisme Daily affecté.</main>;
   }
 
-  const { session_id: sessionId, q: queryParam, etat: statusParam, categorie: typeParam } = await searchParams;
+  const { session_id: sessionId, organisation_id: organisationParam, q: queryParam, etat: statusParam, categorie: typeParam } = await searchParams;
   const searchQuery = normalizeCommunicationQuery(queryParam);
   const statusFilter = normalizeCommunicationStatus(statusParam);
   const typeFilter = normalizeCommunicationType(typeParam);
   const admin = createSupabaseAdminClient();
+  const { data: assignedOrganisations, error: organisationsError } = await admin.from("organisations")
+    .select("id,name,legal_name,status").in("id", dailyOrganisationIds).order("name");
+  if (organisationsError) return <main role="alert" style={{ padding: 28 }}>Impossible de charger les organismes affectés.</main>;
+  const organisationOptions = communicationOrganisationOptions(assignedOrganisations ?? [], dailyOrganisationIds);
+  const selectedOrganisationId = selectCommunicationOrganisation(organisationParam, organisationOptions);
+  if (selectedOrganisationId === null) return <main role="alert" style={{ padding: 28 }}>Organisme indisponible dans votre périmètre Daily.</main>;
+  const scopedOrganisationIds = selectedOrganisationId ? [selectedOrganisationId] : dailyOrganisationIds;
   const { data: scopedSession, error: scopedSessionError } = sessionId
-    ? await admin.from("daily_sessions").select("id,organisation_id").eq("id", sessionId).in("organisation_id", dailyOrganisationIds).maybeSingle()
+    ? await admin.from("daily_sessions").select("id,organisation_id").eq("id", sessionId).in("organisation_id", scopedOrganisationIds).maybeSingle()
     : { data: null, error: null };
   if (scopedSessionError) throw new Error(scopedSessionError.message);
   if (sessionId && !scopedSession) return <main style={{ padding: 28 }}>Session introuvable ou non autorisée.</main>;
@@ -153,7 +162,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
   let query = admin
     .from("daily_communications")
     .select("id,organisation_id,session_id,enrolment_id,communication_type,recipient_email,recipient_name,subject,text_body,provider,provider_message_id,status,sent_at,delivered_at,failed_at,failure_reason,created_at,metadata,daily_communication_documents(document_id,document_type,logical_name,document_version,sha256,storage_path)")
-    .in("organisation_id", dailyOrganisationIds)
+    .in("organisation_id", scopedOrganisationIds)
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -169,7 +178,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
     ? { data: [{ id: sessionId }], error: null }
     : await admin.from("daily_sessions")
         .select("id")
-        .in("organisation_id", dailyOrganisationIds)
+        .in("organisation_id", scopedOrganisationIds)
         .limit(1000);
   if (scopedSignatureSessionsError) throw new Error(scopedSignatureSessionsError.message);
   const signatureSessionIds = (scopedSignatureSessions ?? []).map((session) => session.id);
@@ -186,7 +195,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
 
   const [{ data: sessions }, { data: organisations }, { data: signatures, error: signatureError }] = await Promise.all([
     sessionIds.length
-      ? admin.from("daily_sessions").select("id,internal_reference,formation_id").in("id", sessionIds).in("organisation_id", dailyOrganisationIds)
+      ? admin.from("daily_sessions").select("id,internal_reference,formation_id").in("id", sessionIds).in("organisation_id", scopedOrganisationIds)
       : Promise.resolve({ data: [] }),
     organisationIds.length
       ? admin.from("organisations").select("id,name").in("id", organisationIds)
@@ -271,6 +280,10 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
         </div>
         {sessionId ? <Link href="/agent/daily/communications">Voir tout l’historique</Link> : null}
       </div>
+
+      <p style={{ color: "var(--selen-text2)", fontSize: 13, marginTop: 4 }}>
+        Périmètre : {selectedOrganisationId ? organisationOptions.find((option) => option.id === selectedOrganisationId)?.name : `${organisationOptions.length} organisme(s) affecté(s)`}.
+      </p>
 
       {sessionId ? (
         <p style={{ padding: 10, border: "1px solid var(--selen-border)", borderRadius: 10, overflowWrap: "anywhere" }}>
@@ -371,6 +384,17 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
         </div>
         <form method="get" role="search" style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: 12, padding: 14, border: "1px solid var(--selen-border)", borderRadius: 12 }}>
           {sessionId ? <input type="hidden" name="session_id" value={sessionId} /> : null}
+          {sessionId ? (
+            selectedOrganisationId ? <input type="hidden" name="organisation_id" value={selectedOrganisationId} /> : null
+          ) : (
+            <label style={{ display: "grid", gap: 4, flex: "1 1 180px" }}>
+              Organisme
+              <select name="organisation_id" defaultValue={selectedOrganisationId} style={{ padding: 9 }}>
+                <option value="">Tous mes organismes</option>
+                {organisationOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+              </select>
+            </label>
+          )}
           <label style={{ display: "grid", gap: 4, flex: "2 1 200px" }}>
             Rechercher
             <input type="search" name="q" maxLength={80} defaultValue={searchQuery} placeholder="Destinataire, organisme, objet, session…" style={{ width: "100%", padding: 9 }} />

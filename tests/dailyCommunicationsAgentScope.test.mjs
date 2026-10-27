@@ -23,24 +23,24 @@ test("communications : refus fermé en cas d'erreur ou d'absence d'affectation",
 });
 
 test("communications : consultation générale bornée avant tri et limite", () => {
-  assert.match(page, /\.from\("daily_communications"\)[\s\S]*?\.in\("organisation_id", dailyOrganisationIds\)[\s\S]*?\.order\("created_at"/);
+  assert.match(page, /\.from\("daily_communications"\)[\s\S]*?\.in\("organisation_id", scopedOrganisationIds\)[\s\S]*?\.order\("created_at"/);
   assert.match(page, /\.limit\(200\)/);
 });
 
 test("communications : une session explicitement demandée est bornée au même périmètre", () => {
-  assert.match(page, /\.from\("daily_sessions"\)\.select\("id,organisation_id"\)\.eq\("id", sessionId\)\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(page, /\.from\("daily_sessions"\)\.select\("id,organisation_id"\)\.eq\("id", sessionId\)\.in\("organisation_id", scopedOrganisationIds\)/);
   assert.match(page, /Session introuvable ou non autorisée/);
   assert.doesNotMatch(page, /isDailyOrganisationInAgentScope/);
 });
 
 test("communications : signatures même non envoyées limitées aux sessions affectées", () => {
-  assert.match(page, /scopedSignatureSessions[\s\S]*?\.from\("daily_sessions"\)[\s\S]*?\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(page, /scopedSignatureSessions[\s\S]*?\.from\("daily_sessions"\)[\s\S]*?\.in\("organisation_id", scopedOrganisationIds\)/);
   assert.match(page, /signatureSessionIds\.length[\s\S]*?\.from\("daily_convention_signatures"\)[\s\S]*?\.in\("session_id", signatureSessionIds\)/);
   assert.match(page, /Promise\.resolve\(\{ data: \[\] as SignatureRow\[\], error: null \}\)/);
 });
 
 test("communications : métadonnées des sessions secondaires bornées aux affectations", () => {
-  assert.match(page, /\.select\("id,internal_reference,formation_id"\)\.in\("id", sessionIds\)\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(page, /\.select\("id,internal_reference,formation_id"\)\.in\("id", sessionIds\)\.in\("organisation_id", scopedOrganisationIds\)/);
   assert.doesNotMatch(page, /\.(?:insert|update|upsert|delete)\(/);
 });
 
