@@ -3,6 +3,7 @@ import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { normalizeStakeholderFeedbackFilters, filterStakeholderFeedbackRows, countStakeholderFeedbackStages, stakeholderFeedbackStage } from "@/lib/daily/stakeholderFeedbackTriage.mjs";
+import { stakeholderFeedbackOrganisationOptions, selectStakeholderFeedbackOrganisation } from "@/lib/daily/stakeholderFeedbackOrganisationScope.mjs";
 
 const TYPE_LABELS: Record<string, string> = {
   complaint: "Réclamation",
@@ -36,7 +37,7 @@ function isResolved(status?: string | null, resolvedAt?: string | null) {
   return status === "resolved" || Boolean(resolvedAt);
 }
 
-type Props = { searchParams?: Promise<{ q?: string | string[]; etape?: string | string[]; type?: string | string[] }> };
+type Props = { searchParams?: Promise<{ q?: string | string[]; etape?: string | string[]; type?: string | string[]; organisme?: string | string[] }> };
 
 export default async function DailyStakeholderFeedbackPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
@@ -49,26 +50,37 @@ export default async function DailyStakeholderFeedbackPage({ searchParams }: Pro
     return <main role="alert" style={s.page}>Impossible de vérifier votre périmètre Daily.</main>;
   }
   const admin = createSupabaseAdminClient();
-  const [{ data: feedback, error: feedbackError }, { data: organisations, error: organisationsError }] = organisationIds.length
-    ? await Promise.all([
-        admin
-          .from("daily_stakeholder_feedback")
-          .select("id,organisation_id,session_id,enrolment_id,submission_type,stakeholder_type,submitter_name,submitter_email,subject,message,status,selen_review_note,selen_reviewed_at,forwarded_at,organisation_response,resolved_at,created_at,updated_at")
-          .in("organisation_id", organisationIds)
-          .order("created_at", { ascending: false }),
-        admin
-          .from("organisations")
-          .select("id,name,legal_name,status")
-          .in("id", organisationIds)
-          .neq("status", "archived"),
-      ])
-    : [{ data: [], error: null }, { data: [], error: null }];
+  // Le sélecteur ne peut proposer que les organismes affectés à cet agent.
+  const { data: organisations, error: organisationsError } = organisationIds.length
+    ? await admin.from("organisations")
+        .select("id,name,legal_name,status")
+        .in("id", organisationIds)
+        .neq("status", "archived")
+    : { data: [], error: null };
+  if (organisationsError) {
+    return <main role="alert" style={s.page}>Impossible de charger les organismes Daily autorisés.</main>;
+  }
+  const organisationOptions: { id: string; name: string }[] =
+    stakeholderFeedbackOrganisationOptions(organisations ?? [], organisationIds);
+  const params = (await searchParams) ?? {};
+  const selectedOrganisation = selectStakeholderFeedbackOrganisation(params.organisme, organisationOptions);
+  if (selectedOrganisation === null) {
+    return <main role="alert" style={s.page}>Organisme non autorisé dans votre périmètre Daily.</main>;
+  }
+  const scopedOrganisationIds = selectedOrganisation ? [selectedOrganisation] : organisationIds;
 
-  if (feedbackError || organisationsError) {
-    return <main style={s.page}><p style={s.error}>Impossible de charger les réclamations et suggestions Daily.</p></main>;
+  // La lecture des retours est bornée côté base, avant tout tri, compteur ou affichage.
+  const { data: feedback, error: feedbackError } = scopedOrganisationIds.length
+    ? await admin.from("daily_stakeholder_feedback")
+        .select("id,organisation_id,session_id,enrolment_id,submission_type,stakeholder_type,submitter_name,submitter_email,subject,message,status,selen_review_note,selen_reviewed_at,forwarded_at,organisation_response,resolved_at,created_at,updated_at")
+        .in("organisation_id", scopedOrganisationIds)
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+  if (feedbackError) {
+    return <main role="alert" style={s.page}>Impossible de charger les réclamations et suggestions Daily.</main>;
   }
 
-  const organisationById = new Map((organisations ?? []).map((organisation) => [organisation.id, organisation]));
+  const organisationById = new Map((organisations ?? []).filter((organisation) => scopedOrganisationIds.includes(organisation.id)).map((organisation) => [organisation.id, organisation]));
   const rows = (feedback ?? []).map((item) => ({
     item,
     organisation: organisationById.get(item.organisation_id),
@@ -79,7 +91,7 @@ export default async function DailyStakeholderFeedbackPage({ searchParams }: Pro
   const suggestionCount = rows.filter(({ item }) => item.submission_type === "suggestion").length;
   const openCount = rows.filter(({ resolved }) => !resolved).length;
   // Filtrage uniquement après la lecture bornée aux organismes affectés à l’agent.
-  const filters = normalizeStakeholderFeedbackFilters((await searchParams) ?? {});
+  const filters = normalizeStakeholderFeedbackFilters(params);
   const visibleRows = filterStakeholderFeedbackRows(rows, filters) as typeof rows;
   const stageCounts = countStakeholderFeedbackStages(rows);
 
@@ -103,6 +115,15 @@ export default async function DailyStakeholderFeedbackPage({ searchParams }: Pro
 
       <form method="get" action="/agent/daily/reclamations" style={s.filterPanel} aria-label="Rechercher et prioriser les réclamations et suggestions">
         <div style={s.filterGrid}>
+          <label style={s.filterLabel} htmlFor="feedback-organisation">
+            Organisme
+            <select id="feedback-organisation" name="organisme" defaultValue={selectedOrganisation} style={s.filterInput}>
+              <option value="">Tous les organismes ({organisationOptions.length})</option>
+              {organisationOptions.map((organisation) => (
+                <option key={organisation.id} value={organisation.id}>{organisation.name}</option>
+              ))}
+            </select>
+          </label>
           <label style={s.filterLabel} htmlFor="feedback-search">
             Recherche
             <input id="feedback-search" name="q" type="search" maxLength={80} defaultValue={filters.q} placeholder="Organisme, sujet, déposant…" style={s.filterInput} />
