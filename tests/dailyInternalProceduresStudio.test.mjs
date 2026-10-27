@@ -26,9 +26,9 @@ test("Studio reconnaît les quatre procédures internes Daily", () => {
 test("la vue est bornée aux organismes dont Daily est actif", () => {
   assert.match(proceduresPage, /getDailyOrganisationIdsForAgent\(auth\.email\)/);
   assert.doesNotMatch(proceduresPage, /getActiveDailyOrganisationIds/);
-  assert.match(proceduresPage, /\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(proceduresPage, /\.in\("organisation_id", scopedOrganisationIds\)/);
   assert.match(proceduresPage, /\.in\("id", dailyOrganisationIds\)/);
-  assert.doesNotMatch(proceduresPage, /\.neq\("status", "archived"\)/);
+  assert.match(proceduresPage, /\.neq\("status", "archived"\)/);
 });
 
 test("la vue signale les brouillons et la revue documentaire annuelle", () => {
@@ -65,7 +65,7 @@ test("procédures : erreur de périmètre en refus fermé, zéro OF sans lecture
 });
 
 test("procédures : lectures limitées aux organismes affectés, sans mutation", () => {
-  assert.match(proceduresPage, /\.from\("daily_internal_procedures"\)[\s\S]*?\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(proceduresPage, /\.from\("daily_internal_procedures"\)[\s\S]*?\.in\("organisation_id", scopedOrganisationIds\)/);
   assert.match(proceduresPage, /\.from\("organisations"\)[\s\S]*?\.in\("id", dailyOrganisationIds\)/);
   assert.doesNotMatch(proceduresPage, /\.(?:insert|upsert|update|delete)\(/);
 });

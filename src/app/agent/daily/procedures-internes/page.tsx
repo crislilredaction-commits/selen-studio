@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { filterAndPrioritizeProcedures, normalizeProcedureQuery, normalizeProcedureView } from "@/lib/daily/internalProceduresTriage.mjs";
+import { filterAndPrioritizeProcedures, normalizeProcedureQuery, normalizeProcedureView, procedureOrganisationOptions, selectProcedureOrganisation } from "@/lib/daily/internalProceduresTriage.mjs";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
@@ -26,7 +26,7 @@ function needsAnnualReview(reviewedAt?: string | null, updatedAt?: string | null
   return timestamp < Date.now() - 365 * 24 * 60 * 60 * 1000;
 }
 
-type Props = { searchParams?: Promise<{ q?: string | string[]; vue?: string | string[] }> };
+type Props = { searchParams?: Promise<{ q?: string | string[]; vue?: string | string[]; organisme?: string | string[] }> };
 
 export default async function DailyInternalProceduresPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
@@ -43,26 +43,30 @@ export default async function DailyInternalProceduresPage({ searchParams }: Prop
   }
 
   const admin = createSupabaseAdminClient();
-  const proceduresRequest = dailyOrganisationIds.length
-    ? admin
-        .from("daily_internal_procedures")
+  const { data: organisations, error: organisationsError } = await admin
+    .from("organisations")
+    .select("id,name,legal_name,status")
+    .in("id", dailyOrganisationIds)
+    .neq("status", "archived");
+  if (organisationsError) {
+    return <main role="alert" style={s.page}><p style={s.error}>Impossible de charger les organismes Daily autorisés.</p></main>;
+  }
+  const organisationOptions = procedureOrganisationOptions(organisations ?? [], dailyOrganisationIds);
+  const params = await searchParams;
+  const selectedOrganisation = selectProcedureOrganisation(params?.organisme, organisationOptions);
+  if (selectedOrganisation === null) {
+    return <main role="alert" style={s.page}><p style={s.error}>Organisme non autorisé dans votre périmètre Daily.</p></main>;
+  }
+  const scopedOrganisationIds = selectedOrganisation ? [selectedOrganisation] : organisationOptions.map((option) => option.id);
+  // Le périmètre choisi est appliqué à la requête avant le calcul des compteurs.
+  const { data: procedures, error: proceduresError } = scopedOrganisationIds.length
+    ? await admin.from("daily_internal_procedures")
         .select("id,organisation_id,procedure_type,title,purpose,steps,responsibilities,evidence,status,reviewed_at,updated_at")
-        .in("organisation_id", dailyOrganisationIds)
+        .in("organisation_id", scopedOrganisationIds)
         .order("updated_at", { ascending: false })
-    : Promise.resolve({ data: [], error: null });
-  const organisationsRequest = dailyOrganisationIds.length
-    ? admin
-        .from("organisations")
-        .select("id,name,legal_name,status")
-        .in("id", dailyOrganisationIds)
-    : Promise.resolve({ data: [], error: null });
-  const [{ data: procedures, error: proceduresError }, { data: organisations, error: organisationsError }] = await Promise.all([
-    proceduresRequest,
-    organisationsRequest,
-  ]);
-
-  if (proceduresError || organisationsError) {
-    return <main style={s.page}><p style={s.error}>Impossible de charger les procédures internes Daily.</p></main>;
+    : { data: [], error: null };
+  if (proceduresError) {
+    return <main role="alert" style={s.page}><p style={s.error}>Impossible de charger les procédures internes Daily.</p></main>;
   }
 
   const organisationById = new Map((organisations ?? []).map((organisation) => [organisation.id, organisation]));
@@ -74,14 +78,14 @@ export default async function DailyInternalProceduresPage({ searchParams }: Prop
   const activeCount = rows.filter(({ procedure }) => procedure.status === "active").length;
   const draftCount = rows.filter(({ procedure }) => procedure.status === "draft").length;
   const annualReviewDueCount = rows.filter(({ annualReviewDue }) => annualReviewDue).length;
-  const params = await searchParams;
   const query = normalizeProcedureQuery(params?.q);
   const view = normalizeProcedureView(params?.vue);
   // Les filtres et le tri ne portent que sur les lignes déjà bornées aux affectations.
   const visibleRows = filterAndPrioritizeProcedures(rows, query, view) as typeof rows;
-  const viewHref = (nextView: "all" | "due" | "draft" | "active") => {
+  const viewHref = (nextView: "all" | "due" | "draft" | "active", includeQuery = true) => {
     const search = new URLSearchParams();
-    if (query) search.set("q", query);
+    if (query && includeQuery) search.set("q", query);
+    if (selectedOrganisation) search.set("organisme", selectedOrganisation);
     if (nextView !== "all") search.set("vue", nextView);
     return search.size ? `/agent/daily/procedures-internes?${search.toString()}` : "/agent/daily/procedures-internes";
   };
@@ -109,15 +113,32 @@ export default async function DailyInternalProceduresPage({ searchParams }: Prop
         <p style={s.muted}>Chaque procédure doit rester datée et vérifiée au moins une fois par an. Cette vue ne crée aucun doublon et ne modifie aucune procédure : elle signale seulement les brouillons et les revues annuelles à prévoir.</p>
       </section>
 
+      <section style={s.notice} aria-label="Choisir un organisme Daily">
+        <form method="get" action="/agent/daily/procedures-internes" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+          {query ? <input type="hidden" name="q" value={query} /> : null}
+          {view !== "all" ? <input type="hidden" name="vue" value={view} /> : null}
+          <label htmlFor="procedures-organisme" style={{ flex: "1 1 260px", fontSize: 12, fontWeight: 700 }}>
+            Organisme
+            <select id="procedures-organisme" name="organisme" defaultValue={selectedOrganisation} style={{ display: "block", width: "100%", marginTop: 6, minHeight: 40, padding: "8px 11px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg3)", color: "var(--selen-text)" }}>
+              <option value="">Tous les organismes ({organisationOptions.length})</option>
+              {organisationOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+            </select>
+          </label>
+          <button type="submit" style={{ minHeight: 40, padding: "8px 14px", border: 0, borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Appliquer</button>
+          <Link href="/agent/daily/procedures-internes" style={s.link}>Réinitialiser</Link>
+        </form>
+      </section>
+
       <section style={s.notice} aria-label="Rechercher et prioriser les procédures">
         <form action="/agent/daily/procedures-internes" method="get" role="search" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
           {view !== "all" ? <input type="hidden" name="vue" value={view} /> : null}
+          {selectedOrganisation ? <input type="hidden" name="organisme" value={selectedOrganisation} /> : null}
           <label htmlFor="procedures-search" style={{ flex: "1 1 260px", fontSize: 12, fontWeight: 700 }}>
             Rechercher un organisme, une procédure ou un objet
             <input id="procedures-search" type="search" name="q" maxLength={80} defaultValue={query} placeholder="Organisme, titre, objet…" style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 6, minHeight: 40, padding: "8px 11px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg3)", color: "var(--selen-text)" }} />
           </label>
           <button type="submit" style={{ minHeight: 40, padding: "8px 14px", border: 0, borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Rechercher</button>
-          {query ? <Link href={view === "all" ? "/agent/daily/procedures-internes" : `/agent/daily/procedures-internes?vue=${view}`} style={s.link}>Effacer</Link> : null}
+          {query ? <Link href={viewHref(view, false)} style={s.link}>Effacer</Link> : null}
         </form>
         <nav aria-label="Filtrer les procédures par priorité" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
           {([
