@@ -21,7 +21,9 @@ test("annual review oversight is limited to assigned active Daily organisations"
   assert.match(reviewPage, /getDailyOrganisationIdsForAgent\(auth\.email\)/);
   assert.doesNotMatch(reviewPage, /getActiveDailyOrganisationIds/);
   assert.match(reviewPage, /\.select\("id,organisation_id,display_name,professional_email,engagement_type,status,active"\)/);
-  assert.match(reviewPage, /\.in\("organisation_id", dailyOrganisationIds\)/);
+  assert.match(reviewPage, /const scopedOrganisationIds = selectedOrganisation \? \[selectedOrganisation\] : dailyOrganisationIds/);
+  assert.match(reviewPage, /\.in\("organisation_id", scopedOrganisationIds\)/);
+  assert.match(reviewPage, /if \(selectedOrganisation === null\)/);
   assert.match(reviewPage, /\.in\("trainer_profile_id", trainerIds\)/);
 });
 
