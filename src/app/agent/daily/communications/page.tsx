@@ -8,9 +8,16 @@ import {
 } from "@/lib/daily/signatureReminder24h";
 import { attendanceReviewStateLabel, getAttendanceReviewHistory } from "@/lib/daily/attendanceReviewHistory";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
+import {
+  communicationHistoryMetrics,
+  filterCommunicationHistory,
+  normalizeCommunicationQuery,
+  normalizeCommunicationStatus,
+  normalizeCommunicationType,
+} from "@/lib/daily/communicationHistoryTriage.mjs";
 
 type Props = {
-  searchParams: Promise<{ session_id?: string }>;
+  searchParams: Promise<{ session_id?: string; q?: string | string[]; etat?: string | string[]; categorie?: string | string[] }>;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -132,7 +139,10 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
     return <main style={{ padding: 28 }}>Aucun organisme Daily affecté.</main>;
   }
 
-  const { session_id: sessionId } = await searchParams;
+  const { session_id: sessionId, q: queryParam, etat: statusParam, categorie: typeParam } = await searchParams;
+  const searchQuery = normalizeCommunicationQuery(queryParam);
+  const statusFilter = normalizeCommunicationStatus(statusParam);
+  const typeFilter = normalizeCommunicationType(typeParam);
   const admin = createSupabaseAdminClient();
   const { data: scopedSession, error: scopedSessionError } = sessionId
     ? await admin.from("daily_sessions").select("id,organisation_id").eq("id", sessionId).in("organisation_id", dailyOrganisationIds).maybeSingle()
@@ -206,6 +216,21 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
   const sessionMap = new Map((sessions ?? []).map((item) => [item.id, item]));
   const organisationMap = new Map((organisations ?? []).map((item) => [item.id, item.name]));
   const formationMap = new Map((formations ?? []).map((item) => [item.id, item.title]));
+  // Le registre source reste inchangé pour relier chaque signature à son dernier envoi.
+  // Les filtres de présentation portent uniquement sur les 200 envois déjà autorisés.
+  const communicationMetrics = communicationHistoryMetrics(communicationRows);
+  const visibleCommunications = filterCommunicationHistory(
+    communicationRows.map((row) => {
+      const session = row.session_id ? sessionMap.get(row.session_id) : undefined;
+      return {
+        ...row,
+        organisation_label: organisationMap.get(row.organisation_id) ?? "",
+        session_label: session?.internal_reference ?? "",
+        formation_label: session?.formation_id ? formationMap.get(session.formation_id) ?? "" : "",
+      };
+    }),
+    { q: searchQuery, etat: statusFilter, categorie: typeFilter },
+  );
   const [attendanceSlotsResult, attendanceEnrolmentsResult] = sessionId
     ? await Promise.all([
       admin.from("daily_attendance_slots")
@@ -337,14 +362,60 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
         )}
       </section>
 
+      <section aria-label="Filtrer les communications" style={{ marginBottom: 20 }}>
+        <h2 style={{ marginBottom: 10 }}>Historique des communications</h2>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 }} aria-label="Compteurs des envois consultés">
+          <span><strong>{communicationMetrics.total}</strong> envoi(s) consulté(s)</span>
+          <span><strong>{communicationMetrics.issues}</strong> échec(s) à examiner</span>
+          <span><strong>{communicationMetrics.queued}</strong> en attente d’envoi</span>
+        </div>
+        <form method="get" role="search" style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: 12, padding: 14, border: "1px solid var(--selen-border)", borderRadius: 12 }}>
+          {sessionId ? <input type="hidden" name="session_id" value={sessionId} /> : null}
+          <label style={{ display: "grid", gap: 4, flex: "2 1 200px" }}>
+            Rechercher
+            <input type="search" name="q" maxLength={80} defaultValue={searchQuery} placeholder="Destinataire, organisme, objet, session…" style={{ width: "100%", padding: 9 }} />
+          </label>
+          <label style={{ display: "grid", gap: 4, flex: "1 1 150px" }}>
+            État d’envoi
+            <select name="etat" defaultValue={statusFilter} style={{ padding: 9 }}>
+              <option value="all">Tous les états</option>
+              <option value="issues">Échecs à examiner</option>
+              <option value="queued">En attente</option>
+              <option value="sent">Envoyés / délivrés</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 4, flex: "1 1 160px" }}>
+            Catégorie
+            <select name="categorie" defaultValue={typeFilter} style={{ padding: 9 }}>
+              <option value="all">Toutes les catégories</option>
+              <option value="attendance">Émargements</option>
+              <option value="signature">Conventions à signer</option>
+              <option value="other">Autres communications</option>
+            </select>
+          </label>
+          <button type="submit" style={{ padding: "10px 16px", cursor: "pointer" }}>Appliquer</button>
+          <Link href={sessionId ? `/agent/daily/communications?session_id=${encodeURIComponent(sessionId)}` : "/agent/daily/communications"}>Réinitialiser</Link>
+        </form>
+        <p style={{ color: "var(--selen-text2)", fontSize: 13 }}>
+          {visibleCommunications.length} résultat(s) affiché(s). Les échecs sont présentés en premier.
+          {communicationMetrics.total === 200 ? " Attention : affichage limité aux 200 communications les plus récentes ; les filtres ne couvrent pas l’historique antérieur." : ""}
+          {" "}Les états email ne prouvent jamais une signature.
+        </p>
+      </section>
+
       {communicationRows.length === 0 ? (
         <SelenCard>
           <SelenCardTitle>Aucune communication enregistrée</SelenCardTitle>
           <p style={{ color: "var(--selen-text2)", marginBottom: 0 }}>Le registre est prêt ; les prochains envois Daily apparaîtront ici automatiquement.</p>
         </SelenCard>
+      ) : visibleCommunications.length === 0 ? (
+        <SelenCard>
+          <SelenCardTitle>Aucun envoi ne correspond aux filtres</SelenCardTitle>
+          <p style={{ color: "var(--selen-text2)", marginBottom: 0 }}>Ajustez la recherche ou réinitialisez les filtres pour retrouver les preuves.</p>
+        </SelenCard>
       ) : (
         <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
-          {communicationRows.map((communication) => {
+          {visibleCommunications.map((communication) => {
             const session = communication.session_id ? sessionMap.get(communication.session_id) : undefined;
             const formationTitle = session?.formation_id ? formationMap.get(session.formation_id) : undefined;
             const documents = Array.isArray(communication.daily_communication_documents)
