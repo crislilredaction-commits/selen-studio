@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
+import { filterDailyOrganisationSessionGroups } from "@/lib/daily/dailyOrganisationSessionFilters.mjs";
 
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
@@ -102,12 +106,43 @@ export default function DailyOrganisationSessions({ organisationId, planned, cur
     <div className={styles.summaryGrid}>{groups.slice(0, 3).map((group) => <section key={group.id}><strong>{group.title}</strong><span>{group.sessions.length}</span></section>)}</div>
   </SelenCard>;
 
+  return <DailyOrganisationSessionsWorkspace groups={groups} />;
+}
+
+function DailyOrganisationSessionsWorkspace({ groups }: { groups: SessionGroup[] }) {
+  const [query, setQuery] = useState("");
+  const [phase, setPhase] = useState("all");
+  const visibleGroups = filterDailyOrganisationSessionGroups(groups, { query, phase }) as SessionGroup[];
+  const renderedGroups = query.trim() ? visibleGroups.filter(group => group.sessions.length > 0) : visibleGroups;
+  const totalSessions = groups.reduce((count, group) => count + group.sessions.length, 0);
+  const visibleCount = visibleGroups.reduce((count, group) => count + group.sessions.length, 0);
+
   return <section className={styles.workspace} aria-labelledby="organisation-sessions-title">
     <header className={styles.workspaceHead}>
       <div><p className={styles.eyebrow}>Organisme → sessions → dossier</p><h2 id="organisation-sessions-title">Sessions de formation</h2><p>Ouvre la session concernée, puis travaille dans sa phase métier sans perdre le contexte de l’organisme.</p></div>
-      <span>{planned.length + current.length + closing.length + history.length} session(s)</span>
+      <span>{totalSessions} session(s)</span>
     </header>
-    <div className={styles.groups}>{groups.map((group) => <section key={group.id} className={styles.group}>
+    <div className={styles.filters} role="search" aria-label="Rechercher les sessions de cet organisme">
+      <label htmlFor="daily-organisation-session-search">Rechercher une session
+        <input id="daily-organisation-session-search" type="search" maxLength={80} value={query}
+          onChange={event => setQuery(event.target.value.slice(0, 80))}
+          placeholder="Formation, référence ou date" />
+      </label>
+      <label htmlFor="daily-organisation-session-phase">Étape de formation
+        <select id="daily-organisation-session-phase" value={phase} onChange={event => setPhase(event.target.value)}>
+          <option value="all">Toutes les étapes</option>
+          <option value="planned">À venir</option>
+          <option value="current">En cours</option>
+          <option value="closing">À clôturer</option>
+          <option value="history">Terminées</option>
+        </select>
+      </label>
+      <button type="button" onClick={() => { setQuery(""); setPhase("all"); }}
+        disabled={!query && phase === "all"}>Réinitialiser</button>
+    </div>
+    <p className={styles.results} role="status" aria-live="polite">{visibleCount} session(s) affichée(s) sur {totalSessions}</p>
+    {renderedGroups.length === 0 ? <p className={styles.empty}>Aucune session ne correspond à cette recherche. Réinitialise les filtres pour retrouver tous les dossiers.</p> : null}
+    <div className={styles.groups}>{renderedGroups.map((group) => <section key={group.id} className={styles.group}>
       <header><div><h3>{group.title}</h3><p>{group.description}</p></div><strong>{group.sessions.length}</strong></header>
       {group.sessions.length === 0 ? <p className={styles.empty}>Aucune session dans cette étape.</p> : <div className={styles.cards}>{group.sessions.map((session) => <SessionCard key={session.id} session={session} groupId={group.id}/>)}</div>}
     </section>)}</div>
