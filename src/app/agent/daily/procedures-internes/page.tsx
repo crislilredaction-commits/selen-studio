@@ -82,9 +82,9 @@ export default async function DailyInternalProceduresPage({ searchParams }: Prop
   const view = normalizeProcedureView(params?.vue);
   // Les filtres et le tri ne portent que sur les lignes déjà bornées aux affectations.
   const visibleRows = filterAndPrioritizeProcedures(rows, query, view) as typeof rows;
-  const viewHref = (nextView: "all" | "due" | "draft" | "active") => {
+  const viewHref = (nextView: "all" | "due" | "draft" | "active", includeQuery = true) => {
     const search = new URLSearchParams();
-    if (query) search.set("q", query);
+    if (query && includeQuery) search.set("q", query);
     if (selectedOrganisation) search.set("organisme", selectedOrganisation);
     if (nextView !== "all") search.set("vue", nextView);
     return search.size ? `/agent/daily/procedures-internes?${search.toString()}` : "/agent/daily/procedures-internes";
@@ -138,7 +138,7 @@ export default async function DailyInternalProceduresPage({ searchParams }: Prop
             <input id="procedures-search" type="search" name="q" maxLength={80} defaultValue={query} placeholder="Organisme, titre, objet…" style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 6, minHeight: 40, padding: "8px 11px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg3)", color: "var(--selen-text)" }} />
           </label>
           <button type="submit" style={{ minHeight: 40, padding: "8px 14px", border: 0, borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Rechercher</button>
-          {query ? <Link href={viewHref(view)} style={s.link}>Effacer</Link> : null}
+          {query ? <Link href={viewHref(view, false)} style={s.link}>Effacer</Link> : null}
         </form>
         <nav aria-label="Filtrer les procédures par priorité" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
           {([
