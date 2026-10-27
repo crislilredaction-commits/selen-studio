@@ -51,7 +51,7 @@ test("triage : données inchangées et filtrage strictement après le périmètr
   assert.equal(filterStakeholderFeedbackRows(rows, normalizeStakeholderFeedbackFilters({})).length, 1);
   assert.equal(rows[0].item.id, "A");
   assert.match(source, /getDailyOrganisationIdsForAgent\(auth.email\)/);
-  assert.match(source, /\.from\("daily_stakeholder_feedback"\)[\s\S]*\.in\("organisation_id", organisationIds\)/);
+  assert.match(source, /\.from\("daily_stakeholder_feedback"\)[\s\S]*\.in\("organisation_id", scopedOrganisationIds\)/);
   assert.ok(source.indexOf("const rows =") < source.indexOf("filterStakeholderFeedbackRows(rows, filters)"));
   assert.doesNotMatch(source, /\.(insert|update|delete|upsert)\(/);
 });

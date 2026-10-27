@@ -20,9 +20,10 @@ test("le suivi réutilise daily_stakeholder_feedback comme source unique", () =>
 test("la vue est bornée au périmètre canonique des organismes Daily actifs", () => {
   assert.match(feedbackPage, /getDailyOrganisationIdsForAgent\(auth\.email\)/);
   assert.doesNotMatch(feedbackPage, /getActiveDailyOrganisationIds/);
-  assert.match(feedbackPage, /\.from\("daily_stakeholder_feedback"\)[\s\S]*\.in\("organisation_id", organisationIds\)/);
+  assert.match(feedbackPage, /\.from\("daily_stakeholder_feedback"\)[\s\S]*\.in\("organisation_id", scopedOrganisationIds\)/);
   assert.match(feedbackPage, /\.from\("organisations"\)[\s\S]*\.in\("id", organisationIds\)/);
-  assert.match(feedbackPage, /organisationIds\.length\s*\?\s*await Promise\.all/);
+  assert.match(feedbackPage, /const scopedOrganisationIds = selectedOrganisation \? \[selectedOrganisation\] : organisationIds/);
+  assert.match(feedbackPage, /if \(selectedOrganisation === null\)/);
 });
 
 test("la vue distingue les retours ouverts des retours résolus", () => {

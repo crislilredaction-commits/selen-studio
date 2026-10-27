@@ -67,12 +67,15 @@ test("réclamations : accès agent puis périmètre avant lecture service-role",
   const read = feedback.indexOf('from("daily_stakeholder_feedback")');
   assert.ok(auth >= 0 && auth < guard && guard < scopeCall && scopeCall < read);
   assert.match(feedback, /catch \{[\s\S]*?Impossible de vérifier votre périmètre Daily/);
-  assert.match(feedback, /\.in\("organisation_id", organisationIds\)/);
+  assert.match(feedback, /\.in\("organisation_id", scopedOrganisationIds\)/);
+  assert.match(feedback, /if \(selectedOrganisation === null\)/);
+  assert.ok(feedback.indexOf("if (selectedOrganisation === null)") < feedback.indexOf('from("daily_stakeholder_feedback")'));
   assert.match(feedback, /\.in\("id", organisationIds\)/);
   assert.doesNotMatch(feedback, /getActiveDailyOrganisationIds/);
 });
 
 test("réclamations : zéro organisme n'entraîne aucune lecture métier ni écriture", () => {
-  assert.match(feedback, /organisationIds\.length\s*\?\s*await Promise\.all/);
+  assert.match(feedback, /organisationIds\.length\s*\?\s*await admin\.from\("organisations"\)/);
+  assert.match(feedback, /scopedOrganisationIds\.length\s*\?\s*await admin\.from\("daily_stakeholder_feedback"\)/);
   assert.doesNotMatch(feedback, /\.(?:insert|upsert|update|delete)\(/);
 });
