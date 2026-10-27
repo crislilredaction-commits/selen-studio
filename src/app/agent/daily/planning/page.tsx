@@ -3,6 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { countOpenDailySessionChecklistItems } from "@/lib/daily/planningSessionOverview.mjs";
 import { DAILY_PLANNING_STATES, filterDailyPlanningRows, normalizeDailyPlanningQuery, normalizeDailyPlanningState } from "@/lib/daily/dailyPlanningFilters.mjs";
+import { buildDailyPlanningPriorityRows } from "@/lib/daily/dailyPlanningTriage.mjs";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
@@ -171,6 +172,8 @@ export default async function DailyPlanningPage({ searchParams }: Props) {
   const stateFilter = normalizeDailyPlanningState(params?.etat);
   // Les filtres s’appliquent uniquement aux dossiers déjà bornés au périmètre agent.
   const visibleActiveRows = filterDailyPlanningRows(activeRows, query, stateFilter) as typeof activeRows;
+  // File d’action calculée uniquement après contrôle des affectations et filtres de l’agent.
+  const priorityRows = buildDailyPlanningPriorityRows(visibleActiveRows, today);
   const historyRows = allRows
     .filter((row) => row?.dossierStatus === "completed" || row?.dossierStatus === "archived")
     .sort((a, b) => (b?.end ?? b?.start ?? "").localeCompare(a?.end ?? a?.start ?? ""));
@@ -192,6 +195,32 @@ export default async function DailyPlanningPage({ searchParams }: Props) {
           </SelenCard>
         ))}
       </div>
+
+      <SelenCard style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <SelenCardTitle>Interventions prioritaires</SelenCardTitle>
+          <strong style={{ color: "var(--selen-gold2)", fontSize: 13 }}>{priorityRows.length} dossier{priorityRows.length > 1 ? "s" : ""} à examiner</strong>
+        </div>
+        <p style={{ margin: "6px 0 12px", color: "var(--selen-text2)", fontSize: 12 }}>
+          Clôtures en retard, dates manquantes, contrôles en cours puis préparations à terminer. Cette file respecte les filtres du planning et votre périmètre d’affectation.
+        </p>
+        {priorityRows.length === 0 ? (
+          <p role="status" style={{ color: "var(--selen-text3)", fontSize: 13 }}>Aucune intervention prioritaire pour cette sélection.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {priorityRows.slice(0, 10).map((item: { sessionId: string; organisationName: string; formationTitle: string; reference: string; priorityLabel: string; actionLabel: string; openChecklist: number }) => (
+              <Link key={item.sessionId} href={`/agent/daily/session-dossiers/${item.sessionId}/full`} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 12, alignItems: "center", padding: "11px 12px", border: "1px solid var(--selen-border)", borderRadius: 10, color: "var(--selen-text)", textDecoration: "none" }}>
+                <span style={{ display: "grid", gap: 3, minWidth: 0 }}>
+                  <strong style={{ fontSize: 13 }}>{item.organisationName} · {item.formationTitle}</strong>
+                  <span style={{ fontSize: 12, color: "var(--selen-text2)" }}>{item.reference} · {item.actionLabel}</span>
+                </span>
+                <span style={{ fontSize: 11, color: "var(--selen-gold2)", fontWeight: 800, textAlign: "right" }}>{item.priorityLabel} →</span>
+              </Link>
+            ))}
+            {priorityRows.length > 10 ? <p style={{ margin: 0, fontSize: 12, color: "var(--selen-text3)" }}>10 premières interventions affichées sur {priorityRows.length}. Affinez la recherche pour retrouver les autres dossiers.</p> : null}
+          </div>
+        )}
+      </SelenCard>
 
       <SelenCard>
         <SelenCardTitle>21 prochains jours</SelenCardTitle>
