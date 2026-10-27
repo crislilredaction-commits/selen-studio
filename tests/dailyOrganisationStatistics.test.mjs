@@ -70,7 +70,8 @@ test("le répertoire filtre les organismes autorisés sans élargir le périmèt
 test("le répertoire conserve les bornes agent et les compteurs canoniques", () => {
   assert.match(listPage, /getDailyOrganisationIdsForAgent/);
   assert.match(listPage, /filterDailyOrganisationDirectory\(organisations/);
-  assert.match(listPage, /visibleOrganisations\.map/);
+  assert.match(listPage, /buildDailyOrganisationPriorityRows\(visibleOrganisations,/);
+  assert.match(listPage, /sortedOrganisations\.map/);
   assert.match(listPage, /dailyOrganisationTaskCounts\(attentionTasks\)/);
   assert.match(listPage, /Réinitialiser/);
 });
