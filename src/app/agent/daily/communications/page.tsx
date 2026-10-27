@@ -230,7 +230,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
       };
     }),
     { q: searchQuery, etat: statusFilter, categorie: typeFilter },
-  );
+  ) as typeof communicationRows;
   const [attendanceSlotsResult, attendanceEnrolmentsResult] = sessionId
     ? await Promise.all([
       admin.from("daily_attendance_slots")
