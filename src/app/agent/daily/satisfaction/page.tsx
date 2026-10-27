@@ -6,6 +6,7 @@ import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import DailySatisfactionCsvExport from "@/components/daily/DailySatisfactionCsvExport";
 import { dailySatisfactionLearnerProgress } from "@/lib/daily/dailySatisfactionLearnerProgress.mjs";
 import { filterDailySatisfactionRows, normalizeDailySatisfactionQuery, normalizeDailySatisfactionView } from "@/lib/daily/dailySatisfactionFilters.mjs";
+import { satisfactionOrganisationOptions, selectSatisfactionOrganisation } from "@/lib/daily/satisfactionOrganisationScope.mjs";
 
 type SessionRow = {
   id: string;
@@ -40,17 +41,31 @@ function stakeholderCount(rows: StakeholderRow[], sessionId: string, types: stri
   return rows.filter((row) => row.session_id === sessionId && types.includes(row.stakeholder_type)).length;
 }
 
-type Props = { searchParams?: Promise<{ q?: string | string[]; vue?: string | string[] }> };
+type Props = { searchParams?: Promise<{ q?: string | string[]; vue?: string | string[]; organisme?: string | string[] }> };
 
 export default async function DailySatisfactionTrackingPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
   if (!auth.ok) return <main style={{ padding: 28 }}>Accès refusé.</main>;
 
-  const organisationIds = await getDailyOrganisationIdsForAgent(auth.email);
+  const assignedOrganisationIds = await getDailyOrganisationIdsForAgent(auth.email);
   const admin = createSupabaseAdminClient();
-  if (organisationIds.length === 0) {
+  if (assignedOrganisationIds.length === 0) {
     return <main style={{ maxWidth: 1180, margin: "0 auto", padding: 28 }}><h1>Satisfaction</h1><p>Aucun organisme Daily affecté.</p></main>;
   }
+
+  // Le sélecteur ne propose que les organismes réellement affectés à cet agent.
+  const { data: assignedOrganisations, error: organisationsError } = await admin
+    .from("organisations")
+    .select("id,name,legal_name")
+    .in("id", assignedOrganisationIds);
+  if (organisationsError) throw new Error(organisationsError.message);
+  const organisationOptions: { id: string; name: string }[] = satisfactionOrganisationOptions(assignedOrganisations ?? [], assignedOrganisationIds);
+  const params = await searchParams;
+  const selectedOrganisation = selectSatisfactionOrganisation(params?.organisme, organisationOptions);
+  if (selectedOrganisation === null) {
+    return <main role="alert" style={{ padding: 28 }}>Organisme inaccessible dans votre périmètre Daily.</main>;
+  }
+  const organisationIds = selectedOrganisation ? [selectedOrganisation] : assignedOrganisationIds;
 
   const [sessionRes, enrolmentRes, learnerRes, stakeholderRes] = await Promise.all([
     admin.from("daily_sessions")
@@ -87,7 +102,6 @@ export default async function DailySatisfactionTrackingPage({ searchParams }: Pr
   const sessionsWithMissingLearnerFeedback = rows.filter((row) => row.expectedLearners > row.learnerDone).length;
   const sessionsWithResponses = rows.filter((row) => row.hasAnyResponse).length;
   const missingLearnerResponses = rows.reduce((total, row) => total + row.missingLearners, 0);
-  const params = await searchParams;
   const query = normalizeDailySatisfactionQuery(params?.q);
   const view = normalizeDailySatisfactionView(params?.vue);
   // Les filtres ne reçoivent que les sessions déjà bornées aux organismes affectés.
@@ -97,6 +111,7 @@ export default async function DailySatisfactionTrackingPage({ searchParams }: Pr
   const viewHref = (nextView: "all" | "missing" | "complete") => {
     const search = new URLSearchParams();
     if (query) search.set("q", query);
+    if (selectedOrganisation) search.set("organisme", selectedOrganisation);
     if (nextView !== "all") search.set("vue", nextView);
     return search.size ? `/agent/daily/satisfaction?${search.toString()}` : "/agent/daily/satisfaction";
   };
@@ -118,12 +133,19 @@ export default async function DailySatisfactionTrackingPage({ searchParams }: Pr
     <SelenCard style={{ marginBottom: 18 }}>
       <form action="/agent/daily/satisfaction" method="get" role="search" aria-label="Filtrer les sessions de satisfaction" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
         {view !== "all" ? <input type="hidden" name="vue" value={view} /> : null}
+        <label htmlFor="satisfaction-organisation" style={{ display: "grid", gap: 5, flex: "1 1 200px", fontSize: 12, fontWeight: 700 }}>
+          Organisme de formation
+          <select id="satisfaction-organisation" name="organisme" defaultValue={selectedOrganisation} style={{ minHeight: 40, padding: "8px 11px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg2)", color: "var(--selen-text)", minWidth: 0 }}>
+            <option value="">Tous les organismes affectés</option>
+            {organisationOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+          </select>
+        </label>
         <label htmlFor="satisfaction-search" style={{ display: "grid", gap: 5, flex: "1 1 260px", fontSize: 12, fontWeight: 700 }}>
           Rechercher une formation, un organisme ou une référence
           <input id="satisfaction-search" type="search" name="q" maxLength={80} defaultValue={query} placeholder="Nom, organisme, référence…" style={{ minHeight: 40, padding: "8px 11px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg2)", color: "var(--selen-text)" }} />
         </label>
         <button type="submit" style={{ minHeight: 40, padding: "8px 14px", border: 0, borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Rechercher</button>
-        {query ? <Link href={view === "all" ? "/agent/daily/satisfaction" : `/agent/daily/satisfaction?vue=${view}`} style={{ fontSize: 12, color: "var(--selen-text2)" }}>Effacer la recherche</Link> : null}
+        {(query || selectedOrganisation || view !== "all") ? <Link href="/agent/daily/satisfaction" style={{ fontSize: 12, color: "var(--selen-text2)" }}>Réinitialiser les filtres</Link> : null}
       </form>
       <nav aria-label="Prioriser les sessions de satisfaction" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
         {([
@@ -132,7 +154,7 @@ export default async function DailySatisfactionTrackingPage({ searchParams }: Pr
           { key: "complete", label: "Complètes", count: completedSessions },
         ] as const).map((item) => <Link key={item.key} href={viewHref(item.key)} aria-current={view === item.key ? "page" : undefined} style={{ border: "1px solid var(--selen-border2)", borderRadius: 999, padding: "7px 12px", textDecoration: "none", fontSize: 12, fontWeight: 700, background: view === item.key ? "var(--selen-gold2)" : "transparent", color: view === item.key ? "var(--selen-bg)" : "var(--selen-text)" }}>{item.label} ({item.count})</Link>)}
       </nav>
-      <p role="status" style={{ margin: "12px 0 0", fontSize: 12, color: "var(--selen-text2)" }}>{visibleRows.length} session{visibleRows.length > 1 ? "s" : ""} affichée{visibleRows.length > 1 ? "s" : ""}. {view === "missing" ? "Les dossiers avec le plus de réponses manquantes apparaissent en premier." : ""}</p>
+      <p role="status" style={{ margin: "12px 0 0", fontSize: 12, color: "var(--selen-text2)" }}>{visibleRows.length} session{visibleRows.length > 1 ? "s" : ""} affichée{visibleRows.length > 1 ? "s" : ""}{selectedOrganisation ? ` pour ${organisationOptions.find((option) => option.id === selectedOrganisation)?.name ?? "cet organisme"}` : ""}. {view === "missing" ? "Les dossiers avec le plus de réponses manquantes apparaissent en premier." : ""}</p>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
         <DailySatisfactionCsvExport rows={visibleRows.map((row) => ({
           formation: formationTitle(row.session.daily_formations),
