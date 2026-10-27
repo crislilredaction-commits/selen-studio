@@ -64,7 +64,8 @@ test("la page ne recherche qu'après le bornage serveur et conserve les historiq
   assert.match(page, /const activeEnrolments = allEnrolments\.filter/);
   assert.match(page, /const historicalEnrolments = allEnrolments\.filter/);
   assert.match(page, /filterLearnerEnrolments\(prioritizedActiveEnrolments/);
-  assert.match(page, /filterLearnerEnrolments\(historicalEnrolments/);
+  assert.match(page, /filterLearnerEnrolments\(scopedHistoricalEnrolments/);
+  assert.match(page, /filterLearnerOrganisation\(historicalEnrolments, selectedOrganisation\.id\)/);
   assert.match(page, /name="q"/);
   assert.match(page, /name="vue"/);
   assert.match(page, /role="status"/);
