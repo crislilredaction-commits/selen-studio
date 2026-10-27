@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   BriefcaseBusiness,
@@ -69,6 +69,8 @@ export default function AgentSidebar() {
   const [email, setEmail] = useState<string | null>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(pathname.startsWith("/agent/profil"));
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const friendlyNote = useMemo(() => noteForPath(pathname), [pathname]);
   const userSectionActive = pathname.startsWith("/agent/clients") || pathname.startsWith("/agent/admin/agents");
   const [usersOpen, setUsersOpen] = useState(userSectionActive);
@@ -117,6 +119,15 @@ export default function AgentSidebar() {
     return () => { cancelled = true; };
   }, [pathname, userSectionActive]);
 
+  // Fermer le tiroir au changement de route, même après navigation historique.
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) setMobileMenuOpen(false);
+    });
+    return () => { cancelled = true; };
+  }, [pathname]);
+
   const visibleLinks = links
     .filter((link) => {
       if ("ownerOnly" in link && link.ownerOnly) return isOwnerLil(email);
@@ -162,6 +173,7 @@ export default function AgentSidebar() {
               <Link
                 key={link.href}
                 href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -187,6 +199,7 @@ export default function AgentSidebar() {
 
   return (
     <aside
+      data-mobile-open={mobileMenuOpen ? "true" : "false"}
       className="agent-sidebar flex h-screen flex-col"
       style={{
         ...({
@@ -218,6 +231,19 @@ export default function AgentSidebar() {
           opacity: 0.2,
         }}
       />
+
+      <button
+        ref={mobileMenuButtonRef}
+        className="agent-sidebar__mobile-toggle"
+        type="button"
+        aria-controls="agent-primary-navigation"
+        aria-expanded={mobileMenuOpen}
+        onClick={() => setMobileMenuOpen(open => !open)}
+      >
+        <span>Selen Studio</span>
+        <span aria-hidden="true">{mobileMenuOpen ? "Fermer ✕" : "Menu ☰"}</span>
+        <span className="sr-only">{mobileMenuOpen ? "Fermer la navigation" : "Ouvrir la navigation"}</span>
+      </button>
 
       <div style={{ padding: "24px 20px 18px", borderBottom: "1px solid var(--selen-border)", position: "relative" }}>
         <p style={{ fontFamily: "var(--font-display)", fontSize: 9, letterSpacing: "0.3em", textTransform: "uppercase", color: "var(--selen-gold)", opacity: 0.75 }}>
@@ -284,7 +310,18 @@ export default function AgentSidebar() {
         </p>
       </div>
 
-      <nav className="agent-sidebar__nav" style={{ flex: 1, padding: "14px 10px" }}>
+      <nav
+        id="agent-primary-navigation"
+        className="agent-sidebar__nav"
+        aria-label="Navigation principale Studio"
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && mobileMenuOpen) {
+            setMobileMenuOpen(false);
+            mobileMenuButtonRef.current?.focus();
+          }
+        }}
+        style={{ flex: 1, padding: "14px 10px" }}
+      >
         <p style={{ fontSize: 9, letterSpacing: "0.25em", textTransform: "uppercase", color: "var(--selen-text3)", padding: "10px 8px 6px" }}>
           Navigation
         </p>
@@ -294,6 +331,7 @@ export default function AgentSidebar() {
             <div key={link.href}>
               <Link
                 href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -317,6 +355,9 @@ export default function AgentSidebar() {
             </div>
           );
         })}
+        <Link href="/agent/profil" className="agent-sidebar__mobile-profile" onClick={() => setMobileMenuOpen(false)}>
+          <UserRound size={16} strokeWidth={1.5} /> Mon profil
+        </Link>
       </nav>
 
       <div style={{ padding: "14px 20px", borderTop: "1px solid var(--selen-border)", fontSize: 10, color: "var(--selen-text3)" }}>
