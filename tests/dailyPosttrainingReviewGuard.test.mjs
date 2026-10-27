@@ -50,5 +50,5 @@ test("Studio publication requires the same agent to open the current document ve
   const publish=reviewRoute.indexOf('if(action==="publish"){');
   assert.ok(guard>=0&&publish>guard,"The version/agent guard must run before publication");
   assert.match(reviewRoute,/avant de la valider, de demander une correction ou de la publier/);
-  assert.match(page,/doc\.status==="validated"\?<button[^>]+disabled=\{!opened \|\| busy\}/);
+  assert.ok(page.includes('doc.status==="validated"?<button onClick={()=>void review(doc,"publish")} disabled={!opened || busy}>'));
 });
