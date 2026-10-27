@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { matchesPretrainingDocument, matchesPretrainingReviewStep, normalizePretrainingQuery, pretrainingPriority } from "@/lib/daily/pretrainingDocumentTriage.mjs";
 
 type PreparationSession = { id:string; organisation_id:string; internal_reference?:string|null; start_date?:string|null; daily_formations?:{title?:string|null}|null };
 type ContractualEnrolment = {id:string;learner_id:string;name:string;updated_at:string;contracting_party_type:"individual"|"company"|null;company_name:string|null;issue:string|null};
@@ -27,6 +28,7 @@ export default function DailyPretrainingReviewPage(){
   const [documents,setDocuments]=useState<DocumentRow[]>([]); const [preparationSessions,setPreparationSessions]=useState<PreparationSession[]>([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(""); const [message,setMessage]=useState(""); const [filter,setFilter]=useState("attention"); const [learnerFilter,setLearnerFilter]=useState("all"); const [sessionFilter,setSessionFilter]=useState(requestedSession);
   const [preview,setPreview]=useState<DocumentRow|null>(null); const [openedVersions,setOpenedVersions]=useState<Record<string,string>>({});
   const [pendingId,setPendingId]=useState(""); const actionPending=useRef(false);
+  const [query,setQuery]=useState(""); const [typeFilter,setTypeFilter]=useState("all"); const [stepFilter,setStepFilter]=useState("all");
   const [preparation,setPreparation]=useState<Preparation|null>(null); const [preparationError,setPreparationError]=useState(""); const [preparationLoading,setPreparationLoading]=useState(false); const [preparationRevision,setPreparationRevision]=useState(0); const [partyDrafts,setPartyDrafts]=useState<Record<string,PartyDraft>>({});
   const load=useCallback(async()=>{setLoading(true);setError("");try{const r=await fetch("/agent/api/daily/pretraining-documents",{cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error??"Chargement impossible.");setDocuments(d.documents??[]);setPreparationSessions(d.sessions??[]);}catch(c){setError(c instanceof Error?c.message:"Chargement impossible.");}finally{setLoading(false);}},[]);
   useEffect(()=>{void load();},[load]);
@@ -48,13 +50,28 @@ export default function DailyPretrainingReviewPage(){
     return()=>{cancelled=true;};
   },[preparationSession?.id,preparationRevision]);
   const unsavedChoices=Boolean(preparation?.enrolments.some(row=>{const draft=partyDrafts[row.id];return draft&&(draft.party!==(row.contracting_party_type??"")||(draft.party==="company"&&draft.company!==(row.company_name??"")));}));
-  const visible=useMemo(()=>documents.filter((d)=>(filter==="all"||["to_check","to_validate","correction_requested","validated"].includes(d.status))&&(learnerFilter==="all"||learnerKey(d)===learnerFilter)&&(sessionFilter==="all"||sessionKey(d)===sessionFilter)),[documents,filter,learnerFilter,sessionFilter]);
+  const documentTypes=useMemo(()=>[...new Set(documents.map(doc=>doc.document_type))].sort((a,b)=>(labels[a]??a).localeCompare(labels[b]??b,"fr")),[documents]);
+  const visible=useMemo(()=>documents.filter((d)=>
+    (filter==="all"||["to_check","to_validate","correction_requested","validated"].includes(d.status))
+    &&(learnerFilter==="all"||learnerKey(d)===learnerFilter)
+    &&(sessionFilter==="all"||sessionKey(d)===sessionFilter)
+    &&(typeFilter==="all"||d.document_type===typeFilter)
+    &&matchesPretrainingReviewStep(d.status,stepFilter)
+    &&matchesPretrainingDocument(d,query)
+  ).sort((a,b)=>pretrainingPriority(a.status)-pretrainingPriority(b.status)||a.updated_at.localeCompare(b.updated_at)||a.id.localeCompare(b.id)),[documents,filter,learnerFilter,sessionFilter,typeFilter,stepFilter,query]);
+  const visibleCounts=useMemo(()=>({
+    review:visible.filter(doc=>matchesPretrainingReviewStep(doc.status,"review")).length,
+    publish:visible.filter(doc=>matchesPretrainingReviewStep(doc.status,"publish")).length,
+    correction:visible.filter(doc=>matchesPretrainingReviewStep(doc.status,"correction")).length,
+  }),[visible]);
+  const hasSearchFilters=Boolean(query.trim())||typeFilter!=="all"||stepFilter!=="all";
   const globalQueues=useMemo(()=>{
     const queues=new Map<string,SessionQueue>();
-    if(learnerFilter==="all")for(const session of preparationSessions)queues.set(session.id,{id:session.id,label:`${session.daily_formations?.title||session.internal_reference||"Session"}${session.start_date?` · ${session.start_date}`:""}`,organisation:"",documents:[],empty:true});
+    if(learnerFilter==="all"&&!hasSearchFilters)for(const session of preparationSessions)queues.set(session.id,{id:session.id,label:`${session.daily_formations?.title||session.internal_reference||"Session"}${session.start_date?` · ${session.start_date}`:""}`,organisation:"",documents:[],empty:true});
     for(const document of visible){const id=sessionKey(document);if(!id||hasUnavailableCanonicalSession(document,knownSessionIds))continue;const current=queues.get(id)??{id,label:sessionLabel(document),organisation:document.organisations?.name??"Organisme",documents:[],empty:false};current.documents.push(document);current.empty=false;if(!current.organisation)current.organisation=document.organisations?.name??"Organisme";queues.set(id,current);}
-    return [...queues.values()].sort((a,b)=>a.label.localeCompare(b.label,"fr"));
-  },[knownSessionIds,learnerFilter,preparationSessions,visible]);
+    const rank=(queue:SessionQueue)=>queue.documents.length?Math.min(...queue.documents.map(doc=>pretrainingPriority(doc.status))):1;
+    return [...queues.values()].sort((a,b)=>rank(a)-rank(b)||a.label.localeCompare(b.label,"fr"));
+  },[hasSearchFilters,knownSessionIds,learnerFilter,preparationSessions,visible]);
   const documentsWithoutSession=useMemo(()=>visible.filter(document=>!sessionKey(document)),[visible]);
   const orphanSessionDocuments=useMemo(()=>visible.filter(document=>hasUnavailableCanonicalSession(document,knownSessionIds)),[knownSessionIds,visible]);
   async function review(id:string,action:"validate"|"request_correction"|"publish"){
@@ -206,7 +223,25 @@ export default function DailyPretrainingReviewPage(){
     </nav> : null}
     {requestedSession !== "all"&&preparationSession ? <p><Link href={`/agent/daily/session-dossiers/${encodeURIComponent(requestedSession)}/full`}>← Revenir à la session</Link></p> : null}
     {requestedSession !== "all" ? <p style={{fontSize:12,color:"var(--selen-text2)"}}>Vue limitée à cette session. Pour consulter une autre session, revenez au pilotage global.</p> : null}
-    <div style={{display:"flex",gap:8,margin:"18px 0",flexWrap:"wrap",alignItems:"end"}}><button onClick={()=>setFilter("attention")} disabled={filter==="attention"}>À traiter</button><button onClick={()=>setFilter("all")} disabled={filter==="all"}>Tous</button><label style={{display:"grid",gap:4,fontSize:12,fontWeight:700}}>Apprenant<select aria-label="Filtrer par apprenant" value={learnerFilter} onChange={(e)=>setLearnerFilter(e.target.value)} style={{minWidth:220,padding:8}}><option value="all">Tous les apprenants</option>{learners.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>{requestedSession!=="all"?<label style={{display:"grid",gap:4,fontSize:12,fontWeight:700}}>Session<select aria-label="Filtrer par session" disabled value={sessionFilter} style={{minWidth:220,padding:8}}>{sessions.filter(([key])=>key===requestedSession).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>:null}{learnerFilter!=="all"?<button disabled={Boolean(pendingId)} onClick={()=>setLearnerFilter("all")}>Réinitialiser les filtres</button>:null}</div>
+    <div aria-label="Filtres des documents préformation" style={{display:"flex",gap:8,margin:"18px 0 8px",flexWrap:"wrap",alignItems:"end"}}>
+      <button onClick={()=>setFilter("attention")} disabled={filter==="attention"}>À traiter</button>
+      <button onClick={()=>setFilter("all")} disabled={filter==="all"}>Tous</button>
+      <label style={{display:"grid",gap:4,fontSize:12,fontWeight:700}}>Recherche
+        <input type="search" aria-label="Rechercher les documents préformation" maxLength={80} value={query} onChange={event=>setQuery(normalizePretrainingQuery(event.target.value))} placeholder="Organisme, pièce, apprenant, session" style={{minWidth:240,padding:8}}/>
+      </label>
+      <label style={{display:"grid",gap:4,fontSize:12,fontWeight:700}}>Type de pièce
+        <select aria-label="Filtrer par type de pièce" value={typeFilter} onChange={event=>setTypeFilter(event.target.value)} style={{minWidth:180,padding:8}}><option value="all">Tous les types</option>{documentTypes.map(type=><option key={type} value={type}>{labels[type]??type}</option>)}</select>
+      </label>
+      <label style={{display:"grid",gap:4,fontSize:12,fontWeight:700}}>Étape de revue
+        <select aria-label="Filtrer par étape de revue" value={stepFilter} onChange={event=>setStepFilter(event.target.value)} style={{minWidth:170,padding:8}}><option value="all">Toutes les étapes</option><option value="review">À relire</option><option value="publish">À publier</option><option value="correction">Correction attendue</option></select>
+      </label>
+      <label style={{display:"grid",gap:4,fontSize:12,fontWeight:700}}>Apprenant
+        <select aria-label="Filtrer par apprenant" value={learnerFilter} onChange={event=>setLearnerFilter(event.target.value)} style={{minWidth:220,padding:8}}><option value="all">Tous les apprenants</option>{learners.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select>
+      </label>
+      {requestedSession!=="all"?<label style={{display:"grid",gap:4,fontSize:12,fontWeight:700}}>Session<select aria-label="Filtrer par session" disabled value={sessionFilter} style={{minWidth:220,padding:8}}>{sessions.filter(([key])=>key===requestedSession).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>:null}
+      {filter!=="attention"||learnerFilter!=="all"||hasSearchFilters?<button disabled={Boolean(pendingId)} onClick={()=>{setFilter("attention");setLearnerFilter("all");setQuery("");setTypeFilter("all");setStepFilter("all");}}>Réinitialiser les filtres</button>:null}
+    </div>
+    <p role="status" aria-live="polite" style={{fontSize:13,color:"var(--selen-text2)",margin:"0 0 16px"}}>{visible.length} pièce(s) affichée(s) · {visibleCounts.review} à relire · {visibleCounts.publish} à publier · {visibleCounts.correction} correction(s) attendue(s). Les pièces à relire sont présentées en premier.</p>
     {requestedSession==="all"?<p style={{color:"var(--selen-text2)",maxWidth:760}}>Cette file globale oriente vers le traitement unique de chaque session. Ouvrez une session pour choisir les parties contractantes, générer, relire, corriger, valider ou publier ses pièces.</p>:null}
     {requestedSession!=="all"&&preparationSession?<section aria-label="Informations contractuelles" style={{padding:18,border:"1px solid var(--selen-border)",borderRadius:12,marginBottom:18}}>
       <h2>Qui signe les documents de formation ?</h2><p>Choisissez pour chaque inscription : un particulier signe un contrat individuel ; une entreprise commanditaire signe une convention. Le SIRET personnel et le financement ne déterminent pas ce choix.</p>
@@ -228,7 +263,7 @@ export default function DailyPretrainingReviewPage(){
     {error&&<div role="alert" style={{padding:12,border:"1px solid #b24c3d",marginBottom:12}}>{error}</div>}{message&&<div role="status" style={{padding:12,border:"1px solid var(--selen-border)",marginBottom:12}}>{message}</div>}
     {loading?<p>Chargement…</p>:requestedSession==="all"?<section aria-label="Sessions à traiter" style={{display:"grid",gap:12}}>
       {globalQueues.length===0&&documentsWithoutSession.length===0&&orphanSessionDocuments.length===0?<div style={{padding:18,border:"1px solid var(--selen-border)",borderRadius:12}}>Aucune session dans cette vue pour les filtres sélectionnés.</div>:null}
-      {globalQueues.map(queue=><article key={queue.id} style={{border:"1px solid var(--selen-border)",borderRadius:12,padding:16,background:"var(--selen-bg2)",display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div><strong>{queue.label}</strong><div style={{fontSize:12,color:"var(--selen-text2)",marginTop:4}}>{queue.organisation||"Organisme à confirmer"} · {queue.documents.length?`${queue.documents.length} pièce(s) dans cette vue`:"Aucune pièce générée"}</div></div><Link href={`/agent/daily/session-dossiers/${encodeURIComponent(queue.id)}/full`}>Ouvrir le dossier de session</Link></article>)}
+      {globalQueues.map(queue=><article key={queue.id} style={{border:"1px solid var(--selen-border)",borderRadius:12,padding:16,background:"var(--selen-bg2)",display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div><strong>{queue.label}</strong><div style={{fontSize:12,color:"var(--selen-text2)",marginTop:4}}>{queue.organisation||"Organisme à confirmer"} · {queue.documents.length?`${queue.documents.length} pièce(s) · ${queue.documents.filter(doc=>matchesPretrainingReviewStep(doc.status,"review")).length} à relire · ${queue.documents.filter(doc=>matchesPretrainingReviewStep(doc.status,"publish")).length} à publier`:"Aucune pièce générée"}</div></div><Link href={`/agent/daily/session-dossiers/${encodeURIComponent(queue.id)}/full`}>Ouvrir le dossier de session</Link></article>)}
       {orphanSessionDocuments.map(doc=><article key={doc.id} aria-label={`${labels[doc.document_type]??doc.document_type} — rattachement session à vérifier`} style={{padding:16,border:"1px solid #b24c3d",borderRadius:12,background:"var(--selen-bg2)",display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{minWidth:0}}><strong>Rattachement session à vérifier</strong><div style={{fontSize:12,marginTop:4,overflowWrap:"anywhere"}}>{labels[doc.document_type]??doc.document_type} · {doc.organisations?.name??"Organisme"} · session {doc.session_id} · v{doc.version}</div><p style={{marginBottom:0}}>La pièce reste consultable, mais aucune mutation n’est disponible tant que sa session canonique est introuvable.</p></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={()=>setPreview(doc)}>Prévisualiser</button><a href={`/agent/api/daily/pretraining-documents/download?id=${encodeURIComponent(doc.id)}`} target="_blank" rel="noreferrer">Ouvrir la pièce</a></div></article>)}
       {documentsWithoutSession.length?<section aria-label="Pièces sans session" style={{display:"grid",gap:12,padding:16,border:"1px solid var(--selen-border)",borderRadius:12}}><div><h2 style={{margin:"0 0 6px"}}>Pièces au niveau formation ou organisme</h2><p style={{margin:0,color:"var(--selen-text2)"}}>{documentsWithoutSession.length} pièce(s) légitime(s) sans session. Ouvrez leur contexte canonique ou utilisez ici les actions documentaires autorisées.</p></div>{documentsWithoutSession.map(reviewDocumentCard)}</section>:null}
     </section>:<section aria-busy={Boolean(pendingId)} style={{display:"grid",gap:12}}>{visible.length===0?<div style={{padding:18,border:"1px solid var(--selen-border)",borderRadius:12}}>Aucun document dans cette vue pour les filtres sélectionnés.{preparationSession?<p>Utilisez « Générer les documents manquants » pour préparer les pièces de cette session. Elles apparaîtront ici pour relecture avant publication. <a href={`/agent/daily/organisations/${encodeURIComponent(preparationSession.organisation_id)}`}>Ouvrir l’organisme</a></p>:null}</div>:visible.map(reviewDocumentCard)}</section>}

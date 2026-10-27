@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { File } from "node:buffer";
 import { isolatedTsModule } from "./helpers/isolatedTsModule.mjs";
+import * as pretrainingTriage from "../src/lib/daily/pretrainingDocumentTriage.mjs";
 
 const docId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ofId = "11111111-1111-4111-8111-111111111111";
@@ -237,6 +238,7 @@ function uiFixture({ scoped = true, orphan = false, withoutSession = false, form
     },
     "next/navigation": { useSearchParams: () => new URLSearchParams(scoped ? { session: orphan ? "session-missing" : "session-review" } : {}) },
     "next/link": { default: props => jsx.jsx("a", props) },
+    "@/lib/daily/pretrainingDocumentTriage.mjs": pretrainingTriage,
   }, {
     Error,
     fetch: async (_url, options) => {
