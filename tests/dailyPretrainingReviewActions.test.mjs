@@ -238,7 +238,7 @@ function uiFixture({ scoped = true, orphan = false, withoutSession = false, form
     },
     "next/navigation": { useSearchParams: () => new URLSearchParams(scoped ? { session: orphan ? "session-missing" : "session-review" } : {}) },
     "next/link": { default: props => jsx.jsx("a", props) },
-    "@/lib/daily/pretrainingDocumentTriage": pretrainingTriage,
+    "@/lib/daily/pretrainingDocumentTriage.mjs": pretrainingTriage,
   }, {
     Error,
     fetch: async (_url, options) => {
