@@ -70,7 +70,7 @@ test("Pilotage Daily ne montre que les interventions réelles", () => {
 
 test("le tableau de bord ne compte plus la checklist technique Daily", () => {
   const dashboard = read("src/components/agent/AgentHomeDashboard.tsx");
-  assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}\)/);
+  assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}, \{ hideResolved: true \}\)/);
   assert.match(dashboard, /title: task\.title/);
   assert.match(dashboard, /task\.reason/);
   assert.doesNotMatch(dashboard, /daily_session_checklist_items/);
