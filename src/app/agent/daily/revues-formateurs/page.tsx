@@ -1,4 +1,5 @@
 import Link from "next/link";
+import styles from "./trainer-reviews-mobile.module.css";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
@@ -118,24 +119,24 @@ export default async function DailyTrainerAnnualReviewsPage({ searchParams }: Pr
       ));
 
   return (
-    <main style={s.page}>
-      <header style={s.header}>
+    <main className={styles.page}>
+      <header className={styles.header}>
         <div>
           <p style={s.eyebrow}>Selen Daily · Qualité</p>
           <h1 style={s.h1}>Bilan annuel des compétences formateurs</h1>
           <p style={s.lead}>Vue de contrôle pour {year}. Elle réutilise les profils et bilans annuels existants, sans créer de second suivi. Le bilan n&apos;est considéré comme terminé qu&apos;après la contribution du formateur et la partie manager.</p>
         </div>
-        <Link href="/agent/daily" style={s.back}>← Pilotage Daily</Link>
+        <Link href="/agent/daily" style={s.back} className={styles.back}>← Pilotage Daily</Link>
       </header>
 
-      <section style={s.stats} aria-label="État des bilans annuels">
+      <section className={styles.stats} aria-label="État des bilans annuels">
         <div style={s.stat}><strong>{rows.length}</strong><span>formateur(s) actif(s)</span></div>
         <div style={s.stat}><strong>{fullyCompleted}</strong><span>bilan(s) terminé(s)</span></div>
         <div style={awaitingManager ? s.statDue : s.stat}><strong>{awaitingManager}</strong><span>à compléter côté manager</span></div>
         <div style={toStart ? s.statDue : s.stat}><strong>{toStart}</strong><span>à faire / soumettre</span></div>
       </section>
 
-      <section style={s.card}>
+      <section style={s.card} className={styles.card}>
         <div style={s.cardHead}>
           <div>
             <h2 style={s.h2}>Suivi {year}</h2>
@@ -143,53 +144,53 @@ export default async function DailyTrainerAnnualReviewsPage({ searchParams }: Pr
           </div>
         </div>
 
-        <form method="get" action="/agent/daily/revues-formateurs" style={s.filters} role="search">
-          <label style={s.filterLabel}>Rechercher un formateur
-            <input name="q" type="search" maxLength={80} defaultValue={search} placeholder="Nom ou email" style={s.filterInput} />
+        <form method="get" action="/agent/daily/revues-formateurs" style={s.filters} className={styles.filters} role="search">
+          <label style={s.filterLabel} className={styles.filterLabel}>Rechercher un formateur
+            <input name="q" type="search" maxLength={80} defaultValue={search} placeholder="Nom ou email" style={s.filterInput} className={styles.filterInput} />
           </label>
-          {organisationOptions.length > 1 ? <label style={s.filterLabel}>Organisme de formation
-            <select name="organisme" defaultValue={selectedOrganisation} style={s.filterInput}>
+          {organisationOptions.length > 1 ? <label style={s.filterLabel} className={styles.filterLabel}>Organisme de formation
+            <select name="organisme" defaultValue={selectedOrganisation} style={s.filterInput} className={styles.filterInput}>
               <option value="">Tous les organismes affectés</option>
               {organisationOptions.map((organisation) => <option key={organisation.id} value={organisation.id}>{organisation.name}</option>)}
             </select>
           </label> : null}
-          <label style={s.filterLabel}>État du bilan
-            <select name="state" defaultValue={state} style={s.filterInput}>
+          <label style={s.filterLabel} className={styles.filterLabel}>État du bilan
+            <select name="state" defaultValue={state} style={s.filterInput} className={styles.filterInput}>
               <option value="all">Tous les états</option>
               <option value="manager">Manager à compléter</option>
               <option value="trainer">À faire / soumettre</option>
               <option value="complete">Terminés</option>
             </select>
           </label>
-          <label style={s.filterLabel}>Année
-            <select name="year" defaultValue={String(year)} style={s.filterInput}>
+          <label style={s.filterLabel} className={styles.filterLabel}>Année
+            <select name="year" defaultValue={String(year)} style={s.filterInput} className={styles.filterInput}>
               {years.map((availableYear) => <option key={availableYear} value={availableYear}>{availableYear}</option>)}
             </select>
           </label>
-          <button type="submit" style={s.filterButton}>Appliquer</button>
-          <Link href="/agent/daily/revues-formateurs" style={s.reset}>Réinitialiser</Link>
+          <button type="submit" style={s.filterButton} className={styles.filterButton}>Appliquer</button>
+          <Link href="/agent/daily/revues-formateurs" style={s.reset} className={styles.reset}>Réinitialiser</Link>
         </form>
         <p style={s.resultCount} aria-live="polite">{visibleRows.length} bilan(s) affiché(s) sur {rows.length}{selectedOrganisation ? ` pour ${organisationNames.get(selectedOrganisation) || "l’organisme sélectionné"}` : ""}. Les bilans en attente du manager sont présentés en premier.</p>
         {rows.length === 0 ? <p style={s.muted}>Aucun formateur actif à suivre.</p> : visibleRows.length === 0 ? (
           <p style={s.muted}>Aucun bilan ne correspond aux filtres sélectionnés.</p>
         ) : (
-          <div style={s.list}>
+          <div style={s.list} className={styles.list}>
             {visibleRows.map(({ trainer, review }) => {
               const complete = Boolean(review?.submitted_at && review?.manager_completed_at);
               const managerDue = Boolean(review?.submitted_at && !review?.manager_completed_at);
               const label = complete ? "Terminé" : managerDue ? "Manager à compléter" : "À faire / soumettre";
               return (
-                <article key={trainer.id} style={complete ? s.rowOk : s.rowDue}>
+                <article key={trainer.id} style={complete ? s.rowOk : s.rowDue} className={styles.reviewCard}>
                   <div>
-                    <strong>{trainer.display_name || trainer.professional_email || "Formateur sans nom affiché"}</strong>
-                    <p style={s.meta}>{trainer.professional_email || "Email non renseigné"} · {trainer.engagement_type === "subcontractor" ? "Sous-traitant" : "Formateur"}</p>
-                    <p style={s.meta}>OF : <Link href={`/agent/daily/organisations/${encodeURIComponent(trainer.organisation_id)}`} style={s.orgLink}>{organisationNames.get(trainer.organisation_id) || "Organisme Daily"}</Link></p>
+                    <strong className={styles.trainerName}>{trainer.display_name || trainer.professional_email || "Formateur sans nom affiché"}</strong>
+                    <p style={s.meta} className={styles.meta}>{trainer.professional_email || "Email non renseigné"} · {trainer.engagement_type === "subcontractor" ? "Sous-traitant" : "Formateur"}</p>
+                    <p style={s.meta} className={styles.meta}>OF : <Link href={`/agent/daily/organisations/${encodeURIComponent(trainer.organisation_id)}`} style={s.orgLink} className={styles.orgLink}>{organisationNames.get(trainer.organisation_id) || "Organisme Daily"}</Link></p>
                   </div>
-                  <div style={s.statusBox}>
+                  <div style={s.statusBox} className={styles.statusBox}>
                     <span style={complete ? s.statusOk : s.statusDue}>{label}</span>
-                    <small style={s.date}>Soumis : {formatDate(review?.submitted_at)}</small>
-                    <small style={s.date}>Partie manager : {formatDate(review?.manager_completed_at)}</small>
-                    <small style={s.date}>Dernière activité : {formatDate(review?.updated_at)}</small>
+                    <small style={s.date} className={styles.date}>Soumis : {formatDate(review?.submitted_at)}</small>
+                    <small style={s.date} className={styles.date}>Partie manager : {formatDate(review?.manager_completed_at)}</small>
+                    <small style={s.date} className={styles.date}>Dernière activité : {formatDate(review?.updated_at)}</small>
                   </div>
                 </article>
               );
