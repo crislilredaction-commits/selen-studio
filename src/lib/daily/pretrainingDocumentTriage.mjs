@@ -52,3 +52,33 @@ export function pretrainingPriority(status) {
   if (status === "draft" || status === "active") return 3;
   return 4;
 }
+
+/** Liste des seuls organismes présents dans les données déjà autorisées par l'API agent. 
+ * @param {Array<{organisation_id:string,organisations?:{name?:string|null}|null}>} documents
+ * @param {Array<{organisation_id:string}>} sessions
+ * @returns {Array<{id:string,name:string}>}
+ */
+export function pretrainingOrganisationOptions(documents, sessions) {
+  const options = new Map();
+  for (const session of sessions) {
+    const id = typeof session.organisation_id === "string" ? session.organisation_id.trim() : "";
+    if (id) options.set(id, { id, name: `Organisme ${id.slice(0, 8)}` });
+  }
+  for (const document of documents) {
+    const id = typeof document.organisation_id === "string" ? document.organisation_id.trim() : "";
+    if (!id) continue;
+    const name = document.organisations?.name?.trim() || options.get(id)?.name || `Organisme ${id.slice(0, 8)}`;
+    options.set(id, { id, name });
+  }
+  return [...options.values()].sort((a, b) => a.name.localeCompare(b.name, "fr") || a.id.localeCompare(b.id));
+}
+
+/** @template {{organisation_id:string}} T
+ * @param {T[]} rows
+ * @param {string} organisationId
+ * @returns {T[]}
+ */
+export function filterPretrainingByOrganisation(rows, organisationId) {
+  if (organisationId === "all") return rows;
+  return rows.filter((row) => row.organisation_id === organisationId);
+}
