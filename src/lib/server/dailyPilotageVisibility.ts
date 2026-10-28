@@ -9,7 +9,7 @@ export type DailyPilotageTask = DailyAgentTask & { escalatedToAdmin: boolean };
  * visible qu'un admin est saisi sans retirer ni dupliquer la tâche métier d'origine.
  */
 export async function getDailyPilotageTasks(): Promise<DailyPilotageTask[]> {
-  const tasks = await getDailyAgentTasks({ id: null, role: "admin" });
+  const tasks = await getDailyAgentTasks({ id: null, role: "admin" }, { hideResolved: true });
   if (tasks.length === 0) return [];
 
   const admin = createSupabaseAdminClient();

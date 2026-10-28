@@ -44,9 +44,9 @@ test("les tâches de session ouvrent directement leur écran métier", () => {
 });
 
 test("dashboard personnel et Pilotage Daily partagent l'agrégation mais pas le filtre de visibilité", () => {
-  assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}\)/);
+  assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}, \{ hideResolved: true \}\)/);
   assert.match(pilotage, /getDailyPilotageTasks\(\)/);
-  assert.match(pilotageVisibility, /getDailyAgentTasks\(\{ id: null, role: "admin" \}\)/);
+  assert.match(pilotageVisibility, /getDailyAgentTasks\(\{ id: null, role: "admin" \}, \{ hideResolved: true \}\)/);
 });
 
 test("un admin supervise immédiatement toutes les tâches, les agents conservent la règle des 24 h ouvrées", () => {
@@ -161,7 +161,7 @@ test("le Dashboard Studio rafraîchit la source canonique après retour ou repri
   assert.match(dashboardFreshness,/addEventListener\("popstate"/);
   assert.match(dashboardFreshness,/addEventListener\("visibilitychange"/);
 });
-test("la source canonique accepte un filtre strict par organisme",()=>{assert.match(tasks,/options\?: \{ organisationId\?: string \| null \}/);assert.match(tasks,/activeOrganisationIds\.filter\(\(id\) => id === requestedOrganisationId\)/);});
+test("la source canonique accepte un filtre strict par organisme",()=>{assert.match(tasks,/options\?: \{ organisationId\?: string \| null; hideResolved\?: boolean \}/);assert.match(tasks,/activeOrganisationIds\.filter\(\(id\) => id === requestedOrganisationId\)/);});
 
 test("la timeline et son action checklist refusent les sessions hors périmètre de l'agent", () => {
   const actionStart = sessionTimeline.indexOf("async function completeChecklistItemAction(");
