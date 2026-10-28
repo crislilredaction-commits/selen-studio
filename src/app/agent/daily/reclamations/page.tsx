@@ -1,4 +1,5 @@
 import Link from "next/link";
+import styles from "./feedback-mobile.module.css";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
@@ -96,41 +97,41 @@ export default async function DailyStakeholderFeedbackPage({ searchParams }: Pro
   const stageCounts = countStakeholderFeedbackStages(rows);
 
   return (
-    <main style={s.page}>
-      <header style={s.header}>
+    <main className={styles.page}>
+      <header className={styles.header}>
         <div>
           <p style={s.eyebrow}>Selen Daily · Qualité</p>
           <h1 style={s.h1}>Réclamations & suggestions</h1>
           <p style={s.lead}>Vue de contrôle des retours déjà enregistrés dans Daily. Elle conserve <code>daily_stakeholder_feedback</code> comme source unique et permet aux agents d’identifier rapidement les retours encore ouverts.</p>
         </div>
-        <Link href="/agent/daily" style={s.back}>← Pilotage Daily</Link>
+        <Link href="/agent/daily" className={styles.back} style={s.back}>← Pilotage Daily</Link>
       </header>
 
-      <section style={s.stats} aria-label="État des réclamations et suggestions">
+      <section className={styles.stats} aria-label="État des réclamations et suggestions">
         <div style={s.stat}><strong>{rows.length}</strong><span>retour(s)</span></div>
         <div style={complaintCount ? s.statDue : s.stat}><strong>{complaintCount}</strong><span>réclamation(s)</span></div>
         <div style={s.stat}><strong>{suggestionCount}</strong><span>suggestion(s)</span></div>
         <div style={openCount ? s.statDue : s.stat}><strong>{openCount}</strong><span>encore ouvert(s)</span></div>
       </section>
 
-      <form method="get" action="/agent/daily/reclamations" style={s.filterPanel} aria-label="Rechercher et prioriser les réclamations et suggestions">
-        <div style={s.filterGrid}>
-          <label style={s.filterLabel} htmlFor="feedback-organisation">
+      <form method="get" action="/agent/daily/reclamations" style={s.filterPanel} className={styles.filterPanel} aria-label="Rechercher et prioriser les réclamations et suggestions">
+        <div style={s.filterGrid} className={styles.filterGrid}>
+          <label style={s.filterLabel} className={styles.filterLabel} htmlFor="feedback-organisation">
             Organisme
-            <select id="feedback-organisation" name="organisme" defaultValue={selectedOrganisation} style={s.filterInput}>
+            <select id="feedback-organisation" name="organisme" defaultValue={selectedOrganisation} style={s.filterInput} className={styles.filterControl}>
               <option value="">Tous les organismes ({organisationOptions.length})</option>
               {organisationOptions.map((organisation) => (
                 <option key={organisation.id} value={organisation.id}>{organisation.name}</option>
               ))}
             </select>
           </label>
-          <label style={s.filterLabel} htmlFor="feedback-search">
+          <label style={s.filterLabel} className={styles.filterLabel} htmlFor="feedback-search">
             Recherche
-            <input id="feedback-search" name="q" type="search" maxLength={80} defaultValue={filters.q} placeholder="Organisme, sujet, déposant…" style={s.filterInput} />
+            <input id="feedback-search" name="q" type="search" maxLength={80} defaultValue={filters.q} placeholder="Organisme, sujet, déposant…" style={s.filterInput} className={styles.filterControl} />
           </label>
-          <label style={s.filterLabel} htmlFor="feedback-stage">
+          <label style={s.filterLabel} className={styles.filterLabel} htmlFor="feedback-stage">
             Prochaine étape
-            <select id="feedback-stage" name="etape" defaultValue={filters.stage} style={s.filterInput}>
+            <select id="feedback-stage" name="etape" defaultValue={filters.stage} style={s.filterInput} className={styles.filterControl}>
               <option value="all">Toutes ({stageCounts.all})</option>
               <option value="review">À examiner ({stageCounts.review})</option>
               <option value="forward">À transmettre ({stageCounts.forward})</option>
@@ -139,16 +140,16 @@ export default async function DailyStakeholderFeedbackPage({ searchParams }: Pro
               <option value="resolved">Clôturées ({stageCounts.resolved})</option>
             </select>
           </label>
-          <label style={s.filterLabel} htmlFor="feedback-type">
+          <label style={s.filterLabel} className={styles.filterLabel} htmlFor="feedback-type">
             Nature
-            <select id="feedback-type" name="type" defaultValue={filters.type} style={s.filterInput}>
+            <select id="feedback-type" name="type" defaultValue={filters.type} style={s.filterInput} className={styles.filterControl}>
               <option value="all">Réclamations et suggestions</option>
               <option value="complaint">Réclamations</option>
               <option value="suggestion">Suggestions</option>
             </select>
           </label>
         </div>
-        <div style={s.filterActions}>
+        <div style={s.filterActions} className={styles.filterActions}>
           <button type="submit" style={s.filterButton}>Appliquer les filtres</button>
           <Link href="/agent/daily/reclamations" style={s.secondary}>Réinitialiser</Link>
           <span role="status" style={s.muted}>{visibleRows.length} résultat(s) sur {rows.length} · étapes ouvertes en premier</span>
@@ -171,8 +172,8 @@ export default async function DailyStakeholderFeedbackPage({ searchParams }: Pro
             const statusLabel = STATUS_LABELS[item.status] || item.status || "Statut inconnu";
             const stage = stakeholderFeedbackStage({ item });
             return (
-              <article key={item.id} style={resolved ? s.cardOk : s.cardDue}>
-                <div style={s.rowHead}>
+              <article key={item.id} className={styles.feedbackCard} style={resolved ? s.cardOk : s.cardDue}>
+                <div className={styles.rowHead}>
                   <div>
                     <div style={s.badges}>
                       <span style={item.submission_type === "complaint" ? s.badgeComplaint : s.badgeSuggestion}>{TYPE_LABELS[item.submission_type] || item.submission_type}</span>
@@ -182,11 +183,11 @@ export default async function DailyStakeholderFeedbackPage({ searchParams }: Pro
                     <h2 style={s.h2}>{item.subject}</h2>
                     <p style={s.org}>{organisationName} · {item.stakeholder_type || "partie prenante"}</p>
                   </div>
-                  <span style={s.date}>{formatDate(item.created_at)}</span>
+                  <span className={styles.date}>{formatDate(item.created_at)}</span>
                 </div>
 
                 <p style={s.text}>{item.message}</p>
-                <div style={s.metaGrid}>
+                <div className={styles.metaGrid}>
                   <div><span>Déposant</span><strong>{item.submitter_name || "Non renseigné"}</strong></div>
                   <div><span>Revue Selen</span><strong>{item.selen_reviewed_at ? formatDate(item.selen_reviewed_at) : "À faire"}</strong></div>
                   <div><span>Transmission organisme</span><strong>{item.forwarded_at ? formatDate(item.forwarded_at) : "Non transmise"}</strong></div>
@@ -196,8 +197,8 @@ export default async function DailyStakeholderFeedbackPage({ searchParams }: Pro
                 {item.selen_review_note ? <p style={s.note}><strong>Note Selen :</strong> {item.selen_review_note}</p> : null}
                 {item.organisation_response ? <p style={s.note}><strong>Réponse organisme :</strong> {item.organisation_response}</p> : null}
 
-                <div style={s.actions}>
-                  <Link href={`/agent/daily/organisations/${item.organisation_id}`} style={s.secondary}>Voir l’organisme</Link>
+                <div className={styles.actions}>
+                  <Link href={`/agent/daily/organisations/${item.organisation_id}`} className={styles.actionLink} style={s.secondary}>Voir l’organisme</Link>
                 </div>
               </article>
             );
