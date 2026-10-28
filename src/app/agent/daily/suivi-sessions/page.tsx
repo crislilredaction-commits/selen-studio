@@ -1,4 +1,5 @@
 import Link from "next/link";
+import styles from "./session-followup-mobile.module.css";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
@@ -112,8 +113,8 @@ export default async function DailySessionFollowupPage({ searchParams }: Props) 
   const criticalOpenCount = rows.filter(({ entry, actionable }) => actionable && entry.status === "open" && entry.level === "critical").length;
 
   return (
-    <main style={s.page}>
-      <header style={s.header}>
+    <main className={styles.page}>
+      <header className={styles.header}>
         <div>
           <p style={s.eyebrow}>Selen Daily · Sessions</p>
           <h1 style={s.h1}>Suivi sessions & incidents</h1>
@@ -122,7 +123,7 @@ export default async function DailySessionFollowupPage({ searchParams }: Props) 
         <Link href="/agent/daily" style={s.back}>← Pilotage Daily</Link>
       </header>
 
-      <section style={s.stats} aria-label="État du suivi des sessions">
+      <section className={styles.stats} aria-label="État du suivi des sessions">
         <div style={s.stat}><strong>{rows.length}</strong><span>entrée(s) de suivi</span></div>
         <div style={openCount ? s.statDue : s.stat}><strong>{openCount}</strong><span>ouverte(s)</span></div>
         <div style={s.stat}><strong>{incidentCount}</strong><span>incident(s)</span></div>
@@ -198,8 +199,8 @@ export default async function DailySessionFollowupPage({ searchParams }: Props) 
             const sessionLabel = session?.internal_reference || "Session Daily";
             const resolved = entry.status === "resolved";
             return (
-              <article key={entry.id} style={resolved ? s.cardOk : entry.level === "critical" ? s.cardCritical : s.cardDue}>
-                <div style={s.rowHead}>
+              <article key={entry.id} className={styles.followupCard} style={resolved ? s.cardOk : entry.level === "critical" ? s.cardCritical : s.cardDue}>
+                <div className={styles.rowHead}>
                   <div>
                     <div style={s.badges}>
                       <span style={entry.entry_type === "incident" ? s.badgeIncident : entry.entry_type === "adaptation" ? s.badgeAdaptation : s.badgeNote}>{TYPE_LABELS[entry.entry_type] || entry.entry_type}</span>
@@ -210,19 +211,22 @@ export default async function DailySessionFollowupPage({ searchParams }: Props) 
                     <p style={s.org}>{organisationName} · {formation?.title || "Formation non renseignée"}</p>
                     <p style={s.session}>{sessionLabel} · {formatSessionDates(session?.start_date, session?.end_date)}</p>
                   </div>
-                  <span style={s.date}>{formatDate(entry.occurred_at)}</span>
+                  <span className={styles.date}>{formatDate(entry.occurred_at)}</span>
                 </div>
 
                 {entry.description ? <p style={s.text}>{entry.description}</p> : null}
-                <div style={s.metaGrid}>
+                <div className={styles.metaGrid}>
                   <div><span>Auteur</span><strong>{entry.author_name || entry.author_role || "Non renseigné"}</strong></div>
                   <div><span>Apprenant lié</span><strong>{entry.enrolment_id ? "Oui" : "Non"}</strong></div>
                   <div><span>Action menée</span><strong>{entry.action_taken || "À renseigner"}</strong></div>
                   <div><span>Résolution</span><strong>{entry.resolved_at ? formatDate(entry.resolved_at) : resolved ? "Résolue" : "Ouverte"}</strong></div>
                 </div>
 
-                <div style={s.actions}>
-                  <Link href={`/agent/daily/organisations/${entry.organisation_id}`} style={s.secondary}>Voir l’organisme</Link>
+                <div className={styles.actions}>
+                  {session?.id && session.organisation_id === entry.organisation_id ? (
+                    <Link href={`/agent/daily/session-dossiers/${session.id}`} className={styles.actionLink} style={s.secondary}>Ouvrir la session</Link>
+                  ) : null}
+                  <Link href={`/agent/daily/organisations/${entry.organisation_id}`} className={styles.actionLink} style={s.secondary}>Voir l’organisme</Link>
                 </div>
               </article>
             );
