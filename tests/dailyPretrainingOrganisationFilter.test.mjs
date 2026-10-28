@@ -38,16 +38,16 @@ test("préformation : documents, pièces orphelines, sessions vides et compteurs
 test("préformation : sélecteur global et actions bornées à la sélection, session ciblée préservée", () => {
   const page = readFileSync(new URL("../src/app/agent/daily/pretraining-documents/page.tsx", import.meta.url), "utf8");
   const route = readFileSync(new URL("../src/app/agent/api/daily/pretraining-documents/route.ts", import.meta.url), "utf8");
-  assert.match(page, /pretrainingOrganisationOptions\\(documents,preparationSessions\\)/);
-  assert.match(page, /organisationFilterValid\\?filterPretrainingByOrganisation\\(documents,organisationFilter\\):\\[\\]/);
-  assert.match(page, /organisationFilterValid\\?filterPretrainingByOrganisation\\(preparationSessions,organisationFilter\\):\\[\\]/);
-  assert.match(page, /scopedDocuments\\.filter\\(\\(d\\)=>/);
-  assert.match(page, /for\\(const session of scopedSessions\\)queues\\.set/);
-  assert.match(page, /const doc=scopedDocuments\\.find/);
-  assert.match(page, /!scopedDocuments\\.some\\(current=>current\\.id===doc\\.id\\)/);
-  assert.match(page, /requestedSession==="all"&&organisationOptions\\.length>1/);
-  assert.match(page, /const preparationSession=scopedSessions\\.find/);
-  assert.match(page, /const scopedPreview=preview&&scopedDocuments\\.some/);
-  assert.match(route, /getDailyOrganisationIdsForAgent\\(auth\\.email\\)/);
-  assert.match(route, /\\.in\\("organisation_id", organisationIds\\)/);
+  assert.match(page, /pretrainingOrganisationOptions\(documents,preparationSessions\)/);
+  assert.match(page, /organisationFilterValid\?filterPretrainingByOrganisation\(documents,organisationFilter\):\[\]/);
+  assert.match(page, /organisationFilterValid\?filterPretrainingByOrganisation\(preparationSessions,organisationFilter\):\[\]/);
+  assert.match(page, /scopedDocuments\.filter\(\(d\)=>/);
+  assert.match(page, /for\(const session of scopedSessions\)queues\.set/);
+  assert.match(page, /const doc=scopedDocuments\.find/);
+  assert.match(page, /!scopedDocuments\.some\(current=>current\.id===doc\.id\)/);
+  assert.match(page, /requestedSession==="all"&&organisationOptions\.length>1/);
+  assert.match(page, /const preparationSession=scopedSessions\.find/);
+  assert.match(page, /const scopedPreview=preview&&scopedDocuments\.some/);
+  assert.match(route, /getDailyOrganisationIdsForAgent\(auth\.email\)/);
+  assert.match(route, /\.in\("organisation_id", organisationIds\)/);
 });
