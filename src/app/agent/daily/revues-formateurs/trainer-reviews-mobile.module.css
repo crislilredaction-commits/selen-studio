@@ -1,0 +1,35 @@
+/* Présentation mobile de la revue annuelle. Les données et droits restent ceux de la page serveur. */
+.page { width: 100%; max-width: 1080px; min-width: 0; box-sizing: border-box; margin: 0 auto; padding: 28px 28px 70px; color: var(--selen-text); }
+.header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 20px; }
+.header > div { min-width: 0; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+.card, .list, .reviewCard, .reviewCard > div { min-width: 0; }
+.reviewCard { overflow-wrap: anywhere; }
+.trainerName, .meta, .orgLink, .date { overflow-wrap: anywhere; }
+.filters { min-width: 0; }
+.filterLabel, .filterInput { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.filterInput { min-height: 44px; }
+.filterButton { min-height: 44px; }
+.back, .reset { display: inline-flex; align-items: center; min-height: 44px; }
+.back:focus-visible, .reset:focus-visible, .orgLink:focus-visible, .filterButton:focus-visible, .filterInput:focus-visible {
+  outline: 3px solid var(--selen-gold2); outline-offset: 3px;
+}
+@media (max-width: 820px) {
+  .page { padding: 18px 16px 48px; }
+  .header { flex-direction: column; gap: 12px; }
+  .back { white-space: normal !important; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card { padding: 14px !important; }
+  .filters { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch !important; }
+  .filterLabel { flex: none !important; }
+  .reviewCard { grid-template-columns: minmax(0, 1fr) !important; }
+  .statusBox { justify-items: start !important; }
+}
+@media (max-width: 520px) {
+  .filters { grid-template-columns: minmax(0, 1fr); }
+  .filterButton, .reset { width: 100%; box-sizing: border-box; justify-content: center; }
+  .reviewCard { padding: 12px !important; }
+}
+@media (max-width: 350px) {
+  .stats { grid-template-columns: minmax(0, 1fr); }
+}
