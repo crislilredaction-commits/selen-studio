@@ -1,5 +1,6 @@
 "use client";
 import { useCallback,useEffect,useMemo,useRef,useState } from "react";
+import styles from "./posttraining-mobile.module.css";
 import { filterPosttrainingDocuments, posttrainingDocumentMetrics } from "@/lib/daily/posttrainingDocumentTriage.mjs";
 
 type DocumentRow={id:string;organisation_id:string;document_type:string;status:string;version:number;created_at:string;updated_at:string;sha256:string;metadata?:Record<string,unknown>|null;organisations?:{name?:string|null}|null};
@@ -8,8 +9,10 @@ const statusLabels:Record<string,string>={to_check:"À vérifier",to_validate:"�
 
 export default function Page(){
   const[documents,setDocuments]=useState<DocumentRow[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(""),[message,setMessage]=useState(""),[filter,setFilter]=useState("attention"),[query,setQuery]=useState(""),[typeFilter,setTypeFilter]=useState("all"),[organisationFilter,setOrganisationFilter]=useState(""),[openedIds,setOpenedIds]=useState<Set<string>>(new Set()),[openingId,setOpeningId]=useState(""),[pendingId,setPendingId]=useState("");
+  const [correctionId,setCorrectionId]=useState("");
+  const [correctionNote,setCorrectionNote]=useState("");
   const actionPending=useRef(false);
-  const load=useCallback(async()=>{setLoading(true);setError("");try{const r=await fetch("/agent/api/daily/posttraining-documents",{cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error??"Chargement impossible.");setDocuments(d.documents??[]);setOrganisationFilter(current=>!current||(d.documents??[]).some((doc:DocumentRow)=>doc.organisation_id===current)?current:"");setOpenedIds(new Set());}catch(e){setError(e instanceof Error?e.message:"Chargement impossible.");}finally{setLoading(false);}},[]);
+  const load=useCallback(async()=>{setLoading(true);setError("");try{const r=await fetch("/agent/api/daily/posttraining-documents",{cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error??"Chargement impossible.");setDocuments(d.documents??[]);setOrganisationFilter(current=>!current||(d.documents??[]).some((doc:DocumentRow)=>doc.organisation_id===current)?current:"");setOpenedIds(new Set());setCorrectionId("");setCorrectionNote("");}catch(e){setError(e instanceof Error?e.message:"Chargement impossible.");}finally{setLoading(false);}},[]);
   useEffect(()=>{void load();},[load]);
   // Le filtre local ne remplace jamais le contrôle des affectations côté API.
   const organisationOptions=useMemo(()=>Array.from(new Map(documents.map(doc=>[
@@ -35,13 +38,11 @@ export default function Page(){
     finally{setOpeningId("");}
   }
 
-  async function review(doc:DocumentRow,action:"validate"|"request_correction"|"publish"){
+  async function review(doc:DocumentRow,action:"validate"|"request_correction"|"publish",correctionReason=""){
     if(actionPending.current || openingId) return;
     let note="";
     if(action==="request_correction"){
-      const entered=window.prompt("Motif ou correction demandée :","");
-      if(entered===null) return;
-      note=entered.trim();
+      note=correctionReason.trim();
       if(!note){setError("Indique un motif avant de demander une correction.");return;}
     }
     if(action==="publish"&&!window.confirm("Publier ce document dans Selen Daily et envoyer l’email au client ?"))return;
@@ -71,30 +72,30 @@ export default function Page(){
 
 
   return (
-    <main style={{maxWidth:1180,margin:"0 auto",padding:28}}>
+    <main className={styles.page} style={{maxWidth:1180,margin:"0 auto",padding:28}}>
       <p style={{fontSize:12,fontWeight:700}}>SELEN DAILY</p>
       <h1>Documents de fin</h1>
       <p>Contrôle des relevés de présence et certificats de réalisation produits à partir des preuves réelles de session. Ouvre la version courante avant toute décision. Si elle change, la décision est refusée et la file est rechargée.</p>
-      <section aria-label="Recherche et priorités des documents de fin" style={{display:"grid",gap:12,margin:"18px 0"}}>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-          <label style={{display:"grid",gap:4,flex:"1 1 270px"}}>Rechercher un document
-            <input aria-label="Rechercher un document de fin" value={query} maxLength={80} onChange={event=>setQuery(event.target.value)} placeholder="Organisme, apprenant ou référence de session" style={{padding:9,border:"1px solid var(--selen-border)",borderRadius:8,background:"var(--selen-bg2)",color:"var(--selen-text)"}}/>
+      <section className={styles.filters} aria-label="Recherche et priorités des documents de fin" style={{display:"grid",gap:12,margin:"18px 0"}}>
+        <div className={styles.filterRow} style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+          <label className={styles.filterLabel} style={{display:"grid",gap:4,flex:"1 1 270px"}}>Rechercher un document
+            <input aria-label="Rechercher un document de fin" value={query} maxLength={80} onChange={event=>setQuery(event.target.value)} placeholder="Organisme, apprenant ou référence de session" className={styles.filterControl} style={{padding:9,border:"1px solid var(--selen-border)",borderRadius:8,background:"var(--selen-bg2)",color:"var(--selen-text)"}}/>
           </label>
-          <label style={{display:"grid",gap:4,flex:"1 1 200px"}}>Organisme
-            <select aria-label="Filtrer les documents de fin par organisme" value={organisationFilter} onChange={event=>setOrganisationFilter(event.target.value)} style={{padding:9,border:"1px solid var(--selen-border)",borderRadius:8,background:"var(--selen-bg2)",color:"var(--selen-text)"}}>
+          <label className={styles.filterLabel} style={{display:"grid",gap:4,flex:"1 1 200px"}}>Organisme
+            <select aria-label="Filtrer les documents de fin par organisme" value={organisationFilter} onChange={event=>setOrganisationFilter(event.target.value)} className={styles.filterControl} style={{padding:9,border:"1px solid var(--selen-border)",borderRadius:8,background:"var(--selen-bg2)",color:"var(--selen-text)"}}>
               <option value="">Tous mes organismes</option>
               {organisationOptions.map(org=><option key={org.id} value={org.id}>{org.name}</option>)}
             </select>
           </label>
-          <label style={{display:"grid",gap:4,flex:"1 1 200px"}}>Type de pièce
-            <select aria-label="Type de document" value={typeFilter} onChange={event=>setTypeFilter(event.target.value)} style={{padding:9,border:"1px solid var(--selen-border)",borderRadius:8,background:"var(--selen-bg2)",color:"var(--selen-text)"}}>
+          <label className={styles.filterLabel} style={{display:"grid",gap:4,flex:"1 1 200px"}}>Type de pièce
+            <select aria-label="Type de document" value={typeFilter} onChange={event=>setTypeFilter(event.target.value)} className={styles.filterControl} style={{padding:9,border:"1px solid var(--selen-border)",borderRadius:8,background:"var(--selen-bg2)",color:"var(--selen-text)"}}>
               <option value="all">Tous les types</option>
               <option value="attendance_summary">Relevés des présences</option>
               <option value="completion_certificate">Certificats de réalisation</option>
             </select>
           </label>
         </div>
-        <div role="group" aria-label="État des documents" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <div className={styles.filterButtons} role="group" aria-label="État des documents" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <button onClick={()=>setFilter("attention")} disabled={filter==="attention"}>À traiter ({metrics.attention})</button>
           <button onClick={()=>setFilter("corrections")} disabled={filter==="corrections"}>Corrections ({metrics.corrections})</button>
           <button onClick={()=>setFilter("ready")} disabled={filter==="ready"}>Validés à publier ({metrics.ready})</button>
@@ -110,22 +111,30 @@ export default function Page(){
           const mayReview=!["published","signed","archived"].includes(doc.status);
           const opened=openedIds.has(doc.id);
           const busy=Boolean(pendingId)||Boolean(openingId);
-          return <article key={doc.id} style={{border:"1px solid var(--selen-border)",borderRadius:12,padding:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-              <div>
+          return <article key={doc.id} className={styles.documentCard} style={{border:"1px solid var(--selen-border)",borderRadius:12,padding:16}}>
+            <div className={styles.documentHeader} style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+              <div className={styles.documentInfo}>
                 <strong>{labels[doc.document_type]??doc.document_type}</strong>
                 {typeof doc.metadata?.learner_name==="string"?" · "+doc.metadata.learner_name:""}
                 <div style={{fontSize:12}}>{doc.organisations?.name??"Organisme"} · v{doc.version} · {statusLabels[doc.status]??doc.status}</div>
                 {doc.status==="correction_requested"?<p style={{fontSize:12,margin:"6px 0 0"}}>Correction demandée : vérifier la nouvelle version avant validation.</p>:null}
               </div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              <div className={styles.actions} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                 <button onClick={()=>void openDocument(doc)} disabled={busy}>{openingId===doc.id?"Ouverture…":"Ouvrir la pièce"}</button>
                 {doc.status==="validated"?<button onClick={()=>void review(doc,"publish")} disabled={!opened || busy}>{pendingId===doc.id?"Traitement…":"Publier et notifier"}</button>:mayReview?<>
                   <button onClick={()=>void review(doc,"validate")} disabled={!opened || Boolean(pendingId) || Boolean(openingId)}>{pendingId===doc.id?"Traitement…":"Valider"}</button>
-                  <button onClick={()=>void review(doc,"request_correction")} disabled={!opened || Boolean(pendingId) || Boolean(openingId)}>Correction</button>
+                  <button onClick={()=>{setCorrectionId(current=>current===doc.id?"":doc.id);setCorrectionNote("");setError("");}} disabled={!opened || Boolean(pendingId) || Boolean(openingId)} aria-expanded={correctionId===doc.id}>Correction</button>
                 </>:null}
               </div>
             </div>
+            {correctionId===doc.id&&mayReview?<form className={styles.correctionForm} onSubmit={event=>{event.preventDefault();void review(doc,"request_correction",correctionNote);}}>
+              <label htmlFor={`correction-note-${doc.id}`}>Motif de la correction demandée</label>
+              <textarea id={`correction-note-${doc.id}`} className={styles.correctionInput} rows={3} maxLength={2000} required value={correctionNote} onChange={event=>setCorrectionNote(event.target.value)} disabled={busy} placeholder="Précise les éléments à corriger sur cette version."/>
+              <div className={styles.correctionActions}>
+                <button type="submit" disabled={!opened || busy || !correctionNote.trim()}>Envoyer la demande de correction</button>
+                <button type="button" disabled={busy} onClick={()=>{setCorrectionId("");setCorrectionNote("");}}>Annuler</button>
+              </div>
+            </form>:null}
             {mayReview&&!opened?<p style={{fontSize:12,marginBottom:0}}>Ouvre cette version avant toute décision.</p>:null}
           </article>;
         })}
