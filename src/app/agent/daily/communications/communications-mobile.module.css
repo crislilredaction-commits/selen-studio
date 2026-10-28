@@ -1,0 +1,32 @@
+/* La vue mobile conserve les données et preuves déjà bornées au périmètre agent. */
+.page { width: 100%; max-width: 1180px; min-width: 0; box-sizing: border-box; margin: 0 auto; padding: 28px 28px 64px; }
+.header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; min-width: 0; }
+.header > div { min-width: 0; flex: 1 1 260px; overflow-wrap: anywhere; }
+.signatureContent, .communicationContent { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.metrics > span { display: grid; gap: 3px; min-width: 0; padding: 12px; border: 1px solid var(--selen-border); border-radius: 10px; background: var(--selen-bg2); overflow-wrap: anywhere; font-size: 13px; }
+.metrics strong { font-size: 20px; }
+.filterForm { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: end; padding: 14px; border: 1px solid var(--selen-border); border-radius: 12px; min-width: 0; }
+.filterLabel { display: grid; gap: 4px; min-width: 0; font-size: 13px; }
+.filterControl { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid var(--selen-border); background: var(--selen-bg2); color: var(--selen-text); font: inherit; }
+.submitButton { min-height: 44px; padding: 9px 16px; border: 0; border-radius: 9px; cursor: pointer; background: var(--selen-gold2); color: var(--selen-bg); font-weight: 800; }
+.resetLink, .actionLink { display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; max-width: 100%; color: var(--selen-gold2); font-weight: 700; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; min-width: 0; }
+.details { margin-top: 10px; min-width: 0; max-width: 100%; }
+.detailsSummary { cursor: pointer; padding: 8px 0; }
+.messageContent { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; max-width: 100%; box-sizing: border-box; font-family: inherit; font-size: 13px; border-top: 1px solid var(--selen-border); padding-top: 10px; }
+.actionLink:focus-visible, .resetLink:focus-visible, .submitButton:focus-visible, .detailsSummary:focus-visible, .filterControl:focus-visible { outline: 3px solid var(--selen-gold2); outline-offset: 3px; }
+@media (max-width: 820px) {
+  .page { padding: 18px 16px 48px; }
+  .header { flex-direction: column; }
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filterForm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filterLabel { grid-column: auto; }
+  .submitButton, .resetLink { width: 100%; justify-content: center; }
+}
+@media (max-width: 520px) {
+  .metrics, .filterForm { grid-template-columns: minmax(0, 1fr); }
+  .actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .actions .actionLink { width: 100%; padding: 6px 0; }
+  .signatureContent, .communicationContent { overflow-wrap: anywhere; }
+}

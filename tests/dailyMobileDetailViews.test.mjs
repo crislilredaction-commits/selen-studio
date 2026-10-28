@@ -4,6 +4,7 @@ import test from "node:test";
 
 const learnersPage = readFileSync(new URL("../src/app/agent/daily/learners/page.tsx", import.meta.url), "utf8");
 const communicationsPage = readFileSync(new URL("../src/app/agent/daily/communications/page.tsx", import.meta.url), "utf8");
+const communicationsCss = readFileSync(new URL("../src/app/agent/daily/communications/communications-mobile.module.css", import.meta.url), "utf8");
 const pretrainingPage = readFileSync(new URL("../src/app/agent/daily/pretraining-documents/page.tsx", import.meta.url), "utf8");
 
 test("la vue apprenants garde une largeur fluide et évite les débordements de contenu", () => {
@@ -14,15 +15,18 @@ test("la vue apprenants garde une largeur fluide et évite les débordements de 
 });
 
 test("les preuves de communication restent lisibles avec des identifiants longs", () => {
-  assert.match(communicationsPage, /padding:\s*"clamp\(16px, 4vw, 28px\)"/);
+  assert.match(communicationsCss, /\.page \{[^}]*padding: 28px 28px 64px;/);
+  assert.match(communicationsCss, /@media \(max-width: 820px\) \{[\s\S]*?\.page \{ padding: 18px 16px 48px; \}/);
   assert.match(communicationsPage, /overflowWrap:\s*"anywhere"/);
   assert.match(communicationsPage, /wordBreak:\s*"break-all"/);
-  assert.match(communicationsPage, /maxWidth:\s*"100%"/);
+  assert.match(communicationsCss, /\.messageContent \{[^}]*max-width: 100%;/);
+  assert.match(communicationsCss, /\.messageContent \{[^}]*word-break: break-word;/);
 });
 
 test("les actions des vues détaillées restent repliables plutôt que forcées sur une ligne", () => {
   assert.match(learnersPage, /flexWrap:"wrap"/);
-  assert.match(communicationsPage, /flexWrap:\s*"wrap"/);
+  assert.match(communicationsCss, /\.actions \{ display: flex; flex-wrap: wrap;/);
+  assert.match(communicationsCss, /@media \(max-width: 520px\) \{[\s\S]*?\.actions \{ display: grid;/);
 });
 
 test("la préparation préformation reste tactile et fluide sur mobile", () => {

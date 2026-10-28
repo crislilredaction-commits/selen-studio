@@ -1,4 +1,5 @@
 import Link from "next/link";
+import styles from "./communications-mobile.module.css";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
@@ -270,15 +271,15 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
   ).sort((a, b) => new Date(b.decidedAt || b.submittedAt || 0).getTime() - new Date(a.decidedAt || a.submittedAt || 0).getTime());
 
   return (
-    <main style={{ maxWidth: 1180, margin: "0 auto", padding: "clamp(16px, 4vw, 28px)", minWidth: 0 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", minWidth: 0 }}>
+    <main className={styles.page}>
+      <div className={styles.header}>
         <div style={{ minWidth: 0, flex: "1 1 260px" }}>
           <h1 style={{ marginBottom: 4, overflowWrap: "anywhere" }}>Communications & preuves</h1>
           <p style={{ marginTop: 0, color: "var(--selen-text2)", overflowWrap: "anywhere" }}>
             Preuve d’envoi et état métier sont affichés séparément : une ouverture ou un clic ne vaut jamais signature.
           </p>
         </div>
-        {sessionId ? <Link href="/agent/daily/communications">Voir tout l’historique</Link> : null}
+        {sessionId ? <Link className={styles.actionLink} href="/agent/daily/communications">Voir tout l’historique</Link> : null}
       </div>
 
       <p style={{ color: "var(--selen-text2)", fontSize: 13, marginTop: 4 }}>
@@ -339,7 +340,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
 
               return (
                 <SelenCard key={`signature-${signature.id}`}>
-                  <div style={{ display: "grid", gap: 6, minWidth: 0, overflowWrap: "anywhere" }}>
+                  <div className={styles.signatureContent}>
                     <SelenCardTitle>{text(convention.document_name) || "Convention de formation"}</SelenCardTitle>
                     <div style={{ fontSize: 12, color: "var(--selen-text2)" }}>
                       {partyLabel(signature.signatory_type)}
@@ -366,7 +367,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
                     </p>
                     {signature.expires_at ? <p style={{ margin: "4px 0", fontSize: 13 }}><strong>Expiration du lien :</strong> {dateLabel(signature.expires_at)}</p> : null}
                     {signature.last_error ? <p style={{ margin: "4px 0", fontSize: 13 }}><strong>Échec métier :</strong> {signature.last_error}</p> : null}
-                    {signature.session_id ? <Link href={`/agent/daily/session-dossiers/${signature.session_id}`}>Ouvrir le dossier de session</Link> : null}
+                    {signature.session_id ? <Link className={styles.actionLink} href={`/agent/daily/session-dossiers/${signature.session_id}`}>Ouvrir le dossier de session</Link> : null}
                   </div>
                 </SelenCard>
               );
@@ -377,48 +378,48 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
 
       <section aria-label="Filtrer les communications" style={{ marginBottom: 20 }}>
         <h2 style={{ marginBottom: 10 }}>Historique des communications</h2>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 }} aria-label="Compteurs des envois consultés">
+        <div className={styles.metrics} aria-label="Compteurs des envois consultés">
           <span><strong>{communicationMetrics.total}</strong> envoi(s) consulté(s)</span>
           <span><strong>{communicationMetrics.issues}</strong> échec(s) à examiner</span>
           <span><strong>{communicationMetrics.queued}</strong> en attente d’envoi</span>
         </div>
-        <form method="get" role="search" style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: 12, padding: 14, border: "1px solid var(--selen-border)", borderRadius: 12 }}>
+        <form method="get" role="search" className={styles.filterForm} aria-label="Rechercher dans les communications">
           {sessionId ? <input type="hidden" name="session_id" value={sessionId} /> : null}
           {sessionId ? (
             selectedOrganisationId ? <input type="hidden" name="organisation_id" value={selectedOrganisationId} /> : null
           ) : (
-            <label style={{ display: "grid", gap: 4, flex: "1 1 180px" }}>
+            <label className={styles.filterLabel}>
               Organisme
-              <select name="organisation_id" defaultValue={selectedOrganisationId} style={{ padding: 9 }}>
+              <select name="organisation_id" defaultValue={selectedOrganisationId} className={styles.filterControl}>
                 <option value="">Tous mes organismes</option>
                 {organisationOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
               </select>
             </label>
           )}
-          <label style={{ display: "grid", gap: 4, flex: "2 1 200px" }}>
+          <label className={styles.filterLabel}>
             Rechercher
-            <input type="search" name="q" maxLength={80} defaultValue={searchQuery} placeholder="Destinataire, organisme, objet, session…" style={{ width: "100%", padding: 9 }} />
+            <input type="search" name="q" maxLength={80} defaultValue={searchQuery} placeholder="Destinataire, organisme, objet, session…" className={styles.filterControl} />
           </label>
-          <label style={{ display: "grid", gap: 4, flex: "1 1 150px" }}>
+          <label className={styles.filterLabel}>
             État d’envoi
-            <select name="etat" defaultValue={statusFilter} style={{ padding: 9 }}>
+            <select name="etat" defaultValue={statusFilter} className={styles.filterControl}>
               <option value="all">Tous les états</option>
               <option value="issues">Échecs à examiner</option>
               <option value="queued">En attente</option>
               <option value="sent">Envoyés / délivrés</option>
             </select>
           </label>
-          <label style={{ display: "grid", gap: 4, flex: "1 1 160px" }}>
+          <label className={styles.filterLabel}>
             Catégorie
-            <select name="categorie" defaultValue={typeFilter} style={{ padding: 9 }}>
+            <select name="categorie" defaultValue={typeFilter} className={styles.filterControl}>
               <option value="all">Toutes les catégories</option>
               <option value="attendance">Émargements</option>
               <option value="signature">Conventions à signer</option>
               <option value="other">Autres communications</option>
             </select>
           </label>
-          <button type="submit" style={{ padding: "10px 16px", cursor: "pointer" }}>Appliquer</button>
-          <Link href={sessionId ? `/agent/daily/communications?session_id=${encodeURIComponent(sessionId)}` : "/agent/daily/communications"}>Réinitialiser</Link>
+          <button className={styles.submitButton} type="submit">Appliquer</button>
+          <Link className={styles.resetLink} href={sessionId ? `/agent/daily/communications?session_id=${encodeURIComponent(sessionId)}` : "/agent/daily/communications"}>Réinitialiser</Link>
         </form>
         <p style={{ color: "var(--selen-text2)", fontSize: 13 }}>
           {visibleCommunications.length} résultat(s) affiché(s). Les échecs sont présentés en premier.
@@ -452,7 +453,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
 
             return (
               <SelenCard key={communication.id}>
-                <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                <div className={styles.communicationContent}>
                   <SelenCardTitle>{typeLabels[communication.communication_type] ?? communication.communication_type}</SelenCardTitle>
                   <div style={{ fontSize: 12, color: "var(--selen-text2)", marginBottom: 8, overflowWrap: "anywhere" }}>
                     {organisationMap.get(communication.organisation_id) ?? "Organisme"}
@@ -465,16 +466,16 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
                   <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Statut email :</strong> {statusLabels[communication.status] ?? communication.status}{communication.delivered_at ? ` · délivré ${dateLabel(communication.delivered_at)}` : ""}</p>
                   {linkedSignature ? <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>État signature :</strong> {signatureBusinessLabel(linkedSignature, communication.communication_type === "convention_signature" ? communication : latestForSignature(communicationRows, linkedSignature.id))}</p> : null}
                   {communication.failed_at || communication.failure_reason ? <p style={{ margin: "6px 0", fontSize: 13, overflowWrap: "anywhere" }}><strong>Échec :</strong> {communication.failure_reason ?? dateLabel(communication.failed_at)}</p> : null}
-                  <details style={{ marginTop: 10, minWidth: 0 }}>
-                    <summary>Voir le contenu exact envoyé</summary>
-                    <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word", maxWidth: "100%", fontFamily: "inherit", fontSize: 13, borderTop: "1px solid var(--selen-border)", paddingTop: 10 }}>{communication.text_body}</pre>
+                  <details className={styles.details}>
+                    <summary className={styles.detailsSummary}>Voir le contenu exact envoyé</summary>
+                    <pre className={styles.messageContent}>{communication.text_body}</pre>
                   </details>
                   <div style={{ fontSize: 12, color: "var(--selen-text2)", marginTop: 10, overflowWrap: "anywhere" }}>
                     Prestataire : {communication.provider ?? "—"} · ID message : <span style={{ wordBreak: "break-all" }}>{communication.provider_message_id ?? "—"}</span> · ID Selen : <span style={{ wordBreak: "break-all" }}>{communication.id}</span>
                   </div>
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
-                    <a href={`/agent/daily/communications/proof?communication_id=${encodeURIComponent(communication.id)}`}>Télécharger la preuve PDF</a>
-                    {communication.session_id ? <Link href={`/agent/daily/session-dossiers/${communication.session_id}`}>Ouvrir le dossier de session</Link> : null}
+                  <div className={styles.actions}>
+                    <a className={styles.actionLink} href={`/agent/daily/communications/proof?communication_id=${encodeURIComponent(communication.id)}`}>Télécharger la preuve PDF</a>
+                    {communication.session_id ? <Link className={styles.actionLink} href={`/agent/daily/session-dossiers/${communication.session_id}`}>Ouvrir le dossier de session</Link> : null}
                   </div>
                   {documents.length ? (
                     <div style={{ marginTop: 12, borderTop: "1px solid var(--selen-border)", paddingTop: 10, minWidth: 0 }}>
@@ -483,7 +484,7 @@ export default async function DailyCommunicationsPage({ searchParams }: Props) {
                         {documents.map((document) => (
                           <div key={`${communication.id}-${document.document_id}`} style={{ fontSize: 12, minWidth: 0, overflowWrap: "anywhere" }}>
                             <div>{document.logical_name || document.document_type} · version {document.document_version} · SHA-256 <code style={{ wordBreak: "break-all" }}>{document.sha256}</code></div>
-                            <a href={`/agent/daily/communications/document?communication_id=${encodeURIComponent(communication.id)}&document_id=${encodeURIComponent(document.document_id)}`} style={{ display: "inline-block", marginTop: 4 }}>Télécharger cette version exacte</a>
+                            <a className={styles.actionLink} href={`/agent/daily/communications/document?communication_id=${encodeURIComponent(communication.id)}&document_id=${encodeURIComponent(document.document_id)}`}>Télécharger cette version exacte</a>
                           </div>
                         ))}
                       </div>
