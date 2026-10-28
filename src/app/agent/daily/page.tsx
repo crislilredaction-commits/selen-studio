@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ManualDailyTaskDisposition from "@/components/daily/ManualDailyTaskDisposition";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyPilotageTasks, canTreatDailyPilotageTask } from "@/lib/server/dailyPilotageVisibility";
@@ -19,7 +20,7 @@ function formatDate(value?: string | null) {
   return value ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Date inconnue";
 }
 
-type Props = { searchParams?: Promise<{ vue?: string | string[]; q?: string | string[]; page?: string | string[]; relances?: string | string[]; qr?: string | string[]; rv?: string | string[]; rc?: string | string[]; organisme?: string | string[]; etape?: string | string[] }> };
+type Props = { searchParams?: Promise<{ vue?: string | string[]; q?: string | string[]; page?: string | string[]; relances?: string | string[]; qr?: string | string[]; rv?: string | string[]; rc?: string | string[]; organisme?: string | string[]; etape?: string | string[]; task_action?: string | string[] }> };
 
 export default async function AgentDailyPage({ searchParams }: Props) {
   const auth = await requireSupportAgent();
@@ -260,6 +261,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
         <nav aria-label="Filtrer les tâches Daily" style={s.filters}>
           {views.map(view => <Link key={view.key} href={filterHref(view.key)} aria-current={selectedView === view.key ? "page" : undefined} style={{ ...s.filterLink, ...(selectedView === view.key ? s.filterActive : {}) }}>{view.label} <span>{view.count}</span></Link>)}
         </nav>
+        {params?.task_action === "ok" ? <p role="status">Tâche retirée des deux tableaux. Les obligations et preuves du dossier restent inchangées.</p> : null}
         {tasks.length > 0 ? <p style={s.queueHint}>Les urgences d’abord, puis les échéances les plus proches. « Traitables » respecte les droits de l’agent connecté. Les autres vues restent consultables en lecture seule.</p> : null}
         {pagination.total > 0 ? <p style={s.queueHint} role="status">Tâches {pagination.from} à {pagination.to} sur {pagination.total}</p> : null}
         {sortedTasks.length === 0 ? <SelenCard style={s.empty}><SelenCardTitle>{tasks.length === 0 ? "Aucune tâche humaine ouverte" : searchQuery && searchedTasks.length === 0 ? "Aucun résultat de recherche" : "Aucune tâche dans cette vue"}</SelenCardTitle><p style={s.muted}>{tasks.length === 0 ? "Aucune action Daily agent n’est actuellement ouverte." : searchQuery && searchedTasks.length === 0 ? "Essayez un autre terme ou effacez la recherche. Aucun dossier n’a été modifié." : "Aucune tâche ne correspond à ce filtre. Les autres tâches restent accessibles."}</p>{tasks.length > 0 ? <Link href="/agent/daily" style={s.secondary}>Voir toutes les tâches →</Link> : null}</SelenCard> : <div style={s.list}>{sortedTasks.map((item) => {
@@ -272,6 +274,7 @@ export default async function AgentDailyPage({ searchParams }: Props) {
             <div className="daily-task-actions" style={s.actions}>
               {item.kind === "assignment" ? (role === "admin" ? <Link href={item.href} style={s.primary}>Assigner un agent →</Link> : <form method="post" action="/agent/api/daily/organisation-assignment"><input type="hidden" name="organisation_id" value={item.organisationId}/><button type="submit" style={s.primaryButton}>Me l’assigner →</button></form>) : canTreat ? <><Link href={item.href} style={s.primary}>Traiter maintenant →</Link><Link href={`/agent/daily/escalations?task_key=${encodeURIComponent(item.id)}`} style={s.secondary}>{item.escalatedToAdmin ? "Voir l’escalade" : "Escalader à un admin"}</Link></> : <span style={s.readonlyText}>Traitement réservé à l’agent assigné.</span>}
             </div>
+            {canTreat ? <ManualDailyTaskDisposition task={item} returnTo="/agent/daily"/> : null}
           </SelenCard>;
         })}</div>}
         {pagination.totalPages > 1 ? <nav aria-label="Pages des tâches Daily" style={s.pageNavigation}>

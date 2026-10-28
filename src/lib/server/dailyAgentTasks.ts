@@ -1,3 +1,4 @@
+import { withoutManuallyDisposedDailyTasks } from "@/lib/server/dailyTaskDispositions";
 import { isOverdueAfterBusinessHours } from "@/lib/franceBusinessTime";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getActiveDailyOrganisationIds } from "@/lib/server/dailyOrganisationScope";
@@ -168,7 +169,7 @@ export function getDailySessionTaskHref(itemKey: string, sessionId: string) {
   }
 }
 
-export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { organisationId?: string | null }): Promise<DailyAgentTask[]> {
+export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { organisationId?: string | null; hideResolved?: boolean }): Promise<DailyAgentTask[]> {
   const admin = createSupabaseAdminClient();
   const activeOrganisationIds = await getActiveDailyOrganisationIds();
   const requestedOrganisationId = options?.organisationId?.trim() || null;
@@ -445,10 +446,11 @@ export async function getDailyAgentTasks(staff: DailyTaskStaff, options?: { orga
       overdueShared: isOverdue(item.signaled_at), kind: "organisation" }));
   }
 
-  return tasks.filter((task) => visibleFor(task, staff)).sort((a, b) => {
+  const visible = tasks.filter((task) => visibleFor(task, staff)).sort((a, b) => {
     if (a.kind === "assignment" && b.kind !== "assignment") return -1;
     if (b.kind === "assignment" && a.kind !== "assignment") return 1;
     if (a.overdueShared !== b.overdueShared) return a.overdueShared ? -1 : 1;
     return new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime();
   });
+  return options?.hideResolved ? withoutManuallyDisposedDailyTasks(visible) : visible;
 }

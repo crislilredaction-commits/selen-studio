@@ -1,4 +1,6 @@
 import Link from "next/link";
+import ManualDailyTaskDisposition from "@/components/daily/ManualDailyTaskDisposition";
+import type { DailyAgentTask } from "@/lib/server/dailyAgentTasks";
 
 import LogoutButton from "@/components/agent/LogoutButton";
 import SelenButton from "@/components/ui/SelenButton";
@@ -13,7 +15,7 @@ import { createClient } from "@/lib/supabase/server";
 
 type StaffRole = "agent" | "admin";
 type StaffInfo = { id: string | null; user_id: string | null; email: string | null; role: StaffRole; first_name: string | null; last_name: string | null };
-type DashboardItem = { id: string; title: string; subtitle: string; href: string; date?: string | null; daily?: DailyTaskPresentation };
+type DashboardItem = { id: string; title: string; subtitle: string; href: string; date?: string | null; daily?: DailyTaskPresentation; sourceTask?: DailyAgentTask };
 type DossierRow = { id: string; title: string | null; type: string | null; status: string | null; updated_at: string | null };
 type AuditRow = { id: string; client_email: string; status: string | null; offer: string | null; updated_at: string | null; agent_id: string | null; agent_email: string | null; report_status: string | null };
 type TicketRow = { id: string; client_email: string | null; client_name: string | null; subject: string | null; category: string | null; priority: string | null; status: string | null; last_message_at: string | null; updated_at: string | null; created_at: string | null };
@@ -52,13 +54,14 @@ async function currentStaff(): Promise<StaffInfo> {
 }
 
 async function dailySessionDossiers(staff: StaffInfo): Promise<DashboardItem[]> {
-  const tasks = await getDailyAgentTasks({ id: staff.id, role: staff.role });
+  const tasks = await getDailyAgentTasks({ id: staff.id, role: staff.role }, { hideResolved: true });
   return tasks.map((task) => ({
     id: task.id,
     title: task.title,
     subtitle: `Daily · ${task.reason}${task.overdueShared ? " · 24 h ouvrées dépassées, ouverte à l'équipe" : ""}`,
     href: task.href,
     date: task.createdAt,
+    sourceTask: task,
     daily: {
       status: task.status,
       priority: task.priority,
@@ -69,7 +72,7 @@ async function dailySessionDossiers(staff: StaffInfo): Promise<DashboardItem[]> 
   }));
 }
 
-export default async function AgentHomeDashboard() {
+export default async function AgentHomeDashboard({ taskAction }: { taskAction?: string }) {
   const staff = await currentStaff();
   const admin = createSupabaseAdminClient();
   const canAccessGestionLil = isOwnerLil(staff.email);
@@ -129,6 +132,7 @@ export default async function AgentHomeDashboard() {
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><Link href="/agent/dossiers/new" style={{ textDecoration: "none" }}><SelenButton variant="primary">Créer un dossier</SelenButton></Link><Link href="/agent/clients/new" style={{ textDecoration: "none" }}><SelenButton variant="ghost">Créer un client</SelenButton></Link><LogoutButton /></div>
     </section>
 
+    {taskAction === "ok" ? <p role="status">La tâche a été retirée des deux tableaux de bord. Le dossier et ses obligations restent inchangés.</p> : null}
     <section style={grid}>
       <TaskCard icon="⚡" title="Tâches à faire" count={actionDossiers.length} emptyText="Aucune action immédiate détectée." items={actionDossiers} />
       <TaskCard icon="✍️" title="En attente de régularisation" count={regularizations.length} emptyText="Aucun émargement échu à régulariser." items={regularizations} />
@@ -146,7 +150,7 @@ export default async function AgentHomeDashboard() {
 function TaskCard({ icon, title, count, emptyText, items, footerHref, footerLabel }: { icon: string; title: string; count: number; emptyText: string; items: DashboardItem[]; footerHref?: string; footerLabel?: string }) {
   return <SelenCard style={{ height: "100%" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 12 }}><div><p style={{ fontSize: 22, marginBottom: 8 }}>{icon}</p><SelenCardTitle>{title}</SelenCardTitle></div><div style={counter}>{count}</div></div>{items.length === 0 ? <p style={small}>{emptyText}</p> : <div style={{ display: "grid", gap: 8 }}>{items.slice(0, 4).map((item) => {
     const daily = item.daily ? presentDailyTask(item.daily) : null;
-    return <Link key={item.id} href={item.href} style={itemStyle}><div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{item.title}</div><div style={{ fontSize: 12, color: "var(--selen-text2)" }}>{item.subtitle}</div>{daily ? <><div style={small}>Statut : {daily.statusLabel} · Priorité : {daily.priorityLabel}</div><div style={small}>Contexte : {daily.context}</div><div style={small}>Action : {daily.expectedAction}</div><div style={small}>Échéance : {daily.dueAt ? formatDate(daily.dueAt) : "non renseignée"}</div></> : item.date ? <div style={small}>Dernière mise à jour : {formatDate(item.date)}</div> : null}</Link>;
+    return <div key={item.id}><Link href={item.href} style={itemStyle}><div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{item.title}</div><div style={{ fontSize: 12, color: "var(--selen-text2)" }}>{item.subtitle}</div>{daily ? <><div style={small}>Statut : {daily.statusLabel} · Priorité : {daily.priorityLabel}</div><div style={small}>Contexte : {daily.context}</div><div style={small}>Action : {daily.expectedAction}</div><div style={small}>Échéance : {daily.dueAt ? formatDate(daily.dueAt) : "non renseignée"}</div></> : item.date ? <div style={small}>Dernière mise à jour : {formatDate(item.date)}</div> : null}</Link>{item.sourceTask ? <ManualDailyTaskDisposition task={item.sourceTask} returnTo="/agent"/> : null}</div>;
   })}{items.length > 4 ? <p style={small}>+ {items.length - 4} autre{items.length - 4 > 1 ? "s" : ""}</p> : null}</div>}{footerHref && footerLabel ? <div style={{ marginTop: 12 }}><Link href={footerHref} style={{ color: "var(--selen-gold2)", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>{footerLabel} →</Link></div> : null}</SelenCard>;
 }
 function AdminLink({ item }: { item: (typeof adminLinks)[number] }) { return <div style={{ border: "1px solid var(--selen-border)", borderRadius: "var(--radius-md)", padding: 14, background: "var(--selen-bg3)", height: "100%" }}><div style={{ fontSize: 22, marginBottom: 8 }}>{item.icon}</div><div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{item.title}</div><p style={small}>{item.description}</p></div>; }
