@@ -44,9 +44,9 @@ test("les tâches de session ouvrent directement leur écran métier", () => {
 });
 
 test("dashboard personnel et Pilotage Daily partagent l'agrégation mais pas le filtre de visibilité", () => {
-  assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}\)/);
+  assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}, \{ hideResolved: true \}\)/);
   assert.match(pilotage, /getDailyPilotageTasks\(\)/);
-  assert.match(pilotageVisibility, /getDailyAgentTasks\(\{ id: null, role: "admin" \}\)/);
+  assert.match(pilotageVisibility, /getDailyAgentTasks\(\{ id: null, role: "admin" \}, \{ hideResolved: true \}\)/);
 });
 
 test("un admin supervise immédiatement toutes les tâches, les agents conservent la règle des 24 h ouvrées", () => {
