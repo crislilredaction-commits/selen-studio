@@ -20,7 +20,8 @@ test("la file globale délègue les actions à une vue verrouillée sur la sessi
   assert.match(source, /aria-label="Sessions à traiter"/);
   assert.match(source, /Ouvrir le dossier de session/);
   assert.match(source, /requestedSession!=="all"&&preparationSession/);
-  assert.match(source, /preview\?<section aria-label="Prévisualisation du document"/);
+  assert.match(source, /scopedPreview\?<section aria-label="Prévisualisation du document"/);
+  assert.match(source, /const scopedPreview=preview&&scopedDocuments\.some/);
   assert.match(source, /aria-label="Pièces sans session"/);
   assert.match(source, /contextHref/);
   assert.match(source, /Ouvrir la formation/);
