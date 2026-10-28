@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { matchesPretrainingDocument, matchesPretrainingReviewStep, normalizePretrainingQuery, pretrainingPriority } from "@/lib/daily/pretrainingDocumentTriage.mjs";
+import { filterPretrainingByOrganisation, pretrainingOrganisationOptions, matchesPretrainingDocument, matchesPretrainingReviewStep, normalizePretrainingQuery, pretrainingPriority } from "@/lib/daily/pretrainingDocumentTriage.mjs";
 
 type PreparationSession = { id:string; organisation_id:string; internal_reference?:string|null; start_date?:string|null; daily_formations?:{title?:string|null}|null };
 type ContractualEnrolment = {id:string;learner_id:string;name:string;updated_at:string;contracting_party_type:"individual"|"company"|null;company_name:string|null;issue:string|null};
@@ -28,15 +28,20 @@ export default function DailyPretrainingReviewPage(){
   const [documents,setDocuments]=useState<DocumentRow[]>([]); const [preparationSessions,setPreparationSessions]=useState<PreparationSession[]>([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(""); const [message,setMessage]=useState(""); const [filter,setFilter]=useState("attention"); const [learnerFilter,setLearnerFilter]=useState("all"); const [sessionFilter,setSessionFilter]=useState(requestedSession);
   const [preview,setPreview]=useState<DocumentRow|null>(null); const [openedVersions,setOpenedVersions]=useState<Record<string,string>>({});
   const [pendingId,setPendingId]=useState(""); const actionPending=useRef(false);
-  const [query,setQuery]=useState(""); const [typeFilter,setTypeFilter]=useState("all"); const [stepFilter,setStepFilter]=useState("all");
+  const [query,setQuery]=useState(""); const [typeFilter,setTypeFilter]=useState("all"); const [stepFilter,setStepFilter]=useState("all"); const [organisationFilter,setOrganisationFilter]=useState("all");
   const [preparation,setPreparation]=useState<Preparation|null>(null); const [preparationError,setPreparationError]=useState(""); const [preparationLoading,setPreparationLoading]=useState(false); const [preparationRevision,setPreparationRevision]=useState(0); const [partyDrafts,setPartyDrafts]=useState<Record<string,PartyDraft>>({});
   const load=useCallback(async()=>{setLoading(true);setError("");try{const r=await fetch("/agent/api/daily/pretraining-documents",{cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error??"Chargement impossible.");setDocuments(d.documents??[]);setPreparationSessions(d.sessions??[]);}catch(c){setError(c instanceof Error?c.message:"Chargement impossible.");}finally{setLoading(false);}},[]);
   useEffect(()=>{void load();},[load]);
   useEffect(()=>{setSessionFilter(requestedSession);},[requestedSession]);
-  const learners=useMemo(()=>{const map=new Map<string,string>();for(const doc of documents){const key=learnerKey(doc);if(key)map.set(key,learnerLabel(doc));}return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1],"fr"));},[documents]);
-  const sessions=useMemo(()=>{const map=new Map<string,string>();for(const session of preparationSessions)map.set(session.id,`${session.daily_formations?.title||session.internal_reference||"Session"}${session.start_date?` · ${session.start_date}`:""}`);for(const doc of documents){const key=sessionKey(doc);if(key)map.set(key,sessionLabel(doc));}return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1],"fr"));},[documents,preparationSessions]);
-  const knownSessionIds=useMemo(()=>new Set(preparationSessions.map(session=>session.id)),[preparationSessions]);
-  const preparationSession=preparationSessions.find(session=>session.id===sessionFilter);
+  const organisationOptions=useMemo(()=>pretrainingOrganisationOptions(documents,preparationSessions),[documents,preparationSessions]);
+  const organisationFilterValid=organisationFilter==="all"||organisationOptions.some(option=>option.id===organisationFilter);
+  const scopedDocuments=useMemo(()=>organisationFilterValid?filterPretrainingByOrganisation(documents,organisationFilter):[],[documents,organisationFilter,organisationFilterValid]);
+  const scopedSessions=useMemo(()=>organisationFilterValid?filterPretrainingByOrganisation(preparationSessions,organisationFilter):[],[preparationSessions,organisationFilter,organisationFilterValid]);
+  const scopedPreview=preview&&scopedDocuments.some(doc=>doc.id===preview.id)&&(requestedSession==="all"||sessionKey(preview)===requestedSession)?preview:null;
+  const learners=useMemo(()=>{const map=new Map<string,string>();for(const doc of scopedDocuments){const key=learnerKey(doc);if(key)map.set(key,learnerLabel(doc));}return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1],"fr"));},[scopedDocuments]);
+  const sessions=useMemo(()=>{const map=new Map<string,string>();for(const session of scopedSessions)map.set(session.id,`${session.daily_formations?.title||session.internal_reference||"Session"}${session.start_date?` · ${session.start_date}`:""}`);for(const doc of scopedDocuments){const key=sessionKey(doc);if(key)map.set(key,sessionLabel(doc));}return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1],"fr"));},[scopedDocuments,scopedSessions]);
+  const knownSessionIds=useMemo(()=>new Set(scopedSessions.map(session=>session.id)),[scopedSessions]);
+  const preparationSession=scopedSessions.find(session=>session.id===sessionFilter);
   useEffect(()=>{
     let cancelled=false; setPreparation(null);setPreparationError("");setPartyDrafts({});
     if(!preparationSession){setPreparationLoading(false);return;}
@@ -50,15 +55,15 @@ export default function DailyPretrainingReviewPage(){
     return()=>{cancelled=true;};
   },[preparationSession?.id,preparationRevision]);
   const unsavedChoices=Boolean(preparation?.enrolments.some(row=>{const draft=partyDrafts[row.id];return draft&&(draft.party!==(row.contracting_party_type??"")||(draft.party==="company"&&draft.company!==(row.company_name??"")));}));
-  const documentTypes=useMemo(()=>[...new Set(documents.map(doc=>doc.document_type))].sort((a,b)=>(labels[a]??a).localeCompare(labels[b]??b,"fr")),[documents]);
-  const visible=useMemo(()=>documents.filter((d)=>
+  const documentTypes=useMemo(()=>[...new Set(scopedDocuments.map(doc=>doc.document_type))].sort((a,b)=>(labels[a]??a).localeCompare(labels[b]??b,"fr")),[scopedDocuments]);
+  const visible=useMemo(()=>scopedDocuments.filter((d)=>
     (filter==="all"||["to_check","to_validate","correction_requested","validated"].includes(d.status))
     &&(learnerFilter==="all"||learnerKey(d)===learnerFilter)
     &&(sessionFilter==="all"||sessionKey(d)===sessionFilter)
     &&(typeFilter==="all"||d.document_type===typeFilter)
     &&matchesPretrainingReviewStep(d.status,stepFilter)
     &&matchesPretrainingDocument(d,query)
-  ).sort((a,b)=>pretrainingPriority(a.status)-pretrainingPriority(b.status)||a.updated_at.localeCompare(b.updated_at)||a.id.localeCompare(b.id)),[documents,filter,learnerFilter,sessionFilter,typeFilter,stepFilter,query]);
+  ).sort((a,b)=>pretrainingPriority(a.status)-pretrainingPriority(b.status)||a.updated_at.localeCompare(b.updated_at)||a.id.localeCompare(b.id)),[scopedDocuments,filter,learnerFilter,sessionFilter,typeFilter,stepFilter,query]);
   const visibleCounts=useMemo(()=>({
     review:visible.filter(doc=>matchesPretrainingReviewStep(doc.status,"review")).length,
     publish:visible.filter(doc=>matchesPretrainingReviewStep(doc.status,"publish")).length,
@@ -67,16 +72,16 @@ export default function DailyPretrainingReviewPage(){
   const hasSearchFilters=Boolean(query.trim())||typeFilter!=="all"||stepFilter!=="all";
   const globalQueues=useMemo(()=>{
     const queues=new Map<string,SessionQueue>();
-    if(learnerFilter==="all"&&!hasSearchFilters)for(const session of preparationSessions)queues.set(session.id,{id:session.id,label:`${session.daily_formations?.title||session.internal_reference||"Session"}${session.start_date?` · ${session.start_date}`:""}`,organisation:"",documents:[],empty:true});
+    if(learnerFilter==="all"&&!hasSearchFilters)for(const session of scopedSessions)queues.set(session.id,{id:session.id,label:`${session.daily_formations?.title||session.internal_reference||"Session"}${session.start_date?` · ${session.start_date}`:""}`,organisation:"",documents:[],empty:true});
     for(const document of visible){const id=sessionKey(document);if(!id||hasUnavailableCanonicalSession(document,knownSessionIds))continue;const current=queues.get(id)??{id,label:sessionLabel(document),organisation:document.organisations?.name??"Organisme",documents:[],empty:false};current.documents.push(document);current.empty=false;if(!current.organisation)current.organisation=document.organisations?.name??"Organisme";queues.set(id,current);}
     const rank=(queue:SessionQueue)=>queue.documents.length?Math.min(...queue.documents.map(doc=>pretrainingPriority(doc.status))):1;
     return [...queues.values()].sort((a,b)=>rank(a)-rank(b)||a.label.localeCompare(b.label,"fr"));
-  },[hasSearchFilters,knownSessionIds,learnerFilter,preparationSessions,visible]);
+  },[hasSearchFilters,knownSessionIds,learnerFilter,scopedSessions,visible]);
   const documentsWithoutSession=useMemo(()=>visible.filter(document=>!sessionKey(document)),[visible]);
   const orphanSessionDocuments=useMemo(()=>visible.filter(document=>hasUnavailableCanonicalSession(document,knownSessionIds)),[knownSessionIds,visible]);
   async function review(id:string,action:"validate"|"request_correction"|"publish"){
     if(actionPending.current)return;
-    const doc=documents.find((document)=>document.id===id);
+    const doc=scopedDocuments.find((document)=>document.id===id);
     if(!doc?.updated_at){setError("Rechargez la liste pour relire la version courante du document.");return;}
     if(action==="validate" && (openedVersions[doc.id]!==doc.updated_at || doc.metadata?.requires_template_completion===true)){setError("Prévisualisez et complétez cette version avant de confirmer sa relecture.");return;}
     if(action==="validate" && !window.confirm("Confirmez-vous avoir relu cette version et vérifié ses destinataires avant validation ?"))return;
@@ -139,7 +144,7 @@ export default function DailyPretrainingReviewPage(){
     finally{actionPending.current=false;setPendingId("");}
   }
   async function replaceDocument(doc:DocumentRow,file:File){
-    if(actionPending.current)return;
+    if(actionPending.current||!scopedDocuments.some(current=>current.id===doc.id))return;
     actionPending.current=true;setPendingId(doc.id);setError("");setMessage("");
     try{const form=new FormData();form.set("id",doc.id);form.set("expected_updated_at",doc.updated_at);form.set("file",file);const r=await fetch("/agent/api/daily/pretraining-documents",{method:"POST",body:form});const d=await r.json().catch(()=>({}));if(!r.ok){if(r.status===409)await load();setError(d.error??"Remplacement impossible.");return}setMessage(`Nouvelle version v${d.document?.version??""} créée. Relisez-la avant validation.`);await load();}catch(c){setError(c instanceof Error?c.message:"Remplacement impossible.");}finally{actionPending.current=false;setPendingId("");}
   }
@@ -226,6 +231,9 @@ export default function DailyPretrainingReviewPage(){
     <div aria-label="Filtres des documents préformation" style={{display:"flex",gap:8,margin:"18px 0 8px",flexWrap:"wrap",alignItems:"end"}}>
       <button onClick={()=>setFilter("attention")} disabled={filter==="attention"}>À traiter</button>
       <button onClick={()=>setFilter("all")} disabled={filter==="all"}>Tous</button>
+      {requestedSession==="all"&&organisationOptions.length>1?<label style={{display:"grid",gap:4,fontSize:12,fontWeight:700}}>Organisme
+        <select aria-label="Filtrer les documents préformation par organisme" value={organisationFilter} disabled={Boolean(pendingId)||loading} onChange={event=>{setOrganisationFilter(event.target.value);setLearnerFilter("all");setTypeFilter("all");setPreview(null);setOpenedVersions({});}} style={{minWidth:220,padding:8}}><option value="all">Tous les organismes affectés</option>{organisationOptions.map(option=><option key={option.id} value={option.id}>{option.name}</option>)}</select>
+      </label>:null}
       <label style={{display:"grid",gap:4,fontSize:12,fontWeight:700}}>Recherche
         <input type="search" aria-label="Rechercher les documents préformation" maxLength={80} value={query} onChange={event=>setQuery(normalizePretrainingQuery(event.target.value))} placeholder="Organisme, pièce, apprenant, session" style={{minWidth:240,padding:8}}/>
       </label>
@@ -241,6 +249,7 @@ export default function DailyPretrainingReviewPage(){
       {requestedSession!=="all"?<label style={{display:"grid",gap:4,fontSize:12,fontWeight:700}}>Session<select aria-label="Filtrer par session" disabled value={sessionFilter} style={{minWidth:220,padding:8}}>{sessions.filter(([key])=>key===requestedSession).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>:null}
       {filter!=="attention"||learnerFilter!=="all"||hasSearchFilters?<button disabled={Boolean(pendingId)} onClick={()=>{setFilter("attention");setLearnerFilter("all");setQuery("");setTypeFilter("all");setStepFilter("all");}}>Réinitialiser les filtres</button>:null}
     </div>
+    {!organisationFilterValid?<p role="alert">Cet organisme n’est plus disponible dans votre périmètre. Sélectionnez un autre organisme.</p>:null}
     <p role="status" aria-live="polite" style={{fontSize:13,color:"var(--selen-text2)",margin:"0 0 16px"}}>{visible.length} pièce(s) affichée(s) · {visibleCounts.review} à relire · {visibleCounts.publish} à publier · {visibleCounts.correction} correction(s) attendue(s). Les pièces à relire sont présentées en premier.</p>
     {requestedSession==="all"?<p style={{color:"var(--selen-text2)",maxWidth:760}}>Cette file globale oriente vers le traitement unique de chaque session. Ouvrez une session pour choisir les parties contractantes, générer, relire, corriger, valider ou publier ses pièces.</p>:null}
     {requestedSession!=="all"&&preparationSession?<section aria-label="Informations contractuelles" style={{padding:18,border:"1px solid var(--selen-border)",borderRadius:12,marginBottom:18}}>
@@ -259,7 +268,7 @@ export default function DailyPretrainingReviewPage(){
       {unsavedChoices?<p>Enregistrez les choix modifiés avant de générer les documents.</p>:null}
       <button disabled={Boolean(pendingId)||loading||preparationLoading||!preparation?.ready||preparation.session_id!==preparationSession.id||unsavedChoices} onClick={()=>void generate()}>{pendingId==="generation"?"Préparation…":"Générer les documents manquants"}</button>
     </section>:null}
-    {preview?<section aria-label="Prévisualisation du document"><h2>{labels[preview.document_type]||preview.logical_name}</h2><iframe title="Version à relire" sandbox="" src={`/agent/api/daily/pretraining-documents/preview?id=${encodeURIComponent(preview.id)}`} style={{width:"100%",height:560,border:"1px solid var(--selen-border)"}}/><p>Pour les fichiers Word non prévisualisables, téléchargez et relisez la pièce avant de confirmer sa validation.</p><button onClick={()=>setPreview(null)}>Fermer la prévisualisation</button></section>:null}
+    {scopedPreview?<section aria-label="Prévisualisation du document"><h2>{labels[scopedPreview.document_type]||scopedPreview.logical_name}</h2><iframe title="Version à relire" sandbox="" src={`/agent/api/daily/pretraining-documents/preview?id=${encodeURIComponent(scopedPreview.id)}`} style={{width:"100%",height:560,border:"1px solid var(--selen-border)"}}/><p>Pour les fichiers Word non prévisualisables, téléchargez et relisez la pièce avant de confirmer sa validation.</p><button onClick={()=>setPreview(null)}>Fermer la prévisualisation</button></section>:null}
     {error&&<div role="alert" style={{padding:12,border:"1px solid #b24c3d",marginBottom:12}}>{error}</div>}{message&&<div role="status" style={{padding:12,border:"1px solid var(--selen-border)",marginBottom:12}}>{message}</div>}
     {loading?<p>Chargement…</p>:requestedSession==="all"?<section aria-label="Sessions à traiter" style={{display:"grid",gap:12}}>
       {globalQueues.length===0&&documentsWithoutSession.length===0&&orphanSessionDocuments.length===0?<div style={{padding:18,border:"1px solid var(--selen-border)",borderRadius:12}}>Aucune session dans cette vue pour les filtres sélectionnés.</div>:null}
