@@ -11,12 +11,12 @@ const dossierLayout = await readFile(new URL("../src/app/agent/daily/session-dos
 
 test("Pilotage Daily demande la collection transversale", () => {
   assert.match(page, /getDailyPilotageTasks\(\)/);
-  assert.match(helper, /getDailyAgentTasks\(\{ id: null, role: "admin" \}\)/);
+  assert.match(helper, /getDailyAgentTasks\(\{ id: null, role: "admin" \}, \{ hideResolved: true \}\)/);
   assert.match(page, /Les actions qui nécessitent une intervention humaine sont regroupées ici, tous organismes confondus/);
 });
 
 test("le tableau de bord personnel conserve le filtre du vrai agent", () => {
-  assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}\)/);
+  assert.match(dashboard, /getDailyAgentTasks\(\{ id: staff\.id, role: staff\.role \}, \{ hideResolved: true \}\)/);
   assert.doesNotMatch(dashboard, /getDailyPilotageTasks/);
 });
 
