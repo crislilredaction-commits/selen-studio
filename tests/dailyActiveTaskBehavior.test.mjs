@@ -56,6 +56,7 @@ function harness(rows) {
   const queries = [];
   const admin = queryClient(rows, queries);
   const tasks = isolatedTsModule("src/lib/server/dailyAgentTasks.ts", {
+    "@/lib/server/dailyTaskDispositions": { withoutManuallyDisposedDailyTasks: async tasks => tasks },
     "@/lib/franceBusinessTime": business,
     "@/lib/server/supabaseAdmin": { createSupabaseAdminClient: () => admin },
     "@/lib/server/dailyOrganisationScope": { getActiveDailyOrganisationIds: async () => ["of-a", "of-b"] },
