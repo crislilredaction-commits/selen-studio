@@ -6,7 +6,7 @@ export default function ManualDailyTaskDisposition({ task, returnTo }: { task: D
   return <details style={{ marginTop: 10, borderTop: "1px solid var(--selen-border)", paddingTop: 8 }}>
     <summary style={{ cursor: "pointer", fontSize: 12, minHeight: 36 }}>Retirer cette tâche du tableau de bord</summary>
     <p style={{ fontSize: 12, margin: "8px 0", lineHeight: 1.5 }}>
-      Cette action masque seulement l'alerte dans les deux tableaux. Elle ne valide aucune obligation,
+      Cette action masque seulement l&apos;alerte dans les deux tableaux. Elle ne valide aucune obligation,
       ne modifie aucun dossier ni aucune preuve. Une nouvelle modification du dossier réaffichera la tâche.
     </p>
     <form method="post" action="/agent/api/daily/task-disposition" style={{ display: "grid", gap: 8 }}>
