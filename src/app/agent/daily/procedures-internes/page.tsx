@@ -1,4 +1,5 @@
 import Link from "next/link";
+import styles from "./procedures-mobile.module.css";
 import { filterAndPrioritizeProcedures, normalizeProcedureQuery, normalizeProcedureView, procedureOrganisationOptions, selectProcedureOrganisation } from "@/lib/daily/internalProceduresTriage.mjs";
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
 import { getDailyOrganisationIdsForAgent } from "@/lib/server/dailyOrganisationScope";
@@ -91,21 +92,21 @@ export default async function DailyInternalProceduresPage({ searchParams }: Prop
   };
 
   return (
-    <main style={s.page}>
-      <header style={s.header}>
+    <main className={styles.page}>
+      <header className={styles.header}>
         <div>
           <p style={s.eyebrow}>Selen Daily · Qualité</p>
           <h1 style={s.h1}>Procédures internes</h1>
           <p style={s.lead}>Vue de contrôle des procédures déjà stockées dans Daily. Elle sert d’aide-mémoire aux agents et conserve <code>daily_internal_procedures</code> comme unique source de vérité.</p>
         </div>
-        <Link href="/agent/daily" style={s.back}>← Pilotage Daily</Link>
+        <Link href="/agent/daily" className={styles.backLink}>← Pilotage Daily</Link>
       </header>
 
-      <section style={s.stats} aria-label="État des procédures internes">
-        <div style={s.stat}><strong>{rows.length}</strong><span>procédure(s)</span></div>
-        <div style={s.stat}><strong>{activeCount}</strong><span>active(s)</span></div>
-        <div style={draftCount ? s.statDue : s.stat}><strong>{draftCount}</strong><span>brouillon(s)</span></div>
-        <div style={annualReviewDueCount ? s.statDue : s.stat}><strong>{annualReviewDueCount}</strong><span>revue annuelle à faire</span></div>
+      <section className={styles.stats} aria-label="État des procédures internes">
+        <div className={styles.stat}><strong>{rows.length}</strong><span>procédure(s)</span></div>
+        <div className={styles.stat}><strong>{activeCount}</strong><span>active(s)</span></div>
+        <div className={draftCount ? styles.statDue : styles.stat}><strong>{draftCount}</strong><span>brouillon(s)</span></div>
+        <div className={annualReviewDueCount ? styles.statDue : styles.stat}><strong>{annualReviewDueCount}</strong><span>revue annuelle à faire</span></div>
       </section>
 
       <section style={s.notice}>
@@ -114,7 +115,7 @@ export default async function DailyInternalProceduresPage({ searchParams }: Prop
       </section>
 
       <section style={s.notice} aria-label="Choisir un organisme Daily">
-        <form method="get" action="/agent/daily/procedures-internes" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+        <form method="get" action="/agent/daily/procedures-internes" className={styles.filterForm}>
           {query ? <input type="hidden" name="q" value={query} /> : null}
           {view !== "all" ? <input type="hidden" name="vue" value={view} /> : null}
           <label htmlFor="procedures-organisme" style={{ flex: "1 1 260px", fontSize: 12, fontWeight: 700 }}>
@@ -124,30 +125,30 @@ export default async function DailyInternalProceduresPage({ searchParams }: Prop
               {organisationOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
             </select>
           </label>
-          <button type="submit" style={{ minHeight: 40, padding: "8px 14px", border: 0, borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Appliquer</button>
-          <Link href="/agent/daily/procedures-internes" style={s.link}>Réinitialiser</Link>
+          <button type="submit" className={styles.submitButton}>Appliquer</button>
+          <Link href="/agent/daily/procedures-internes" className={styles.resetLink}>Réinitialiser</Link>
         </form>
       </section>
 
       <section style={s.notice} aria-label="Rechercher et prioriser les procédures">
-        <form action="/agent/daily/procedures-internes" method="get" role="search" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+        <form action="/agent/daily/procedures-internes" method="get" role="search" className={styles.filterForm}>
           {view !== "all" ? <input type="hidden" name="vue" value={view} /> : null}
           {selectedOrganisation ? <input type="hidden" name="organisme" value={selectedOrganisation} /> : null}
           <label htmlFor="procedures-search" style={{ flex: "1 1 260px", fontSize: 12, fontWeight: 700 }}>
             Rechercher un organisme, une procédure ou un objet
             <input id="procedures-search" type="search" name="q" maxLength={80} defaultValue={query} placeholder="Organisme, titre, objet…" style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 6, minHeight: 40, padding: "8px 11px", border: "1px solid var(--selen-border)", borderRadius: 9, background: "var(--selen-bg3)", color: "var(--selen-text)" }} />
           </label>
-          <button type="submit" style={{ minHeight: 40, padding: "8px 14px", border: 0, borderRadius: 9, background: "var(--selen-gold2)", color: "var(--selen-bg)", fontWeight: 800, cursor: "pointer" }}>Rechercher</button>
-          {query ? <Link href={viewHref(view, false)} style={s.link}>Effacer</Link> : null}
+          <button type="submit" className={styles.submitButton}>Rechercher</button>
+          {query ? <Link href={viewHref(view, false)} className={styles.resetLink}>Effacer</Link> : null}
         </form>
-        <nav aria-label="Filtrer les procédures par priorité" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+        <nav aria-label="Filtrer les procédures par priorité" className={styles.priorityNav}>
           {([
             { key: "all", label: "Toutes", count: rows.length },
             { key: "due", label: "Revue à prévoir", count: annualReviewDueCount },
             { key: "draft", label: "Brouillons", count: draftCount },
             { key: "active", label: "Actives", count: activeCount },
           ] as const).map((item) => (
-            <Link key={item.key} href={viewHref(item.key)} aria-current={view === item.key ? "page" : undefined} style={{ border: "1px solid var(--selen-border)", borderRadius: 999, padding: "7px 12px", textDecoration: "none", fontSize: 12, fontWeight: 700, background: view === item.key ? "var(--selen-gold2)" : "var(--selen-bg3)", color: view === item.key ? "var(--selen-bg)" : "var(--selen-text)" }}>
+            <Link key={item.key} href={viewHref(item.key)} aria-current={view === item.key ? "page" : undefined} className={styles.priorityLink} style={{ border: "1px solid var(--selen-border)", borderRadius: 999, padding: "7px 12px", textDecoration: "none", fontSize: 12, fontWeight: 700, background: view === item.key ? "var(--selen-gold2)" : "var(--selen-bg3)", color: view === item.key ? "var(--selen-bg)" : "var(--selen-text)" }}>
               {item.label} ({item.count})
             </Link>
           ))}
@@ -158,29 +159,29 @@ export default async function DailyInternalProceduresPage({ searchParams }: Prop
       {rows.length === 0 ? <section style={s.card}><p style={s.muted}>Aucune procédure interne enregistrée.</p></section> : visibleRows.length === 0 ? (
         <section style={s.card}><p style={s.muted}>Aucune procédure ne correspond à ces filtres.</p><Link href="/agent/daily/procedures-internes" style={s.link}>Afficher toutes les procédures</Link></section>
       ) : (
-        <section style={s.list}>
+        <section className={styles.list}>
           {visibleRows.map(({ procedure, organisation, annualReviewDue }) => {
             const organisationName = organisation?.legal_name || organisation?.name || "Organisme Daily";
             return (
-              <article key={procedure.id} style={procedure.status === "active" && !annualReviewDue ? s.cardOk : s.cardDue}>
-                <div style={s.rowHead}>
+              <article key={procedure.id} className={procedure.status === "active" && !annualReviewDue ? styles.cardOk : styles.cardDue}>
+                <div className={styles.rowHead}>
                   <div>
                     <p style={s.type}>{PROCEDURE_LABELS[procedure.procedure_type] || procedure.procedure_type}</p>
                     <h2 style={s.h2}>{procedure.title}</h2>
                     <p style={s.org}>{organisationName}</p>
                   </div>
-                  <div style={s.statusBox}>
+                  <div className={styles.statusBox}>
                     <span style={procedure.status === "active" ? s.statusOk : s.statusDue}>{procedure.status === "active" ? "Active" : "Brouillon"}</span>
                     {annualReviewDue ? <span style={s.reviewDue}>Revue annuelle à prévoir</span> : <span style={s.reviewOk}>Revue annuelle à jour</span>}
                   </div>
                 </div>
 
                 {procedure.purpose ? <p style={s.text}><strong>Objet :</strong> {procedure.purpose}</p> : null}
-                <div style={s.metaGrid}>
+                <div className={styles.metaGrid}>
                   <div><span>Dernière revue</span><strong>{formatDate(procedure.reviewed_at)}</strong></div>
                   <div><span>Dernière mise à jour</span><strong>{formatDate(procedure.updated_at)}</strong></div>
                 </div>
-                <Link href={`/agent/daily/organisations/${procedure.organisation_id}`} style={s.link}>Voir l’organisme →</Link>
+                <Link href={`/agent/daily/organisations/${procedure.organisation_id}`} className={styles.organisationLink}>Voir l’organisme →</Link>
               </article>
             );
           })}
