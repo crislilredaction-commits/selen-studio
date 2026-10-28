@@ -1,4 +1,5 @@
 import Link from "next/link";
+import styles from "./indicators-mobile.module.css";
 import {
   resolveIndicatorOrganisationSelection,
   normalizeIndicatorQuery,
@@ -112,6 +113,30 @@ export default async function DailyTrainingIndicatorsPage({ searchParams }: Prop
   const attentionSummary = getIndicatorAttentionCount({ enrolments, attendance, assessments, learnerFeedback, stakeholderFeedback });
   const noSatisfactionOrganisations = [...attentionByOrg.values()].reduce((sum, row) => sum + row.noSatisfaction, 0);
 
+  // La même projection sert au tableau ordinateur et aux cartes mobiles :
+  // aucune requête ni métrique indépendante n'est ajoutée côté mobile.
+  const organisationMetrics = visibleOrganisations.map((organisation) => {
+    const orgSessions = sessions.filter((row) => row.organisation_id === organisation.id);
+    const orgEnrolments = enrolments.filter((row) => row.organisation_id === organisation.id);
+    const orgAttendance = attendance.filter((row) => row.organisation_id === organisation.id && row.status !== "pending");
+    const orgPresent = orgAttendance.filter((row) => row.status === "present");
+    const orgAssessments = assessments.filter((row) => row.organisation_id === organisation.id && !["pending", "not_applicable"].includes(row.outcome));
+    const orgAchieved = orgAssessments.filter((row) => row.outcome === "achieved");
+    const orgRatings = [
+      ...learnerFeedback.filter((row) => row.organisation_id === organisation.id).map((row) => row.overall_rating),
+      ...stakeholderFeedback.filter((row) => row.organisation_id === organisation.id).map((row) => row.overall_rating),
+    ];
+    return {
+      organisation,
+      sessionsCount: orgSessions.length,
+      enrolmentsCount: orgEnrolments.length,
+      presence: percent(orgPresent.length, orgAttendance.length),
+      objectives: percent(orgAchieved.length, orgAssessments.length),
+      satisfaction: average(orgRatings),
+      attention: attentionByOrg.get(organisation.id)?.count ?? 0,
+    };
+  });
+
   return (
     <main style={s.page}>
       <header style={s.header}>
@@ -186,49 +211,57 @@ export default async function DailyTrainingIndicatorsPage({ searchParams }: Prop
         ) : visibleOrganisations.length === 0 ? (
           <p style={s.empty}>Aucun organisme ne correspond aux filtres. Vous pouvez réinitialiser la recherche.</p>
         ) : (
-          <div style={s.tableWrap}>
-            <table style={s.table}>
-              <thead>
-                <tr>
-                  <th style={s.th}>Organisme</th>
-                  <th style={s.th}>Sessions</th>
-                  <th style={s.th}>Inscriptions</th>
-                  <th style={s.th}>Présence</th>
-                  <th style={s.th}>Objectifs atteints</th>
-                  <th style={s.th}>Satisfaction</th>
-                  <th style={s.th}>À examiner</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleOrganisations.map((organisation) => {
-                  const orgSessions = sessions.filter((row) => row.organisation_id === organisation.id);
-                  const orgEnrolments = enrolments.filter((row) => row.organisation_id === organisation.id);
-                  const orgAttendance = attendance.filter((row) => row.organisation_id === organisation.id && row.status !== "pending");
-                  const orgPresent = orgAttendance.filter((row) => row.status === "present");
-                  const orgAssessments = assessments.filter((row) => row.organisation_id === organisation.id && !["pending", "not_applicable"].includes(row.outcome));
-                  const orgAchieved = orgAssessments.filter((row) => row.outcome === "achieved");
-                  const orgRatings = [
-                    ...learnerFeedback.filter((row) => row.organisation_id === organisation.id).map((row) => row.overall_rating),
-                    ...stakeholderFeedback.filter((row) => row.organisation_id === organisation.id).map((row) => row.overall_rating),
-                  ];
-
-                  return (
+          <>
+            <div className={styles.mobileCards} aria-label="Indicateurs par organisme sur mobile">
+              {organisationMetrics.map(({ organisation, sessionsCount, enrolmentsCount, presence, objectives, satisfaction, attention }) => (
+                <article key={organisation.id} className={styles.mobileCard}>
+                  <h3 className={styles.mobileHeading}>
+                    <Link href={`/agent/daily/organisations/${organisation.id}`} className={styles.mobileLink}>
+                      {organisation.legal_name || organisation.name || organisation.id}
+                    </Link>
+                  </h3>
+                  <dl className={styles.mobileStats}>
+                    <div><dt>Sessions</dt><dd>{sessionsCount}</dd></div>
+                    <div><dt>Inscriptions</dt><dd>{enrolmentsCount}</dd></div>
+                    <div><dt>Présence</dt><dd>{presence}</dd></div>
+                    <div><dt>Objectifs atteints</dt><dd>{objectives}</dd></div>
+                    <div><dt>Satisfaction</dt><dd>{satisfaction}</dd></div>
+                    <div><dt>Points à examiner</dt><dd>{attention}</dd></div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+            <div className={styles.desktopTable} style={s.tableWrap}>
+              <table style={s.table}>
+                <thead>
+                  <tr>
+                    <th style={s.th}>Organisme</th>
+                    <th style={s.th}>Sessions</th>
+                    <th style={s.th}>Inscriptions</th>
+                    <th style={s.th}>Présence</th>
+                    <th style={s.th}>Objectifs atteints</th>
+                    <th style={s.th}>Satisfaction</th>
+                    <th style={s.th}>À examiner</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {organisationMetrics.map(({ organisation, sessionsCount, enrolmentsCount, presence, objectives, satisfaction, attention }) => (
                     <tr key={organisation.id}>
                       <td style={s.td}><Link href={`/agent/daily/organisations/${organisation.id}`} style={s.link}>{organisation.legal_name || organisation.name || organisation.id}</Link></td>
-                      <td style={s.td}>{orgSessions.length}</td>
-                      <td style={s.td}>{orgEnrolments.length}</td>
-                      <td style={s.td}>{percent(orgPresent.length, orgAttendance.length)}</td>
-                      <td style={s.td}>{percent(orgAchieved.length, orgAssessments.length)}</td>
-                      <td style={s.td}>{average(orgRatings)}</td>
+                      <td style={s.td}>{sessionsCount}</td>
+                      <td style={s.td}>{enrolmentsCount}</td>
+                      <td style={s.td}>{presence}</td>
+                      <td style={s.td}>{objectives}</td>
+                      <td style={s.td}>{satisfaction}</td>
                       <td style={s.td} title="Présences et évaluations en attente, abandons, absence de satisfaction après inscription terminée">
-                        <strong>{attentionByOrg.get(organisation.id)?.count ?? 0}</strong>
+                        <strong>{attention}</strong>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
     </main>
@@ -236,8 +269,8 @@ export default async function DailyTrainingIndicatorsPage({ searchParams }: Prop
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { maxWidth: 1180, margin: "0 auto", padding: "24px 28px 60px", color: "var(--selen-text)" },
-  header: { display: "flex", justifyContent: "space-between", gap: 20, alignItems: "flex-start", marginBottom: 22 },
+  page: { maxWidth: 1180, margin: "0 auto", padding: "clamp(14px, 4vw, 28px)", paddingBottom: 60, minWidth: 0, color: "var(--selen-text)" },
+  header: { display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 20, alignItems: "flex-start", marginBottom: 22 },
   kicker: { margin: 0, fontSize: 10, textTransform: "uppercase", letterSpacing: ".2em", color: "var(--selen-gold2)", fontWeight: 800 },
   h1: { margin: "6px 0", fontFamily: "var(--font-display)", fontSize: 32 },
   h2: { margin: "0 0 4px", fontFamily: "var(--font-display)", fontSize: 22 },
@@ -255,8 +288,8 @@ const s: Record<string, React.CSSProperties> = {
   value: { fontSize: 27, fontFamily: "var(--font-display)" },
   hint: { color: "var(--selen-text3)", lineHeight: 1.45 },
   tableCard: { border: "1px solid var(--selen-border)", borderRadius: "var(--radius-md)", background: "var(--selen-bg2)", padding: 18 },
-  sectionHead: { display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start", marginBottom: 14 },
-  scope: { whiteSpace: "nowrap", border: "1px solid var(--selen-border)", borderRadius: 999, padding: "6px 9px", color: "var(--selen-text2)", fontSize: 11 },
+  sectionHead: { display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 18, alignItems: "flex-start", marginBottom: 14 },
+  scope: { overflowWrap: "anywhere", border: "1px solid var(--selen-border)", borderRadius: 999, padding: "6px 9px", color: "var(--selen-text2)", fontSize: 11 },
   tableWrap: { overflowX: "auto" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
   th: { textAlign: "left", padding: "10px 9px", borderBottom: "1px solid var(--selen-border)", color: "var(--selen-text2)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" },
