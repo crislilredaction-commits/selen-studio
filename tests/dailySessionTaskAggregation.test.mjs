@@ -161,7 +161,7 @@ test("le Dashboard Studio rafraîchit la source canonique après retour ou repri
   assert.match(dashboardFreshness,/addEventListener\("popstate"/);
   assert.match(dashboardFreshness,/addEventListener\("visibilitychange"/);
 });
-test("la source canonique accepte un filtre strict par organisme",()=>{assert.match(tasks,/options\?: \{ organisationId\?: string \| null \}/);assert.match(tasks,/activeOrganisationIds\.filter\(\(id\) => id === requestedOrganisationId\)/);});
+test("la source canonique accepte un filtre strict par organisme",()=>{assert.match(tasks,/options\?: \{ organisationId\?: string \| null; hideResolved\?: boolean \}/);assert.match(tasks,/activeOrganisationIds\.filter\(\(id\) => id === requestedOrganisationId\)/);});
 
 test("la timeline et son action checklist refusent les sessions hors périmètre de l'agent", () => {
   const actionStart = sessionTimeline.indexOf("async function completeChecklistItemAction(");
