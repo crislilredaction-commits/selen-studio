@@ -86,7 +86,7 @@ async function saveAnalysis(formData:FormData){
   if(!summary.motivation_summary||!summary.positioning_summary||!summary.needs_summary) throw new Error("Motivation, positionnement et besoins doivent être synthétisés avant transmission.");
   const now=new Date().toISOString();
   const {data:updated,error}=await admin.from("daily_formation_registration_requests").update({agent_analysis_summary:summary,agent_analysis_completed_at:now,agent_analysis_completed_by:auth.userId,prerequisites_validated:true,decision_status:"ready_for_of",updated_at:now}).eq("id",id).eq("formation_id",scoped.formation.id).in("decision_status",["pending","ready_for_of"]).eq("decision_status",req.decision_status).eq("updated_at",expectedUpdatedAt).select("id").maybeSingle();
-  if(error) throw new Error(error.message);
+  if(error) throw new Error("L’analyse n’a pas pu être enregistrée. Réessayez après avoir rechargé le dossier.");
   if(!updated) throw new Error(conflictMessage);
   const formation=scoped.formation;
   const organisationId=String(formation?.organisation_id??"").trim();
