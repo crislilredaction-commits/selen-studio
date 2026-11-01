@@ -33,14 +33,14 @@ function fixture() {
   };
   const page = isolatedTsModule("src/app/agent/daily/candidatures/[id]/page.tsx", modules);
   const list = isolatedTsModule("src/app/agent/daily/candidatures/page.tsx", modules);
-  const render = () => page.default({ params: Promise.resolve({ id: ids.request }) });
-  const form = (revision = openedAt) => {
+  const render = (id = ids.request) => page.default({ params: Promise.resolve({ id }) });
+  const form = (revision = openedAt, id = ids.request) => {
     const data = new FormData();
-    for (const [key, value] of Object.entries({ id: ids.request, candidature_updated_at: revision ?? "", motivation_summary: "Motivation analysée", positioning_summary: "Niveau analysé", needs_summary: "Besoins analysés", observations: "Nouvelle note" })) data.set(key, value);
+    for (const [key, value] of Object.entries({ id, candidature_updated_at: revision ?? "", motivation_summary: "Motivation analysée", positioning_summary: "Niveau analysé", needs_summary: "Besoins analysés", observations: "Nouvelle note" })) data.set(key, value);
     return data;
   };
-  const action = async () => {
-    const tree = await render(); const element = walk(tree).find(node => node.type === "form");
+  const action = async (id = ids.request) => {
+    const tree = await render(id); const element = walk(tree).find(node => node.type === "form");
     assert.equal(typeof element?.props.action, "function"); return element.props.action;
   };
   return { f, emails, invalidations, form, action, render, list };
@@ -114,4 +114,65 @@ test("la sauvegarde revérifie l’affectation et les prérequis humains", async
     await assert.rejects(action(h.form()), /introuvable|vérifiés/i);
     assert.equal(h.f.writes.length, 0); assert.equal(h.emails.length, 0);
   }
+});
+
+
+test("P0-01 : analyse Studio réelle de deux OF fictifs, sans lecture ou transmission croisée", async () => {
+  const h = fixture(), f = h.f;
+  const otherFormation = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const otherRequest = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  f.rows.daily_formations.push({ ...f.formation, id: otherFormation, organisation_id: ids.otherOf, title: "Formation fictive B" });
+  const candidatureB = { ...f.request, id: otherRequest, formation_id: otherFormation, respondent_email: "candidate-b@example.test", agent_analysis_summary: null };
+  f.rows.daily_formation_registration_requests.push(candidatureB);
+
+  const actionA = await h.action();
+  await assert.rejects(actionA(h.form(openedAt, otherRequest)), /Candidature introuvable/);
+  assert.equal(candidatureB.decision_status, "pending");
+  assert.equal(h.emails.length, 0);
+  await actionA(h.form());
+  assert.equal(f.request.decision_status, "ready_for_of");
+  assert.equal(candidatureB.decision_status, "pending");
+  assert.equal(h.emails.length, 1);
+  assert.equal(h.emails[0].organisationId, ids.of);
+  assert.equal(h.emails[0].to, "owner-a@example.test");
+
+  f.auth.value = { ok: true, email: "agent-b@example.test", userId: "reviewer-b" };
+  const actionB = await h.action(otherRequest);
+  await assert.rejects(actionB(h.form(openedAt, ids.request)), /Candidature introuvable/);
+  assert.equal(h.emails.length, 1);
+  await actionB(h.form(openedAt, otherRequest));
+  assert.equal(candidatureB.decision_status, "ready_for_of");
+  assert.equal(candidatureB.agent_analysis_completed_by, "reviewer-b");
+  assert.equal(f.request.agent_analysis_completed_by, ids.reviewer);
+  assert.equal(h.emails.length, 2);
+  assert.equal(h.emails[1].organisationId, ids.otherOf);
+  assert.equal(h.emails[1].to, "owner-b@example.test");
+  assert.deepEqual(h.f.writes.filter(write => write.ids.length).flatMap(write => write.ids), [ids.request, otherRequest]);
+  assert.ok(f.rows.daily_formation_registration_requests.every(row => row.decision_status !== "accepted"));
+});
+
+test("P0-01 : erreur SQL pendant la transmission Studio masquée, sans email ni fausse réussite", async () => {
+  const h = fixture(), f = h.f;
+  const originalFrom = f.admin.from.bind(f.admin);
+  f.admin.from = table => {
+    const query = originalFrom(table);
+    if (table !== "daily_formation_registration_requests") return query;
+    const originalUpdate = query.update;
+    query.update = patch => {
+      originalUpdate(patch);
+      query.maybeSingle = () => ({
+        then(resolve, reject) {
+          return Promise.resolve({ data: null, error: { message: "SQLSTATE 42501 secret interne" } }).then(resolve, reject);
+        },
+      });
+      return query;
+    };
+    return query;
+  };
+  const action = await h.action();
+  await assert.rejects(action(h.form()), error =>
+    error.message === "L’analyse n’a pas pu être enregistrée. Réessayez après avoir rechargé le dossier.");
+  assert.equal(f.request.decision_status, "pending");
+  assert.equal(h.emails.length, 0);
+  assert.equal(h.invalidations.length, 0);
 });
