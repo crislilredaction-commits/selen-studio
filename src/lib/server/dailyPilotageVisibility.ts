@@ -15,14 +15,15 @@ export async function getDailyPilotageTasks(): Promise<DailyPilotageTask[]> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("daily_work_escalations")
-    .select("task_key")
+    .select("organisation_id,task_key")
     .eq("target_type", "task")
-    .in("status", ["open", "in_progress"])
+    .in("status", ["open", "in_progress", "returned"])
+    .in("organisation_id", [...new Set(tasks.map((task) => task.organisationId))])
     .in("task_key", tasks.map((task) => task.id));
   if (error) throw new Error(error.message);
 
-  const activeKeys = new Set((data ?? []).map((row) => row.task_key).filter(Boolean));
-  return tasks.map((task) => ({ ...task, escalatedToAdmin: activeKeys.has(task.id) }));
+  const activeKeys = new Set((data ?? []).map((row) => `${row.organisation_id}:${row.task_key}`));
+  return tasks.map((task) => ({ ...task, escalatedToAdmin: activeKeys.has(`${task.organisationId}:${task.id}`) }));
 }
 
 export function canTreatDailyPilotageTask(task: DailyAgentTask, staff: DailyTaskStaff) {
