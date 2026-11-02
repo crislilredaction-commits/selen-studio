@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
@@ -24,26 +25,39 @@ export default async function TrainerCertificationProofsPage({ params }: PagePro
   if (!auth.ok) return <main style={styles.page}><p style={styles.error}>{auth.error}</p></main>;
 
   const { id: organisationId } = await params;
+  if (!(await isDailyOrganisationInAgentScope(auth.email, organisationId))) {
+    return <main style={styles.page}><p style={styles.error}>Organisme hors de ton périmètre Daily.</p></main>;
+  }
   const admin = createSupabaseAdminClient();
 
-  const [organisationRes, trainersRes, certificationsRes, documentsRes] = await Promise.all([
+  const [organisationRes, trainersRes, documentsRes] = await Promise.all([
     admin.from("organisations").select("id,name,legal_name").eq("id", organisationId).maybeSingle(),
     admin.from("daily_trainer_profiles").select("id,display_name,professional_email,active,status").eq("organisation_id", organisationId).order("display_name"),
-    admin.from("daily_trainer_certifications").select("id,trainer_profile_id,title,issuer,reference,obtained_on,validity_mode,valid_until,note").order("obtained_on", { ascending: false, nullsFirst: false }),
     admin.from("daily_documents").select("id,linked_object_id,logical_name,bucket,storage_path,mime_type").eq("organisation_id", organisationId).eq("linked_object_type", "trainer_certification").eq("document_type", "trainer_qualification_proof").eq("is_current", true),
   ]);
 
   if (organisationRes.error || !organisationRes.data) {
     return <main style={styles.page}><p style={styles.error}>Organisme introuvable.</p></main>;
   }
-  if (trainersRes.error || certificationsRes.error || documentsRes.error) {
-    const message = trainersRes.error?.message || certificationsRes.error?.message || documentsRes.error?.message || "Chargement impossible.";
+  if (trainersRes.error || documentsRes.error) {
+    const message = trainersRes.error?.message || documentsRes.error?.message || "Chargement impossible.";
     return <main style={styles.page}><p style={styles.error}>{message}</p></main>;
   }
 
   const trainers = trainersRes.data ?? [];
-  const trainerIds = new Set(trainers.map((trainer) => trainer.id));
-  const certifications = (certificationsRes.data ?? []).filter((certification) => trainerIds.has(certification.trainer_profile_id));
+  const trainerIds = trainers.map((trainer) => trainer.id);
+  // Never load every OF's certification through the service-role client.
+  // Empty scope must not become an unfiltered query.
+  const certificationsRes = trainerIds.length
+    ? await admin.from("daily_trainer_certifications")
+      .select("id,trainer_profile_id,title,issuer,reference,obtained_on,validity_mode,valid_until,note")
+      .in("trainer_profile_id", trainerIds)
+      .order("obtained_on", { ascending: false, nullsFirst: false })
+    : { data: [], error: null };
+  if (certificationsRes.error) {
+    return <main style={styles.page}><p style={styles.error}>Chargement des certifications impossible.</p></main>;
+  }
+  const certifications = certificationsRes.data ?? [];
   const documents = documentsRes.data as CurrentProof[];
   const proofByCertification = new Map<string, { name: string; mimeType: string | null; url: string | null }>();
 
