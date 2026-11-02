@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 
 import { requireSupportAgent } from "@/app/agent/api/support/_utils";
+import { isDailyOrganisationInAgentScope } from "@/lib/server/dailyOrganisationScope";
 import SelenBadge from "@/components/ui/SelenBadge";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
@@ -48,6 +49,9 @@ export default async function DailyQualiopiCyclePage({ params }: PageProps) {
   if (!auth.ok) return <main style={styles.page}><p style={styles.error}>{auth.error}</p></main>;
 
   const { id: organisationId } = await params;
+  if (!(await isDailyOrganisationInAgentScope(auth.email, organisationId))) {
+    return <main style={styles.page}><p style={styles.error}>Organisme hors de ton périmètre Daily.</p></main>;
+  }
   const admin = createSupabaseAdminClient();
   const [organisationRes, remindersRes] = await Promise.all([
     admin
