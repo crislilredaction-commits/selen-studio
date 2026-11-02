@@ -34,7 +34,7 @@ test("la visibilité transversale ne modifie aucune assignation", () => {
 
 test("une tâche peut être escaladée sans disparaître du Pilotage Daily", () => {
   assert.match(helper, /daily_work_escalations/);
-  assert.match(helper, /\["open", "in_progress"\]/);
+  assert.match(helper, /\["open", "in_progress", "returned"\]/);
   assert.match(page, /Escaladé à un administrateur/);
   assert.match(page, /Escalader à un admin/);
   assert.match(page, /Traiter maintenant/);
