@@ -2,13 +2,14 @@
  * documentText.ts — Selen Studio
  *
  * Extraction de texte côté serveur Next.js App Router.
- * PDF  → pdfExtract.ts (pdfjs-dist v3)
+ * PDF  → pdfExtract.ts (pdfjs-dist v6)
  * DOCX → mammoth
- * XLSX → xlsx
+ * XLSX → read-excel-file
  */
 
 import mammoth from "mammoth";
-import * as XLSX from "xlsx";
+import { Blob } from "node:buffer";
+import readXlsxFile from "read-excel-file/node";
 import { extractPdfTextFromBuffer } from "./pdfExtract";
 
 // ---------------------------------------------------------------------------
@@ -101,18 +102,32 @@ export async function extractTextFromBuffer(
     }
   }
 
-  if (ext === "xlsx" || ext === "xls") {
+  if (ext === "xlsx") {
     try {
-      const workbook = XLSX.read(buffer, { type: "buffer" });
-      const allSheets = workbook.SheetNames.map((sheetName) => {
-        const sheet = workbook.Sheets[sheetName];
-        return XLSX.utils.sheet_to_csv(sheet);
-      });
+      const workbook = await readXlsxFile(
+        new Blob([new Uint8Array(buffer)]),
+      );
+      const allSheets = workbook.map(({ data }) =>
+        data
+          .map((row) =>
+            row
+              .map((cell) => (cell === null ? "" : String(cell)))
+              .join("\t"),
+          )
+          .join("\n"),
+      );
       return normalizeExtractedText(allSheets.join("\n\n"));
     } catch (error) {
       console.error("XLSX extract failed:", filename, error);
       return "";
     }
+  }
+
+  if (ext === "xls") {
+    console.warn(
+      "Format .xls non analysé pour des raisons de sécurité ; convertir le fichier en .xlsx.",
+    );
+    return "";
   }
 
   if (ext === "txt" || ext === "csv") {
