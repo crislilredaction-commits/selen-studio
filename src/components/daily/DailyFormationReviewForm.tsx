@@ -13,6 +13,7 @@ export default function DailyFormationReviewForm({ children, submit, defaultInte
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
+  const [activeIntent, setActiveIntent] = useState<Intent | null>(null);
   const [pendingUploads, setPendingUploads] = useState<Record<string, boolean>>({});
   const [pending, startTransition] = useTransition();
   const saving = useRef(false);
@@ -24,7 +25,7 @@ export default function DailyFormationReviewForm({ children, submit, defaultInte
     const button = (event.nativeEvent as SubmitEvent).submitter;
     const intentValue = button instanceof HTMLButtonElement ? button.dataset.reviewIntent : undefined;
     const intent = intentValue && ["save", "validate", "questionnaires"].includes(intentValue) ? intentValue as Intent : defaultIntent;
-    saving.current = true; setError("");
+    saving.current = true; setError(""); setActiveIntent(intent);
     startTransition(async () => {
       try {
         const result = await submit(data, intent);
@@ -33,13 +34,13 @@ export default function DailyFormationReviewForm({ children, submit, defaultInte
         else setError("Le serveur n’a pas confirmé l’enregistrement. Vérifie le dossier avant de recommencer.");
       }
       catch { setError("L’enregistrement n’a pas pu être confirmé. Recharge le dossier avant de réessayer."); }
-      finally { saving.current = false; }
+      finally { saving.current = false; setActiveIntent(null); }
     });
   }
   return <UploadContext value={(kind, value) => setPendingUploads(current => ({ ...current, [kind]: value }))}>
-    <form onSubmit={onSubmit} aria-busy={pending} style={{ display: "grid", gap: 12 }}>
+    <form onSubmit={onSubmit} aria-busy={pending} data-review-saving={activeIntent ?? undefined} style={{ display: "grid", gap: 12 }}>
       {children}
-      {pending ? <p role="status">Enregistrement en cours…</p> : null}
+      {activeIntent ? <p role="status" aria-live="polite">{activeIntent === "validate" ? "Validation en cours…" : "Enregistrement en cours…"}</p> : null}
       {error ? <p role="alert" style={{ color: "var(--selen-danger, #b42318)", padding: 12, border: "1px solid currentColor", borderRadius: 8 }}>{error}</p> : null}
     </form>
   </UploadContext>;
