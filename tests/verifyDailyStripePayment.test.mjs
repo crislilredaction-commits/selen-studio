@@ -1,0 +1,50 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import vm from "node:vm";
+import ts from "typescript";
+
+const source = readFileSync(new URL("../src/lib/server/verifyDailyStripePayment.ts", import.meta.url), "utf8");
+const { outputText } = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+});
+const exports = {};
+vm.runInNewContext(outputText, { exports, process: { env: {} }, AbortSignal, encodeURIComponent, Number });
+const { verifyDailyStripePayment } = exports;
+const invoice = {
+  id: "in_test123", status: "paid", amount_remaining: 0,
+  amount_paid: 8900, currency: "eur", customer: "cus_test123",
+  parent: { type: "subscription_details", subscription_details: { subscription: "sub_test123" } },
+};
+function fakeFetch(inv = invoice, sub = { id: "sub_test123", metadata: { product_key: "selen_daily" } }) {
+  const urls = [];
+  const fetchImpl = async (url) => {
+    urls.push(url);
+    return { ok: true, json: async () => url.includes("/invoices/") ? inv : sub };
+  };
+  return { urls, fetchImpl };
+}
+test("Studio independently retrieves and validates paid Daily Stripe invoice", async () => {
+  const fake = fakeFetch();
+  const result = await verifyDailyStripePayment("in_test123", { secretKey: "sk_test_dummy", fetchImpl: fake.fetchImpl });
+  assert.equal(result.amountPaidCents, 8900);
+  assert.equal(result.stripeSubscriptionId, "sub_test123");
+  assert.equal(fake.urls.length, 2);
+});
+test("unpaid, zero-amount and mismatched invoices fail before subscription lookup", async () => {
+  for (const patch of [{ status: "open" }, { amount_paid: 0 }, { id: "in_wrong" }]) {
+    const fake = fakeFetch({ ...invoice, ...patch });
+    await assert.rejects(verifyDailyStripePayment("in_test123", { secretKey: "sk_test_dummy", fetchImpl: fake.fetchImpl }));
+    assert.equal(fake.urls.length, 1);
+  }
+});
+test("non-Daily subscription is rejected", async () => {
+  const fake = fakeFetch(invoice, { id: "sub_test123", metadata: { product_key: "unrelated" } });
+  await assert.rejects(verifyDailyStripePayment("in_test123", { secretKey: "sk_test_dummy", fetchImpl: fake.fetchImpl }));
+});
+test("invalid ID or missing credentials never calls Stripe", async () => {
+  const fake = fakeFetch();
+  await assert.rejects(verifyDailyStripePayment("bad", { secretKey: "sk_test_dummy", fetchImpl: fake.fetchImpl }));
+  await assert.rejects(verifyDailyStripePayment("in_test123", { fetchImpl: fake.fetchImpl }));
+  assert.equal(fake.urls.length, 0);
+});
