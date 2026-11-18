@@ -8,6 +8,9 @@ type StripeInvoiceRecord = {
   status?: string;
   amount_remaining?: number;
   amount_paid?: number;
+  total?: number;
+  subtotal?: number;
+  total_taxes?: Array<{ amount?: number }>;
   currency?: string;
   customer?: string | { id: string };
   invoice_pdf?: string | null;
@@ -55,7 +58,9 @@ export async function verifyDailyStripePayment(
   const invoice = await stripeGet<StripeInvoiceRecord>(`invoices/${encodeURIComponent(stripeInvoiceId)}`);
   if (invoice.id !== stripeInvoiceId || invoice.status !== "paid" ||
       invoice.amount_remaining !== 0 || invoice.currency !== "eur" ||
-      !Number.isSafeInteger(invoice.amount_paid) || (invoice.amount_paid ?? 0) <= 0) {
+      !Number.isSafeInteger(invoice.amount_paid) || (invoice.amount_paid ?? 0) <= 0 ||
+      invoice.total !== invoice.amount_paid || invoice.subtotal !== invoice.amount_paid ||
+      (invoice.total_taxes ?? []).some((tax) => tax.amount !== 0)) {
     throw new Error("Stripe invoice is not a supported settled EUR payment.");
   }
   const subscriptionRef = invoice.parent?.type === "subscription_details"
