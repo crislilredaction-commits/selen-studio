@@ -336,7 +336,14 @@ export function generateLilInvoicePdfBuffer({
     margin: { left: margin, right: margin },
     head: [["Designation", "Qte", "PU HT", "Total HT"]],
     body: invoice.lines.map((line) => [
-      [line.label, line.details || ""].filter(Boolean).join("\n"),
+      [
+        line.label,
+        invoice.invoice_type === "daily_subscription" &&
+          metadataText(invoice, "daily_period_start") && metadataText(invoice, "daily_period_end")
+          ? `Abonnement du ${formatDateFr(metadataText(invoice, "daily_period_start"))} au ${formatDateFr(metadataText(invoice, "daily_period_end"))}`
+          : "",
+        line.details || "",
+      ].filter(Boolean).join("\n"),
       String(line.quantity),
       centsToEuros(line.unitAmountCents),
       centsToEuros(line.totalAmountCents),
