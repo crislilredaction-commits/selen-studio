@@ -58,3 +58,9 @@ test("overlapping Stripe cycles and manually issued periods are rejected", () =>
   assert.match(sql, /daily_period_start'\) <= to_char/);
   assert.match(sql, /daily_period_end'\) >= to_char/);
 });
+
+test("service_role grant matches the exact RPC signature", () => {
+  const signature = "text,text,timestamptz,timestamptz,text,text,text,integer,date,jsonb,jsonb";
+  assert.match(sql, new RegExp("revoke all on function public\\.issue_paid_daily_lil_invoice\\(\\s*" + signature));
+  assert.match(sql, new RegExp("grant execute on function public\\.issue_paid_daily_lil_invoice\\(\\s*" + signature));
+});
