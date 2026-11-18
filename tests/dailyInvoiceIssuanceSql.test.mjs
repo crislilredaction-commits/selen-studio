@@ -1,0 +1,28 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const sql = readFileSync(
+  new URL("../supabase/migrations/20261118130000_issue_paid_daily_lil_invoice.sql", import.meta.url),
+  "utf8",
+);
+
+test("paid Daily invoice uses existing canonical number allocator", () => {
+  assert.match(sql, /public\.next_lil_invoice_number\(\)/);
+  assert.match(sql, /insert into public\.lil_invoices/);
+  assert.match(sql, /insert into public\.lil_daily_invoice_links/);
+  assert.doesNotMatch(sql, /create (?:table|sequence).*daily_invoice_sequence/i);
+});
+
+test("issuance has transactional locking and idempotent Stripe lookup", () => {
+  assert.match(sql, /pg_advisory_xact_lock/);
+  assert.match(sql, /where stripe_invoice_id = p_stripe_invoice_id/);
+  assert.match(sql, /return v_existing/);
+  assert.match(sql, /Existing manual Daily invoice requires reconciliation/);
+});
+
+test("RPC cannot be called with end-user database roles", () => {
+  assert.match(sql, /auth\.role\(\) is distinct from 'service_role'/);
+  assert.match(sql, /revoke all on function public\.issue_paid_daily_lil_invoice/);
+  assert.match(sql, /grant execute on function public\.issue_paid_daily_lil_invoice/);
+});
