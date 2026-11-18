@@ -87,7 +87,7 @@ begin
   insert into public.lil_invoices (
     invoice_number, sequence_number, invoice_date, recipient_name,
     recipient_email, recipient_address, invoice_type, status, currency,
-    subtotal_cents, tax_cents, total_cents, lines, metadata, issued_at
+    subtotal_cents, tax_cents, total_cents, lines, metadata, issued_at, paid_at
   ) values (
     v_number.invoice_number, v_number.sequence_number, p_invoice_date,
     btrim(p_recipient_name), nullif(btrim(p_recipient_email), ''),
@@ -99,7 +99,7 @@ begin
         'stripe_invoice_id', p_stripe_invoice_id,
         'stripe_subscription_id', p_stripe_subscription_id
       ),
-    now()
+    now(), now()
   ) returning * into v_issued;
 
   insert into public.lil_daily_invoice_links (
