@@ -162,9 +162,13 @@ export default function InvoiceForm({
   const [invoiceType, setInvoiceType] = useState<LilInvoiceType>(
     invoice?.invoice_type || "certifopac_single_audit",
   );
-  const [billingMonth, setBillingMonth] = useState(
-    typeof invoice?.metadata?.daily_billing_month === "string"
-      ? invoice.metadata.daily_billing_month : new Date().toISOString().slice(0, 7),
+  const [billingPeriodStart, setBillingPeriodStart] = useState(
+    typeof invoice?.metadata?.daily_period_start === "string"
+      ? invoice.metadata.daily_period_start : new Date().toISOString().slice(0, 10),
+  );
+  const [billingPeriodEnd, setBillingPeriodEnd] = useState(
+    typeof invoice?.metadata?.daily_period_end === "string"
+      ? invoice.metadata.daily_period_end : "",
   );
   const [recipientName, setRecipientName] = useState(invoice?.recipient_name ?? "");
   const [recipientEmail, setRecipientEmail] = useState(invoice?.recipient_email ?? "");
@@ -297,7 +301,8 @@ export default function InvoiceForm({
       action,
       id: invoice?.id,
       invoiceType,
-      billingMonth: invoiceType === "daily_subscription" ? billingMonth : null,
+      billingPeriodStart: invoiceType === "daily_subscription" ? billingPeriodStart : null,
+      billingPeriodEnd: invoiceType === "daily_subscription" ? billingPeriodEnd : null,
       invoiceDate: formData.get("invoiceDate"),
       recipientName: formData.get("recipientName"),
       recipientAddress: formData.get("recipientAddress"),
@@ -476,9 +481,13 @@ export default function InvoiceForm({
         </label>
         {invoiceType === "daily_subscription" ? (
           <label style={s.field}>
-            <span>Mois de prestation Daily</span>
-            <input type="month" name="billingMonth" value={billingMonth}
-              onChange={(event) => setBillingMonth(event.target.value)}
+            <span>Début de la période Daily</span>
+            <input type="date" name="billingPeriodStart" value={billingPeriodStart}
+              onChange={(event) => setBillingPeriodStart(event.target.value)}
+              style={s.input} disabled={locked} required />
+            <span>Fin de la période Daily (incluse)</span>
+            <input type="date" name="billingPeriodEnd" value={billingPeriodEnd}
+              onChange={(event) => setBillingPeriodEnd(event.target.value)}
               style={s.input} disabled={locked} required />
             <small>Selectionnez un client dans les profils de facturation ci-dessous. Verifiez le paiement avant emission.</small>
           </label>
