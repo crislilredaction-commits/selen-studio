@@ -41,3 +41,11 @@ test("SQL migration contains exactly one complete function and permission grant"
   assert.match(sql, /quantity'\)\s*::numeric <> 1/);
   assert.doesNotMatch(sql, /\^\[0-9\]\+\s+or jsonb_typeof/);
 });
+
+test("atomic Daily issuance uses exact date-to-date service boundaries", () => {
+  assert.match(sql, /p_period_start timestamptz/);
+  assert.match(sql, /p_period_end_exclusive timestamptz/);
+  assert.match(sql, /period_start = p_period_start/);
+  assert.match(sql, /period_end_exclusive = p_period_end_exclusive/);
+  assert.doesNotMatch(sql, /p_billing_month/);
+});
