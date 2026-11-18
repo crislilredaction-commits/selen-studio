@@ -13,7 +13,7 @@ vm.runInNewContext(outputText, { exports, process: { env: {} }, AbortSignal, enc
 const { verifyDailyStripePayment } = exports;
 const invoice = {
   id: "in_test123", status: "paid", amount_remaining: 0,
-  amount_paid: 8900, currency: "eur", customer: "cus_test123",
+  amount_paid: 8900, total: 8900, subtotal: 8900, total_taxes: [], currency: "eur", customer: "cus_test123",
   invoice_pdf: "https://pay.stripe.com/invoice/test.pdf",
   parent: { type: "subscription_details", subscription_details: { subscription: "sub_test123" } },
 };
@@ -61,4 +61,19 @@ test("Stripe invoice cannot be attributed to a different subscription customer",
     verifyDailyStripePayment("in_test123", { secretKey: "sk_test_dummy", fetchImpl: fake.fetchImpl }),
     /not Selen Daily/,
   );
+});
+
+test("taxes and discounts cannot silently become a zero-VAT Lil invoice", async () => {
+  for (const patch of [
+    { total: 9000 },
+    { subtotal: 10000 },
+    { total_taxes: [{ amount: 100 }] },
+  ]) {
+    const fake = fakeFetch({ ...invoice, ...patch });
+    await assert.rejects(
+      verifyDailyStripePayment("in_test123", { secretKey: "sk_test_dummy", fetchImpl: fake.fetchImpl }),
+      /not a supported settled EUR payment/,
+    );
+    assert.equal(fake.urls.length, 1);
+  }
 });
