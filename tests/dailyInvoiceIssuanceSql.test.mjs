@@ -22,7 +22,7 @@ test("issuance has transactional locking and idempotent Stripe lookup", () => {
 });
 
 test("RPC cannot be called with end-user database roles", () => {
-  assert.match(sql, /auth\.role\(\) is distinct from 'service_role'/);
+  assert.match(sql, /request\.jwt\.claim\.role/);
   assert.match(sql, /revoke all on function public\.issue_paid_daily_lil_invoice/);
   assert.match(sql, /grant execute on function public\.issue_paid_daily_lil_invoice/);
 });
