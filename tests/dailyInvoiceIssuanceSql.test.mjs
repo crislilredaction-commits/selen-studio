@@ -49,3 +49,12 @@ test("atomic Daily issuance uses exact date-to-date service boundaries", () => {
   assert.match(sql, /period_end_exclusive = p_period_end_exclusive/);
   assert.doesNotMatch(sql, /p_billing_month/);
 });
+
+test("overlapping Stripe cycles and manually issued periods are rejected", () => {
+  assert.match(sql, /l\.period_start < p_period_end_exclusive/);
+  assert.match(sql, /l\.period_end_exclusive > p_period_start/);
+  assert.match(sql, /Overlapping Daily subscription billing period requires reconciliation/);
+  assert.match(sql, /Existing manual Daily invoice requires reconciliation/);
+  assert.match(sql, /daily_period_start'\) <= to_char/);
+  assert.match(sql, /daily_period_end'\) >= to_char/);
+});
