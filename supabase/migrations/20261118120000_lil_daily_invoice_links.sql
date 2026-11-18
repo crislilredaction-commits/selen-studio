@@ -14,7 +14,8 @@ create table if not exists public.lil_daily_invoice_links (
   id uuid primary key default gen_random_uuid(),
   stripe_invoice_id text unique,
   stripe_subscription_id text not null,
-  billing_month date not null,
+  period_start timestamptz not null,
+  period_end_exclusive timestamptz not null,
   billing_profile_id uuid,
   lil_invoice_id uuid unique references public.lil_invoices(id) on delete restrict,
   payment_status text not null default 'pending'
@@ -24,12 +25,12 @@ create table if not exists public.lil_daily_invoice_links (
   email_sent_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint lil_daily_billing_month_first_day
-    check (extract(day from billing_month) = 1),
+  constraint lil_daily_period_order
+    check (period_end_exclusive > period_start),
   constraint lil_daily_stripe_invoice_format
     check (stripe_invoice_id is null or stripe_invoice_id ~ '^in_[A-Za-z0-9]+$'),
   constraint lil_daily_invoice_unique_period
-    unique (stripe_subscription_id, billing_month)
+    unique (stripe_subscription_id, period_start, period_end_exclusive)
 );
 
 create index if not exists lil_daily_invoice_links_invoice_id_idx
@@ -40,11 +41,11 @@ revoke all on public.lil_daily_invoice_links from public, anon, authenticated;
 grant select, insert, update on public.lil_daily_invoice_links to service_role;
 
 comment on table public.lil_daily_invoice_links is
-  'Links Stripe subscription billing months to canonical Gestion Lil invoices. Never allocates an independent invoice number. Server-only.';
+  'Links Stripe subscription billing periods to canonical Gestion Lil invoices. Never allocates an independent invoice number. Server-only.';
 
 -- IMPORTANT: the actual invoice-number allocation + link insert must be a single
 -- transactional RPC before this ledger can safely be used by a webhook.
--- A unique period assumes one invoice per subscription/calendar month; validate
+-- A unique period assumes one invoice per subscription/exact Stripe period; validate
 -- prorations and subscription-cycle boundaries before enabling automatic issuance.
 
 -- The application-level name/month check is insufficient for concurrent manual requests.
@@ -52,10 +53,11 @@ comment on table public.lil_daily_invoice_links is
 -- but a new corrected invoice can be created explicitly after cancellation.
 -- This temporary key must be replaced with a stable Daily subscription identifier
 -- before enabling automated issuance.
-create unique index if not exists lil_daily_manual_unique_client_month_idx
+create unique index if not exists lil_daily_manual_unique_client_period_idx
   on public.lil_invoices (
     lower(btrim(recipient_name)),
-    (metadata ->> 'daily_billing_month')
+    (metadata ->> 'daily_period_start'),
+    (metadata ->> 'daily_period_end')
   )
   where invoice_type = 'daily_subscription'
     and status <> 'cancelled';
@@ -66,7 +68,15 @@ alter table public.lil_invoices
   check (
     invoice_type <> 'daily_subscription'
     or (
-      metadata ->> 'daily_billing_month' ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'
+      metadata ->> 'daily_period_start' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}
+    )
+  );
+
+      and metadata ->> 'daily_period_end' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}
+    )
+  );
+
+      and (metadata ->> 'daily_period_end') >= (metadata ->> 'daily_period_start')
       and recipient_name <> ''
     )
   );
