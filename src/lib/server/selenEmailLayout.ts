@@ -143,11 +143,13 @@ export async function sendSelenEmail({
   html,
   text,
   attachments,
+  idempotencyKey,
 }: {
   to: string;
   subject: string;
   html: string;
   text?: string | null;
+  idempotencyKey?: string;
   attachments?: { filename: string; content: Buffer; contentType: string }[];
 }) {
   const resendApiKey = process.env.RESEND_API_KEY;
@@ -175,7 +177,7 @@ export async function sendSelenEmail({
     html,
     text: text || undefined,
     attachments,
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
 
   if (result.error) {
     return {

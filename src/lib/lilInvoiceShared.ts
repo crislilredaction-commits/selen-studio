@@ -1,5 +1,5 @@
 export type LilInvoiceStatus = "draft" | "generated" | "deposited" | "paid" | "cancelled";
-export type LilInvoiceType = "certifopac_single_audit" | "icpf_monthly" | "manual";
+export type LilInvoiceType = "certifopac_single_audit" | "icpf_monthly" | "manual" | "daily_subscription";
 
 export type LilInvoiceLine = {
   label: string;
@@ -13,6 +13,7 @@ export const INVOICE_TYPES: { value: LilInvoiceType; label: string }[] = [
   { value: "certifopac_single_audit", label: "Certifopac - 1 audit" },
   { value: "icpf_monthly", label: "ICPF - facture mensuelle" },
   { value: "manual", label: "Manuelle" },
+  { value: "daily_subscription", label: "Abonnement Selen Daily" },
 ];
 
 export const CERTIFOPAC_AUDIT_AMOUNT_CENTS = 42000;

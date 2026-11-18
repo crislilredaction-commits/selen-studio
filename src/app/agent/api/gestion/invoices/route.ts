@@ -17,6 +17,7 @@ const INVOICE_TYPES = new Set([
   "certifopac_single_audit",
   "icpf_monthly",
   "manual",
+  "daily_subscription",
 ]);
 
 const EDITABLE_STATUSES = new Set(["draft", "generated"]);
@@ -288,6 +289,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Type de facture invalide." }, { status: 400 });
     }
 
+    const billingPeriodStart = invoiceType === "daily_subscription"
+      ? String(body.billingPeriodStart ?? "").trim() : null;
+    const billingPeriodEnd = invoiceType === "daily_subscription"
+      ? String(body.billingPeriodEnd ?? "").trim() : null;
+    if (invoiceType === "daily_subscription") {
+      const validDate = (value: string | null) =>
+        typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+        !Number.isNaN(Date.parse(value)) &&
+        new Date(value).toISOString().slice(0, 10) === value;
+      if (!validDate(billingPeriodStart) || !validDate(billingPeriodEnd) ||
+          billingPeriodEnd! < billingPeriodStart!) {
+        return NextResponse.json({ error: "Periode Daily invalide : renseignez les dates de debut et fin incluses." }, { status: 400 });
+      }
+    }
+
     const linesInput = parseLines(body.lines);
     const totals = invoiceTotals(linesInput);
     if (
@@ -302,6 +318,9 @@ export async function POST(req: Request) {
 
     const admin = createSupabaseAdminClient();
     const existing = id ? await loadInvoice(id) : null;
+    if (existing?.metadata?.stripe_invoice_id && action === "send_email") {
+      return NextResponse.json({error:"La transmission de cette facture est suivie dans le journal Daily."},{status:409});
+    }
     const allowedLockedActions = new Set(["cancel", "delete", "mark_paid", "mark_deposited", "send_email"]);
     if (
       existing &&
@@ -545,6 +564,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, invoice: existing, email });
     }
 
+    if (invoiceType === "daily_subscription") {
+      const recipient = String(body.recipientName ?? "").trim().toLowerCase();
+      if (!recipient) {
+        return NextResponse.json({ error: "Selectionnez un client pour la facture Daily." }, { status: 400 });
+      }
+      const { data: existingDaily, error: existingDailyError } = await admin
+        .from("lil_invoices").select("id,recipient_name,metadata,status")
+        .eq("invoice_type", "daily_subscription").neq("status", "cancelled").limit(2000);
+      if (existingDailyError) throw new Error(existingDailyError.message);
+      const duplicate = (existingDaily ?? []).find((item) =>
+        item.id !== existing?.id &&
+        String(item.recipient_name).trim().toLowerCase() === recipient &&
+        typeof item.metadata?.daily_period_start === "string" &&
+        typeof item.metadata?.daily_period_end === "string" &&
+        item.metadata.daily_period_start <= billingPeriodEnd! &&
+        item.metadata.daily_period_end >= billingPeriodStart!
+      );
+      if (duplicate) {
+        return NextResponse.json({ error: "Une facture Daily existe deja pour ce client sur une periode qui se chevauche." }, { status: 409 });
+      }
+    }
+
     const payload = {
       invoice_date:
         String(body.invoiceDate ?? "").trim() || new Date().toISOString().slice(0, 10),
@@ -563,6 +604,7 @@ export async function POST(req: Request) {
       metadata: {
         ...(existing?.metadata ?? {}),
         notes: String(body.notes ?? "").trim(),
+        ...(invoiceType === "daily_subscription" ? { daily_period_start: billingPeriodStart, daily_period_end: billingPeriodEnd } : {}),
         client_legal_form: String(body.clientLegalForm ?? "").trim(),
         client_siren_siret: String(body.clientSirenSiret ?? "").trim(),
         client_vat_number: String(body.clientVatNumber ?? "").trim(),

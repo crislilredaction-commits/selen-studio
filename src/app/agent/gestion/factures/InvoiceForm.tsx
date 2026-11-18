@@ -162,6 +162,14 @@ export default function InvoiceForm({
   const [invoiceType, setInvoiceType] = useState<LilInvoiceType>(
     invoice?.invoice_type || "certifopac_single_audit",
   );
+  const [billingPeriodStart, setBillingPeriodStart] = useState(
+    typeof invoice?.metadata?.daily_period_start === "string"
+      ? invoice.metadata.daily_period_start : new Date().toISOString().slice(0, 10),
+  );
+  const [billingPeriodEnd, setBillingPeriodEnd] = useState(
+    typeof invoice?.metadata?.daily_period_end === "string"
+      ? invoice.metadata.daily_period_end : "",
+  );
   const [recipientName, setRecipientName] = useState(invoice?.recipient_name ?? "");
   const [recipientEmail, setRecipientEmail] = useState(invoice?.recipient_email ?? "");
   const [recipientAddress, setRecipientAddress] = useState(invoice?.recipient_address ?? "");
@@ -293,6 +301,8 @@ export default function InvoiceForm({
       action,
       id: invoice?.id,
       invoiceType,
+      billingPeriodStart: invoiceType === "daily_subscription" ? billingPeriodStart : null,
+      billingPeriodEnd: invoiceType === "daily_subscription" ? billingPeriodEnd : null,
       invoiceDate: formData.get("invoiceDate"),
       recipientName: formData.get("recipientName"),
       recipientAddress: formData.get("recipientAddress"),
@@ -469,6 +479,19 @@ export default function InvoiceForm({
             ))}
           </select>
         </label>
+        {invoiceType === "daily_subscription" ? (
+          <label style={s.field}>
+            <span>Début de la période Daily</span>
+            <input type="date" name="billingPeriodStart" value={billingPeriodStart}
+              onChange={(event) => setBillingPeriodStart(event.target.value)}
+              style={s.input} disabled={locked} required />
+            <span>Fin de la période Daily (incluse)</span>
+            <input type="date" name="billingPeriodEnd" value={billingPeriodEnd}
+              onChange={(event) => setBillingPeriodEnd(event.target.value)}
+              style={s.input} disabled={locked} required />
+            <small>Selectionnez un client dans les profils de facturation ci-dessous. Verifiez le paiement avant emission.</small>
+          </label>
+        ) : null}
         <Field
           label="Date"
           name="invoiceDate"
