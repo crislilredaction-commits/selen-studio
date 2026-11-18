@@ -81,14 +81,25 @@ begin
       using errcode = '23505';
   end if;
 
-  -- Detect manual invoices already issued for this customer/month.
+  -- Reject overlapping service periods, even if Stripe changes cycle boundaries.
+  if exists (
+    select 1 from public.lil_daily_invoice_links l
+    where l.stripe_subscription_id = p_stripe_subscription_id
+      and l.period_start < p_period_end_exclusive
+      and l.period_end_exclusive > p_period_start
+  ) then
+    raise exception 'Overlapping Daily subscription billing period requires reconciliation'
+      using errcode = '23505';
+  end if;
+
+  -- Detect manual invoices already issued for this customer/period.
   if exists (
     select 1 from public.lil_invoices i
      where i.invoice_type = 'daily_subscription'
        and i.status <> 'cancelled'
        and lower(btrim(i.recipient_name)) = lower(btrim(p_recipient_name))
-       and i.metadata ->> 'daily_period_start' = to_char(p_period_start at time zone 'UTC', 'YYYY-MM-DD')
-       and i.metadata ->> 'daily_period_end' = to_char((p_period_end_exclusive at time zone 'UTC') - interval '1 day', 'YYYY-MM-DD')
+       and (i.metadata ->> 'daily_period_start') <= to_char((p_period_end_exclusive at time zone 'UTC') - interval '1 day', 'YYYY-MM-DD')
+       and (i.metadata ->> 'daily_period_end') >= to_char(p_period_start at time zone 'UTC', 'YYYY-MM-DD')
   ) then
     raise exception 'Existing manual Daily invoice requires reconciliation'
       using errcode = '23505';
