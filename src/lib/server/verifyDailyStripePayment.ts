@@ -14,6 +14,8 @@ type StripeInvoiceRecord = {
   currency?: string;
   customer?: string | { id: string };
   invoice_pdf?: string | null;
+  number?: string | null;
+  lines?: { data?: Array<{ period?: { start?: number; end?: number }; proration?: boolean }> };
   parent?: {
     type?: string;
     subscription_details?: { subscription?: string | { id: string } };
@@ -32,6 +34,8 @@ export type VerifiedDailyPayment = {
   amountPaidCents: number;
   currency: "eur";
   stripeInvoicePdfUrl: string | null;
+  stripeInvoiceNumber: string | null;
+  billingMonth: string;
 };
 
 export async function verifyDailyStripePayment(
@@ -78,12 +82,31 @@ export async function verifyDailyStripePayment(
       subscriptionCustomerId !== customerId) {
     throw new Error("Stripe subscription is not Selen Daily.");
   }
+  const lineItems = invoice.lines?.data;
+  if (!lineItems || lineItems.length !== 1 || lineItems[0].proration === true ||
+      !Number.isSafeInteger(lineItems[0].period?.start) ||
+      !Number.isSafeInteger(lineItems[0].period?.end)) {
+    throw new Error("Unsupported Stripe billing period or prorated invoice.");
+  }
+  const start = new Date(lineItems[0].period!.start! * 1000);
+  const end = new Date(lineItems[0].period!.end! * 1000);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) ||
+      start.getUTCDate() !== 1 || start.getUTCHours() !== 0 ||
+      start.getUTCMinutes() !== 0 || end.getTime() <= start.getTime() ||
+      end.getUTCDate() !== 1 || end.getUTCHours() !== 0 ||
+      end.getUTCMinutes() !== 0 ||
+      (end.getUTCFullYear() * 12 + end.getUTCMonth()) -
+      (start.getUTCFullYear() * 12 + start.getUTCMonth()) !== 1) {
+    throw new Error("Stripe invoice does not cover exactly one calendar month.");
+  }
   return {
     stripeInvoiceId,
     stripeSubscriptionId: subscriptionId,
     stripeCustomerId: customerId,
     amountPaidCents: invoice.amount_paid!,
     currency: "eur",
+    billingMonth: start.toISOString().slice(0, 7),
+    stripeInvoiceNumber: typeof invoice.number === "string" ? invoice.number : null,
     stripeInvoicePdfUrl: typeof invoice.invoice_pdf === "string" && /^https:\/\//.test(invoice.invoice_pdf) ? invoice.invoice_pdf : null,
   };
 }
