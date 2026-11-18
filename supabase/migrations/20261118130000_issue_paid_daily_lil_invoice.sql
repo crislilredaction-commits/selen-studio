@@ -4,7 +4,8 @@
 create or replace function public.issue_paid_daily_lil_invoice(
   p_stripe_invoice_id text,
   p_stripe_subscription_id text,
-  p_billing_month date,
+  p_period_start timestamptz,
+  p_period_end_exclusive timestamptz,
   p_recipient_name text,
   p_recipient_email text,
   p_recipient_address text,
@@ -30,8 +31,9 @@ begin
   end if;
   if p_stripe_invoice_id !~ '^in_[A-Za-z0-9]+$'
     or p_stripe_subscription_id !~ '^sub_[A-Za-z0-9]+$'
-    or p_billing_month is null
-    or extract(day from p_billing_month) <> 1
+    or p_period_start is null
+    or p_period_end_exclusive is null
+    or p_period_end_exclusive <= p_period_start
     or nullif(btrim(p_recipient_name), '') is null
     or p_amount_cents is null or p_amount_cents <= 0
     or p_invoice_date is null
@@ -57,13 +59,13 @@ begin
   -- Discounts, credits, prorations and refunds require a separate reviewed path.
   -- Serialise repeated Stripe events on the same period.
   perform pg_advisory_xact_lock(
-    hashtextextended('daily:' || p_stripe_subscription_id || ':' || p_billing_month::text, 0)
+    hashtextextended('daily:' || p_stripe_subscription_id || ':' || p_period_start::text || ':' || p_period_end_exclusive::text, 0)
   );
 
   select * into v_link
     from public.lil_daily_invoice_links
    where stripe_invoice_id = p_stripe_invoice_id
-      or (stripe_subscription_id = p_stripe_subscription_id and billing_month = p_billing_month)
+      or (stripe_subscription_id = p_stripe_subscription_id and period_start = p_period_start and period_end_exclusive = p_period_end_exclusive)
    for update;
 
   if found then
@@ -85,7 +87,8 @@ begin
      where i.invoice_type = 'daily_subscription'
        and i.status <> 'cancelled'
        and lower(btrim(i.recipient_name)) = lower(btrim(p_recipient_name))
-       and i.metadata ->> 'daily_billing_month' = to_char(p_billing_month, 'YYYY-MM')
+       and i.metadata ->> 'daily_period_start' = to_char(p_period_start at time zone 'UTC', 'YYYY-MM-DD')
+       and i.metadata ->> 'daily_period_end' = to_char((p_period_end_exclusive at time zone 'UTC') - interval '1 day', 'YYYY-MM-DD')
   ) then
     raise exception 'Existing manual Daily invoice requires reconciliation'
       using errcode = '23505';
@@ -104,9 +107,10 @@ begin
     btrim(p_recipient_name), nullif(btrim(p_recipient_email), ''),
     nullif(btrim(p_recipient_address), ''), 'daily_subscription',
     'paid', 'eur', p_amount_cents, 0, p_amount_cents, p_lines,
-    (p_metadata - 'daily_billing_month') ||
+    (p_metadata - 'daily_billing_month' - 'daily_period_start' - 'daily_period_end') ||
       jsonb_build_object(
-        'daily_billing_month', to_char(p_billing_month, 'YYYY-MM'),
+        'daily_period_start', to_char(p_period_start at time zone 'UTC', 'YYYY-MM-DD'),
+        'daily_period_end', to_char((p_period_end_exclusive at time zone 'UTC') - interval '1 day', 'YYYY-MM-DD'),
         'stripe_invoice_id', p_stripe_invoice_id,
         'stripe_subscription_id', p_stripe_subscription_id,
         'vat_exemption_mention', 'TVA non applicable, art. 293 B du CGI',
@@ -118,10 +122,10 @@ begin
   ) returning * into v_issued;
 
   insert into public.lil_daily_invoice_links (
-    stripe_invoice_id, stripe_subscription_id, billing_month,
+    stripe_invoice_id, stripe_subscription_id, period_start, period_end_exclusive,
     lil_invoice_id, payment_status, email_status
   ) values (
-    p_stripe_invoice_id, p_stripe_subscription_id, p_billing_month,
+    p_stripe_invoice_id, p_stripe_subscription_id, p_period_start, p_period_end_exclusive,
     v_issued.id, 'paid', 'pending'
   );
 
@@ -130,7 +134,7 @@ end;
 $$;
 
 revoke all on function public.issue_paid_daily_lil_invoice(
-  text,text,date,text,text,text,integer,date,jsonb,jsonb
+  text,text,timestamptz,timestamptz,text,text,text,integer,date,jsonb,jsonb
 ) from public, anon, authenticated;
 grant execute on function public.issue_paid_daily_lil_invoice(
   text,text,date,text,text,text,integer,date,jsonb,jsonb
