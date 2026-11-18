@@ -14,6 +14,7 @@ const { verifyDailyStripePayment } = exports;
 const invoice = {
   id: "in_test123", status: "paid", amount_remaining: 0,
   amount_paid: 8900, currency: "eur", customer: "cus_test123",
+  invoice_pdf: "https://pay.stripe.com/invoice/test.pdf",
   parent: { type: "subscription_details", subscription_details: { subscription: "sub_test123" } },
 };
 function fakeFetch(inv = invoice, sub = { id: "sub_test123", metadata: { product_key: "selen_daily" } }) {
@@ -28,6 +29,7 @@ test("Studio independently retrieves and validates paid Daily Stripe invoice", a
   const fake = fakeFetch();
   const result = await verifyDailyStripePayment("in_test123", { secretKey: "sk_test_dummy", fetchImpl: fake.fetchImpl });
   assert.equal(result.amountPaidCents, 8900);
+  assert.equal(result.stripeInvoicePdfUrl, "https://pay.stripe.com/invoice/test.pdf");
   assert.equal(result.stripeSubscriptionId, "sub_test123");
   assert.equal(fake.urls.length, 2);
 });
