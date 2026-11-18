@@ -15,6 +15,8 @@ const invoice = {
   id: "in_test123", status: "paid", amount_remaining: 0,
   amount_paid: 8900, total: 8900, subtotal: 8900, total_taxes: [], currency: "eur", customer: "cus_test123",
   invoice_pdf: "https://pay.stripe.com/invoice/test.pdf",
+  number: "STRIPE-001",
+  lines: { data: [{ period: { start: 1793491200, end: 1796083200 }, proration: false }] },
   parent: { type: "subscription_details", subscription_details: { subscription: "sub_test123" } },
 };
 function fakeFetch(inv = invoice, sub = { id: "sub_test123", metadata: { product_key: "selen_daily" }, customer: "cus_test123" }) {
@@ -30,6 +32,8 @@ test("Studio independently retrieves and validates paid Daily Stripe invoice", a
   const result = await verifyDailyStripePayment("in_test123", { secretKey: "sk_test_dummy", fetchImpl: fake.fetchImpl });
   assert.equal(result.amountPaidCents, 8900);
   assert.equal(result.stripeInvoicePdfUrl, "https://pay.stripe.com/invoice/test.pdf");
+  assert.equal(result.stripeInvoiceNumber, "STRIPE-001");
+  assert.equal(result.billingMonth, "2026-11");
   assert.equal(result.stripeSubscriptionId, "sub_test123");
   assert.equal(fake.urls.length, 2);
 });
@@ -75,5 +79,19 @@ test("taxes and discounts cannot silently become a zero-VAT Lil invoice", async 
       /not a supported settled EUR payment/,
     );
     assert.equal(fake.urls.length, 1);
+  }
+});
+
+test("unsupported prorations and non-calendar periods cannot allocate a Lil invoice", async () => {
+  for (const patch of [
+    { lines: { data: [] } },
+    { lines: { data: [{ period: { start: 1793491200, end: 1796083200 }, proration: true }] } },
+    { lines: { data: [{ period: { start: 1793577600, end: 1796083200 }, proration: false }] } },
+  ]) {
+    const fake = fakeFetch({ ...invoice, ...patch });
+    await assert.rejects(
+      verifyDailyStripePayment("in_test123", { secretKey: "sk_test_dummy", fetchImpl: fake.fetchImpl }),
+      /Stripe/,
+    );
   }
 });
