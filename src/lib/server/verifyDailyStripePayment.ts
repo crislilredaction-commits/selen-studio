@@ -10,6 +10,7 @@ type StripeInvoiceRecord = {
   amount_paid?: number;
   currency?: string;
   customer?: string | { id: string };
+  invoice_pdf?: string | null;
   parent?: {
     type?: string;
     subscription_details?: { subscription?: string | { id: string } };
@@ -26,6 +27,7 @@ export type VerifiedDailyPayment = {
   stripeCustomerId: string;
   amountPaidCents: number;
   currency: "eur";
+  stripeInvoicePdfUrl: string | null;
 };
 
 export async function verifyDailyStripePayment(
@@ -73,5 +75,6 @@ export async function verifyDailyStripePayment(
     stripeCustomerId: customerId,
     amountPaidCents: invoice.amount_paid!,
     currency: "eur",
+    stripeInvoicePdfUrl: typeof invoice.invoice_pdf === "string" && /^https:\/\//.test(invoice.invoice_pdf) ? invoice.invoice_pdf : null,
   };
 }
