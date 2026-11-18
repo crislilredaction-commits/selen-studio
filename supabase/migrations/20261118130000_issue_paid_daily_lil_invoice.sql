@@ -148,5 +148,5 @@ revoke all on function public.issue_paid_daily_lil_invoice(
   text,text,timestamptz,timestamptz,text,text,text,integer,date,jsonb,jsonb
 ) from public, anon, authenticated;
 grant execute on function public.issue_paid_daily_lil_invoice(
-  text,text,date,text,text,text,integer,date,jsonb,jsonb
+  text,text,timestamptz,timestamptz,text,text,text,integer,date,jsonb,jsonb
 ) to service_role;
