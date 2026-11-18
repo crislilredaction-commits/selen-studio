@@ -1,3 +1,12 @@
+-- Allow the Daily invoice type in the canonical Gestion Lil table.
+-- Original constraint is in 20260629110000_create_lil_invoice_generator.sql.
+alter table public.lil_invoices
+  drop constraint if exists lil_invoices_type_check;
+alter table public.lil_invoices
+  add constraint lil_invoices_type_check check (
+    invoice_type in ('certifopac_single_audit', 'icpf_monthly', 'manual', 'daily_subscription')
+  );
+
 -- Selen Daily: deduplication ledger for the existing Gestion Lil invoice sequence.
 -- Apply only after reviewing the Studio/Daily database boundary and tax configuration.
 -- This table does NOT allocate invoice numbers: lil_invoices + next_lil_invoice_number remain canonical.
