@@ -35,9 +35,9 @@ test("Daily invoices preserve audit-model VAT exemption and paid Stripe terms", 
 });
 
 test("SQL migration contains exactly one complete function and permission grant", () => {
-  assert.equal((sql.match(/create or replace function public\\.issue_paid_daily_lil_invoice\\(/g) ?? []).length, 1);
-  assert.equal((sql.match(/grant execute on function public\\.issue_paid_daily_lil_invoice\\(/g) ?? []).length, 1);
-  assert.match(sql, /unitAmountCents'\\)\s*::numeric <> p_amount_cents/);
-  assert.match(sql, /quantity'\\)\s*::numeric <> 1/);
-  assert.doesNotMatch(sql, /\\^\\[0-9\\]\\+\\s+or jsonb_typeof/);
+  assert.equal((sql.match(/create or replace function public\.issue_paid_daily_lil_invoice\(/g) ?? []).length, 1);
+  assert.equal((sql.match(/grant execute on function public\.issue_paid_daily_lil_invoice\(/g) ?? []).length, 1);
+  assert.match(sql, /unitAmountCents'\)\s*::numeric <> p_amount_cents/);
+  assert.match(sql, /quantity'\)\s*::numeric <> 1/);
+  assert.doesNotMatch(sql, /\^\[0-9\]\+\s+or jsonb_typeof/);
 });
