@@ -97,7 +97,11 @@ begin
       jsonb_build_object(
         'daily_billing_month', to_char(p_billing_month, 'YYYY-MM'),
         'stripe_invoice_id', p_stripe_invoice_id,
-        'stripe_subscription_id', p_stripe_subscription_id
+        'stripe_subscription_id', p_stripe_subscription_id,
+        'vat_exemption_mention', 'TVA non applicable, art. 293 B du CGI',
+        'payment_method', 'Stripe',
+        'payment_terms', 'Facture acquittee - paiement recu par Stripe',
+        'due_date', p_invoice_date::text
       ),
     now(), now()
   ) returning * into v_issued;
