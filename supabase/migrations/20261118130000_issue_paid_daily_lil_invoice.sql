@@ -25,7 +25,7 @@ declare
   v_link public.lil_daily_invoice_links%rowtype;
 begin
   -- SECURITY: service_role only, not callable from authenticated/anon clients.
-  if auth.role() is distinct from 'service_role' then
+  if current_setting('request.jwt.claim.role', true) is distinct from 'service_role' then
     raise exception 'service_role required' using errcode = '42501';
   end if;
   if p_stripe_invoice_id !~ '^in_[A-Za-z0-9]+$'
@@ -35,9 +35,11 @@ begin
     or nullif(btrim(p_recipient_name), '') is null
     or p_amount_cents is null or p_amount_cents < 0
     or p_invoice_date is null
+    or p_recipient_email is null or position('@' in p_recipient_email) < 2
     or jsonb_typeof(p_lines) is distinct from 'array'
     or jsonb_array_length(p_lines) = 0
     or jsonb_typeof(p_metadata) is distinct from 'object'
+    or coalesce(p_metadata ->> 'payment_verified', '') <> 'true'
   then
     raise exception 'Invalid Daily invoice payload' using errcode = '22023';
   end if;
