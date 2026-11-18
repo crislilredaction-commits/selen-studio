@@ -33,7 +33,8 @@ test("Studio independently retrieves and validates paid Daily Stripe invoice", a
   assert.equal(result.amountPaidCents, 8900);
   assert.equal(result.stripeInvoicePdfUrl, "https://pay.stripe.com/invoice/test.pdf");
   assert.equal(result.stripeInvoiceNumber, "STRIPE-001");
-  assert.equal(result.billingMonth, "2026-11");
+  assert.equal(result.billingPeriodStart, "2026-11-01T00:00:00.000Z");
+  assert.equal(result.billingPeriodEndExclusive, "2026-12-01T00:00:00.000Z");
   assert.equal(result.stripeSubscriptionId, "sub_test123");
   assert.equal(fake.urls.length, 2);
 });
@@ -82,11 +83,24 @@ test("taxes and discounts cannot silently become a zero-VAT Lil invoice", async 
   }
 });
 
-test("unsupported prorations and non-calendar periods cannot allocate a Lil invoice", async () => {
+test("date-to-date subscription from 15 November to 15 December is accepted", async () => {
+  const start = Math.floor(Date.parse("2026-11-15T00:00:00Z") / 1000);
+  const end = Math.floor(Date.parse("2026-12-15T00:00:00Z") / 1000);
+  const fake = fakeFetch({
+    ...invoice,
+    lines: { data: [{ period: { start, end }, proration: false }] },
+  });
+  const result = await verifyDailyStripePayment("in_test123", {
+    secretKey: "sk_test_dummy", fetchImpl: fake.fetchImpl,
+  });
+  assert.equal(result.billingPeriodStart, "2026-11-15T00:00:00.000Z");
+  assert.equal(result.billingPeriodEndExclusive, "2026-12-15T00:00:00.000Z");
+});
+
+test("missing service periods and prorations remain unsupported", async () => {
   for (const patch of [
     { lines: { data: [] } },
     { lines: { data: [{ period: { start: 1793491200, end: 1796083200 }, proration: true }] } },
-    { lines: { data: [{ period: { start: 1793577600, end: 1796083200 }, proration: false }] } },
   ]) {
     const fake = fakeFetch({ ...invoice, ...patch });
     await assert.rejects(
