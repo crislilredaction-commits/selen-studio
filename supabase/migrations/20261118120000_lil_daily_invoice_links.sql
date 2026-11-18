@@ -46,3 +46,27 @@ comment on table public.lil_daily_invoice_links is
 -- transactional RPC before this ledger can safely be used by a webhook.
 -- A unique period assumes one invoice per subscription/calendar month; validate
 -- prorations and subscription-cycle boundaries before enabling automatic issuance.
+
+-- The application-level name/month check is insufficient for concurrent manual requests.
+-- Enforce uniqueness in PostgreSQL as well. Cancelled invoices remain in the audit trail,
+-- but a new corrected invoice can be created explicitly after cancellation.
+-- This temporary key must be replaced with a stable Daily subscription identifier
+-- before enabling automated issuance.
+create unique index if not exists lil_daily_manual_unique_client_month_idx
+  on public.lil_invoices (
+    lower(btrim(recipient_name)),
+    (metadata ->> 'daily_billing_month')
+  )
+  where invoice_type = 'daily_subscription'
+    and status <> 'cancelled';
+
+-- Validate metadata for new Daily rows. Existing non-Daily invoices are unaffected.
+alter table public.lil_invoices
+  add constraint lil_daily_billing_month_valid_check
+  check (
+    invoice_type <> 'daily_subscription'
+    or (
+      metadata ->> 'daily_billing_month' ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'
+      and recipient_name <> ''
+    )
+  );
