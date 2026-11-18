@@ -9,7 +9,7 @@ import { verifyDailyStripePayment } from "@/lib/server/verifyDailyStripePayment"
  */
 export async function POST(request: Request) {
   const expected = process.env.SELEN_DAILY_INVOICE_INTERNAL_SECRET?.trim();
-  const supplied = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "").trim();
+  const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   if (!expected || expected.length < 32 || !supplied || supplied !== expected) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 401 });
   }
