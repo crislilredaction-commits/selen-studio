@@ -573,11 +573,13 @@ export async function POST(req: Request) {
       const duplicate = (existingDaily ?? []).find((item) =>
         item.id !== existing?.id &&
         String(item.recipient_name).trim().toLowerCase() === recipient &&
-        item.metadata?.daily_period_start === billingPeriodStart &&
-        item.metadata?.daily_period_end === billingPeriodEnd
+        typeof item.metadata?.daily_period_start === "string" &&
+        typeof item.metadata?.daily_period_end === "string" &&
+        item.metadata.daily_period_start <= billingPeriodEnd! &&
+        item.metadata.daily_period_end >= billingPeriodStart!
       );
       if (duplicate) {
-        return NextResponse.json({ error: "Une facture Daily existe deja pour ce client et cette periode." }, { status: 409 });
+        return NextResponse.json({ error: "Une facture Daily existe deja pour ce client sur une periode qui se chevauche." }, { status: 409 });
       }
     }
 
