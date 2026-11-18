@@ -35,7 +35,8 @@ export type VerifiedDailyPayment = {
   currency: "eur";
   stripeInvoicePdfUrl: string | null;
   stripeInvoiceNumber: string | null;
-  billingMonth: string;
+  billingPeriodStart: string;
+  billingPeriodEndExclusive: string;
 };
 
 export async function verifyDailyStripePayment(
@@ -91,21 +92,21 @@ export async function verifyDailyStripePayment(
   const start = new Date(lineItems[0].period!.start! * 1000);
   const end = new Date(lineItems[0].period!.end! * 1000);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) ||
-      start.getUTCDate() !== 1 || start.getUTCHours() !== 0 ||
-      start.getUTCMinutes() !== 0 || end.getTime() <= start.getTime() ||
-      end.getUTCDate() !== 1 || end.getUTCHours() !== 0 ||
-      end.getUTCMinutes() !== 0 ||
-      (end.getUTCFullYear() * 12 + end.getUTCMonth()) -
-      (start.getUTCFullYear() * 12 + start.getUTCMonth()) !== 1) {
-    throw new Error("Stripe invoice does not cover exactly one calendar month.");
+      end.getTime() <= start.getTime()) {
+    throw new Error("Invalid Stripe subscription service period.");
   }
+  // Stripe periods are [start, end). Preserve their actual cycle boundaries,
+  // e.g. 15 November through 14 December, not calendar-month buckets.
+  const periodStart = start.toISOString();
+  const periodEndExclusive = end.toISOString();
   return {
     stripeInvoiceId,
     stripeSubscriptionId: subscriptionId,
     stripeCustomerId: customerId,
     amountPaidCents: invoice.amount_paid!,
     currency: "eur",
-    billingMonth: start.toISOString().slice(0, 7),
+    billingPeriodStart: periodStart,
+    billingPeriodEndExclusive: periodEndExclusive,
     stripeInvoiceNumber: typeof invoice.number === "string" ? invoice.number : null,
     stripeInvoicePdfUrl: typeof invoice.invoice_pdf === "string" && /^https:\/\//.test(invoice.invoice_pdf) ? invoice.invoice_pdf : null,
   };
