@@ -19,6 +19,7 @@ type StripeInvoiceRecord = {
 type StripeSubscriptionRecord = {
   id?: string;
   metadata?: Record<string, string>;
+  customer?: string | { id: string };
 };
 
 export type VerifiedDailyPayment = {
@@ -66,7 +67,10 @@ export async function verifyDailyStripePayment(
     throw new Error("Stripe subscription/customer identity missing.");
   }
   const subscription = await stripeGet<StripeSubscriptionRecord>(`subscriptions/${encodeURIComponent(subscriptionId)}`);
-  if (subscription.id !== subscriptionId || subscription.metadata?.product_key !== "selen_daily") {
+  const subscriptionCustomerId = typeof subscription.customer === "string"
+    ? subscription.customer : subscription.customer?.id;
+  if (subscription.id !== subscriptionId || subscription.metadata?.product_key !== "selen_daily" ||
+      subscriptionCustomerId !== customerId) {
     throw new Error("Stripe subscription is not Selen Daily.");
   }
   return {
