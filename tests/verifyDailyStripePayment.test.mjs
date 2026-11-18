@@ -16,6 +16,8 @@ const invoice = {
   amount_paid: 8900, total: 8900, subtotal: 8900, total_taxes: [], currency: "eur", customer: "cus_test123",
   invoice_pdf: "https://pay.stripe.com/invoice/test.pdf",
   number: "STRIPE-001",
+  status_transitions: {paid_at: 1793491200},
+  payments: {data:[{status:"paid",amount_paid:8900,payment:{type:"payment_intent",payment_intent:"pi_test"}}]},
   lines: { data: [{ period: { start: 1793491200, end: 1796083200 }, proration: false }] },
   parent: { type: "subscription_details", subscription_details: { subscription: "sub_test123" } },
 };
@@ -23,7 +25,10 @@ function fakeFetch(inv = invoice, sub = { id: "sub_test123", metadata: { product
   const urls = [];
   const fetchImpl = async (url) => {
     urls.push(url);
-    return { ok: true, json: async () => url.includes("/invoices/") ? inv : sub };
+    return { ok: true, json: async () => url.includes("/invoices/") ? inv : url.includes("/payment_intents/") ? {
+      id:"pi_test",status:"succeeded",currency:"eur",customer:"cus_test123",amount_received:8900,
+      latest_charge:{paid:true,refunded:false,amount_refunded:0,disputed:false},
+    } : sub };
   };
   return { urls, fetchImpl };
 }
@@ -36,7 +41,7 @@ test("Studio independently retrieves and validates paid Daily Stripe invoice", a
   assert.equal(result.billingPeriodStart, "2026-11-01T00:00:00.000Z");
   assert.equal(result.billingPeriodEndExclusive, "2026-12-01T00:00:00.000Z");
   assert.equal(result.stripeSubscriptionId, "sub_test123");
-  assert.equal(fake.urls.length, 2);
+  assert.equal(fake.urls.length, 3);
 });
 test("unpaid, zero-amount and mismatched invoices fail before subscription lookup", async () => {
   for (const patch of [{ status: "open" }, { amount_paid: 0 }, { id: "in_wrong" }]) {
@@ -68,10 +73,10 @@ test("Stripe invoice cannot be attributed to a different subscription customer",
   );
 });
 
-test("taxes and discounts cannot silently become a zero-VAT Lil invoice", async () => {
+test("taxes and inconsistent totals cannot silently become a zero-VAT Lil invoice", async () => {
   for (const patch of [
     { total: 9000 },
-    { subtotal: 10000 },
+
     { total_taxes: [{ amount: 100 }] },
   ]) {
     const fake = fakeFetch({ ...invoice, ...patch });

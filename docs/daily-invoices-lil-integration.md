@@ -1,6 +1,6 @@
 # Factures d'abonnement Selen Daily : contrat d'intégration Studio / Daily
 
-Statut : spécification validée par Lil le 18 novembre 2026. **Non implémenté, non testé, non déployé.**
+Statut : spécification validée par Lil le 18 novembre 2026. Le flux automatique est implémenté sur les deux branches de PR. La production reste fermée. Les objectifs du document initial sont conservés ci-dessous.
 
 ## Source de vérité
 - Studio : `src/lib/server/lilInvoices.ts`, `lil_invoices`, `lil_invoice_sequence`, RPC `next_lil_invoice_number`.
@@ -34,10 +34,9 @@ Statut : spécification validée par Lil le 18 novembre 2026. **Non implémenté
 
 Suivi : https://github.com/crislilredaction-commits/selen-editions-site/issues/521
 
-## Avancement technique (18/11/2026)
-- Ajout du type `daily_subscription` dans les types et le formulaire existant Gestion Lil.
-- Champ `billingMonth` (AAAA-MM) enregistré en métadonnées `daily_billing_month`.
-- Vérification applicative d'un doublon sur le nom normalisé du client et le mois, **non suffisante en concurrence**. Le vrai identifiant de souscription et une contrainte unique transactionnelle restent indispensables.
-- Ledger SQL `lil_daily_invoice_links` ajouté mais non appliqué. Vérifier le type réel de `billing_profile_id` et les mois de proratisation avant migration.
-- **Aucun client Daily n'est encore chargé dans le sélecteur** : seuls les profils de facturation existants sont proposés ; synchronisation abonnés à développer.
-- **Ne pas émettre de facture Daily en production avec ce prototype** avant validation TVA, flux de paiement, anti-doublons atomique et tests.
+
+## Livraison du flux automatique
+
+Daily vérifie la signature Stripe, identifie l’abonnement et attend une confirmation Studio pour la même facture. Studio revérifie la charge, rapproche les factures antérieures puis numérote, archive et envoie le PDF. Les paiements hors régime pris en charge sont à rapprocher. Les interfaces manuelles et l’historique client décrits plus haut sont des objectifs distincts.
+
+Procédure et résultats de recette dans le dépôt Studio, branche de la [PR 453](https://github.com/crislilredaction-commits/selen-studio/pull/453), fichiers `docs/daily-invoice-activation-checklist.md` et `docs/daily-invoice-recette.md`.

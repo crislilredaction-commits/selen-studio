@@ -318,6 +318,9 @@ export async function POST(req: Request) {
 
     const admin = createSupabaseAdminClient();
     const existing = id ? await loadInvoice(id) : null;
+    if (existing?.metadata?.stripe_invoice_id && action === "send_email") {
+      return NextResponse.json({error:"La transmission de cette facture est suivie dans le journal Daily."},{status:409});
+    }
     const allowedLockedActions = new Set(["cancel", "delete", "mark_paid", "mark_deposited", "send_email"]);
     if (
       existing &&

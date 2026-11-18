@@ -4,6 +4,7 @@ import {
   getLilInvoiceSettings,
   invoiceStorageProvider,
   type LilInvoiceRow,
+  type LilInvoiceSettings,
 } from "@/lib/server/lilInvoices";
 
 /**
@@ -27,7 +28,9 @@ export async function finalizePaidDailyInvoicePdf(invoiceId: string) {
   if (invoice.pdf_path && invoice.pdf_bucket) {
     return { invoice, alreadyStored: true };
   }
-  const settings = await getLilInvoiceSettings();
+  const snapshot = invoice.metadata?.issuer_settings;
+  const settings = snapshot && typeof snapshot === "object"
+    ? snapshot as LilInvoiceSettings : await getLilInvoiceSettings();
   const pdfBuffer = generateLilInvoicePdfBuffer({ invoice, settings });
   const storage = await invoiceStorageProvider.storePdf({ invoice, pdfBuffer });
   const { data: updated, error: updateError } = await admin.from("lil_invoices")

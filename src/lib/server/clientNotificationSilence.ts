@@ -17,6 +17,7 @@ type ClientEmailInput = SilenceLookup & {
   subject: string;
   html: string;
   text?: string | null;
+  idempotencyKey?: string;
   attachments?: { filename: string; content: Buffer; contentType: string }[];
 };
 
@@ -109,6 +110,7 @@ export async function sendClientEmailWithSilence(input: ClientEmailInput) {
     html: input.html,
     text: input.text,
     attachments: input.attachments,
+    idempotencyKey: input.idempotencyKey,
   });
 
   return { ...result, paused: false };

@@ -386,8 +386,9 @@ export function generateLilInvoicePdfBuffer({
   doc.text(centsToEuros(invoice.total_cents), totalsX + 196, y + 54, { align: "right" });
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("Net a payer", totalsX + 14, y + 82);
-  doc.text(centsToEuros(invoice.total_cents), totalsX + 196, y + 82, { align: "right" });
+  const paidDaily = invoice.invoice_type === "daily_subscription" && invoice.status === "paid";
+  doc.text(paidDaily ? "Reste a payer" : "Net a payer", totalsX + 14, y + 82);
+  doc.text(centsToEuros(paidDaily ? 0 : invoice.total_cents), totalsX + 196, y + 82, { align: "right" });
 
   y += 122;
   doc.setFont("helvetica", "bold");
@@ -433,6 +434,16 @@ export const invoiceStorageProvider = {
     const number = invoice.invoice_number || `draft-${invoice.id}`;
     const path = `lil-invoices/${number}.pdf`;
 
+    if (invoice.invoice_type === "daily_subscription" && invoice.metadata?.stripe_invoice_id) {
+      const bucket = "lil-daily-invoices";
+      const { error } = await admin.storage.from(bucket).upload(path, pdfBuffer, {
+        contentType: "application/pdf", upsert: false,
+      });
+      if (error && (error as {statusCode?: string}).statusCode !== "409" && error.message !== "The resource already exists") {
+        throw error;
+      }
+      return { provider: "supabase", bucket, path, publicUrl: `/agent/api/gestion/invoices/pdf?id=${invoice.id}` };
+    }
     // TODO Google Drive: replace this Supabase implementation with an uploader
     // targeting GOOGLE_DRIVE_INVOICE_FOLDER when the Drive connector is wired.
     const { error } = await admin.storage

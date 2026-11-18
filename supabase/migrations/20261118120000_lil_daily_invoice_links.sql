@@ -68,15 +68,45 @@ alter table public.lil_invoices
   check (
     invoice_type <> 'daily_subscription'
     or (
-      metadata ->> 'daily_period_start' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}
-    )
-  );
-
-      and metadata ->> 'daily_period_end' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}
-    )
-  );
-
+      coalesce(metadata ->> 'daily_period_start','') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      and coalesce(metadata ->> 'daily_period_end','') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
       and (metadata ->> 'daily_period_end') >= (metadata ->> 'daily_period_start')
-      and recipient_name <> ''
+      and btrim(recipient_name) <> ''
     )
   );
+
+-- Reviewed association for existing subscriptions. Enrol only after historical reconciliation.
+create table public.lil_daily_billing_accounts (
+  stripe_subscription_id text primary key,
+  stripe_customer_id text not null,
+  organisation_id uuid not null references public.organisations(id),
+  first_unbilled_period_start timestamptz not null
+);
+alter table public.lil_daily_billing_accounts enable row level security;
+revoke all on public.lil_daily_billing_accounts from public, anon, authenticated;
+grant select,insert,update on public.lil_daily_billing_accounts to service_role;
+
+alter table public.lil_daily_invoice_links add column email_first_attempt_at timestamptz, add column email_provider_id text;
+insert into storage.buckets (id,name,public)
+values ('lil-daily-invoices','lil-daily-invoices',false);
+
+-- Imported evidence only. A match never allocates a number or schedules an email.
+create table public.lil_daily_prior_payments (
+  stripe_invoice_hash text primary key,
+  stripe_subscription_hash text not null,
+  invoice_number text unique not null check (invoice_number ~ '^F[0-9]{6}$'),
+  stripe_number_hash text not null,
+  period_start timestamptz not null,
+  period_end_exclusive timestamptz not null check (period_end_exclusive > period_start),
+  amount_cents integer not null check (amount_cents > 0)
+);
+alter table public.lil_daily_prior_payments enable row level security;
+revoke all on public.lil_daily_prior_payments from public,anon,authenticated;
+grant select,insert on public.lil_daily_prior_payments to service_role;
+
+-- Historical document matches verified read-only on 2026-11-18. No invoice or email is created.
+insert into public.lil_daily_prior_payments
+  (stripe_invoice_hash, stripe_subscription_hash, invoice_number, stripe_number_hash, period_start, period_end_exclusive, amount_cents) values
+  ('ae82b53b49ff2d85c5e5554e4e77c36c9b6322279b2d7e2fab571883d9643593','344b903d6a9df7ef23f6bd001959d527bcd47b080fc93940be911c27749a1108','F000437','5bcefb0353ce9a431982e85333ad0f2ddcff9352bf93631284e98bdf3e3528a1','2026-11-14T18:50:51.000Z','2026-12-14T18:50:51.000Z',6900),
+  ('8b3230fd9d2f883e42e333650fc3fd1953019324322372a76f8edbd130b87544','344b903d6a9df7ef23f6bd001959d527bcd47b080fc93940be911c27749a1108','F000436','ec370448e9ac320844f84c80b02566040e0f379b11d553ae8f0611f45e1b9ae1','2026-10-14T18:50:51.000Z','2026-11-14T18:50:51.000Z',6900),
+  ('7de261995e301043205c4212230c6ea9ce58ca74c8f2aeaf420c920f294656dc','344b903d6a9df7ef23f6bd001959d527bcd47b080fc93940be911c27749a1108','F000435','232b79826396b18fee70e675bc135bba6c04e99afc9e1514012a0e0bb92fcae3','2026-09-14T18:50:51.000Z','2026-10-14T18:50:51.000Z',6900);

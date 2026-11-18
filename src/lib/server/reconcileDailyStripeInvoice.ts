@@ -19,8 +19,8 @@ export async function reconcileDailyStripeInvoice(stripeInvoiceId: string) {
 
   const exactLink = (links ?? []).find((link) =>
     link.stripe_invoice_id === payment.stripeInvoiceId &&
-    link.period_start === payment.billingPeriodStart &&
-    link.period_end_exclusive === payment.billingPeriodEndExclusive
+    Date.parse(link.period_start) === Date.parse(payment.billingPeriodStart) &&
+    Date.parse(link.period_end_exclusive) === Date.parse(payment.billingPeriodEndExclusive)
   );
   const conflictingLinks = (links ?? []).filter((link) =>
     link !== exactLink

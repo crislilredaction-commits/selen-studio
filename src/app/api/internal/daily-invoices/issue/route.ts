@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
 import { verifyDailyStripePayment } from "@/lib/server/verifyDailyStripePayment";
 
-/**
- * Deliberately non-issuing integration endpoint.
- * The Stripe invoice is independently verified, but no fiscal invoice may be
- * allocated until the Stripe-vs-Lil legal invoice strategy and database recipe
- * have been approved. Never acknowledge an invoice as issued here.
- */
+import { issueDailyInvoice } from "@/lib/server/issueDailyInvoice";
+
 export async function POST(request: Request) {
   const expected = process.env.SELEN_DAILY_INVOICE_INTERNAL_SECRET?.trim();
   const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
@@ -27,16 +23,18 @@ export async function POST(request: Request) {
   if (typeof id !== "string" || !/^in_[A-Za-z0-9]+$/.test(id)) {
     return NextResponse.json({ error: "Identifiant Stripe invalide." }, { status: 400 });
   }
+  let payment;
   try {
-    await verifyDailyStripePayment(id);
+    payment = await verifyDailyStripePayment(id);
   } catch (error) {
     console.error("daily_invoice_verification_failed", error);
     return NextResponse.json({ error: "Paiement Stripe non verifie." }, { status: 422 });
   }
-  // No database writes, numbering, PDF storage or email at this stage.
-  // A non-2xx status ensures Daily cannot treat this as completed issuance.
-  return NextResponse.json(
-    { error: "Paiement verifie, emission en attente de recette et validation fiscale." },
-    { status: 503 },
-  );
+  try {
+    const status = await issueDailyInvoice(payment);
+    return NextResponse.json({ stripeInvoiceId: id, status });
+  } catch (error) {
+    console.error("daily_invoice_processing_failed", id, error instanceof Error ? error.message : "database operation failed");
+    return NextResponse.json({ error: "Facturation à reprendre." }, { status: 503 });
+  }
 }

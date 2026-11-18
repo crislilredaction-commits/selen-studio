@@ -15,7 +15,11 @@ type StripeInvoiceRecord = {
   customer?: string | { id: string };
   invoice_pdf?: string | null;
   number?: string | null;
-  lines?: { data?: Array<{ period?: { start?: number; end?: number }; proration?: boolean }> };
+  status_transitions?: { paid_at?: number };
+  payments?: { has_more?: boolean; data?: Array<{
+    status?: string; amount_paid?: number; payment?: {type?: string; payment_intent?: string};
+  }> };
+  lines?: { has_more?: boolean; data?: Array<{ period?: { start?: number; end?: number }; proration?: boolean; parent?: { subscription_item_details?: {proration?: boolean} } }> };
   parent?: {
     type?: string;
     subscription_details?: { subscription?: string | { id: string } };
@@ -31,6 +35,8 @@ export type VerifiedDailyPayment = {
   stripeInvoiceId: string;
   stripeSubscriptionId: string;
   stripeCustomerId: string;
+  discountCents: number;
+  paidAt: string;
   amountPaidCents: number;
   currency: "eur";
   stripeInvoicePdfUrl: string | null;
@@ -53,18 +59,19 @@ export async function verifyDailyStripePayment(
   const fetchImpl = options.fetchImpl ?? fetch;
   async function stripeGet<T>(path: string): Promise<T> {
     const response = await fetchImpl(`https://api.stripe.com/v1/${path}`, {
-      headers: { Authorization: `Bearer ${secret}` },
+      headers: { Authorization: `Bearer ${secret}`, "Stripe-Version": "2026-04-22.dahlia" },
       cache: "no-store",
       signal: AbortSignal.timeout(12000),
     });
     if (!response.ok) throw new Error(`Stripe verification failed: HTTP ${response.status}`);
     return await response.json() as T;
   }
-  const invoice = await stripeGet<StripeInvoiceRecord>(`invoices/${encodeURIComponent(stripeInvoiceId)}`);
+  const invoice = await stripeGet<StripeInvoiceRecord>(`invoices/${encodeURIComponent(stripeInvoiceId)}?expand[]=payments`);
   if (invoice.id !== stripeInvoiceId || invoice.status !== "paid" ||
       invoice.amount_remaining !== 0 || invoice.currency !== "eur" ||
       !Number.isSafeInteger(invoice.amount_paid) || (invoice.amount_paid ?? 0) <= 0 ||
-      invoice.total !== invoice.amount_paid || invoice.subtotal !== invoice.amount_paid ||
+      invoice.total !== invoice.amount_paid || !Number.isSafeInteger(invoice.subtotal) ||
+      invoice.subtotal! < invoice.total! ||
       (invoice.total_taxes ?? []).some((tax) => tax.amount !== 0)) {
     throw new Error("Stripe invoice is not a supported settled EUR payment.");
   }
@@ -84,7 +91,7 @@ export async function verifyDailyStripePayment(
     throw new Error("Stripe subscription is not Selen Daily.");
   }
   const lineItems = invoice.lines?.data;
-  if (!lineItems || lineItems.length !== 1 || lineItems[0].proration === true ||
+  if (invoice.lines?.has_more || lineItems?.[0]?.parent?.subscription_item_details?.proration || !lineItems || lineItems.length !== 1 || lineItems[0].proration === true ||
       !Number.isSafeInteger(lineItems[0].period?.start) ||
       !Number.isSafeInteger(lineItems[0].period?.end)) {
     throw new Error("Unsupported Stripe billing period or prorated invoice.");
@@ -95,6 +102,23 @@ export async function verifyDailyStripePayment(
       end.getTime() <= start.getTime()) {
     throw new Error("Invalid Stripe subscription service period.");
   }
+  const payments = invoice.payments?.data?.filter((entry) => entry.status === "paid");
+  const payment = payments?.[0];
+  const intentId = payment?.payment?.payment_intent;
+  if (invoice.payments?.has_more || payments?.length !== 1 || payment?.amount_paid !== invoice.amount_paid ||
+      payment?.payment?.type !== "payment_intent" || typeof intentId !== "string" || !/^pi_[a-zA-Z0-9]+$/.test(intentId) ||
+      !Number.isSafeInteger(invoice.status_transitions?.paid_at)) {
+    throw new Error("Stripe charge confirmation missing.");
+  }
+  const intent = await stripeGet<{id: string; status: string; currency: string; customer: string;
+    amount_received: number; latest_charge?: {paid: boolean; refunded: boolean; amount_refunded: number; disputed: boolean}
+  }>(`payment_intents/${intentId}?expand[]=latest_charge`);
+  const charge = intent.latest_charge;
+  if (intent.id !== intentId || intent.status !== "succeeded" || intent.customer !== customerId ||
+      intent.currency !== "eur" || intent.amount_received !== invoice.amount_paid ||
+      !charge?.paid || charge.refunded !== false || charge.amount_refunded !== 0 || charge.disputed !== false) {
+    throw new Error("Stripe payment is not fully collected.");
+  }
   // Stripe periods are [start, end). Preserve their actual cycle boundaries,
   // e.g. 15 November through 14 December, not calendar-month buckets.
   const periodStart = start.toISOString();
@@ -103,6 +127,8 @@ export async function verifyDailyStripePayment(
     stripeInvoiceId,
     stripeSubscriptionId: subscriptionId,
     stripeCustomerId: customerId,
+    discountCents: invoice.subtotal! - invoice.total!,
+    paidAt: new Date(invoice.status_transitions!.paid_at! * 1000).toISOString(),
     amountPaidCents: invoice.amount_paid!,
     currency: "eur",
     billingPeriodStart: periodStart,

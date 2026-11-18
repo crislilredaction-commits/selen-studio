@@ -25,6 +25,7 @@ test("Studio independently verifies Stripe before any future issuance", () => {
   assert.doesNotMatch(route, /\.rpc\(|\.insert\(|sendLilInvoiceEmail|invoiceStorageProvider/);
 });
 
-test("never reports issuance success until fiscal reconciliation is implemented", () => {
-  assert.doesNotMatch(route, /status: 200|issued: true|success: true/);
+test("acknowledges only after processing the independently verified payment", () => {
+  assert.match(route, /const status = await issueDailyInvoice\(payment\)/);
+  assert.match(route, /stripeInvoiceId: id, status/);
 });
