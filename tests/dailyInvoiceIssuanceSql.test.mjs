@@ -26,3 +26,10 @@ test("RPC cannot be called with end-user database roles", () => {
   assert.match(sql, /revoke all on function public\.issue_paid_daily_lil_invoice/);
   assert.match(sql, /grant execute on function public\.issue_paid_daily_lil_invoice/);
 });
+
+test("Daily invoices preserve audit-model VAT exemption and paid Stripe terms", () => {
+  assert.match(sql, /tax_cents, total_cents/);
+  assert.match(sql, /p_amount_cents, 0, p_amount_cents/);
+  assert.match(sql, /TVA non applicable, art\. 293 B du CGI/);
+  assert.match(sql, /Facture acquittee - paiement recu par Stripe/);
+});
