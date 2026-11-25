@@ -87,6 +87,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     return NextResponse.json({ error: "Accès refusé." }, { status: 403 });
   }
 
+  const learnerCopy = Boolean(requestedEnrolmentId) && new URL(request.url).searchParams.get("copy") === "learner";
   const [slotsResult, enrolmentsResult, publicationResult, trainerSignatureResult] = await Promise.all([
     admin.from("daily_attendance_slots")
       .select("id,slot_date,starts_at,ends_at,label,daily_attendance_records(enrolment_id,status,signed_at,validated_at,signature_storage_path,proof_sha256,evidence_metadata)")
@@ -114,13 +115,16 @@ export async function GET(request: Request, { params }: RouteContext) {
   if (!slots.length) return NextResponse.json({ error: "Aucun créneau d’émargement n’est configuré." }, { status: 409 });
   if (requestedEnrolmentId && !enrolments.length) return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
   if (requestedEnrolmentId && !isAfterSession(session.end_date)) return NextResponse.json({ error: "La feuille individuelle sera disponible après la fin de la session." }, { status: 409 });
-  if (requestedEnrolmentId && !publicationResult.data) return NextResponse.json({ error: "La feuille individuelle sera disponible après validation et publication du relevé d’émargement." }, { status: 409 });
+  if (requestedEnrolmentId && !learnerCopy && !publicationResult.data) return NextResponse.json({ error: "La feuille individuelle sera disponible après validation et publication du relevé d’émargement." }, { status: 409 });
   if (requestedEnrolmentId && slots.some((slot) => {
     const records = (slot.daily_attendance_records ?? []) as AttendanceRecord[];
     const status = records.find((item) => item.enrolment_id === requestedEnrolmentId)?.status;
     return !status || status === "pending";
   })) return NextResponse.json({ error: "Toutes les présences de cet apprenant doivent être traitées avant le téléchargement." }, { status: 409 });
 
+  if (learnerCopy && !slots.every(slot => (slot.daily_attendance_records as AttendanceRecord[] | null)?.some(record => record.enrolment_id === requestedEnrolmentId && record.status === "present" && record.signed_at && record.signature_storage_path))) {
+    return NextResponse.json({ error: "Chaque demi-journée doit porter la signature de l’apprenant." }, { status: 409 });
+  }
   const formation = relation(session.daily_formations);
   const organisation = relation(session.organisations);
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -171,15 +175,17 @@ export async function GET(request: Request, { params }: RouteContext) {
           const bytes = Buffer.from(await signature.arrayBuffer());
           ensure(25);
           if (addSignaturePreview(doc, bytes, left, y)) y += 23;
+          else if (learnerCopy) return NextResponse.json({ error: "Tracé de signature illisible." }, { status: 503 });
           else line("Signature conservée dans le stockage sécurisé — aperçu illisible ou format non pris en charge.", 7);
         } else {
+          if (learnerCopy) return NextResponse.json({ error: "Tracé de signature indisponible." }, { status: 503 });
           line("Signature conservée dans le stockage sécurisé — aperçu indisponible lors de la génération.", 7);
         }
       }
       if (requestedEnrolmentId && record?.status === "present" && !record.signature_storage_path) {
         line("Signature de l’apprenant : non enregistrée.", 7);
       }
-      if (requestedEnrolmentId) {
+      if (requestedEnrolmentId && !learnerCopy) {
         const trainerSignatures = (trainerSignatureResult.data ?? []).filter((signature) => {
           const metadata = signature.metadata && typeof signature.metadata === "object" ? signature.metadata as Record<string, unknown> : {};
           return String(metadata.slot_id ?? "") === String(slot.id);
@@ -205,7 +211,7 @@ export async function GET(request: Request, { params }: RouteContext) {
   doc.setDrawColor(185);
   doc.line(left, y, right, y);
   y += 5;
-  line(requestedEnrolmentId
+  line(learnerCopy ? "Relevé individuel des signatures électroniques de l’apprenant." : requestedEnrolmentId
     ? `Document personnel généré depuis Selen Studio le ${formatDate(new Date().toISOString(), true)}, après validation et publication. Il ne contient que cet apprenant et les signatures formateur des mêmes créneaux ; aucune métadonnée privée de revue n’est exposée.`
     : `Document généré depuis Selen Studio le ${formatDate(new Date().toISOString(), true)}. Les lignes « En attente » ne constituent pas une présence signée. L’historique de revue exclut les jetons, chemins de stockage et identités privées des décideurs.`, 7);
 

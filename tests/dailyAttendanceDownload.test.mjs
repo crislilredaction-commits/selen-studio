@@ -68,7 +68,7 @@ test("plusieurs relevés publiés ne bloquent pas les feuilles individuelles et 
   // maybeSingle sans limit(1) renverrait PGRST116 au lieu d'une preuve de publication.
   assert.match(route, /\.eq\("document_type", "attendance_summary"\)[\s\S]*?\.is\("archived_at", null\)\.limit\(1\)\.maybeSingle\(\)/);
   assert.match(page, /\.eq\("document_type","attendance_summary"\)[\s\S]*?\.is\("archived_at",null\)\.limit\(1\)\.maybeSingle\(\)/);
-  assert.match(route, /if \(requestedEnrolmentId && !publicationResult\.data\)/);
+  assert.match(route, /if \(requestedEnrolmentId && !learnerCopy && !publicationResult\.data\)/);
   assert.match(page, /publicationUnavailable=\{Boolean\(publishedAttendanceError\)\}/);
 });
 
@@ -112,4 +112,10 @@ test("le PDF garde une mention de preuve indisponible si une signature apprenant
   assert.match(route, /if \(addSignaturePreview\(doc, bytes, left, y\)\)/);
   assert.match(route, /if \(addSignaturePreview\(doc, trainerBytes, left, y\)\)/);
   assert.match(route, /aperçu illisible ou format non pris en charge/);
+});
+
+test("la copie apprenant exige un tracé signé pour chaque créneau et omet les signatures formateur", () => {
+  assert.match(route, /record.status === "present" && record.signed_at && record.signature_storage_path/);
+  assert.match(route, /requestedEnrolmentId && !learnerCopy\) \{\s*const trainerSignatures/);
+  assert.match(picker, /&copy=learner/);
 });

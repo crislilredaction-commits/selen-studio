@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type LearnerOption = { id: string; name: string; ready: boolean };
+type LearnerOption = { id: string; name: string; ready: boolean; learnerCopy: boolean };
 
 export default function IndividualAttendanceDownload({
   sessionId,
@@ -15,13 +15,13 @@ export default function IndividualAttendanceDownload({
 }) {
   const [enrolmentId, setEnrolmentId] = useState("");
   const selected = options.find((option) => option.id === enrolmentId);
-  const canDownload = Boolean(selected?.ready);
+  const canDownload = Boolean(selected?.ready || selected?.learnerCopy);
 
   function download(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canDownload) return;
     window.location.assign(
-      `/agent/daily/session-dossiers/${encodeURIComponent(sessionId)}/attendance/pdf?enrolment=${encodeURIComponent(enrolmentId)}`,
+      `/agent/daily/session-dossiers/${encodeURIComponent(sessionId)}/attendance/pdf?enrolment=${encodeURIComponent(enrolmentId)}${selected?.learnerCopy ? "&copy=learner" : ""}`,
     );
   }
 
@@ -42,7 +42,7 @@ export default function IndividualAttendanceDownload({
           {options.map((option) => (
             <option key={option.id} value={option.id}>
               {option.name}
-              {option.ready ? "" : " — pas encore disponible"}
+              {option.ready || option.learnerCopy ? "" : " — pas encore disponible"}
             </option>
           ))}
         </select>
@@ -62,6 +62,8 @@ export default function IndividualAttendanceDownload({
         <p style={styles.help}>
           L’état de publication est momentanément indisponible.
         </p>
+      ) : selected?.learnerCopy ? (
+        <p style={styles.help}>Ce PDF contient les signatures de l’apprenant pour chaque demi-journée.</p>
       ) : selected && !selected.ready ? (
         <p style={styles.help}>
           La session doit être terminée et toutes les présences de cet apprenant
